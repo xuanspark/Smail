@@ -2,7 +2,7 @@
 .DS_Store
 dist
 output
-pmail.db
+smail.db
 server/plugins
 config
 *_KEY

@@ -2,10 +2,10 @@ package imap_server
 
 import (
 	"database/sql"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/errors"
-	"github.com/Jinnrry/pmail/utils/password"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
 	"strings"

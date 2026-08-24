@@ -1,9 +1,9 @@
 package controllers
 
 import (
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/hooks"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/hooks"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	"io"
 	"net/http"
 	"strings"

@@ -1,9 +1,9 @@
 package imap_server
 
 import (
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	log "github.com/sirupsen/logrus"
@@ -17,7 +17,7 @@ func matchGroup(ctx *context.Context, w *imapserver.ListWriter, basePath, patter
 		//w.WriteList(&imap.ListData{
 		//	Attrs:   []imap.MailboxAttr{imap.MailboxAttrNoSelect, imap.MailboxAttrHasChildren},
 		//	Delim:   '/',
-		//	Mailbox: "[PMail]",
+		//	Mailbox: "[Smail]",
 		//})
 		w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrHasNoChildren},
@@ -95,7 +95,7 @@ func (s *serverSession) List(w *imapserver.ListWriter, ref string, patterns []st
 		w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrNoSelect, imap.MailboxAttrHasChildren},
 			Delim:   '/',
-			Mailbox: "[PMail]",
+			Mailbox: "[Smail]",
 		})
 	}
 	for _, pattern := range patterns {

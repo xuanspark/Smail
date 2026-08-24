@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jinnrry/pmail/models"
+	"git.pcux.cn/xuans/Smail/models"
 	"github.com/emersion/go-message"
 )
 

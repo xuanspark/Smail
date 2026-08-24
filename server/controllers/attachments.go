@@ -2,9 +2,9 @@ package controllers
 
 import (
 	"fmt"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/services/attachments"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/services/attachments"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/spf13/cast"
 	"net/http"
 	"strings"

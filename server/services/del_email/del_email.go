@@ -1,10 +1,10 @@
 package del_email
 
 import (
-	"github.com/Jinnrry/pmail/consts"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/consts"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"log/slog"

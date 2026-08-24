@@ -6,7 +6,8 @@
       </div>
       <div class="mobile-logo">
         <router-link to="/">
-          <h1>PMail</h1>
+          <img src="/smail-logo.png" alt="Smail" class="mobile-logo-img" />
+          <h1>Smail</h1>
         </router-link>
       </div>
     </div>
@@ -112,6 +113,19 @@ onUnmounted(() => {
 
 .mobile-logo a {
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 移动端标题栏 logo 图标 */
+.mobile-logo-img {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  object-fit: contain;
+  background: #000;
+  flex-shrink: 0;
 }
 
 .settings-btn {

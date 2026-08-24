@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	"net/http"
 )
 

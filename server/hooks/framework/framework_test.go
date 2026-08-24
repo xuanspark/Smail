@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Jinnrry/pmail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
 )
 
 func TestHookDTOIncludesEmailAuthentication(t *testing.T) {

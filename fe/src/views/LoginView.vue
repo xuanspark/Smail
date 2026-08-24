@@ -3,7 +3,8 @@
     <div class="login-container">
       <div class="login-left">
         <div class="brand-info">
-          <h1>PMail</h1>
+          <img src="/smail-logo.png" alt="Smail" class="brand-logo-img" />
+          <h1>Smail</h1>
         </div>
       </div>
       <div class="login-right">
@@ -121,6 +122,18 @@ const onSubmit = () => {
   justify-content: center;
 }
 
+/* 登录页品牌 logo 图标 */
+.brand-logo-img {
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  object-fit: contain;
+  background: #000;
+  margin-bottom: 24px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  animation: pm-rise-in 0.5s var(--pm-ease-out);
+}
+
 .brand-info h1 {
   font-size: 56px;
   font-weight: 600;
@@ -209,6 +222,12 @@ const onSubmit = () => {
     padding: 38px 28px;
     align-items: center;
     text-align: center;
+  }
+  .brand-logo-img {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    margin-bottom: 18px;
   }
   .brand-info h1 {
     font-size: 38px;

@@ -2,7 +2,7 @@ package ssl
 
 import (
 	"fmt"
-	"github.com/Jinnrry/pmail/config"
+	"git.pcux.cn/xuans/Smail/config"
 	"testing"
 )
 

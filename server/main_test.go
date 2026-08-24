@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/signal"
-	"github.com/Jinnrry/pmail/utils/array"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/signal"
+	"git.pcux.cn/xuans/Smail/utils/array"
 	"github.com/spf13/cast"
 	"io"
 	"net"
@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 
 	httpClient = &http.Client{Jar: cookeieJar, Timeout: 5 * time.Minute}
 	os.Remove("config/config.json")
-	os.Remove("config/pmail_temp.db")
+	os.Remove("config/smail_temp.db")
 	os.Setenv("setup_port", cast.ToString(TestPort))
 
 	go func() {
@@ -375,16 +375,16 @@ func testDataBaseSet(t *testing.T) {
 	argList := flag.Args()
 
 	configData := `
-{"action":"set","step":"database","db_type":"sqlite","db_dsn":"./config/pmail_temp.db"}
+{"action":"set","step":"database","db_type":"sqlite","db_dsn":"./config/smail_temp.db"}
 `
 
 	if array.InArray("mysql", argList) {
 		configData = `
-{"action":"set","step":"database","db_type":"mysql","db_dsn":"root:githubTest@tcp(mysql:3306)/pmail?parseTime=True"}
+{"action":"set","step":"database","db_type":"mysql","db_dsn":"root:githubTest@tcp(mysql:3306)/smail?parseTime=True"}
 `
 	} else if array.InArray("postgres", argList) {
 		configData = `
-{"action":"set","step":"database","db_type":"postgres","db_dsn":"postgres://postgres:githubTest@postgres:5432/pmail?sslmode=disable"}
+{"action":"set","step":"database","db_type":"postgres","db_dsn":"postgres://postgres:githubTest@postgres:5432/smail?sslmode=disable"}
 `
 	}
 

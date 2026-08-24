@@ -2,8 +2,8 @@
   <div class="sidebar-main">
     <div class="brand">
       <router-link to="/" class="brand-link">
-        <span class="brand-dot"></span>
-        <span class="brand-text">PMail</span>
+        <img src="/smail-logo.png" alt="Smail" class="brand-logo" />
+        <span class="brand-text">Smail</span>
       </router-link>
     </div>
     <div class="search-box">
@@ -113,13 +113,14 @@ const openSettings = function () {
   gap: 8px;
 }
 
-.brand-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--pm-primary-color);
-  box-shadow: 0 0 0 6px rgba(0, 113, 227, 0.14);
-  animation: pm-soft-pulse 2.6s ease-in-out infinite;
+/* 品牌 logo 图标(黑底圆角,contain 使纸飞机居中显示) */
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #000;
+  flex-shrink: 0;
 }
 
 .brand-text {

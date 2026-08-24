@@ -2,9 +2,9 @@ package email
 
 import (
 	"encoding/json"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/services/detail"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/services/detail"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"

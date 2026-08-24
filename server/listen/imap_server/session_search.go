@@ -1,7 +1,7 @@
 package imap_server
 
 import (
-	"github.com/Jinnrry/pmail/services/list"
+	"git.pcux.cn/xuans/Smail/services/list"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	log "github.com/sirupsen/logrus"

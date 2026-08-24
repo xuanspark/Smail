@@ -7,7 +7,7 @@
   "sslType": "1",
   "SSLPrivateKeyPath": "./config/ssl/private.key",
   "SSLPublicKeyPath": "./config/ssl/public.crt",
-  "dbDSN": "./config/pmail_temp.db",
+  "dbDSN": "./config/smail_temp.db",
   "dbType": "sqlite",
   "httpsEnabled": 2,
   "spamFilterLevel": 0,

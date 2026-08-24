@@ -1,8 +1,8 @@
 package session
 
 import (
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/db"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
 	"github.com/alexedwards/scs/mysqlstore"
 	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/sqlite3store"

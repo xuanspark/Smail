@@ -1,4 +1,4 @@
-module github.com/Jinnrry/pmail
+module git.pcux.cn/xuans/Smail
 
 go 1.24.0
 

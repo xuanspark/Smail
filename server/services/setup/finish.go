@@ -1,9 +1,9 @@
 package setup
 
 import (
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/signal"
-	"github.com/Jinnrry/pmail/utils/errors"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/signal"
+	"git.pcux.cn/xuans/Smail/utils/errors"
 )
 
 // Finish 标记初始化完成

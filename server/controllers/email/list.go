@@ -2,11 +2,11 @@ package email
 
 import (
 	"encoding/json"
-	"github.com/Jinnrry/pmail/dto"
-	"github.com/Jinnrry/pmail/dto/parsemail"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/services/list"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto"
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/services/list"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"io"

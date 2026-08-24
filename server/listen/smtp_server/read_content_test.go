@@ -2,12 +2,12 @@ package smtp_server
 
 import (
 	"bytes"
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/db"
-	parsemail2 "github.com/Jinnrry/pmail/dto/parsemail"
-	"github.com/Jinnrry/pmail/hooks"
-	"github.com/Jinnrry/pmail/session"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
+	parsemail2 "git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/hooks"
+	"git.pcux.cn/xuans/Smail/session"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"net/netip"
@@ -40,7 +40,7 @@ func testInit() {
 	config.Init()
 	config.Instance.DkimPrivateKeyPath = config.ROOT_PATH + "./config/dkim/dkim.priv"
 	config.Instance.DbType = config.DBTypeSQLite
-	config.Instance.DbDSN = config.ROOT_PATH + "./config/pmail_temp.db"
+	config.Instance.DbDSN = config.ROOT_PATH + "./config/smail_temp.db"
 
 	parsemail2.Init()
 	db.Init("")
@@ -137,7 +137,7 @@ PGRpdiBkaXI9Imx0ciI+PGRpdj7mraPmlofmtYvor5UyPC9kaXY+PC9kaXY+DQo=
 
 }
 
-func TestPmailEmail(t *testing.T) {
+func TestSmailEmail(t *testing.T) {
 	testInit()
 	emailData := `DKIM-Signature: a=rsa-sha256; bh=x7Rh+N2y2K9exccEAyKCTAGDgYKfnLZpMWc25ug5Ny4=;
  c=simple/simple; d=domain.com;

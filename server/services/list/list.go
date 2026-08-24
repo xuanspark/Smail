@@ -2,13 +2,13 @@ package list
 
 import (
 	"fmt"
-	"github.com/Jinnrry/pmail/consts"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/dto"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/array"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/consts"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/array"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"strings"
 )

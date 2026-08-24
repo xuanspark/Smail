@@ -2,11 +2,11 @@ package controllers
 
 import (
 	"encoding/json"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/i18n"
-	"github.com/Jinnrry/pmail/utils/context"
-	"github.com/Jinnrry/pmail/utils/password"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/i18n"
+	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"

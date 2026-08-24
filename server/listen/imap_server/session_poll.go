@@ -1,8 +1,8 @@
 package imap_server
 
 import (
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/models"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
 	"github.com/emersion/go-imap/v2/imapserver"
 	"github.com/spf13/cast"
 )

@@ -1,8 +1,8 @@
 package match
 
 import (
-	"github.com/Jinnrry/pmail/dto/parsemail"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/utils/context"
 )
 
 type EqualMatch struct {

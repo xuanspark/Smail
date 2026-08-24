@@ -2,14 +2,14 @@ package setup
 
 import (
 	"fmt"
-	"github.com/Jinnrry/pmail/config"
+	"git.pcux.cn/xuans/Smail/config"
 	"strings"
 
-	"github.com/Jinnrry/pmail/i18n"
-	"github.com/Jinnrry/pmail/services/auth"
-	"github.com/Jinnrry/pmail/utils/context"
-	"github.com/Jinnrry/pmail/utils/errors"
-	"github.com/Jinnrry/pmail/utils/ip"
+	"git.pcux.cn/xuans/Smail/i18n"
+	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/ip"
 )
 
 type DNSItem struct {

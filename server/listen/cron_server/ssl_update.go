@@ -1,9 +1,9 @@
 package cron_server
 
 import (
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/services/setup/ssl"
-	"github.com/Jinnrry/pmail/signal"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/services/setup/ssl"
+	"git.pcux.cn/xuans/Smail/signal"
 	log "github.com/sirupsen/logrus"
 	"time"
 	// 新增：HTTP 就绪探测

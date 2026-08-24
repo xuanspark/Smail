@@ -1,8 +1,8 @@
-# PMail
+# Smail
 
 > 一台服务器、一个域名、一行代码、一分钟时间，你就能够搭建出一个自己的域名邮箱。
 
-PMail是一个追求极简部署流程、极致资源占用的个人域名邮箱服务器。单文件运行，包含完整的收发邮件服务和Web端邮件管理功能。只需一台服务器、一个域名、一行代码、一分钟部署时间，你就能够搭建出一个自己的域名邮箱。
+Smail是一个追求极简部署流程、极致资源占用的个人域名邮箱服务器。单文件运行，包含完整的收发邮件服务和Web端邮件管理功能。只需一台服务器、一个域名、一行代码、一分钟部署时间，你就能够搭建出一个自己的域名邮箱。
 
 欢迎各类PR，无论你是修复bug、新增功能、修改翻译。另外，也为这个项目征集一个漂亮可爱的Logo！
 
@@ -51,12 +51,12 @@ PMail是一个追求极简部署流程、极致资源占用的个人域名邮箱
 
 ## 1、下载文件
 
-* [点击这里](https://github.com/Jinnrry/PMail/releases)下载一个与你匹配的程序文件。
+* [点击这里](https://git.pcux.cn/xuans/Smail/releases)下载一个与你匹配的程序文件。
 * 或者使用Docker运行 `docker pull ghcr.io/jinnrry/pmail:latest`
 
 ## 2、运行
 
-`./pmail -p 80` 
+`./smail -p 80`
 
 > `-p 指定引导设置界面的http端口，默认为80端口，注意该参数仅影响引导设置阶段，设置完成后如果需要修改端口请修改配置文件`
 
@@ -89,7 +89,7 @@ PMail是一个追求极简部署流程、极致资源占用的个人域名邮箱
   "sslType": "0", // ssl证书更新模式，0自动，HTTP模式，1手动、2自动，DNS模式
   "SSLPrivateKeyPath": "config/ssl/private.key", // ssl 证书地址
   "SSLPublicKeyPath": "config/ssl/public.crt", // ssl 证书地址
-  "dbDSN": "./config/pmail.db", // 数据库连接DSN
+  "dbDSN": "./config/smail.db", // 数据库连接DSN
   "dbType": "sqlite", //数据库类型，支持sqlite 和 mysql
   "httpsEnabled": 0, // web后台是否启用https 0默认（启用），1启用，2不启用
   "spamFilterLevel": 0,// 垃圾邮件过滤级别，0不过滤、1 spf dkim 校验均失败时且无有效收件人过滤，2 spf校验不通过时且无有效收件人过滤 3,dkim 校验不过的时候且无有效收件人过滤
@@ -125,7 +125,7 @@ IMAP端口： 993(SSL)
 
 ## 插件安装
 > [!IMPORTANT]
-> 插件已独立进程的方式运行在你的服务器上，请自行审查第三方插件的安全性。PMail目前仅维护上述三款插件
+> 插件已独立进程的方式运行在你的服务器上，请自行审查第三方插件的安全性。Smail目前仅维护上述三款插件
 
 将插件二进制文件放到`plugins`文件夹中即可
 
@@ -151,10 +151,10 @@ IMAP端口： 993(SSL)
 
 ## 后端接口文档
 
-[go to wiki](https://github.com/Jinnrry/PMail/wiki/%E5%90%8E%E7%AB%AF%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
+[go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E5%90%8E%E7%AB%AF%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
 
 ## 插件开发
 
-[go to wiki](https://github.com/Jinnrry/PMail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
+[go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
 
 

@@ -4,10 +4,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
 )

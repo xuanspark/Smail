@@ -37,14 +37,14 @@ jobs:
           check-latest: true
       - name: Gen output name
         run: |
-          echo "FILENAME=pmail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
+          echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "ZIPNAME=${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
       - name: Rename Windows File
         if: matrix.goos == 'windows'
         run: |
-          echo "FILENAME=pmail_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
+          echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
       - name: FE Build

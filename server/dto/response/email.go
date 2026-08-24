@@ -1,6 +1,6 @@
 package response
 
-import "github.com/Jinnrry/pmail/models"
+import "git.pcux.cn/xuans/Smail/models"
 
 type EmailResponseData struct {
 	models.Email `xorm:"extends"`

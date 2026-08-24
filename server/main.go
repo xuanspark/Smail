@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/listen/cron_server"
-	"github.com/Jinnrry/pmail/res_init"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/listen/cron_server"
+	"git.pcux.cn/xuans/Smail/res_init"
 	log "github.com/sirupsen/logrus"
 )
 

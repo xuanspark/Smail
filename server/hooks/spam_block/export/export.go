@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/hooks/spam_block/tools"
-	"github.com/Jinnrry/pmail/models"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/hooks/spam_block/tools"
+	"git.pcux.cn/xuans/Smail/models"
 	"github.com/spf13/cast"
 	"os"
 )

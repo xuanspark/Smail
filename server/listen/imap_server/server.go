@@ -1,8 +1,8 @@
 package imap_server
 
 import (
-	"github.com/Jinnrry/pmail/utils/context"
-	"github.com/Jinnrry/pmail/utils/id"
+	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/id"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
 	"sync"

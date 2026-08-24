@@ -1,13 +1,13 @@
 package setup
 
 import (
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/array"
-	"github.com/Jinnrry/pmail/utils/context"
-	"github.com/Jinnrry/pmail/utils/errors"
-	"github.com/Jinnrry/pmail/utils/password"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/array"
+	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
 func GetDatabaseSettings(ctx *context.Context) (string, string, error) {
@@ -17,7 +17,7 @@ func GetDatabaseSettings(ctx *context.Context) (string, string, error) {
 	}
 
 	if configData.DbType == "" && configData.DbDSN == "" {
-		return config.DBTypeSQLite, config.ROOT_PATH + "./config/pmail.db", nil
+		return config.DBTypeSQLite, config.ROOT_PATH + "./config/smail.db", nil
 	}
 
 	return configData.DbType, configData.DbDSN, nil

@@ -28,27 +28,27 @@ func TestSQLiteDSNOptions(t *testing.T) {
 	}{
 		{
 			name:            "plain filename gets default timeout",
-			dsn:             "/tmp/pmail.db",
+			dsn:             "/tmp/smail.db",
 			wantBusyTimeout: "busy_timeout(1000)",
 		},
 		{
 			name:            "timeout at cap is preserved byte for byte",
-			dsn:             "file:pmail.db?_txlock=deferred&_pragma=BUSY_TIMEOUT%20%3D%201000&mode=memory",
-			wantDSN:         "file:pmail.db?_txlock=deferred&_pragma=BUSY_TIMEOUT%20%3D%201000&mode=memory",
+			dsn:             "file:smail.db?_txlock=deferred&_pragma=BUSY_TIMEOUT%20%3D%201000&mode=memory",
+			wantDSN:         "file:smail.db?_txlock=deferred&_pragma=BUSY_TIMEOUT%20%3D%201000&mode=memory",
 			wantBusyTimeout: "BUSY_TIMEOUT = 1000",
 			wantTxLock:      "deferred",
 		},
 		{
 			name:            "explicit timeout is capped and other options are preserved",
-			dsn:             "file:pmail.db?mode=memory&_pragma=journal_mode(WAL)&_pragma=busy_timeout%20%3D%20600000&_txlock=deferred",
+			dsn:             "file:smail.db?mode=memory&_pragma=journal_mode(WAL)&_pragma=busy_timeout%20%3D%20600000&_txlock=deferred",
 			wantBusyTimeout: "busy_timeout(1000)",
 			wantJournalMode: "journal_mode(WAL)",
 			wantTxLock:      "deferred",
 		},
 		{
 			name:            "negative timeout is preserved byte for byte",
-			dsn:             "file:pmail.db?cache=shared&_pragma=%20busy_timeout%20%28%20-1%20%29%20",
-			wantDSN:         "file:pmail.db?cache=shared&_pragma=%20busy_timeout%20%28%20-1%20%29%20",
+			dsn:             "file:smail.db?cache=shared&_pragma=%20busy_timeout%20%28%20-1%20%29%20",
+			wantDSN:         "file:smail.db?cache=shared&_pragma=%20busy_timeout%20%28%20-1%20%29%20",
 			wantBusyTimeout: " busy_timeout ( -1 ) ",
 		},
 	}
@@ -94,23 +94,23 @@ func TestSQLiteDSNRejectsInvalidBusyTimeout(t *testing.T) {
 	}{
 		{
 			name: "duplicate timeout pragmas",
-			dsn:  "file:pmail.db?_pragma=busy_timeout(10)&_pragma=BUSY_TIMEOUT%20%3D%2020",
+			dsn:  "file:smail.db?_pragma=busy_timeout(10)&_pragma=BUSY_TIMEOUT%20%3D%2020",
 		},
 		{
 			name: "missing timeout value",
-			dsn:  "file:pmail.db?_pragma=busy_timeout",
+			dsn:  "file:smail.db?_pragma=busy_timeout",
 		},
 		{
 			name: "nonnumeric timeout",
-			dsn:  "file:pmail.db?_pragma=busy_timeout(forever)",
+			dsn:  "file:smail.db?_pragma=busy_timeout(forever)",
 		},
 		{
 			name: "timeout with trailing junk",
-			dsn:  "file:pmail.db?_pragma=busy_timeout(10)%20milliseconds",
+			dsn:  "file:smail.db?_pragma=busy_timeout(10)%20milliseconds",
 		},
 		{
 			name: "overflowing timeout",
-			dsn:  "file:pmail.db?_pragma=busy_timeout(9223372036854775808)",
+			dsn:  "file:smail.db?_pragma=busy_timeout(9223372036854775808)",
 		},
 	}
 
@@ -135,7 +135,7 @@ func TestSQLiteDSNWarnsWhenBusyTimeoutIsCapped(t *testing.T) {
 		logger.SetLevel(originalLevel)
 	})
 
-	if _, err := sqliteDSNWithReliabilityOptions("file:pmail.db?_pragma=busy_timeout(600000)"); err != nil {
+	if _, err := sqliteDSNWithReliabilityOptions("file:smail.db?_pragma=busy_timeout(600000)"); err != nil {
 		t.Fatalf("sqliteDSNWithReliabilityOptions() error = %v", err)
 	}
 	for _, want := range []string{"600000ms", "1000ms"} {

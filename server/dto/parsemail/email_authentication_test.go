@@ -3,7 +3,7 @@ package parsemail
 import (
 	"testing"
 
-	"github.com/Jinnrry/pmail/models"
+	"git.pcux.cn/xuans/Smail/models"
 )
 
 func TestNewEmailAuthentication(t *testing.T) {

@@ -1,9 +1,9 @@
 package setup
 
 import (
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/utils/array"
-	"github.com/Jinnrry/pmail/utils/errors"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/utils/array"
+	"git.pcux.cn/xuans/Smail/utils/errors"
 	"strings"
 )
 

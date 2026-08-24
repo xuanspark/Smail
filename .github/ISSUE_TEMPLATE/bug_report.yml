@@ -13,12 +13,12 @@ body:
           required: true
         - label: 我搜索了issues，没有发现已提出的类似问题。
           required: true
-        - label: 我已经阅读了项目[Readme](https://github.com/Jinnrry/PMail/blob/master/README_CN.md)和[常见问题](https://github.com/Jinnrry/PMail/discussions/170)
+        - label: 我已经阅读了项目[Readme](https://git.pcux.cn/xuans/Smail/src/branch/main/README_CN.md)和[常见问题](https://git.pcux.cn/xuans/Smail/issues)
           required: true
   - type: input
     attributes:
       label: 版本
-      description: 使用的PMail版本
+      description: 使用的Smail版本
     validations:
       required: true
   - type: markdown
@@ -31,9 +31,9 @@ body:
         
         ### 对于日志
         请先将日志等级设置为 debug.
-        重启 PMail ，再按复现方式操作，尽量减少日志中的无关部分。
+        重启 Smail ，再按复现方式操作，尽量减少日志中的无关部分。
         记得删除有关个人信息的部分。
-        提供 PMail 的日志，而不是面板或者别的东西输出的日志。
+        提供 Smail 的日志，而不是面板或者别的东西输出的日志。
 
         ### 最后
         在去掉不影响复现的部分后，提供实际运行的**完整**文件，不要出于自己的判断只提供入站出站或者几行日志。

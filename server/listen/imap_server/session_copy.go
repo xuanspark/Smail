@@ -1,13 +1,13 @@
 package imap_server
 
 import (
-	"github.com/Jinnrry/pmail/consts"
-	"github.com/Jinnrry/pmail/db"
-	"github.com/Jinnrry/pmail/dto/response"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/services/group"
-	"github.com/Jinnrry/pmail/services/list"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/consts"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/group"
+	"git.pcux.cn/xuans/Smail/services/list"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 	"github.com/spf13/cast"
 )

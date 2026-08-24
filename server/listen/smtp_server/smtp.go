@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/Jinnrry/pmail/config"
+	"git.pcux.cn/xuans/Smail/config"
 	"github.com/emersion/go-smtp"
 	log "github.com/sirupsen/logrus"
 )

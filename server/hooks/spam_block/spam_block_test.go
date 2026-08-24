@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/context"
 )
 
 func TestSettingsHtmlRejectsNonAdminSave(t *testing.T) {

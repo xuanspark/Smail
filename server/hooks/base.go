@@ -4,10 +4,10 @@ import (
 	oContext "context"
 	"encoding/json"
 	"fmt"
-	"github.com/Jinnrry/pmail/dto/parsemail"
-	"github.com/Jinnrry/pmail/hooks/framework"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/hooks/framework"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
@@ -220,7 +220,7 @@ func Init(serverVersion string) {
 
 			os.Remove(socketPath)
 
-			//socketPath = "/PMail/server/hooks/spam_block/1555.socket"  //debug
+			//socketPath = "/Smail/server/hooks/spam_block/1555.socket"  //debug
 
 			log.Infof("[%s] Plugin Load", info.Name())
 			p, err := os.StartProcess(path, []string{

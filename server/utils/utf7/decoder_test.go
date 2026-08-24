@@ -1,7 +1,7 @@
 package utf7_test
 
 import (
-	"github.com/Jinnrry/pmail/utils/utf7"
+	"git.pcux.cn/xuans/Smail/utils/utf7"
 	"strings"
 	"testing"
 )

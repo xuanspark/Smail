@@ -1,4 +1,4 @@
-# PMail
+# Smail
 
 > A server, a domain, a line of code, a minute, and you'll be able to build a domain mailbox of your own.
 
@@ -8,7 +8,7 @@ I'm Chinese, and I'm not good at English, so I apologise for my translation.
 
 ## Introduction
 
-PMail is a personal email server that pursues a minimal deployment process and extreme resource consumption. It runs on
+Smail is a personal email server that pursues a minimal deployment process and extreme resource consumption. It runs on
 a single file and contains complete send/receive mail service and web-side mail management functions. Just a server , a
 domain name , a line of code , a minute of deployment time , you will be able to build a domain name mailbox of your
 own .
@@ -43,12 +43,12 @@ First go to [spamhaus](https://check.spamhaus.org/) and check your domain name a
 
 ## 1、Download
 
-* [Click Here](https://github.com/Jinnrry/PMail/releases) Download a program file that matches you.
+* [Click Here](https://git.pcux.cn/xuans/Smail/releases) Download a program file that matches you.
 * Or use Docker `docker pull ghcr.io/jinnrry/pmail:latest`
 
 ## 2、Run
 
-`./pmail -p 80`
+`./smail -p 80`
 
 > -p Set the http port of the bootstrap setup interface, the default is port 80, note that this parameter only affects the bootstrap setup phase, if you need to change the port after setup is complete, please modify the configuration file.
 
@@ -84,7 +84,7 @@ use [https://www.mail-tester.com/](https://www.mail-tester.com/) for checking.
   "sslType": "0", // ssl certificate update mode, 0 automatic, 1 manual
   "SSLPrivateKeyPath": "config/ssl/private.key", // ssl certificate path
   "SSLPublicKeyPath": "config/ssl/public.crt", // ssl certificate path
-  "dbDSN": "./config/pmail.db", // database connect DSN
+  "dbDSN": "./config/smail.db", // database connect DSN
   "dbType": "sqlite", //database type ，`sqlite` or `mysql`
   "httpsEnabled": 0, // enabled https , 0:enabled 1:enablde 2:disenabled
   "httpPort": 80, // http port . default 80
@@ -119,7 +119,7 @@ IMAP Port: 993(SSL)
 
 ## Plugin Install
 > [!IMPORTANT]
-> Plugins run on your server as independent processes, please review the security of third-party plugins on your own.PMail currently only maintains the three plugins mentioned above.
+> Plugins run on your server as independent processes, please review the security of third-party plugins on your own.Smail currently only maintains the three plugins mentioned above.
 
 Copy plugin binary file to `/plugins`
 
@@ -145,10 +145,10 @@ The code is in `server` folder.
 
 ## Api Documentation
 
-[go to wiki](https://github.com/Jinnrry/PMail/wiki/%E5%90%8E%E7%AB%AF%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
+[go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E5%90%8E%E7%AB%AF%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
 
 ## Plugin Development
 
-[go to wiki](https://github.com/Jinnrry/PMail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
+[go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
 
 

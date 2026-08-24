@@ -1,7 +1,7 @@
 package imap_server
 
 import (
-	"github.com/Jinnrry/pmail/services/del_email"
+	"git.pcux.cn/xuans/Smail/services/del_email"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	"github.com/spf13/cast"

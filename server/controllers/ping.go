@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"github.com/Jinnrry/pmail/dto/response"
+	"git.pcux.cn/xuans/Smail/dto/response"
 	"net/http"
 )
 

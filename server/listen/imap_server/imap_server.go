@@ -2,7 +2,7 @@ package imap_server
 
 import (
 	"crypto/tls"
-	"github.com/Jinnrry/pmail/config"
+	"git.pcux.cn/xuans/Smail/config"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	log "github.com/sirupsen/logrus"

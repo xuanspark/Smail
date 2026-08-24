@@ -5,11 +5,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
-	"github.com/Jinnrry/pmail/config"
-	"github.com/Jinnrry/pmail/services/setup"
-	"github.com/Jinnrry/pmail/signal"
-	"github.com/Jinnrry/pmail/utils/async"
-	"github.com/Jinnrry/pmail/utils/errors"
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/services/setup"
+	"git.pcux.cn/xuans/Smail/signal"
+	"git.pcux.cn/xuans/Smail/utils/async"
+	"git.pcux.cn/xuans/Smail/utils/errors"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	log "github.com/sirupsen/logrus"
@@ -85,7 +85,7 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 	}
 
 	conf := lego.NewConfig(&myUser)
-	conf.UserAgent = "PMail"
+	conf.UserAgent = "Smail"
 	conf.Certificate.KeyType = certcrypto.RSA2048
 
 	// A client facilitates communication with the CA server.
@@ -164,7 +164,7 @@ func generateCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config, newAc
 	}
 
 	conf := lego.NewConfig(&myUser)
-	conf.UserAgent = "PMail"
+	conf.UserAgent = "Smail"
 	conf.Certificate.KeyType = certcrypto.RSA2048
 
 	// A client facilitates communication with the CA server.

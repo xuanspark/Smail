@@ -9,9 +9,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/Jinnrry/pmail/utils/context"
-	"github.com/Jinnrry/pmail/utils/errors"
-	"github.com/Jinnrry/pmail/utils/file"
+	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/file"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -55,8 +55,8 @@ var ROOT_PATH = ""
 func init() {
 	envs := os.Environ()
 	for _, env := range envs {
-		if strings.HasPrefix(env, "PMail_ROOT=") {
-			ROOT_PATH = strings.TrimSpace(strings.ReplaceAll(env, "PMail_ROOT=", ""))
+		if strings.HasPrefix(env, "SMAIL_ROOT=") {
+			ROOT_PATH = strings.TrimSpace(strings.ReplaceAll(env, "SMAIL_ROOT=", ""))
 			if !strings.HasSuffix(ROOT_PATH, "/") {
 				ROOT_PATH += "/"
 			}

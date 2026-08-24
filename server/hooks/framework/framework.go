@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Jinnrry/pmail/dto/parsemail"
-	"github.com/Jinnrry/pmail/models"
-	"github.com/Jinnrry/pmail/utils/context"
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
@@ -34,7 +34,7 @@ type EmailHook interface {
 	SettingsHtml(ctx *context.Context, url string, requestData string) string
 }
 
-// HookDTO PMail 主程序和插件通信的结构体
+// HookDTO Smail 主程序和插件通信的结构体
 type HookDTO struct {
 	ServerVersion string           // 服务端程序版本
 	Ctx           *context.Context // 上下文
@@ -216,7 +216,7 @@ func (p *Plugin) Run() {
 }
 
 func getExePath() string {
-	//return "/PMail/server/hooks/spam_block" //debug socket path
+	//return "/Smail/server/hooks/spam_block" //debug socket path
 
 	ex, err := os.Executable()
 	if err != nil {

@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"github.com/Jinnrry/pmail/config"
+	"git.pcux.cn/xuans/Smail/config"
 	"net/http"
 )
 
