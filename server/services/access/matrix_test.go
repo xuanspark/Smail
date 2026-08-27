@@ -12,6 +12,7 @@ func TestCapabilityMatrix(t *testing.T) {
 		{name: "admin reads config", req: Request{ActorRole: RoleAdmin, Capability: CapabilityConfigRead}, allowed: true},
 		{name: "user cannot read config", req: Request{ActorRole: RoleUser, Capability: CapabilityConfigRead}},
 		{name: "super admin controls plugin", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginControl, RecentAuth: true, RecoveryCodeConfigured: true}, allowed: true},
+		{name: "super admin controls plugin without recovery code", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginControl, RecentAuth: true}, allowed: true},
 		{name: "admin cannot control plugin", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginControl, RecentAuth: true, RecoveryCodeConfigured: true}},
 		{name: "super admin writes global plugin settings", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginWriteGlobal, RecentAuth: true, RecoveryCodeConfigured: true}, allowed: true},
 		{name: "admin cannot write global plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteGlobal, RecentAuth: true, RecoveryCodeConfigured: true}},

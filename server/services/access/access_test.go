@@ -57,12 +57,12 @@ func TestRecoveryAndRecentAuthentication(t *testing.T) {
 		t.Fatalf("expected recent authentication requirement, got %v", err)
 	}
 	superAdmin := Request{ActorRole: RoleSuperAdmin, Capability: CapabilityConfigRollback, RecentAuth: true}
-	if err := Authorize(superAdmin); !IsDenied(err, CodeRecoveryCodeRequired) {
-		t.Fatalf("super admin without recovery code must be denied: %v", err)
-	}
-	superAdmin.RecoveryCodeConfigured = true
 	if err := Authorize(superAdmin); err != nil {
-		t.Fatalf("super admin with recovery code should be allowed: %v", err)
+		t.Fatalf("super admin should be exempt from recovery code precondition: %v", err)
+	}
+	adminRollback := Request{ActorRole: RoleAdmin, Capability: CapabilityConfigRollback, RecentAuth: true}
+	if err := Authorize(adminRollback); !IsDenied(err, CodeAccessDenied) {
+		t.Fatalf("admin must not receive a recovery-code bypass for a super-admin capability: %v", err)
 	}
 }
 
@@ -90,7 +90,7 @@ func TestAdminPluginRestartScope(t *testing.T) {
 
 func TestManagementEndpointCatalog(t *testing.T) {
 	endpoints := ManagementEndpoints()
-	if len(endpoints) != 7 {
+	if len(endpoints) != 18 {
 		t.Fatalf("unexpected endpoint count: %d", len(endpoints))
 	}
 	seen := map[string]struct{}{}
@@ -107,6 +107,22 @@ func TestManagementEndpointCatalog(t *testing.T) {
 	endpoint, ok := LookupEndpoint("POST", "/api/plugin/settings/example")
 	if !ok || endpoint.Capability != CapabilityPluginWriteOwn {
 		t.Fatal("plugin settings endpoint was not matched")
+	}
+	endpoint, ok = LookupEndpoint("POST", "/api/v1/config/smtp/validate")
+	if !ok || endpoint.Capability != CapabilityConfigWriteGlobal {
+		t.Fatal("configuration validation endpoint was not matched")
+	}
+	endpoint, ok = LookupEndpoint("GET", "/api/v1/config/email")
+	if !ok || endpoint.Capability != CapabilityConfigRead {
+		t.Fatal("configuration section endpoint was not matched")
+	}
+	endpoint, ok = LookupEndpoint("PUT", "/api/v1/config/email")
+	if !ok || endpoint.Capability != CapabilityConfigWriteGlobal {
+		t.Fatal("configuration update endpoint was not matched")
+	}
+	endpoint, ok = LookupEndpoint("GET", "/api/v1/config/backups")
+	if !ok || endpoint.Capability != CapabilityConfigRollback {
+		t.Fatal("configuration backup endpoint did not require rollback capability")
 	}
 }
 

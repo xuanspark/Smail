@@ -17,6 +17,7 @@ var (
 )
 
 var logicalIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
+var databaseLocalRefPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 func ValidateRootConfig(root RootConfig) error {
 	if root.ConfigVersion > CurrentConfigVersion || root.SchemaVersion <= 0 || root.SchemaVersion > CurrentSchemaVersion || root.Generation == 0 || !root.SetupState.Valid() {
@@ -27,7 +28,7 @@ func ValidateRootConfig(root RootConfig) error {
 			return err
 		}
 	}
-	if err := validateDatabase(root.Database); err != nil {
+	if err := ValidateDatabaseConfig(root.Database); err != nil {
 		return err
 	}
 	if err := validateSMTP(root.SMTP); err != nil {
@@ -52,14 +53,24 @@ func ValidateRootConfig(root RootConfig) error {
 	return nil
 }
 
+func ValidateDatabaseConfig(database DatabaseConfig) error {
+	return validateDatabase(database)
+}
+
 func validateDatabase(database DatabaseConfig) error {
+	database = NormalizeDatabaseConfig(database)
 	switch database.Type {
-	case DBTypeSQLite:
-		if database.SQLiteLocalRef == "" || filepath.IsAbs(database.SQLiteLocalRef) || strings.Contains(database.SQLiteLocalRef, "..") {
+	case DatabaseTypeSQLite:
+		if !databaseLocalRefPattern.MatchString(database.LocalRef) ||
+			filepath.IsAbs(database.LocalRef) ||
+			isWindowsAbsolute(database.LocalRef) ||
+			strings.ContainsAny(database.LocalRef, `/\\:`) ||
+			database.Host != "" || database.Port != 0 || database.Username != "" ||
+			database.Password.Configured() || database.Password.Ciphertext != "" || database.Password.Version != 0 || !database.Password.UpdatedAt.IsZero() || database.Name != "" {
 			return ErrInvalidDatabase
 		}
-	case DBTypeMySQL, DBTypePostgres:
-		if database.Host == "" || database.Username == "" || database.Name == "" || !database.Password.Configured() || !validPort(database.Port) {
+	case DatabaseTypeMySQL, DatabaseTypePostgreSQL:
+		if database.Host == "" || database.Username == "" || database.Name == "" || !database.Password.Configured() || database.LocalRef != "" || !validPort(int(database.Port)) {
 			return ErrInvalidDatabase
 		}
 		if err := ValidateStoredSecret(database.Password, true); err != nil {

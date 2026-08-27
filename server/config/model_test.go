@@ -5,7 +5,7 @@ import "testing"
 func TestRootConfigValidatesStructuredDatabaseAndPluginID(t *testing.T) {
 	root := RootConfig{
 		SchemaVersion: CurrentSchemaVersion, Generation: 1, SetupState: SetupStateBootstrap,
-		Database: DatabaseConfig{Type: DBTypeSQLite, SQLiteLocalRef: "smail.db"},
+		Database: DatabaseConfig{Type: DatabaseTypeSQLite, LocalRef: "smail.db"},
 		SMTP:     SMTPConfig{VerificationEnabled: false},
 		SSL:      SSLConfig{Mode: "default", DefaultDirectory: "config/ssl"},
 		Plugins:  []PluginConfig{{LogicalID: "telegram_push", FileName: "telegram_push", NetworkAllowlist: []string{"api.telegram.org"}}},

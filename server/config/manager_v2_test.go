@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 )
 
 func writeRuntimeFixture(t *testing.T, root string, runtime RuntimeConfig) {
@@ -29,6 +30,27 @@ func writeRuntimeFixture(t *testing.T, root string, runtime RuntimeConfig) {
 	}
 }
 
+func validMySQLRuntimeConfig(t *testing.T, root string) RuntimeConfig {
+	t.Helper()
+	runtime := validRuntimeConfig()
+	vault, err := credential.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := vault.Encrypt("initial-database-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.Root.Database = DatabaseConfig{
+		Type:     DatabaseTypeMySQL,
+		Host:     "127.0.0.1",
+		Port:     DefaultMySQLPort,
+		Username: "smail",
+		Password: StoredSecret{Ciphertext: ciphertext, Version: vault.Version(), UpdatedAt: time.Now().UTC()},
+		Name:     "smail",
+	}
+	return runtime
+}
 func authorizedConfigActor() AuditActor {
 	return AuditActor{UserID: "1", Role: "super_admin", SessionID: "test-session", RecentAuth: true, RecoveryCodeConfigured: true}
 }
@@ -309,14 +331,16 @@ func TestTransactionRecoveryKeepsOrRestoresByPhase(t *testing.T) {
 
 func TestConfigManagerSecretChangesRequireStepUpAndPreserveStoredSecret(t *testing.T) {
 	root := t.TempDir()
-	runtime := validRuntimeConfig()
+	runtime := validMySQLRuntimeConfig(t, root)
 	writeRuntimeFixture(t, root, runtime)
 	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
 	manager, err := NewConfigManager(root, options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootPayload, err := json.Marshal(manager.Snapshot().Root)
+	rootValue := manager.Snapshot().Root
+	rootValue.Database.Password = StoredSecret{}
+	rootPayload, err := json.Marshal(rootValue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,14 +368,10 @@ func TestConfigManagerSecretChangesRequireStepUpAndPreserveStoredSecret(t *testi
 		t.Fatal(err)
 	}
 	stored := manager.Snapshot().Root.Database.Password
-	payload, err := json.Marshal(manager.Snapshot().Root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rootValue := manager.Snapshot().Root
+	rootValue = manager.Snapshot().Root
 	rootValue.Database.Password = StoredSecret{}
 	rootValue.Database.Name = "next"
-	payload, err = json.Marshal(rootValue)
+	payload, err := json.Marshal(rootValue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,14 +437,16 @@ func TestConfigManagerSecretClearRequiresExplicitConfirmation(t *testing.T) {
 
 func TestConfigManagerSecretChangesUseVaultAndRejectUnknownFields(t *testing.T) {
 	root := t.TempDir()
-	runtime := validRuntimeConfig()
+	runtime := validMySQLRuntimeConfig(t, root)
 	writeRuntimeFixture(t, root, runtime)
 	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
 	manager, err := NewConfigManager(root, options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootPayload, err := json.Marshal(manager.Snapshot().Root)
+	rootValue := manager.Snapshot().Root
+	rootValue.Database.Password = StoredSecret{}
+	rootPayload, err := json.Marshal(rootValue)
 	if err != nil {
 		t.Fatal(err)
 	}

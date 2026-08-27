@@ -716,7 +716,7 @@ func applySecretChanges(candidate *RuntimeConfig, section Section, changes map[s
 	for name, change := range changes {
 		switch {
 		case section == SectionRoot && name == "database.password":
-			stored, err := ApplySecretChange(vault, candidate.Root.Database.Password, change, SecretPolicy{Required: candidate.Root.Database.Type != DBTypeSQLite, AllowClear: false, MaxLength: 4096}, now)
+			stored, err := ApplySecretChange(vault, candidate.Root.Database.Password, change, SecretPolicy{Required: candidate.Root.Database.Type != DatabaseTypeSQLite, AllowClear: false, MaxLength: 4096}, now)
 			if err != nil {
 				return err
 			}

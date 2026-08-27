@@ -20,6 +20,7 @@ const (
 	CapabilityPasswordChangeOwn  Capability = "password.change_own"
 	CapabilityPasswordReset      Capability = "password.reset"
 	CapabilityAuditRead          Capability = "audit.read"
+	CapabilityAuditExport        Capability = "audit.export"
 )
 
 type Policy struct {
@@ -48,6 +49,7 @@ var policies = map[Capability]Policy{
 	CapabilityPasswordChangeOwn:  {Capability: CapabilityPasswordChangeOwn},
 	CapabilityPasswordReset:      {Capability: CapabilityPasswordReset, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityAuditRead:          {Capability: CapabilityAuditRead},
+	CapabilityAuditExport:        {Capability: CapabilityAuditExport, HighRisk: true, RequiresRecentAuth: true},
 }
 
 var grants = map[Role]map[Capability]struct{}{
@@ -57,7 +59,7 @@ var grants = map[Role]map[Capability]struct{}{
 		CapabilityPluginRestart, CapabilityServiceRestart, CapabilityPluginWriteGlobal, CapabilityPluginWriteAnyUser,
 		CapabilityPluginWriteOwn, CapabilityUserRead, CapabilityUserManage,
 		CapabilityRoleManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,
-		CapabilityAuditRead,
+		CapabilityAuditRead, CapabilityAuditExport,
 	),
 	RoleAdmin: grant(
 		CapabilityConfigRead, CapabilityPluginRead, CapabilityPluginRestart,

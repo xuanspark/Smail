@@ -261,8 +261,8 @@ func ExportConfigAudit(ctx *appcontext.Context, w http.ResponseWriter, req *http
 	if !ok {
 		return
 	}
-	if ctx.EffectiveRole() != access.RoleSuperAdmin || !ctx.RecentAuth {
-		writeConfigAccessError(w, errors.New("audit export requires recent super administrator authentication"))
+	if err := authorizeCapability(ctx, access.CapabilityAuditExport, "", false); err != nil {
+		writeConfigAccessError(w, err)
 		return
 	}
 	var input struct {
@@ -365,7 +365,7 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 	publicSecret := func(value config.StoredSecret) config.SecretStatus { return value.Status() }
 	switch section {
 	case config.SectionRoot:
-		return map[string]any{"configVersion": runtime.Root.ConfigVersion, "schemaVersion": runtime.Root.SchemaVersion, "generation": runtime.Root.Generation, "setupState": runtime.Root.SetupState, "logLevel": runtime.Root.LogLevel, "domains": runtime.Root.Domains, "http": runtime.Root.HTTP, "database": map[string]any{"type": runtime.Root.Database.Type, "host": runtime.Root.Database.Host, "port": runtime.Root.Database.Port, "username": runtime.Root.Database.Username, "name": runtime.Root.Database.Name, "sqliteLocalRef": runtime.Root.Database.SQLiteLocalRef, "password": publicSecret(runtime.Root.Database.Password)}, "security": runtime.Root.Security}, nil
+		return map[string]any{"configVersion": runtime.Root.ConfigVersion, "schemaVersion": runtime.Root.SchemaVersion, "generation": runtime.Root.Generation, "setupState": runtime.Root.SetupState, "logLevel": runtime.Root.LogLevel, "domains": runtime.Root.Domains, "http": runtime.Root.HTTP, "database": map[string]any{"type": runtime.Root.Database.Type, "host": runtime.Root.Database.Host, "port": runtime.Root.Database.Port, "username": runtime.Root.Database.Username, "name": runtime.Root.Database.Name, "localRef": runtime.Root.Database.LocalRef, "password": publicSecret(runtime.Root.Database.Password)}, "security": runtime.Root.Security}, nil
 	case config.SectionSMTP:
 		return map[string]any{"meta": runtime.SMTP.Meta, "relay": map[string]any{"relayHost": runtime.SMTP.Relay.RelayHost, "relayPort": runtime.SMTP.Relay.RelayPort, "username": runtime.SMTP.Relay.Username, "security": runtime.SMTP.Relay.Security, "fromDomain": runtime.SMTP.Relay.FromDomain, "verificationEnabled": runtime.SMTP.Relay.VerificationEnabled, "loginPolicy": runtime.SMTP.Relay.LoginPolicy, "password": publicSecret(runtime.SMTP.Relay.Password)}}, nil
 	case config.SectionEmail:
@@ -387,6 +387,11 @@ func writeConfigAccessError(w http.ResponseWriter, err error) { writeConfigError
 func writeConfigError(w http.ResponseWriter, err error) {
 	status := response.NoAccessPrivileges
 	message := "无权访问或请求不满足安全条件"
+	var data any = ""
+	var denial *access.Denial
+	if errors.As(err, &denial) {
+		data = map[string]string{"code": string(denial.Code)}
+	}
 	if errors.Is(err, config.ErrManagerStorage) {
 		status = response.ServerError
 		message = "配置服务不可用"
@@ -395,5 +400,5 @@ func writeConfigError(w http.ResponseWriter, err error) {
 		status = response.ParamsError
 		message = "配置已发生变化，请刷新后重试"
 	}
-	response.NewErrorResponse(status, message, "").FPrint(w)
+	response.NewErrorResponse(status, message, data).FPrint(w)
 }

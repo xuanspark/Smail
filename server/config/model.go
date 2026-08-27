@@ -11,6 +11,19 @@ const (
 	SetupStateDegraded  SetupState = "degraded"
 )
 
+type DatabaseType string
+
+const (
+	DatabaseTypeMySQL      DatabaseType = "mysql"
+	DatabaseTypePostgreSQL DatabaseType = "postgresql"
+	DatabaseTypeSQLite     DatabaseType = "sqlite"
+)
+
+const (
+	DefaultMySQLPort      uint16 = 3306
+	DefaultPostgreSQLPort uint16 = 5432
+)
+
 type RootConfig struct {
 	ConfigVersion uint32                 `json:"configVersion,omitempty"`
 	SchemaVersion int                    `json:"schemaVersion,omitempty"`
@@ -50,18 +63,22 @@ func normalizeRootConfig(source RootConfig) RootConfig {
 			result.Generation = 1
 		}
 	}
+	result.Database = NormalizeDatabaseConfig(result.Database)
+	if result.LogLevel == "" {
+		result.LogLevel = "info"
+	}
 	result.Version = 0
 	return result
 }
 
 type DatabaseConfig struct {
-	Type           string       `json:"type"`
-	Host           string       `json:"host,omitempty"`
-	Port           int          `json:"port,omitempty"`
-	Username       string       `json:"username,omitempty"`
-	Password       StoredSecret `json:"password,omitempty"`
-	Name           string       `json:"name,omitempty"`
-	SQLiteLocalRef string       `json:"sqliteLocalRef,omitempty"`
+	Type     DatabaseType `json:"type"`
+	Host     string       `json:"host,omitempty"`
+	Port     uint16       `json:"port,omitempty"`
+	Username string       `json:"username,omitempty"`
+	Password StoredSecret `json:"password,omitempty"`
+	Name     string       `json:"name,omitempty"`
+	LocalRef string       `json:"localRef,omitempty"`
 }
 
 type SMTPConfig struct {
@@ -120,6 +137,35 @@ func (s SetupState) Valid() bool {
 	}
 }
 
+func (t DatabaseType) Valid() bool {
+	switch t {
+	case DatabaseTypeMySQL, DatabaseTypePostgreSQL, DatabaseTypeSQLite:
+		return true
+	default:
+		return false
+	}
+}
+
+func DefaultDatabasePort(databaseType DatabaseType) (uint16, bool) {
+	switch databaseType {
+	case DatabaseTypeMySQL:
+		return DefaultMySQLPort, true
+	case DatabaseTypePostgreSQL:
+		return DefaultPostgreSQLPort, true
+	default:
+		return 0, false
+	}
+}
+
+func NormalizeDatabaseConfig(database DatabaseConfig) DatabaseConfig {
+	if database.Port == 0 {
+		if port, ok := DefaultDatabasePort(database.Type); ok {
+			database.Port = port
+		}
+	}
+	return database
+}
+
 func (d DatabaseConfig) IsStructured() bool {
-	return d.Type == DBTypeSQLite || (d.Host != "" && d.Username != "" && d.Name != "" && d.Password.Configured())
+	return d.Type == DatabaseTypeSQLite || (d.Host != "" && d.Username != "" && d.Name != "" && d.Password.Configured())
 }

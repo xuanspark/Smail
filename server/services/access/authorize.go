@@ -55,7 +55,7 @@ func Authorize(request Request) error {
 	if policy.RequiresRecentAuth && !request.RecentAuth {
 		return deny(CodeRecentAuthRequired)
 	}
-	if policy.RequiresRecoveryCode && !request.RecoveryCodeConfigured && !request.DeploymentChannel {
+	if policy.RequiresRecoveryCode && request.ActorRole != RoleSuperAdmin && !request.RecoveryCodeConfigured && !request.DeploymentChannel {
 		return deny(CodeRecoveryCodeRequired)
 	}
 	return authorizeResource(request)

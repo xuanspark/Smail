@@ -10,7 +10,7 @@ import (
 
 func testRootConfig() RootConfig {
 	return RootConfig{SchemaVersion: CurrentSchemaVersion, Generation: 1, SetupState: SetupStateBootstrap,
-		Database: DatabaseConfig{Type: DBTypeSQLite, SQLiteLocalRef: "smail.db"},
+		Database: DatabaseConfig{Type: DatabaseTypeSQLite, LocalRef: "smail.db"},
 		SMTP:     SMTPConfig{VerificationEnabled: false},
 		SSL:      SSLConfig{Mode: "default", DefaultDirectory: "config/ssl"},
 		Security: SecurityConfig{PasswordVersion: "argon2id"}}

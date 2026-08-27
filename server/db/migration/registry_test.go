@@ -80,3 +80,27 @@ func TestCustomMigrationChecksumIncludesSeed(t *testing.T) {
 		t.Fatal("custom migration checksum ignored its seed")
 	}
 }
+
+func TestDefaultMigrationsAreContiguousAndDialectComplete(t *testing.T) {
+	migrations := DefaultMigrations()
+	if len(migrations) == 0 {
+		t.Fatal("default migrations are empty")
+	}
+	for index, item := range migrations {
+		wantVersion := int64(index + 1)
+		if item.Version != wantVersion {
+			t.Fatalf("migration %d has version %d, want %d", index, item.Version, wantVersion)
+		}
+		if item.Name == "" {
+			t.Fatalf("migration %d has an empty name", item.Version)
+		}
+		for _, dialect := range []Dialect{DialectSQLite, DialectMySQL, DialectPostgres} {
+			if item.Apply == nil && len(item.StatementsFor(dialect)) == 0 {
+				t.Fatalf("migration %d (%s) has no statements for %s", item.Version, item.Name, dialect)
+			}
+		}
+	}
+	if _, err := normalize(migrations); err != nil {
+		t.Fatalf("default migrations failed normalization: %v", err)
+	}
+}

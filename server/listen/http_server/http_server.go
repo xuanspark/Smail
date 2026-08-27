@@ -169,10 +169,14 @@ func configRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
 		}
 		controllers.ApplyConfig(ctx, w, r)
 	case configSectionRoute(path, ""):
-		if !allowRouteMethod(w, r, http.MethodGet) {
-			return
+		switch r.Method {
+		case http.MethodGet:
+			controllers.GetConfigSection(ctx, w, r)
+		case http.MethodPut:
+			controllers.UpdateConfig(ctx, w, r)
+		default:
+			allowRouteMethod(w, r, http.MethodGet, http.MethodPut)
 		}
-		controllers.GetConfigSection(ctx, w, r)
 	default:
 		http.NotFound(w, r)
 	}
