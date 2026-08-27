@@ -1,21 +1,31 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cast"
 	"io"
 	"net/http"
+	urlpkg "net/url"
 	"os"
-	"strings"
+	"strconv"
+	"sync"
 	"time"
+	"unicode/utf8"
 )
+
+const (
+	maxWeChatResponseBytes = 1 << 20
+	maxWeChatMessageBytes  = 4 << 10
+)
+
+var weChatHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 type accessTokenRes struct {
 	AccessToken string `db:"access_token" json:"access_token"`
@@ -25,11 +35,13 @@ type accessTokenRes struct {
 type WeChatPushHook struct {
 	appId        string
 	secret       string
+	tokenMu      sync.Mutex
 	token        string
 	tokenExpires int64
 	templateId   string
 	pushUser     string
-	mainConfig   *config.Config
+	webDomain    string
+	httpsEnabled int
 }
 
 func (w *WeChatPushHook) GetName(ctx *context.Context) string {
@@ -46,16 +58,17 @@ func (w *WeChatPushHook) SettingsHtml(ctx *context.Context, url string, requestD
 }
 
 func (w *WeChatPushHook) ReceiveSaveAfter(ctx *context.Context, email *parsemail.Email, ue []*models.UserEmail) {
-	if w.appId == "" || w.secret == "" || w.pushUser == "" {
+	if email == nil || w.appId == "" || w.secret == "" || w.pushUser == "" {
 		return
 	}
 
 	for _, u := range ue {
+		if u == nil {
+			continue
+		}
 		// 管理员（Uid=1）收到邮件且非已读、非已删除 触发通知
 		if u.UserID == 1 && u.IsRead == 0 && u.Status == 0 && email.MessageId > 0 {
-			content := "<<" + email.Subject + ">>  " + string(email.Text)
-
-			w.sendUserMsg(nil, w.pushUser, content)
+			w.sendUserMsg(ctx, w.pushUser, buildWeChatMessage(email))
 		}
 	}
 
@@ -76,22 +89,52 @@ func (w *WeChatPushHook) ReceiveParseBefore(ctx *context.Context, email *[]byte)
 func (w *WeChatPushHook) ReceiveParseAfter(ctx *context.Context, email *parsemail.Email) {}
 
 func (w *WeChatPushHook) getWxAccessToken() string {
-	if w.tokenExpires > time.Now().Unix() {
+	w.tokenMu.Lock()
+	defer w.tokenMu.Unlock()
+
+	if w.token != "" && w.tokenExpires > time.Now().Unix() {
 		return w.token
 	}
-	resp, err := http.Get(fmt.Sprintf("https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s", w.appId, w.secret))
+	appID, err := credential.ValidateSecret(w.appId, 256)
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var ret accessTokenRes
-	_ = json.Unmarshal(body, &ret)
-	if ret.AccessToken != "" {
-		w.token = ret.AccessToken
-		w.tokenExpires = time.Now().Unix() + cast.ToInt64(ret.ExpiresIn)
+	secret, err := credential.ValidateSecret(w.secret, 4096)
+	if err != nil {
+		return ""
 	}
-	return ret.AccessToken
+
+	endpoint, _ := urlpkg.Parse("https://api.weixin.qq.com/cgi-bin/token")
+	query := endpoint.Query()
+	query.Set("grant_type", "client_credential")
+	query.Set("appid", appID)
+	query.Set("secret", secret)
+	endpoint.RawQuery = query.Encode()
+	request, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := weChatHTTPClient.Do(request)
+	if err != nil || resp == nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxWeChatResponseBytes+1))
+	if err != nil || len(body) > maxWeChatResponseBytes {
+		return ""
+	}
+	var ret accessTokenRes
+	if json.Unmarshal(body, &ret) != nil || ret.ExpiresIn <= 0 {
+		return ""
+	}
+	if token, err := credential.ValidateSecret(ret.AccessToken, 4096); err == nil {
+		w.token = token
+		w.tokenExpires = time.Now().Unix() + int64(ret.ExpiresIn)
+	}
+	return w.token
 }
 
 type sendMsgRequest struct {
@@ -109,91 +152,98 @@ type DataItem struct {
 }
 
 func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, content string) {
-
-	url := w.mainConfig.WebDomain
-	if w.mainConfig.HttpsEnabled > 1 {
+	content = truncateWeChatText(content, maxWeChatMessageBytes)
+	url := w.webDomain
+	if w.httpsEnabled > 1 {
 		url = "http://" + url
 	} else {
 		url = "https://" + url
 	}
 
-	sendMsgReq, _ := json.Marshal(sendMsgRequest{
+	sendMsgReq, err := json.Marshal(sendMsgRequest{
 		Touser:      userId,
 		Template_id: w.templateId,
 		Url:         url,
 		Data:        SendData{Content: DataItem{Value: content, Color: "#000000"}},
 	})
-
-	_, err := http.Post("https://api.weixin.qq.com/cgi-bin/message/template/send?access_token="+w.getWxAccessToken(), "application/json", strings.NewReader(string(sendMsgReq)))
 	if err != nil {
-		log.WithContext(ctx).Errorf("wechat push error %+v", err)
+		log.WithContext(ctx).Error("wechat push request build failed")
+		return
 	}
-
+	token := w.getWxAccessToken()
+	if token == "" {
+		log.WithContext(ctx).Error("wechat push authentication failed")
+		return
+	}
+	endpoint, _ := urlpkg.Parse("https://api.weixin.qq.com/cgi-bin/message/template/send")
+	query := endpoint.Query()
+	query.Set("access_token", token)
+	endpoint.RawQuery = query.Encode()
+	request, err := http.NewRequest(http.MethodPost, endpoint.String(), bytes.NewReader(sendMsgReq))
+	if err != nil {
+		log.WithContext(ctx).Error("wechat push request build failed")
+		return
+	}
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := weChatHTTPClient.Do(request)
+	if err != nil || resp == nil {
+		log.WithContext(ctx).Error("wechat push request failed")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		log.WithContext(ctx).Error("wechat push request was rejected")
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxWeChatResponseBytes))
 }
 
-type Config struct {
-	WeChatPushAppId      string `json:"weChatPushAppId"`
-	WeChatPushSecret     string `json:"weChatPushSecret"`
-	WeChatPushTemplateId string `json:"weChatPushTemplateId"`
-	WeChatPushUserId     string `json:"weChatPushUserId"`
+func buildWeChatMessage(email *parsemail.Email) string {
+	if email == nil {
+		return ""
+	}
+	const prefix = "<<"
+	const separator = ">>  "
+	subjectLimit := maxWeChatMessageBytes - len(prefix) - len(separator)
+	subject := truncateWeChatText(email.Subject, subjectLimit)
+	remaining := maxWeChatMessageBytes - len(prefix) - len(subject) - len(separator)
+	text := truncateWeChatText(string(email.Text), remaining)
+	return prefix + subject + separator + text
+}
+
+func truncateWeChatText(value string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut]
 }
 
 func NewWechatPushHook() *WeChatPushHook {
-
-	var cfgData []byte
-	var err error
-
-	cfgData, err = os.ReadFile("./config/config.json")
-	if err != nil {
-		panic(err)
+	httpsEnabled := 0
+	if value, err := strconv.Atoi(os.Getenv("SMAIL_HTTPS_ENABLED")); err == nil {
+		httpsEnabled = value
 	}
-	var mainConfig *config.Config
-	err = json.Unmarshal(cfgData, &mainConfig)
-	if err != nil {
-		panic(err)
+	return &WeChatPushHook{
+		appId:        os.Getenv("SMAIL_WECHAT_APP_ID"),
+		secret:       os.Getenv("SMAIL_WECHAT_SECRET"),
+		templateId:   os.Getenv("SMAIL_WECHAT_TEMPLATE_ID"),
+		pushUser:     os.Getenv("SMAIL_WECHAT_USER_ID"),
+		webDomain:    os.Getenv("SMAIL_WEB_DOMAIN"),
+		httpsEnabled: httpsEnabled,
 	}
-
-	var pluginConfig *Config
-	if _, err := os.Stat("./plugins/wechat_push_config.json"); err == nil {
-		cfgData, err = os.ReadFile("./plugins/wechat_push_config.json")
-		if err != nil {
-			panic(err)
-		}
-		err = json.Unmarshal(cfgData, &pluginConfig)
-		if err != nil {
-			panic(err)
-		}
-
-	}
-
-	appid := ""
-	secret := ""
-	templateId := ""
-	userId := ""
-	if pluginConfig != nil {
-		appid = pluginConfig.WeChatPushAppId
-		secret = pluginConfig.WeChatPushSecret
-		templateId = pluginConfig.WeChatPushTemplateId
-		userId = pluginConfig.WeChatPushUserId
-	} else {
-		appid = mainConfig.WeChatPushAppId
-		secret = mainConfig.WeChatPushSecret
-		templateId = mainConfig.WeChatPushTemplateId
-		userId = mainConfig.WeChatPushUserId
-	}
-
-	ret := &WeChatPushHook{
-		appId:      appid,
-		secret:     secret,
-		templateId: templateId,
-		pushUser:   userId,
-		mainConfig: mainConfig,
-	}
-	return ret
-
 }
 
 // 插件将以独立进程运行，因此需要主函数。
 func main() {
-	framework.CreatePlugin("wechat_push", NewWechatPushHook()).Run()
+	if err := framework.CreatePlugin("wechat_push", NewWechatPushHook()).Run(); err != nil {
+		log.WithError(err).Error("wechat push plugin stopped")
+		os.Exit(1)
+	}
 }

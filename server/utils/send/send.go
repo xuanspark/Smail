@@ -2,7 +2,6 @@ package send
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
@@ -15,14 +14,16 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/smtp"
 	log "github.com/sirupsen/logrus"
 	"net"
+	"net/mail"
 	"net/textproto"
 	"strings"
 	"sync"
 )
 
 type mxDomain struct {
-	domain string
-	mxHost string
+	domain    string
+	mxHost    string
+	localTest bool
 }
 
 type temporaryMXFallbackError struct {
@@ -43,19 +44,30 @@ func Forward(ctx *context.Context, e *parsemail.Email, forwardAddress string, us
 
 	log.WithContext(ctx).Debugf("开始转发邮件")
 
-	b := e.ForwardBuildBytes(ctx, user, forwardAddress)
+	b, err := e.ForwardBuildBytes(ctx, user, forwardAddress)
+	if err != nil {
+		return fmt.Errorf("build forwarded message: %w", err)
+	}
 
-	log.WithContext(ctx).Debugf("%s", b)
+	log.WithContext(ctx).Debug("forward message prepared")
 
-	from := user.Account + "@" + config.Instance.Domains[0]
-	return forwardData(ctx, config.Instance.Domains[0], b, forwardAddress, from)
+	cfg := config.CurrentConfig()
+	if cfg == nil || len(cfg.Domains) == 0 {
+		return errors.New("runtime configuration is unavailable")
+	}
+	from := user.Account + "@" + cfg.Domains[0]
+	return forwardData(ctx, cfg.Domains[0], b, forwardAddress, from)
 }
 
 func ForwardRaw(ctx *context.Context, e *parsemail.Email, rawEmailData []byte, forwardAddress string, user *models.User) error {
 	log.WithContext(ctx).Debugf("开始原始邮件转发")
 
-	from := user.Account + "@" + config.Instance.Domains[0]
-	return forwardData(ctx, config.Instance.Domains[0], rawEmailData, forwardAddress, from)
+	cfg := config.CurrentConfig()
+	if cfg == nil || len(cfg.Domains) == 0 {
+		return errors.New("runtime configuration is unavailable")
+	}
+	from := user.Account + "@" + cfg.Domains[0]
+	return forwardData(ctx, cfg.Domains[0], rawEmailData, forwardAddress, from)
 }
 
 func forwardData(ctx *context.Context, fromDomain string, data []byte, forwardAddress string, from string) error {
@@ -72,7 +84,10 @@ func Send(ctx *context.Context, e *parsemail.Email) (error, map[string]error) {
 
 	_, fromDomain := e.From.GetDomainAccount()
 
-	b := e.BuildBytes(ctx, true)
+	b, err := e.BuildBytes(ctx, true)
+	if err != nil {
+		return fmt.Errorf("build message: %w", err), nil
+	}
 
 	var to []*parsemail.User
 	to = append(append(append(to, e.To...), e.Cc...), e.Bcc...)
@@ -81,19 +96,59 @@ func Send(ctx *context.Context, e *parsemail.Email) (error, map[string]error) {
 
 }
 
+func parseRecipientAddress(user *parsemail.User) (string, string, error) {
+	if user == nil {
+		return "", "", errors.New("recipient is nil")
+	}
+	address := strings.TrimSpace(user.EmailAddress)
+	if address == "" || address != user.EmailAddress {
+		return address, "", errors.New("recipient address is empty or contains surrounding whitespace")
+	}
+	parsed, err := mail.ParseAddress(address)
+	if err != nil || parsed.Address != address {
+		return address, "", errors.New("recipient address is invalid")
+	}
+	at := strings.LastIndexByte(address, '@')
+	if at <= 0 || at >= len(address)-1 {
+		return address, "", errors.New("recipient address has no valid domain")
+	}
+	domain := strings.ToLower(address[at+1:])
+	if strings.ContainsAny(domain, " \t\r\n") {
+		return address, "", errors.New("recipient domain is invalid")
+	}
+	return address, domain, nil
+}
+
 func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemail.User, from string) (error, map[string]error) {
+	if len(to) == 0 {
+		err := errors.New("no recipients")
+		return err, map[string]error{"recipients": err}
+	}
+	invalidAddresses := make([]string, 0)
+	invalidErrors := make(map[string]error)
 
 	// 按域名整理
 	toByDomain := map[mxDomain][]*parsemail.User{}
 	mxLookupErrors := map[mxDomain]error{}
 	for _, s := range to {
-		args := strings.Split(s.EmailAddress, "@")
+		address, domain, addressErr := parseRecipientAddress(s)
+		if addressErr != nil {
+			if address == "" {
+				address = "<empty>"
+			}
+			invalidAddresses = append(invalidAddresses, address)
+			invalidErrors[address] = addressErr
+			log.WithContext(ctx).WithError(addressErr).Error("invalid recipient address")
+			continue
+		}
+		args := []string{address, domain}
 		if len(args) == 2 {
 			if args[1] == consts.TEST_DOMAIN {
 				// 测试使用
 				address := mxDomain{
-					domain: "localhost",
-					mxHost: "127.0.0.1",
+					domain:    "localhost",
+					mxHost:    "127.0.0.1",
+					localTest: true,
 				}
 				toByDomain[address] = append(toByDomain[address], s)
 			} else {
@@ -123,10 +178,13 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 		}
 	}
 
-	var errEmailAddress []string
+	errEmailAddress := append([]string(nil), invalidAddresses...)
 	var errEmailAddressMu sync.Mutex
 
 	errMap := sync.Map{}
+	for address, err := range invalidErrors {
+		errMap.Store(address, err)
+	}
 
 	as := async.New(ctx)
 	for domain, tos := range toByDomain {
@@ -147,8 +205,8 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				errMap.Store(domain.domain, err)
 			}
 
-			if domain.domain == "localhost" {
-				err := smtp.SendMailUnsafe("", domain.mxHost+":25", nil, from, fromDomain, buildAddress(tos), data)
+			if allowUnsafeSMTP(domain) {
+				err := smtp.SendMailUnsafe("localhost", domain.mxHost+":25", nil, from, fromDomain, buildAddress(tos), data)
 				if err != nil {
 					recordFailure(err)
 				}
@@ -160,20 +218,8 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			if err == nil {
 				return
 			}
-			// 证书错误，从新选取证书发送
-			var certificateErr *tls.CertificateVerificationError
-			if errors.As(err, &certificateErr) {
-				// 单测使用
-				var hostnameErr x509.HostnameError
-				if errors.As(certificateErr.Err, &hostnameErr) {
-					if hostnameErr.Certificate != nil {
-						certificateHostName := hostnameErr.Certificate.DNSNames
-						// 重新选取证书发送
-						err = smtp.SendMail(domainMatch(domain.domain, certificateHostName), domain.mxHost+":25", nil, from, fromDomain, buildAddress(tos), data)
-					}
-				}
-			}
-			if err == nil {
+			if isCertificateVerificationError(err) {
+				recordFailure(err)
 				return
 			}
 			if isPermanentSMTPResponse(err) {
@@ -183,8 +229,12 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			log.WithContext(ctx).Infof("SMTP STARTTLS on 25 Send Error. %s", err.Error())
 
 			// 再试用587投递
-			err = smtp.SendMailWithTls("", domain.mxHost+":587", nil, from, fromDomain, buildAddress(tos), data)
+			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":587", nil, from, fromDomain, buildAddress(tos), data)
 			if err == nil {
+				return
+			}
+			if isCertificateVerificationError(err) {
+				recordFailure(err)
 				return
 			}
 			if isPermanentSMTPResponse(err) {
@@ -194,8 +244,12 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			log.WithContext(ctx).Infof("SMTPS on 587 Send Error. %s", err.Error())
 
 			// 再次尝试465投递
-			err = smtp.SendMailWithTls("", domain.mxHost+":465", nil, from, fromDomain, buildAddress(tos), data)
+			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":465", nil, from, fromDomain, buildAddress(tos), data)
 			if err == nil {
+				return
+			}
+			if isCertificateVerificationError(err) {
+				recordFailure(err)
 				return
 			}
 			if isPermanentSMTPResponse(err) {
@@ -204,13 +258,7 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			}
 			log.WithContext(ctx).Infof("SMTPS on 465 Send Error. %s", err.Error())
 
-			// 最后尝试非安全方式投递
-			err = smtp.SendMailUnsafe("", domain.mxHost+":25", nil, from, fromDomain, buildAddress(tos), data)
-			if err == nil {
-				log.WithContext(ctx).Warnf("Send By Unsafe SMTP")
-				return
-			}
-
+			// 所有安全投递方式均失败后记录错误，不允许回退到明文连接。
 			recordFailure(err)
 		}, nil)
 	}
@@ -231,6 +279,15 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 		return errors.New("以下收件人投递失败：" + array.Join(errEmailAddress, ",")), orgMap
 	}
 	return nil, orgMap
+}
+
+func allowUnsafeSMTP(domain mxDomain) bool {
+	return domain.localTest && domain.domain == "localhost" && domain.mxHost == "127.0.0.1"
+}
+
+func isCertificateVerificationError(err error) bool {
+	var certificateErr *tls.CertificateVerificationError
+	return errors.As(err, &certificateErr)
 }
 
 func isPermanentSMTPResponse(err error) bool {
@@ -268,60 +325,4 @@ func buildAddress(u []*parsemail.User) []string {
 	}
 
 	return ret
-}
-
-func domainMatch(domain string, dnsNames []string) string {
-	if len(dnsNames) == 0 {
-		return domain
-	}
-
-	secondMatch := ""
-
-	for _, name := range dnsNames {
-		if strings.Contains(name, "smtp") {
-			secondMatch = name
-		}
-
-		if name == domain {
-			return name
-		}
-		if strings.Contains(name, "*") {
-			nameArg := strings.Split(name, ".")
-			domainArg := strings.Split(domain, ".")
-			match := true
-			for i := 0; i < len(nameArg); i++ {
-				if nameArg[len(nameArg)-1-i] == "*" {
-					continue
-				}
-				if len(domainArg) > i {
-					if nameArg[len(nameArg)-1-i] == domainArg[len(domainArg)-1-i] {
-						continue
-					}
-				}
-				match = false
-				break
-			}
-
-			for i := 0; i < len(domainArg); i++ {
-				if len(nameArg) > i && nameArg[len(nameArg)-1-i] == domainArg[len(domainArg)-1-i] {
-					continue
-				}
-				if len(nameArg) > i && nameArg[len(nameArg)-1-i] == "*" {
-					continue
-				}
-
-				match = false
-				break
-			}
-			if match {
-				return domain
-			}
-		}
-	}
-
-	if secondMatch != "" {
-		return strings.ReplaceAll(secondMatch, "*.", "")
-	}
-
-	return strings.ReplaceAll(dnsNames[0], "*.", "")
 }

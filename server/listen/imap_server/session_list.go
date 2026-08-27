@@ -1,6 +1,7 @@
 package imap_server
 
 import (
+	"errors"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -10,45 +11,61 @@ import (
 	"strings"
 )
 
-func matchGroup(ctx *context.Context, w *imapserver.ListWriter, basePath, pattern string) {
+func matchGroup(ctx *context.Context, w *imapserver.ListWriter, basePath, pattern string) error {
 	var groups []*models.Group
 	if basePath == "" && pattern == "*" {
-		db.Instance.Table("group").Where("user_id=?", ctx.UserID).Find(&groups)
+		if err := db.Instance.Table("group").Where("user_id=?", ctx.UserID).Find(&groups); err != nil {
+			log.WithContext(ctx).WithError(err).Error("query IMAP mailbox list failed")
+			return listFailedError()
+		}
 		//w.WriteList(&imap.ListData{
 		//	Attrs:   []imap.MailboxAttr{imap.MailboxAttrNoSelect, imap.MailboxAttrHasChildren},
 		//	Delim:   '/',
 		//	Mailbox: "[Smail]",
 		//})
-		w.WriteList(&imap.ListData{
+		if err := w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrHasNoChildren},
 			Delim:   '/',
 			Mailbox: "INBOX",
-		})
-		w.WriteList(&imap.ListData{
+		}); err != nil {
+			return listWriteFailed(ctx, err)
+		}
+		if err := w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrHasNoChildren, imap.MailboxAttrSent},
 			Delim:   '/',
 			Mailbox: "Sent Messages",
-		})
-		w.WriteList(&imap.ListData{
+		}); err != nil {
+			return listWriteFailed(ctx, err)
+		}
+		if err := w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrHasNoChildren, imap.MailboxAttrDrafts},
 			Delim:   '/',
 			Mailbox: "Drafts",
-		})
+		}); err != nil {
+			return listWriteFailed(ctx, err)
+		}
 
-		w.WriteList(&imap.ListData{
+		if err := w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrHasNoChildren, imap.MailboxAttrTrash},
 			Delim:   '/',
 			Mailbox: "Deleted Messages",
-		})
-		w.WriteList(&imap.ListData{
+		}); err != nil {
+			return listWriteFailed(ctx, err)
+		}
+		if err := w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrHasNoChildren, imap.MailboxAttrJunk},
 			Delim:   '/',
 			Mailbox: "Junk",
-		})
+		}); err != nil {
+			return listWriteFailed(ctx, err)
+		}
 	} else {
 		pattern = strings.ReplaceAll(pattern, "/*", "/%")
 
-		db.Instance.Table("group").Where("user_id=? and full_path like ?", ctx.UserID, pattern).Find(&groups)
+		if err := db.Instance.Table("group").Where("user_id=? and full_path like ?", ctx.UserID, pattern).Find(&groups); err != nil {
+			log.WithContext(ctx).WithError(err).Error("query matching IMAP mailboxes failed")
+			return listFailedError()
+		}
 
 	}
 	for _, group := range groups {
@@ -59,48 +76,99 @@ func matchGroup(ctx *context.Context, w *imapserver.ListWriter, basePath, patter
 			Delim:   '/',
 		}
 
-		if hasChildren(ctx, group.ID) {
+		hasChild, err := hasChildren(ctx, group.ID)
+		if err != nil {
+			log.WithContext(ctx).WithError(err).Error("query IMAP mailbox children failed")
+			return listFailedError()
+		}
+		if hasChild {
 			data.Attrs = append(data.Attrs, imap.MailboxAttrHasChildren)
 		}
 
-		data.Mailbox = getLayerName(ctx, group, true)
+		mailbox, err := getLayerName(ctx, group, true)
+		if err != nil {
+			log.WithContext(ctx).WithError(err).Error("resolve IMAP mailbox path failed")
+			return listFailedError()
+		}
+		data.Mailbox = mailbox
 
-		w.WriteList(data)
+		if err := w.WriteList(data); err != nil {
+			return listWriteFailed(ctx, err)
+		}
 
 	}
-
+	return nil
 }
 
-func hasChildren(ctx *context.Context, id int) bool {
+func hasChildren(ctx *context.Context, id int) (bool, error) {
 	var parent []*models.Group
-	db.Instance.Table("group").Where("parent_id=?", id).Find(&parent)
-	return len(parent) > 0
+	err := db.Instance.Table("group").Where("parent_id=? and user_id=?", id, ctx.UserID).Find(&parent)
+	return len(parent) > 0, err
 }
-func getLayerName(ctx *context.Context, item *models.Group, allPath bool) string {
+func getLayerName(ctx *context.Context, item *models.Group, allPath bool) (string, error) {
+	return getLayerNameWithVisited(ctx, item, allPath, make(map[int]struct{}))
+}
+
+func getLayerNameWithVisited(ctx *context.Context, item *models.Group, allPath bool, visited map[int]struct{}) (string, error) {
+	if len(visited) >= 100 {
+		return "", errors.New("group hierarchy is too deep")
+	}
+	if item == nil {
+		return "", errors.New("invalid group")
+	}
+	if item.ID > 0 {
+		if _, exists := visited[item.ID]; exists {
+			return "", errors.New("group hierarchy cycle detected")
+		}
+		visited[item.ID] = struct{}{}
+	}
 	if item.ParentId == 0 {
-		return item.Name
+		return item.Name, nil
 	}
 	var parent models.Group
-	_, _ = db.Instance.Table("group").Where("id=?", item.ParentId).Get(&parent)
-	if allPath {
-		return getLayerName(ctx, &parent, allPath) + "/" + item.Name
+	found, err := db.Instance.Table("group").Where("id=? and user_id=?", item.ParentId, ctx.UserID).Get(&parent)
+	if err != nil {
+		return "", err
 	}
-	return getLayerName(ctx, &parent, allPath)
+	if !found {
+		return "", errors.New("group parent not found")
+	}
+	parentName, err := getLayerNameWithVisited(ctx, &parent, allPath, visited)
+	if err != nil {
+		return "", err
+	}
+	if allPath {
+		return parentName + "/" + item.Name, nil
+	}
+	return parentName, nil
 }
 
 func (s *serverSession) List(w *imapserver.ListWriter, ref string, patterns []string, options *imap.ListOptions) error {
-	log.WithContext(s.ctx).Debugf("imap server list, ref: %s ,patterns: %s ", ref, patterns)
+	log.WithContext(s.ctx).Debugf("IMAP LIST started: pattern_count=%d", len(patterns))
 
 	if ref == "" && len(patterns) == 0 {
-		w.WriteList(&imap.ListData{
+		if err := w.WriteList(&imap.ListData{
 			Attrs:   []imap.MailboxAttr{imap.MailboxAttrNoSelect, imap.MailboxAttrHasChildren},
 			Delim:   '/',
 			Mailbox: "[Smail]",
-		})
+		}); err != nil {
+			return listWriteFailed(s.ctx, err)
+		}
 	}
 	for _, pattern := range patterns {
-		matchGroup(s.ctx, w, ref, pattern)
+		if err := matchGroup(s.ctx, w, ref, pattern); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+func listWriteFailed(ctx *context.Context, err error) error {
+	log.WithContext(ctx).WithError(err).Error("write IMAP LIST response failed")
+	return listFailedError()
+}
+
+func listFailedError() error {
+	return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "List failed"}
 }

@@ -8,6 +8,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 )
 
@@ -23,27 +24,38 @@ func (s *serverSession) Store(w *imapserver.FetchWriter, numSet imap.NumSet, fla
 	case imap.SeqSet:
 		seqSet := numSet.(imap.SeqSet)
 		for _, seq := range seqSet {
-			res := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
+			res, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
 				Star: cast.ToInt(seq.Start),
 				End:  cast.ToInt(seq.Stop),
 			}, false)
+			if err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for store failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
+			}
 			emailList = append(emailList, res...)
 		}
 
 	case imap.UIDSet:
 		uidSet := numSet.(imap.UIDSet)
 		for _, uid := range uidSet {
-			res := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
+			res, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
 				Star: cast.ToInt(uint32(uid.Start)),
 				End:  cast.ToInt(uint32(uid.Stop)),
 			}, true)
+			if err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for UID store failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
+			}
 			emailList = append(emailList, res...)
 		}
 	}
 
 	if array.InArray(imap.FlagSeen, flags.Flags) && flags.Op == imap.StoreFlagsAdd {
 		for _, data := range emailList {
-			detail.MakeRead(s.ctx, data.Id, flags.Op == imap.StoreFlagsAdd)
+			if err := detail.MakeRead(s.ctx, data.Id, flags.Op == imap.StoreFlagsAdd); err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("update IMAP message read state failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
+			}
 		}
 	}
 
@@ -57,10 +69,8 @@ func (s *serverSession) Store(w *imapserver.FetchWriter, numSet imap.NumSet, fla
 	s.deleteUidList = []int{}
 
 	if err != nil {
-		return &imap.Error{
-			Type: imap.StatusResponseTypeNo,
-			Text: err.Error(),
-		}
+		log.WithContext(s.ctx).WithError(err).Error("delete IMAP message failed")
+		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
 	}
 
 	return nil

@@ -20,7 +20,6 @@ const useGlobalStatusStore = defineStore('useGlobalStatusStore', {
             http.post("/api/user/info", {}).then(res => {
                 if (res.errorNo === 0) {
                     Object.assign(that.userInfos, res.data)
-                    console.log("userInfos")
                     callback()
                 }
             })

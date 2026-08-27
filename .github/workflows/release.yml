@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    needs: security
     permissions:
       contents: write
     strategy:
@@ -26,15 +27,17 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
           echo "${GITHUB_REF}"
       - name: Checkout
-        uses: actions/checkout@v4.0.0
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - name: Setup Node.js environment
-        uses: actions/setup-node@v3.8.1
-      - name: Install Dependencies
-        run: npm install --global yarn
-      - name: Setup Go environment
-        uses: actions/setup-go@v4.1.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          check-latest: true
+          node-version: 24
+      - name: Install Dependencies
+        run: npm install --global yarn@1.22.22
+      - name: Setup Go environment
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.6'
       - name: Gen output name
         run: |
           echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
@@ -48,7 +51,7 @@ jobs:
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
       - name: FE Build
-        run: cd fe && yarn && yarn build
+        run: cd fe && yarn install --frozen-lockfile && yarn build
       - name: BE Build
         run: |
           cd server && cp -rf ../fe/dist listen/http_server
@@ -65,14 +68,55 @@ jobs:
           zip -r ${{ env.ZIPNAME }}.zip ${{ env.FILENAME }} plugins
           ls
       - name: Upload files to Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ env.ZIPNAME }}
           path: server/${{ env.ZIPNAME }}.zip
       - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: server/${{ env.ZIPNAME }}.zip
           tag: ${{ github.ref }}
           file_glob: true
+
+  security:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Setup Go environment
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.6'
+      - name: Verify Go dependencies
+        run: cd server && go mod verify
+      - name: Run Go tests
+        run: cd server && go test ./...
+      - name: Run Go static analysis
+        run: cd server && go vet ./...
+      - name: Run Go race tests
+        run: cd server && go test -race ./...
+      - name: Run Go security analysis
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
+          cd server && gosec ./...
+      - name: Scan Go vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          cd server && govulncheck ./...
+      - name: Setup Node.js environment
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Install Yarn
+        run: npm install --global yarn@1.22.22
+      - name: Verify frontend dependencies and build
+        run: |
+          cd fe
+          yarn install --frozen-lockfile
+          yarn audit --groups dependencies
+          yarn eslint . --ext .vue,.js,.jsx,.cjs,.mjs --ignore-path .gitignore
+          yarn build

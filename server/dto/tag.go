@@ -1,6 +1,6 @@
 package dto
 
-import "encoding/json"
+import "fmt"
 
 type SearchTag struct {
 	Type    int8 `json:"type"`     // -1 不限
@@ -9,6 +9,5 @@ type SearchTag struct {
 }
 
 func (t SearchTag) ToString() string {
-	data, _ := json.Marshal(t)
-	return string(data)
+	return fmt.Sprintf(`{"type":%d,"status":%d,"group_id":%d}`, t.Type, t.Status, t.GroupId)
 }

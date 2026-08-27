@@ -1,16 +1,19 @@
 <script setup>
 import {RouterView, useRoute} from 'vue-router'
-import HomeHeader from '@/components/HomeHeader.vue'
-import HomeAside from '@/components/HomeAside.vue';
+import HomeHeader from '@/views/components/HomeHeader/HomeHeader.vue'
+import HomeAside from '@/views/components/HomeAside/HomeAside.vue';
 import {ref, watch, onMounted} from 'vue'
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 const route = useRoute()
 const pageName = ref(route.name)
 const globalStatus = useGlobalStatusStore();
+const standalonePages = ['login', 'setup', 'forgot-password', 'reset-blocked']
 
 onMounted(() => {
-  globalStatus.init(() => {});
+  if (!standalonePages.includes(route.name)) {
+    globalStatus.init(() => {});
+  }
 });
 
 watch(
@@ -24,13 +27,13 @@ watch(
 
 <template>
   <div id="main">
-    <HomeHeader v-if="pageName !== 'login' && pageName !== 'setup'"/>
+    <HomeHeader v-if="!standalonePages.includes(pageName)"/>
     <div id="content">
-      <div id="aside" v-if="pageName !== 'login' && pageName !== 'setup'">
+      <div id="aside" v-if="!standalonePages.includes(pageName)">
         <HomeAside/>
       </div>
       <el-drawer
-          v-if="pageName !== 'login' && pageName !== 'setup'"
+          v-if="!standalonePages.includes(pageName)"
           v-model="globalStatus.mobileDrawerVisible"
           direction="ltr"
           size="243px"
@@ -39,7 +42,13 @@ watch(
       >
         <HomeAside/>
       </el-drawer>
-      <div id="body" :class="{ 'full-bleed': pageName === 'login' || pageName === 'setup' }">
+      <div
+        id="body"
+        :class="{
+          'full-bleed': standalonePages.includes(pageName),
+          'recovery-fit': pageName === 'forgot-password'
+        }"
+      >
         <RouterView v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
             <component :is="Component" />
@@ -66,6 +75,8 @@ watch(
 
 #body {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
   padding: 16px;
   box-sizing: border-box;
@@ -73,17 +84,28 @@ watch(
 }
 
 #body.full-bleed {
+  width: 100vw;
+  max-width: 100vw;
+  min-width: 0;
   padding: 0;
+}
+
+#body.recovery-fit {
+  overflow: hidden;
 }
 
 #content {
   display: flex;
   flex-grow: 1;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   min-height: 0;
 }
 
 #main {
+  width: 100%;
+  min-width: 0;
   height: 100%;
   display: flex;
   flex-direction: column;

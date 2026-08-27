@@ -4,7 +4,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/errors"
-	"strings"
+	"git.pcux.cn/xuans/Smail/utils/validation"
 )
 
 func GetDomainSettings() (string, string, []string, error) {
@@ -22,21 +22,20 @@ func SetDomainSettings(smtpDomain, webDomain, multiDomains string) error {
 		return errors.Wrap(err)
 	}
 
-	if smtpDomain == "" {
-		return errors.New("domain must not empty!")
+	smtpDomain, err = validation.NormalizeDomain(smtpDomain)
+	if err != nil {
+		return errors.Wrap(err)
+	}
+	webDomain, err = validation.NormalizeDomain(webDomain)
+	if err != nil {
+		return errors.Wrap(err)
+	}
+	domains, err := validation.NormalizeDomainList(multiDomains)
+	if err != nil {
+		return errors.Wrap(err)
 	}
 
-	if webDomain == "" {
-		return errors.New("web domain must not empty!")
-	}
-
-	configData.Domains = []string{}
-
-	if multiDomains != "" {
-		domains := strings.Split(multiDomains, ",")
-		configData.Domains = domains
-	}
-
+	configData.Domains = domains
 	if !array.InArray(smtpDomain, configData.Domains) {
 		configData.Domains = append(configData.Domains, smtpDomain)
 	}

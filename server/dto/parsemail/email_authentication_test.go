@@ -36,11 +36,14 @@ func TestNewEmailAuthentication(t *testing.T) {
 }
 
 func TestNewEmailFromModelRestoresAuthenticationForReceivedEmail(t *testing.T) {
-	email := NewEmailFromModel(models.Email{
+	email, err := NewEmailFromModel(models.Email{
 		Type:      0,
 		SPFCheck:  1,
 		DKIMCheck: 0,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if email.Authentication == nil {
 		t.Fatal("收件邮件缺少认证结果")
@@ -51,11 +54,14 @@ func TestNewEmailFromModelRestoresAuthenticationForReceivedEmail(t *testing.T) {
 }
 
 func TestNewEmailFromModelLeavesAuthenticationNilForSentEmail(t *testing.T) {
-	email := NewEmailFromModel(models.Email{
+	email, err := NewEmailFromModel(models.Email{
 		Type:      1,
 		SPFCheck:  1,
 		DKIMCheck: 1,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if email.Authentication != nil {
 		t.Fatalf("发件邮件不应包含收信认证结果：%+v", email.Authentication)

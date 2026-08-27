@@ -2,8 +2,10 @@ package smtp_server
 
 import (
 	"bytes"
+	stdcontext "context"
 	"database/sql"
 	oerrors "errors"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -23,6 +25,8 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/send"
+	"git.pcux.cn/xuans/Smail/utils/validation"
+	"github.com/emersion/go-smtp"
 	"github.com/mileusna/spf"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
@@ -40,16 +44,19 @@ func (s *Session) Data(r io.Reader) error {
 
 	log.WithContext(ctx).Debugf("收到邮件")
 
-	emailData, err := io.ReadAll(r)
+	emailData, err := io.ReadAll(io.LimitReader(r, maxSMTPMessageBytes+1))
 	if err != nil {
 		log.WithContext(ctx).Error("邮件内容无法读取", err)
 		return err
 	}
+	if len(emailData) > maxSMTPMessageBytes {
+		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message size exceeds fixed maximum message size"}
+	}
 
-	log.WithContext(ctx).Debugf("%s", string(emailData))
+	log.WithContext(ctx).Debugf("message_bytes=%d", len(emailData))
 
 	log.WithContext(ctx).Debugf("开始执行插件ReceiveParseBefore！")
-	for _, hook := range hooks.HookList {
+	for _, hook := range hooks.Snapshot() {
 		if hook == nil {
 			continue
 		}
@@ -57,7 +64,14 @@ func (s *Session) Data(r io.Reader) error {
 	}
 	log.WithContext(ctx).Debugf("开始执行插件ReceiveParseBefore End！")
 
-	email := parsemail.NewEmailFromReader(s.To, bytes.NewReader(emailData), len(emailData))
+	if len(emailData) > maxSMTPMessageBytes {
+		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message size exceeds fixed maximum message size"}
+	}
+	email, err := parsemail.NewEmailFromReader(s.To, bytes.NewReader(emailData), len(emailData))
+	if err != nil {
+		log.WithContext(ctx).Warnf("audit_event=message_parse_failed message_bytes=%d error=%v", len(emailData), err)
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 6, 0}, Message: "Invalid message content"}
+	}
 
 	if s.From != "" {
 		from := parsemail.BuilderUser(s.From)
@@ -71,15 +85,18 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
+	if email.From == nil || email.Sender == nil || strings.TrimSpace(email.From.EmailAddress) == "" || strings.TrimSpace(email.Sender.EmailAddress) == "" {
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 7}, Message: "Invalid sender address"}
+	}
+
 	// 判断是收信还是转发，只要是登陆了，都当成转发处理
 	if s.Ctx.UserID > 0 {
-		account, _ := email.From.GetDomainAccount()
-		if account != ctx.UserAccount && !ctx.IsAdmin {
+		if !authorizedSubmissionEmail(email, s.From, ctx) {
 			return oerrors.New("No Auth")
 		}
 
 		log.WithContext(ctx).Debugf("开始执行插件SendBefore！")
-		for _, hook := range hooks.HookList {
+		for _, hook := range hooks.Snapshot() {
 			if hook == nil {
 				continue
 			}
@@ -89,6 +106,9 @@ func (s *Session) Data(r io.Reader) error {
 
 		if email == nil {
 			return nil
+		}
+		if !authorizedSubmissionEmail(email, s.From, ctx) {
+			return oerrors.New("No Auth")
 		}
 
 		return s.deliverOutgoingEmail(email, send.Send)
@@ -103,14 +123,15 @@ func (s *Session) Data(r io.Reader) error {
 		SPFStatus = spfCheck(s.RemoteAddress.String(), email.Sender, email.Sender.EmailAddress)
 
 		_, formDomain := email.From.GetDomainAccount()
-		spoofed := array.InArray(formDomain, config.Instance.Domains) && SPFStatus == false
+		cfg := config.CurrentConfig()
+		spoofed := cfg != nil && array.InArray(formDomain, cfg.Domains) && SPFStatus == false
 		if spoofed {
 			dkimStatus = false
 		}
 		email.Authentication = parsemail.NewEmailAuthentication(SPFStatus, dkimStatus)
 
 		log.WithContext(ctx).Debugf("开始执行插件ReceiveParseAfter！")
-		for _, hook := range hooks.HookList {
+		for _, hook := range hooks.Snapshot() {
 			if hook == nil {
 				continue
 			}
@@ -131,16 +152,34 @@ func (s *Session) Data(r io.Reader) error {
 		}
 
 		if email.MessageId > 0 {
+			ruleBaseContext := ctx.Context
+			if ruleBaseContext == nil {
+				ruleBaseContext = stdcontext.Background()
+			}
+			ruleExecutionContext, cancelRules := stdcontext.WithTimeout(ruleBaseContext, maxSMTPRuleProcessingTime)
+			ruleContext := *ctx
+			ruleContext.Context = ruleExecutionContext
 			log.WithContext(ctx).Debugf("开始执行邮件规则！")
 			for _, user := range users {
+				if ruleExecutionContext.Err() != nil {
+					log.WithContext(ctx).Warn("email rule processing budget exceeded")
+					break
+				}
 				// 执行邮件规则
-				rs := rule.GetAllRules(ctx, user.ID)
+				rs, ruleErr := rule.GetAllRules(&ruleContext, user.ID)
+				if ruleErr != nil {
+					log.WithContext(ctx).WithField("user_id", user.ID).WithError(ruleErr).Error("load email rules failed")
+					continue
+				}
 				for _, r := range rs {
-					if rule.MatchRule(ctx, r, email) {
-						rule.DoRule(ctx, r, email, user, emailData)
+					if rule.MatchRule(&ruleContext, r, email) {
+						if err := rule.DoRule(&ruleContext, r, email, user, emailData); err != nil {
+							log.WithContext(ctx).WithField("user_id", user.ID).WithError(err).Error("execute email rule failed")
+						}
 					}
 				}
 			}
+			cancelRules()
 		}
 
 		log.WithContext(ctx).Debugf("开始执行插件ReceiveSaveAfter！")
@@ -150,7 +189,7 @@ func (s *Session) Data(r io.Reader) error {
 			log.WithContext(ctx).Errorf("sql Error :%+v", err)
 		}
 		as3 := async.New(ctx)
-		for _, hook := range hooks.HookList {
+		for _, hook := range hooks.Snapshot() {
 			if hook == nil {
 				continue
 			}
@@ -163,12 +202,42 @@ func (s *Session) Data(r io.Reader) error {
 
 		// IDLE命令通知
 		for _, user := range users {
-			imap_server.IdleNotice(ctx, user.ID, dbEmail)
+			if err := imap_server.IdleNotice(ctx, user.ID, dbEmail); err != nil {
+				log.WithContext(ctx).WithError(err).Error("send IMAP IDLE notification failed")
+			}
 		}
 
 	}
 
 	return nil
+}
+
+func validateOutgoingEmail(email *parsemail.Email) error {
+	if err := validation.ValidateEmail(email, validation.EmailLimits{
+		MaxRecipients:           50,
+		MaxAttachments:          maxSMTPAttachmentCount,
+		MaxAttachmentBytes:      maxSMTPMessageBytes,
+		MaxTotalAttachmentBytes: maxSMTPMessageBytes,
+		MaxBodyBytes:            maxSMTPMessageBytes,
+		MaxEstimatedBytes:       maxSMTPMessageBytes,
+	}); err != nil {
+		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message exceeds safety limits"}
+	}
+	return nil
+}
+
+func authorizedSubmissionEmail(email *parsemail.Email, envelopeFrom string, ctx *context.Context) bool {
+	cfg := config.CurrentConfig()
+	if email == nil || email.From == nil || email.Sender == nil || ctx == nil || cfg == nil {
+		return false
+	}
+	if !validation.IsAuthorizedSender(email.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+		return false
+	}
+	if !validation.IsAuthorizedSender(email.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+		return false
+	}
+	return envelopeFrom == "" || validation.IsAuthorizedSender(envelopeFrom, ctx.UserAccount, ctx.IsAdmin, cfg.Domains)
 }
 
 func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserID int, emailType int, reallyTo []string, SPFStatus, dkimStatus bool) ([]*models.User, *models.Email, error) {
@@ -190,25 +259,37 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 
 	msgID := email.MsgID
 	if msgID == "" {
-		msgID = parsemail.GenerateMsgID(config.Instance.Domain)
+		cfg := config.CurrentConfig()
+		if cfg == nil || cfg.Domain == "" {
+			return nil, nil, fmt.Errorf("runtime configuration is unavailable")
+		}
+		msgID, err = parsemail.GenerateMsgID(cfg.Domain)
+		if err != nil {
+			return users, nil, fmt.Errorf("generate message ID: %w", err)
+		}
 	}
 	if email.Size == 0 {
 		email.Size = size
 	}
 
+	storedFields, err := email.EncodeStoredFields()
+	if err != nil {
+		return users, nil, fmt.Errorf("encode stored email fields: %w", err)
+	}
+
 	modelEmail := models.Email{
 		Type:         cast.ToInt8(emailType),
 		Subject:      email.Subject,
-		ReplyTo:      json2string(email.ReplyTo),
+		ReplyTo:      storedFields.ReplyTo,
 		FromName:     email.From.Name,
 		FromAddress:  email.From.EmailAddress,
-		To:           json2string(email.To),
-		Bcc:          json2string(email.Bcc),
-		Cc:           json2string(email.Cc),
+		To:           storedFields.To,
+		Bcc:          storedFields.Bcc,
+		Cc:           storedFields.Cc,
 		Text:         sql.NullString{String: string(email.Text), Valid: true},
 		Html:         sql.NullString{String: string(email.HTML), Valid: true},
-		Sender:       json2string(email.Sender),
-		Attachments:  json2string(email.Attachments),
+		Sender:       storedFields.Sender,
+		Attachments:  storedFields.Attachments,
 		Size:         email.Size,
 		SPFCheck:     boolInt8(SPFStatus),
 		DKIMCheck:    boolInt8(dkimStatus),
@@ -243,9 +324,19 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 
 func spfCheck(remoteAddress string, sender *parsemail.User, senderString string) bool {
 	//spf校验
-	ipAddress, _ := netip.ParseAddrPort(remoteAddress)
+	if sender == nil {
+		return false
+	}
+
+	ipAddress, err := netip.ParseAddrPort(remoteAddress)
+	if err != nil || !ipAddress.Addr().IsValid() {
+		return false
+	}
 
 	ip := net.ParseIP(ipAddress.Addr().String())
+	if ip == nil {
+		return false
+	}
 	if ip.IsPrivate() {
 		return true
 	}

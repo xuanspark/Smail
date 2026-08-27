@@ -1,0 +1,69 @@
+.brand-logo {
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  object-position: center;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  mix-blend-mode: screen;
+  filter: saturate(1.08) contrast(1.06);
+}
+
+.brand-logo-frame {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.brand-logo-frame--login {
+  width: 136px;
+  height: 91px;
+}
+
+.brand-logo-frame--recovery {
+  width: 76px;
+  height: 52px;
+}
+
+.brand-logo-frame--compact {
+  width: 38px;
+  height: 26px;
+}
+
+.brand-logo--login,
+.brand-logo--recovery,
+.brand-logo--compact {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 3 / 2;
+}
+
+@media (max-width: 760px) {
+  .brand-logo-frame--login {
+    width: 92px;
+    height: 62px;
+  }
+
+  .brand-logo-frame--recovery {
+    width: 64px;
+    height: 44px;
+  }
+
+  .brand-logo-frame--compact {
+    width: 34px;
+    height: 23px;
+  }
+}
+
+@media (max-width: 380px) {
+  .brand-logo-frame--login {
+    width: 76px;
+    height: 51px;
+  }
+}

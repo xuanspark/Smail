@@ -1,46 +1,29 @@
 package imap_server
 
 import (
-	"database/sql"
-	"git.pcux.cn/xuans/Smail/db"
-	"git.pcux.cn/xuans/Smail/models"
-	"git.pcux.cn/xuans/Smail/utils/errors"
-	"git.pcux.cn/xuans/Smail/utils/password"
+	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
-	"strings"
 )
 
 func (s *serverSession) Login(username, pwd string) error {
-	if strings.Contains(username, "@") {
-		args := strings.Split(username, "@")
-		username = args[0]
+	user, err := auth.AuthenticateProtocol("imap", s.remoteAddress, username, pwd)
+	if err != nil {
+		log.WithContext(s.ctx).Info("IMAP authentication failed")
+		return &imap.Error{
+			Type: imap.StatusResponseTypeNo,
+			Code: imap.ResponseCodeAuthenticationFailed,
+			Text: "Invalid credentials (Failure)",
+		}
 	}
 
-	var user models.User
-
-	encodePwd := password.Encode(pwd)
-
-	_, err := db.Instance.Where("account =? and password =? and disabled = 0", username, encodePwd).Get(&user)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.WithContext(s.ctx).Errorf("%+v", err)
-	}
-
-	if user.ID > 0 {
-		s.status = AUTHORIZED
-
-		s.ctx.UserID = user.ID
-		s.ctx.UserName = user.Name
-		s.ctx.UserAccount = user.Account
-		log.WithContext(s.ctx).Debug("Login successful")
-
-		return nil
-	}
-
-	log.WithContext(s.ctx).Info("user not found")
-	return &imap.Error{
-		Type: imap.StatusResponseTypeNo,
-		Code: imap.ResponseCodeAuthenticationFailed,
-		Text: "Invalid credentials (Failure)",
-	}
+	s.status = AUTHORIZED
+	s.ctx.UserID = user.ID
+	s.ctx.UserName = user.Name
+	s.ctx.UserAccount = user.Account
+	s.ctx.Role = user.EffectiveRole()
+	s.ctx.IsAdmin = s.ctx.Role == access.RoleSuperAdmin || s.ctx.Role == access.RoleAdmin
+	log.WithContext(s.ctx).Debug("IMAP authentication succeeded")
+	return nil
 }

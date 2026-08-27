@@ -1,14 +1,13 @@
 package pop3_server
 
 import (
-	"database/sql"
 	errors2 "errors"
-	"github.com/Jinnrry/gopop"
 	"git.pcux.cn/xuans/Smail/consts"
-	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
-	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/internal/gopop"
+	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/del_email"
 	"git.pcux.cn/xuans/Smail/services/detail"
 	"git.pcux.cn/xuans/Smail/services/list"
@@ -16,7 +15,6 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	"git.pcux.cn/xuans/Smail/utils/id"
-	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"strings"
@@ -33,7 +31,7 @@ func (a action) Custom(session *gopop.Session, cmd string, args []string) ([]str
 		session.Ctx = tc
 	}
 
-	log.WithContext(session.Ctx).Debugf("not supported cmd request! cmd:%s args:%v", cmd, args)
+	log.WithContext(session.Ctx).Debug("POP3 unsupported command")
 	return nil, errors2.New("not supported cmd request")
 }
 
@@ -55,7 +53,6 @@ func (a action) Capa(session *gopop.Session) ([]string, error) {
 		"USER",
 		"PASS",
 		"TOP",
-		"APOP",
 		"STAT",
 		"UIDL",
 		"LIST",
@@ -81,14 +78,14 @@ func (a action) User(session *gopop.Session, username string) error {
 		tc.SetValue(context.LogID, id.GenLogID())
 		session.Ctx = tc
 	}
-	log.WithContext(session.Ctx).Debugf("POP3 CMD: USER, Args:%s", username)
+	log.WithContext(session.Ctx).Debug("POP3 USER received")
 
 	infos := strings.Split(username, "@")
 	if len(infos) > 1 {
 		username = infos[0]
 	}
 
-	log.WithContext(session.Ctx).Debugf("POP3 User %s", username)
+	log.WithContext(session.Ctx).Debug("POP3 user name normalized")
 
 	session.User = username
 	return nil
@@ -101,74 +98,48 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 		tc.SetValue(context.LogID, id.GenLogID())
 		session.Ctx = tc
 	}
-
-	log.WithContext(session.Ctx).Debugf("POP3 PASS %s , User:%s", pwd, session.User)
-
-	var user models.User
-
-	encodePwd := password.Encode(pwd)
-
-	_, err := db.Instance.Where("account =? and password =? and disabled = 0", session.User, encodePwd).Get(&user)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.WithContext(session.Ctx.(*context.Context)).Errorf("%+v", err)
+	if !session.InTls {
+		log.WithContext(session.Ctx).Info("POP3 authentication rejected before TLS")
+		return errors2.New("TLS required")
 	}
 
-	if user.ID > 0 {
-		session.Status = gopop.TRANSACTION
-
-		session.Ctx.(*context.Context).UserID = user.ID
-		session.Ctx.(*context.Context).UserName = user.Name
-		session.Ctx.(*context.Context).UserAccount = user.Account
-
-		return nil
+	remoteAddress := ""
+	if session.Conn != nil && session.Conn.RemoteAddr() != nil {
+		remoteAddress = session.Conn.RemoteAddr().String()
+	}
+	user, err := auth.AuthenticateProtocol("pop3", remoteAddress, session.User, pwd)
+	if err != nil {
+		log.WithContext(session.Ctx).Info("POP3 authentication failed")
+		return errors2.New("password error")
 	}
 
-	return errors2.New("password error")
+	session.Status = gopop.TRANSACTION
+	ctx := session.Ctx.(*context.Context)
+	ctx.UserID = user.ID
+	ctx.UserName = user.Name
+	ctx.UserAccount = user.Account
+	ctx.Role = user.EffectiveRole()
+	ctx.IsAdmin = ctx.Role == access.RoleSuperAdmin || ctx.Role == access.RoleAdmin
+	return nil
 }
 
-// Apop APOP登陆命令
+// Apop explicitly rejects the obsolete MD5-based authentication mechanism.
 func (a action) Apop(session *gopop.Session, username, digest string) error {
 	if session.Ctx == nil {
 		tc := &context.Context{}
 		tc.SetValue(context.LogID, id.GenLogID())
 		session.Ctx = tc
 	}
-	log.WithContext(session.Ctx).Debugf("POP3 CMD: APOP, Args:%s,%s", username, digest)
-
-	infos := strings.Split(username, "@")
-	if len(infos) > 1 {
-		username = infos[0]
-	}
-
-	log.WithContext(session.Ctx).Debugf("POP3 APOP %s %s", username, digest)
-
-	var user models.User
-
-	_, err := db.Instance.Where("account =? and disabled = 0", username).Get(&user)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.WithContext(session.Ctx.(*context.Context)).Errorf("%+v", err)
-	}
-
-	if user.ID > 0 && digest == password.Md5Encode(user.Password) {
-		session.User = username
-		session.Status = gopop.TRANSACTION
-
-		session.Ctx.(*context.Context).UserID = user.ID
-		session.Ctx.(*context.Context).UserName = user.Name
-		session.Ctx.(*context.Context).UserAccount = user.Account
-
-		return nil
-	}
-
-	return errors2.New("password error")
-
+	log.WithContext(session.Ctx).Info("POP3 APOP is not supported")
+	return errors2.New("APOP not supported")
 }
-
-// Stat 查询邮件数量
 func (a action) Stat(session *gopop.Session) (msgNum, msgSize int64, err error) {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: STAT")
 
-	num, size := list.Stat(session.Ctx.(*context.Context))
+	num, size, err := list.Stat(session.Ctx.(*context.Context))
+	if err != nil {
+		return 0, 0, err
+	}
 	log.WithContext(session.Ctx).Debugf("POP3 STAT RETURT : %d,%d", num, size)
 	return num, size, nil
 }
@@ -190,7 +161,10 @@ func (a action) Uidl(session *gopop.Session, msg string) ([]gopop.UidlItem, erro
 
 	var res []listItem
 
-	emailList, _ := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+	emailList, _, err := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+	if err != nil {
+		return nil, err
+	}
 	for _, info := range emailList {
 		res = append(res, listItem{
 			Id:   cast.ToInt64(info.Id),
@@ -240,7 +214,10 @@ func (a action) List(session *gopop.Session, msg string) ([]gopop.MailInfo, erro
 		}
 		res = append(res, item)
 	} else {
-		emailList, _ := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+		emailList, _, err := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+		if err != nil {
+			return nil, err
+		}
 		for _, info := range emailList {
 			item := listItem{
 				Id:   cast.ToInt64(info.Id),
@@ -273,8 +250,17 @@ func (a action) Retr(session *gopop.Session, id int64) (string, int64, error) {
 		return "", 0, errors.New("server error")
 	}
 
-	ret := parsemail.NewEmailFromModel(email.Email).BuildBytes(session.Ctx.(*context.Context), false)
-	log.WithContext(session.Ctx).Debugf("Retr \n %+v", string(ret))
+	parsedEmail, err := parsemail.NewEmailFromModel(email.Email)
+	if err != nil {
+		log.WithContext(session.Ctx.(*context.Context)).WithError(err).Error("decode POP3 RETR message failed")
+		return "", 0, errors.New("server error")
+	}
+	ret, err := parsedEmail.BuildBytes(session.Ctx.(*context.Context), false)
+	if err != nil {
+		log.WithContext(session.Ctx.(*context.Context)).WithError(err).Error("build POP3 RETR message failed")
+		return "", 0, errors.New("server error")
+	}
+	log.WithContext(session.Ctx).Debugf("POP3 RETR response_bytes=%d", len(ret))
 	return string(ret), cast.ToInt64(len(ret)), nil
 
 }
@@ -302,7 +288,16 @@ func (a action) Top(session *gopop.Session, id int64, n int) (string, error) {
 		return "", errors2.New("password error")
 	}
 
-	ret := parsemail.NewEmailFromModel(email.Email).BuildBytes(session.Ctx.(*context.Context), false)
+	parsedEmail, err := parsemail.NewEmailFromModel(email.Email)
+	if err != nil {
+		log.WithContext(session.Ctx.(*context.Context)).WithError(err).Error("decode POP3 TOP message failed")
+		return "", errors2.New("server error")
+	}
+	ret, err := parsedEmail.BuildBytes(session.Ctx.(*context.Context), false)
+	if err != nil {
+		log.WithContext(session.Ctx.(*context.Context)).WithError(err).Error("build POP3 TOP message failed")
+		return "", errors2.New("server error")
+	}
 	res := strings.Split(string(ret), "\n")
 	headerEndLine := len(res) - 1
 	for i, re := range res {
@@ -316,7 +311,7 @@ func (a action) Top(session *gopop.Session, id int64, n int) (string, error) {
 	}
 
 	lines := array.Join(res[0:headerEndLine+n+1], "\n")
-	log.WithContext(session.Ctx).Debugf("Top \n %+v", lines)
+	log.WithContext(session.Ctx).Debugf("POP3 TOP response_bytes=%d", len(lines))
 	return lines, nil
 
 }
@@ -336,7 +331,10 @@ func (a action) Quit(session *gopop.Session) error {
 			DelIds = append(DelIds, cast.ToInt(delId))
 		}
 
-		del_email.DelEmail(session.Ctx.(*context.Context), DelIds, false)
+		if err := del_email.DelEmail(session.Ctx.(*context.Context), DelIds, false); err != nil {
+			log.WithContext(session.Ctx).WithError(err).Error("POP3 mailbox update failed")
+			return errors2.New("mailbox update failed")
+		}
 	}
 
 	return nil

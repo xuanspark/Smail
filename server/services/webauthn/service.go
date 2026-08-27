@@ -1,0 +1,554 @@
+package webauthnservice
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/utils/credential"
+	"github.com/go-webauthn/webauthn/protocol"
+	webauthn "github.com/go-webauthn/webauthn/webauthn"
+	"xorm.io/xorm"
+)
+
+var (
+	ErrUnavailable       = errors.New("webauthn service unavailable")
+	ErrInvalidRequest    = errors.New("webauthn request is invalid")
+	ErrSessionNotFound   = errors.New("webauthn ceremony session is invalid")
+	ErrSessionExpired    = errors.New("webauthn ceremony session expired")
+	ErrCredentialMissing = errors.New("webauthn credential is missing")
+	ErrCredentialExists  = errors.New("webauthn credential already exists")
+)
+
+const (
+	ceremonyTTL = 5 * time.Minute
+	maxSessions = 1024
+)
+
+// Config 闁诲氦顫夐惌顔剧不?WebAuthn 婵炴挻纰嶇换鍡欑矉閸℃稒鍎?RP 闂佸憡鐟ラ崐褰掑汲閻旂厧妞介悘鐐舵濞堝爼鏌熺拠鈥虫灈闁伙附鍨块弻锕傚Ψ瑜庣粣妤冩喐閻楀牊纾搁柍?
+type Config struct {
+	RPID          string
+	RPDisplayName string
+	RPOrigins     []string
+	VaultRoot     string
+}
+
+// Service 闁荤姵鍔楅崰鏇㈡儗?WebAuthn 濠电偛顦崝宀勫船娴犲违濞达絿鍎ら銏㈡喐閻楀牊纾搁柍褜鍏涚粈渚€宕甸悢鐓庣妞ゆ梻鍘ч～锝夋倵闂堟稒顥滈柣掳鍔戝畷鎺楀Ω閵夛箑顏梺閫涘嫎閸婃繈寮ㄩ姀銈呂?
+type Service struct {
+	engine *xorm.Engine
+	vault  string
+	authn  *webauthn.WebAuthn
+
+	mu           sync.Mutex
+	credentialMu sync.Mutex
+	sessions     map[string]ceremony
+	now          func() time.Time
+}
+
+type ceremony struct {
+	userID    int
+	kind      ceremonyKind
+	data      webauthn.SessionData
+	expiresAt time.Time
+}
+
+type ceremonyKind uint8
+
+const (
+	registrationCeremony ceremonyKind = iota + 1
+	loginCeremony
+	discoverableLoginCeremony
+)
+
+// NewService 闂佸憡甯楃粙鎴犵磽?WebAuthn 闂佸搫鐗嗙粔瀛樻叏閻旂厧违闁稿本绋戦鐘绘煙鐎涙◤顏堝箯?SessionData 闂佸憡鐟禍娆戞崲濮樻墎鍋撳☉娅亜锕㈤鍛氦婵炴垶鍩冮弻銈夋煕閹邦剚鍣归柣掳鍔戞俊?
+func NewService(engine *xorm.Engine, cfg Config) (*Service, error) {
+	if engine == nil || strings.TrimSpace(cfg.RPID) == "" || strings.TrimSpace(cfg.RPDisplayName) == "" || len(cfg.RPOrigins) == 0 || strings.TrimSpace(cfg.VaultRoot) == "" {
+		return nil, ErrUnavailable
+	}
+	authn, err := webauthn.New(&webauthn.Config{
+		RPID:                  strings.TrimSpace(cfg.RPID),
+		RPDisplayName:         strings.TrimSpace(cfg.RPDisplayName),
+		RPOrigins:             append([]string(nil), cfg.RPOrigins...),
+		AttestationPreference: protocol.PreferNoAttestation,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create webauthn configuration: %w", err)
+	}
+	return &Service{engine: engine, vault: cfg.VaultRoot, authn: authn, sessions: make(map[string]ceremony), now: time.Now}, nil
+}
+
+// BeginRegistration 閻庢鍠掗崑鎾斥攽椤旂⒈鍎愰柡浣哄仱瀹曟浠﹂崜褋鍋婄紓浣割儏椤戝懘鎳熼悢鍛婁氦闁哄倹瀵х粈鈧繛鎴炴尭缁夊綊鍩€椤掆偓缁绘垵危閹达附鍎嶉柛鏇ㄥ亜閺佸爼鎮楀☉娅偐妲愰幍顔藉珰?ID闂?
+func (s *Service) BeginRegistration(userID int) (*protocol.CredentialCreation, string, error) {
+	user, err := s.loadUser(userID)
+	if err != nil {
+		return nil, "", err
+	}
+	adapter, err := s.loadWebAuthnUser(user)
+	if err != nil {
+		return nil, "", err
+	}
+	creation, data, err := s.authn.BeginRegistration(adapter, webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementRequired))
+	if err != nil {
+		return nil, "", fmt.Errorf("begin webauthn registration: %w", err)
+	}
+	sessionID, err := s.putSession(ceremony{userID: user.ID, kind: registrationCeremony, data: *data, expiresAt: s.now().Add(ceremonyTTL)})
+	if err != nil {
+		return nil, "", err
+	}
+	return creation, sessionID, nil
+}
+
+// FinishRegistration 闂佸搫绋勭换婵嬫偘濞嗗緷纭呯疀濮樺吋缍岄梺闈╃祷閸斿矂骞栭柨瀣劅闁哄倽鍎荤€氭瑥菐閸ャ劎绠撻柣掳鍔戝畷婵嬫偐閼碱剚顫氶梺鍛婂焾閸樿棄鐣垫笟鈧俊?
+func (s *Service) FinishRegistration(userID int, sessionID string, request *http.Request, displayName string) (*models.WebAuthnCredential, error) {
+	item, err := s.takeSession(sessionID, registrationCeremony, userID)
+	if err != nil {
+		return nil, err
+	}
+	if request == nil || strings.TrimSpace(displayName) == "" || len([]byte(displayName)) > 128 {
+		return nil, ErrInvalidRequest
+	}
+	user, err := s.loadUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := s.loadWebAuthnUser(user)
+	if err != nil {
+		return nil, err
+	}
+	validated, err := s.authn.FinishRegistration(adapter, item.data, request)
+	if err != nil {
+		return nil, fmt.Errorf("finish webauthn registration: %w", err)
+	}
+	credentialID := base64.RawURLEncoding.EncodeToString(validated.ID)
+	if credentialID == "" {
+		return nil, ErrInvalidRequest
+	}
+	var existing models.WebAuthnCredential
+	has, err := s.engine.Where("credential_id = ?", credentialID).Get(&existing)
+	if err != nil {
+		return nil, fmt.Errorf("check webauthn credential: %w", err)
+	}
+	if has {
+		return nil, ErrCredentialExists
+	}
+
+	encoded, err := json.Marshal(validated)
+	if err != nil {
+		return nil, fmt.Errorf("encode webauthn credential: %w", err)
+	}
+	protected, err := credential.Encrypt(s.vault, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("protect webauthn credential: %w", err)
+	}
+	record := &models.WebAuthnCredential{
+		UserID:         userID,
+		CredentialID:   credentialID,
+		CredentialData: protected,
+		DisplayName:    strings.TrimSpace(displayName),
+		Discoverable:   true,
+		CreatedAt:      s.now(),
+	}
+	if _, err := s.engine.Insert(record); err != nil {
+		return nil, fmt.Errorf("save webauthn credential: %w", err)
+	}
+	return record, nil
+}
+
+// BeginLogin 閻庢鍠掗崑鎾斥攽椤旂⒈鍎忛柛鎴節閹矂濡疯閺嗗繘鏌熼幘顕呮婵?WebAuthn 闂佽皫鍡╁殭缂傚秴绉撮湁濞达綀銆€閺屻倝鏌?
+func (s *Service) BeginLogin(userID int) (*protocol.CredentialAssertion, string, error) {
+	user, err := s.loadUser(userID)
+	if err != nil {
+		return nil, "", err
+	}
+	adapter, err := s.loadWebAuthnUser(user)
+	if err != nil {
+		return nil, "", err
+	}
+	assertion, data, err := s.authn.BeginLogin(adapter)
+	if err != nil {
+		return nil, "", fmt.Errorf("begin webauthn login: %w", err)
+	}
+	sessionID, err := s.putSession(ceremony{userID: user.ID, kind: loginCeremony, data: *data, expiresAt: s.now().Add(ceremonyTTL)})
+	if err != nil {
+		return nil, "", err
+	}
+	return assertion, sessionID, nil
+}
+
+// FinishLogin 闂佸搫绋勭换婵嬫偘濞嗘挸妫樻い鎾閺嬪懘鏌曢崱鏇犲妽婵炴彃娼″顒勫箥椤曞懎濮伴梺鍛婅壘缁夌兘顢橀幖浣告瀬闁哄鍎荤€氭瑩姊洪幓鎺斝㈤柛鐔告崌瀹曟繈鎮╅懠顒侇潥闂佸憡鍩堥崢钘夌暤娓氣偓婵?
+func (s *Service) FinishLogin(userID int, sessionID string, request *http.Request) (*models.WebAuthnCredential, error) {
+	item, err := s.takeSession(sessionID, loginCeremony, userID)
+	if err != nil {
+		return nil, err
+	}
+	if request == nil {
+		return nil, ErrInvalidRequest
+	}
+	user, err := s.loadUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := s.loadWebAuthnUser(user)
+	if err != nil {
+		return nil, err
+	}
+	validated, err := s.authn.FinishLogin(adapter, item.data, request)
+	if err != nil {
+		return nil, fmt.Errorf("finish webauthn login: %w", err)
+	}
+	credentialID := base64.RawURLEncoding.EncodeToString(validated.ID)
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+	var record models.WebAuthnCredential
+	has, err := s.engine.Where("user_id = ? AND credential_id = ? AND revoked_at IS NULL AND discoverable = ?", userID, credentialID, true).Get(&record)
+	if err != nil {
+		return nil, fmt.Errorf("load webauthn login credential: %w", err)
+	}
+	if !has {
+		return nil, ErrCredentialMissing
+	}
+
+	currentPlain, err := credential.Decrypt(s.vault, record.CredentialData)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt current webauthn credential: %w", err)
+	}
+	var current webauthn.Credential
+	if err := json.Unmarshal([]byte(currentPlain), &current); err != nil {
+		return nil, fmt.Errorf("decode current webauthn credential: %w", err)
+	}
+	if validated.Authenticator.SignCount < current.Authenticator.SignCount {
+		return nil, ErrInvalidRequest
+	}
+	encoded, err := json.Marshal(validated)
+	if err != nil {
+		return nil, fmt.Errorf("encode webauthn login credential: %w", err)
+	}
+	protected, err := credential.Encrypt(s.vault, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("protect webauthn login credential: %w", err)
+	}
+	now := s.now()
+	updated := &models.WebAuthnCredential{CredentialData: protected, LastUsedAt: &now}
+	if affected, err := s.engine.ID(record.ID).Cols("credential_data", "last_used_at").Update(updated); err != nil {
+		return nil, fmt.Errorf("update webauthn login credential: %w", err)
+	} else if affected != 1 {
+		return nil, ErrCredentialMissing
+	}
+	record.CredentialData = protected
+	record.LastUsedAt = &now
+	return &record, nil
+}
+
+func (s *Service) BeginDiscoverableLogin() (*protocol.CredentialAssertion, string, error) {
+	if s == nil || s.authn == nil {
+		return nil, "", ErrUnavailable
+	}
+	assertion, data, err := s.authn.BeginDiscoverableLogin()
+	if err != nil {
+		return nil, "", fmt.Errorf("begin discoverable webauthn login: %w", err)
+	}
+	sessionID, err := s.putSession(ceremony{kind: discoverableLoginCeremony, data: *data, expiresAt: s.now().Add(ceremonyTTL)})
+	if err != nil {
+		return nil, "", err
+	}
+	return assertion, sessionID, nil
+}
+
+func (s *Service) FinishDiscoverableLogin(sessionID string, request *http.Request) (*models.User, *models.WebAuthnCredential, error) {
+	item, err := s.takeDiscoverableSession(sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if request == nil {
+		return nil, nil, ErrInvalidRequest
+	}
+	var selected *webAuthnUser
+	validated, err := s.authn.FinishDiscoverableLogin(func(rawID, userHandle []byte) (webauthn.User, error) {
+		adapter, loadErr := s.loadDiscoverableUser(rawID, userHandle)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		selected = adapter
+		return adapter, nil
+	}, item.data, request)
+	if err != nil || selected == nil {
+		return nil, nil, ErrCredentialMissing
+	}
+	record, err := s.persistLoginCredential(selected.user.ID, validated)
+	if err != nil {
+		return nil, nil, err
+	}
+	user := selected.user
+	return &user, record, nil
+}
+
+// ListCredentials 闁哄鏅滈弻銊ッ洪弽顓熷殗閺夊牄鍔嶅▍娑㈡煕閹搭厼骞楃€规挷鑳跺Σ鎰板閻樼數鈹涢梺鎸庣☉婵傛梻绮径瀣氦闁哄倹瀵х粈鈧梺绋挎禋閸撶喖骞愬鍫濈闁哄诞鍐炬奖闁诲酣娼уΛ娆忣焽濡ゅ懎妫樻繛鍡楃М閸?
+func (s *Service) ListCredentials(userID int) ([]models.WebAuthnCredential, error) {
+	if s == nil || s.engine == nil || userID <= 0 {
+		return nil, ErrInvalidRequest
+	}
+	var records []models.WebAuthnCredential
+	if err := s.engine.Where("user_id = ?", userID).Cols("id", "user_id", "credential_id", "display_name", "discoverable", "created_at", "last_used_at", "revoked_at").Find(&records); err != nil {
+		return nil, fmt.Errorf("list webauthn credentials: %w", err)
+	}
+	for index := range records {
+		records[index].CredentialData = ""
+	}
+	return records, nil
+}
+
+// RenameCredential 闂佸憡鐟禍婊堝储閹寸姵濯肩紒瀣仢濞堝爼鏌熺拠鈥虫灍濠⒀冪Ф娴狅箓鎮欓崹顐ｆ闂佸湱顥愬〒褰掑箞閵娾晛缁╅柣鐔哄閸婂磭绱掓径搴＄劷闁?
+func (s *Service) RenameCredential(userID, credentialID int, displayName string) error {
+	if userID <= 0 || credentialID <= 0 || strings.TrimSpace(displayName) == "" || len([]byte(displayName)) > 128 {
+		return ErrInvalidRequest
+	}
+	if affected, err := s.engine.ID(credentialID).Where("user_id = ? AND revoked_at IS NULL", userID).Cols("display_name").Update(&models.WebAuthnCredential{DisplayName: strings.TrimSpace(displayName)}); err != nil {
+		return fmt.Errorf("rename webauthn credential: %w", err)
+	} else if affected != 1 {
+		return ErrCredentialMissing
+	}
+	return nil
+}
+
+// RevokeCredential 闂侀€涘嫎閸婃繈寮ㄩ姀锝冧汗闁规儳鍟块·鍛存煟椤剙濡介柛鈺傜洴閹啴宕熼鍡╀紘婵＄偑鍊楅幊鎾诲吹閻旂厧绠叉い鏇炴缁€澶愭煙娣囧崬鈧繈寮ㄩ姀锛勨枖鐎广儱鎳庣拋鏌ユ⒑椤愩垺顥撻柍?
+func (s *Service) RevokeCredential(userID, credentialID int) error {
+	if userID <= 0 || credentialID <= 0 {
+		return ErrInvalidRequest
+	}
+	now := s.now()
+	if affected, err := s.engine.ID(credentialID).Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at").Update(&models.WebAuthnCredential{RevokedAt: &now}); err != nil {
+		return fmt.Errorf("revoke webauthn credential: %w", err)
+	} else if affected != 1 {
+		return ErrCredentialMissing
+	}
+	return nil
+}
+
+// RevokeAllCredentials 闂侀€涘嫎閸婃繈寮ㄩ姀銈嗗仺闁靛绠戦悡鏇㈡煟閵娿儱顏╅柛娆忕箻閺屽牓濡搁敂鐣岀暢闂?WebAuthn 闂佸憡鍩堥崢钘夌暤娓氣偓婵?
+func (s *Service) RevokeAllCredentials(userID int) error {
+	if userID <= 0 {
+		return ErrInvalidRequest
+	}
+	now := s.now()
+	if _, err := s.engine.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at").Update(&models.WebAuthnCredential{RevokedAt: &now}); err != nil {
+		return fmt.Errorf("revoke all webauthn credentials: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) loadUser(userID int) (*models.User, error) {
+	if s == nil || s.engine == nil || s.authn == nil || userID <= 0 {
+		return nil, ErrUnavailable
+	}
+	var user models.User
+	has, err := s.engine.Where("id = ? AND disabled = 0", userID).Get(&user)
+	if err != nil {
+		return nil, fmt.Errorf("load webauthn user: %w", err)
+	}
+	if !has {
+		return nil, ErrCredentialMissing
+	}
+	return &user, nil
+}
+
+func (s *Service) loadWebAuthnUser(user *models.User) (*webAuthnUser, error) {
+	if user == nil {
+		return nil, ErrInvalidRequest
+	}
+	var records []models.WebAuthnCredential
+	if err := s.engine.Where("user_id = ? AND revoked_at IS NULL AND discoverable = ?", user.ID, true).Find(&records); err != nil {
+		return nil, fmt.Errorf("load webauthn credentials: %w", err)
+	}
+	result := make([]webauthn.Credential, 0, len(records))
+	for _, record := range records {
+		plain, err := credential.Decrypt(s.vault, record.CredentialData)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt webauthn credential: %w", err)
+		}
+		var item webauthn.Credential
+		if err := json.Unmarshal([]byte(plain), &item); err != nil {
+			return nil, fmt.Errorf("decode webauthn credential: %w", err)
+		}
+		if base64.RawURLEncoding.EncodeToString(item.ID) != record.CredentialID {
+			return nil, ErrCredentialMissing
+		}
+		result = append(result, item)
+	}
+	return &webAuthnUser{user: *user, credentials: result}, nil
+}
+
+func (s *Service) loadDiscoverableUser(rawID, userHandle []byte) (*webAuthnUser, error) {
+	const prefix = "smail-user-"
+	if !bytes.HasPrefix(userHandle, []byte(prefix)) || len(rawID) == 0 {
+		return nil, ErrCredentialMissing
+	}
+	userID, err := strconv.Atoi(string(userHandle[len(prefix):]))
+	if err != nil || userID <= 0 {
+		return nil, ErrCredentialMissing
+	}
+	user, err := s.loadUser(userID)
+	if err != nil {
+		return nil, ErrCredentialMissing
+	}
+	adapter, err := s.loadWebAuthnUser(user)
+	if err != nil {
+		return nil, ErrCredentialMissing
+	}
+	for _, item := range adapter.credentials {
+		if bytes.Equal(item.ID, rawID) {
+			return adapter, nil
+		}
+	}
+	return nil, ErrCredentialMissing
+}
+
+func (s *Service) persistLoginCredential(userID int, validated *webauthn.Credential) (*models.WebAuthnCredential, error) {
+	if validated == nil || userID <= 0 {
+		return nil, ErrInvalidRequest
+	}
+	credentialID := base64.RawURLEncoding.EncodeToString(validated.ID)
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+	var record models.WebAuthnCredential
+	has, err := s.engine.Where("user_id = ? AND credential_id = ? AND revoked_at IS NULL", userID, credentialID).Get(&record)
+	if err != nil {
+		return nil, fmt.Errorf("load webauthn login credential: %w", err)
+	}
+	if !has {
+		return nil, ErrCredentialMissing
+	}
+	currentPlain, err := credential.Decrypt(s.vault, record.CredentialData)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt current webauthn credential: %w", err)
+	}
+	var current webauthn.Credential
+	if err := json.Unmarshal([]byte(currentPlain), &current); err != nil {
+		return nil, fmt.Errorf("decode current webauthn credential: %w", err)
+	}
+	if validated.Authenticator.SignCount < current.Authenticator.SignCount {
+		return nil, ErrInvalidRequest
+	}
+	encoded, err := json.Marshal(validated)
+	if err != nil {
+		return nil, fmt.Errorf("encode webauthn login credential: %w", err)
+	}
+	protected, err := credential.Encrypt(s.vault, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("protect webauthn login credential: %w", err)
+	}
+	now := s.now()
+	updated := &models.WebAuthnCredential{CredentialData: protected, LastUsedAt: &now}
+	if affected, err := s.engine.ID(record.ID).Cols("credential_data", "last_used_at").Update(updated); err != nil {
+		return nil, fmt.Errorf("update webauthn login credential: %w", err)
+	} else if affected != 1 {
+		return nil, ErrCredentialMissing
+	}
+	record.CredentialData = protected
+	record.LastUsedAt = &now
+	return &record, nil
+}
+
+func (s *Service) putSession(item ceremony) (string, error) {
+	if s == nil {
+		return "", ErrUnavailable
+	}
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("create webauthn session: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneSessionsLocked(s.now())
+	if len(s.sessions) >= maxSessions {
+		return "", ErrUnavailable
+	}
+	s.sessions[token] = item
+	return token, nil
+}
+
+func (s *Service) takeDiscoverableSession(token string) (ceremony, error) {
+	if s == nil || strings.TrimSpace(token) == "" {
+		return ceremony{}, ErrSessionNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.sessions[token]
+	if !ok {
+		return ceremony{}, ErrSessionNotFound
+	}
+	delete(s.sessions, token)
+	if item.kind != discoverableLoginCeremony {
+		return ceremony{}, ErrSessionNotFound
+	}
+	now := s.now()
+	if !item.expiresAt.After(now) || (!item.data.Expires.IsZero() && !item.data.Expires.After(now)) {
+		return ceremony{}, ErrSessionExpired
+	}
+	return item, nil
+}
+
+func (s *Service) takeSession(token string, kind ceremonyKind, userID int) (ceremony, error) {
+	if s == nil || strings.TrimSpace(token) == "" || userID <= 0 {
+		return ceremony{}, ErrSessionNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.sessions[token]
+	if !ok {
+		return ceremony{}, ErrSessionNotFound
+	}
+	delete(s.sessions, token)
+	if item.kind != kind || item.userID != userID {
+		return ceremony{}, ErrSessionNotFound
+	}
+	now := s.now()
+	if !item.expiresAt.After(now) || (!item.data.Expires.IsZero() && !item.data.Expires.After(now)) {
+		return ceremony{}, ErrSessionExpired
+	}
+	return item, nil
+}
+
+// InvalidateUser 删除指定用户尚未完成的全部 WebAuthn 仪式会话。
+func (s *Service) InvalidateUser(userID int) {
+	if s == nil || userID <= 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for token, item := range s.sessions {
+		if item.userID == userID {
+			delete(s.sessions, token)
+		}
+	}
+}
+
+func (s *Service) pruneSessionsLocked(now time.Time) {
+	for token, item := range s.sessions {
+		if !item.expiresAt.After(now) || (!item.data.Expires.IsZero() && !item.data.Expires.After(now)) {
+			delete(s.sessions, token)
+		}
+	}
+}
+
+type webAuthnUser struct {
+	user        models.User
+	credentials []webauthn.Credential
+}
+
+func (u *webAuthnUser) WebAuthnID() []byte { return []byte(fmt.Sprintf("smail-user-%d", u.user.ID)) }
+
+func (u *webAuthnUser) WebAuthnName() string { return u.user.Account }
+
+func (u *webAuthnUser) WebAuthnDisplayName() string { return u.user.Name }
+
+func (u *webAuthnUser) WebAuthnCredentials() []webauthn.Credential { return u.credentials }

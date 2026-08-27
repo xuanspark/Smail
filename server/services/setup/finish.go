@@ -12,12 +12,14 @@ func Finish() error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	cfg.SetupState = config.SetupStateReady
 	cfg.IsInit = true
 
 	err = config.WriteConfig(cfg)
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	config.IsInit = true
 	// 初始化完成
 	signal.InitChan <- true
 	return nil

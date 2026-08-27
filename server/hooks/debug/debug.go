@@ -6,6 +6,7 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"os"
 )
 
 type Debug struct {
@@ -16,27 +17,27 @@ func NewDebug() *Debug {
 }
 
 func (d Debug) SendBefore(ctx *context.Context, email *parsemail.Email) {
-	fmt.Printf("[debug SendBefore] %+v  ", email)
+	fmt.Print("[debug] SendBefore")
 
 }
 
 func (d Debug) SendAfter(ctx *context.Context, email *parsemail.Email, err map[string]error) {
-	fmt.Printf("[debug SendAfter] %+v  ", email)
+	fmt.Print("[debug] SendAfter")
 
 }
 
 func (d Debug) ReceiveParseBefore(ctx *context.Context, email *[]byte) {
-	fmt.Printf("[debug ReceiveParseBefore] %s  ", *email)
+	fmt.Print("[debug] ReceiveParseBefore")
 
 }
 
 func (d Debug) ReceiveParseAfter(ctx *context.Context, email *parsemail.Email) {
-	fmt.Printf("[debug ReceiveParseAfter] %+v ", email)
+	fmt.Print("[debug] ReceiveParseAfter")
 	email.Status = 5
 }
 
 func (d Debug) ReceiveSaveAfter(ctx *context.Context, email *parsemail.Email, ue []*models.UserEmail) {
-	fmt.Printf("[debug ReceiveSaveAfter] %+v  %+v ", email, ue)
+	fmt.Print("[debug] ReceiveSaveAfter")
 }
 
 func (d Debug) GetName(ctx *context.Context) string {
@@ -48,5 +49,8 @@ func (d Debug) SettingsHtml(ctx *context.Context, url string, requestData string
 }
 
 func main() {
-	framework.CreatePlugin("debug_plugin", NewDebug()).Run()
+	if err := framework.CreatePlugin("debug_plugin", NewDebug()).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

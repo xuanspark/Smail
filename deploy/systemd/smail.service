@@ -1,0 +1,25 @@
+[Unit]
+Description=Smail 邮件服务
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smail
+Group=smail
+WorkingDirectory=/var/lib/smail
+ExecStart=/usr/local/lib/smail/smail
+Restart=on-failure
+RestartSec=5s
+RuntimeDirectory=smail
+RuntimeDirectoryMode=0750
+# 目录由 smail 进程拥有，允许主服务创建受保护的本机控制套接字。
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/smail /run/smail
+
+[Install]
+WantedBy=multi-user.target

@@ -3,6 +3,7 @@ package imap_server
 import (
 	"git.pcux.cn/xuans/Smail/services/group"
 	"github.com/emersion/go-imap/v2"
+	log "github.com/sirupsen/logrus"
 	"strings"
 )
 
@@ -14,20 +15,17 @@ func (s *serverSession) Rename(mailbox, newName string) error {
 		}
 	}
 
-	groupPath := strings.Split(mailbox, "/")
-
-	oldGroupName := groupPath[len(groupPath)-1]
-
 	newGroupPath := strings.Split(newName, "/")
 
 	newGroupName := newGroupPath[len(newGroupPath)-1]
 
-	err := group.Rename(s.ctx, oldGroupName, newGroupName)
+	err := group.Rename(s.ctx, mailbox, newGroupName)
 
 	if err != nil {
+		log.WithContext(s.ctx).WithError(err).Error("rename IMAP mailbox failed")
 		return &imap.Error{
 			Type: imap.StatusResponseTypeNo,
-			Text: err.Error(),
+			Text: "Rename failed",
 		}
 	}
 	return nil

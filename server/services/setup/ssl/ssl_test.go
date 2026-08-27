@@ -7,7 +7,9 @@ import (
 )
 
 func TestCheckSSLCrtInfo(t *testing.T) {
-	config.Init()
+	if err := config.Init(); err != nil {
+		t.Fatal(err)
+	}
 
 	got, got1, match, err := CheckSSLCrtInfo()
 

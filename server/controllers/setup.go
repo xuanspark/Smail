@@ -11,19 +11,30 @@ import (
 	"github.com/spf13/cast"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 )
 
 func AcmeChallenge(w http.ResponseWriter, r *http.Request) {
-	log.Infof("AcmeChallenge: %s", r.URL.Path)
+	const prefix = "/.well-known/acme-challenge/"
+	if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, prefix) {
+		http.NotFound(w, r)
+		return
+	}
+
+	token := strings.TrimPrefix(r.URL.Path, prefix)
+	if token == "" || len(token) > 256 || strings.ContainsAny(token, "/\\") {
+		http.NotFound(w, r)
+		return
+	}
+
 	instance := ssl.GetHttpChallengeInstance()
-	token := strings.ReplaceAll(r.URL.Path, "/.well-known/acme-challenge/", "")
-	auth, exist := instance.AuthInfo[token]
+	keyAuth, exist := instance.KeyAuthorization(token)
 	if exist {
-		w.Write([]byte(auth.KeyAuth))
+		if _, err := w.Write([]byte(keyAuth)); err != nil {
+			log.WithError(err).Warn("write ACME challenge response failed")
+		}
 	} else {
-		log.Errorf("AcmeChallenge Error Token Infos:%+v", instance.AuthInfo)
+		log.Warn("ACME challenge token not found")
 		http.NotFound(w, r)
 	}
 }
@@ -33,24 +44,32 @@ type sslResponse struct {
 	Type string `json:"type"`
 }
 
+func writeSetupError(ctx *context.Context, w http.ResponseWriter, err error) {
+	log.WithContext(ctx).WithError(err).Error("setup request failed")
+	response.NewErrorResponse(response.ServerError, "\u521d\u59cb\u5316\u64cd\u4f5c\u5931\u8d25", "").FPrint(w)
+}
+
 func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	req.Body = http.MaxBytesReader(w, req.Body, 64<<10)
 	reqBytes, err := io.ReadAll(req.Body)
 	if err != nil {
-		response.NewSuccessResponse("").FPrint(w)
+		log.WithContext(ctx).WithError(err).Info("setup request body rejected")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
 		return
 	}
 
 	var reqData map[string]string
 	err = json.Unmarshal(reqBytes, &reqData)
 	if err != nil {
-		response.NewErrorResponse(response.ServerError, "", err.Error()).FPrint(w)
+		log.WithContext(ctx).WithError(err).Info("setup request json rejected")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
 		return
 	}
 
 	if reqData["step"] == "database" && reqData["action"] == "get" {
 		dbType, dbDSN, err := setup.GetDatabaseSettings(ctx)
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 
@@ -64,7 +83,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData["step"] == "database" && reqData["action"] == "set" {
 		err := setup.SetDatabaseSettings(ctx, cast.ToString(reqData["db_type"]), cast.ToString(reqData["db_dsn"]))
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 
@@ -75,7 +94,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData["step"] == "password" && reqData["action"] == "get" {
 		ok, err := setup.GetAdminPassword(ctx)
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 		response.NewSuccessResponse(ok).FPrint(w)
@@ -85,7 +104,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData["step"] == "password" && reqData["action"] == "set" {
 		err := setup.SetAdminPassword(ctx, cast.ToString(reqData["account"]), cast.ToString(reqData["password"]))
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 		response.NewSuccessResponse("Succ").FPrint(w)
@@ -95,7 +114,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData["step"] == "domain" && reqData["action"] == "get" {
 		smtpDomain, webDomain, domains, err := setup.GetDomainSettings()
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 		response.NewSuccessResponse(map[string]any{
@@ -109,7 +128,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData["step"] == "domain" && reqData["action"] == "set" {
 		err := setup.SetDomainSettings(cast.ToString(reqData["smtp_domain"]), cast.ToString(reqData["web_domain"]), reqData["multi_domain"])
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 		response.NewSuccessResponse("Succ").FPrint(w)
@@ -119,7 +138,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData["step"] == "dns" && reqData["action"] == "get" {
 		dnsInfos, err := setup.GetDNSSettings(ctx)
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 		response.NewSuccessResponse(dnsInfos).FPrint(w)
@@ -127,10 +146,14 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	if reqData["step"] == "ssl" && reqData["action"] == "get" {
-		sslType := ssl.GetSSL()
+		sslType, err := ssl.GetSSL()
+		if err != nil {
+			writeSetupError(ctx, w, err)
+			return
+		}
 		res := sslResponse{
 			Type: sslType,
-			Port: config.Instance.GetSetupPort(),
+			Port: config.CurrentConfig().GetSetupPort(),
 		}
 		response.NewSuccessResponse(res).FPrint(w)
 		return
@@ -144,43 +167,27 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	if reqData["step"] == "ssl" && reqData["action"] == "set" {
-
-		if reqData["ssl_type"] == config.SSLTypeUser {
-			keyPath := reqData["key_path"]
-			crtPath := reqData["crt_path"]
-
-			_, err := os.Stat(cast.ToString(keyPath))
-			if err != nil {
-				response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
-				return
-			}
-
-			_, err = os.Stat(cast.ToString(crtPath))
-			if err != nil {
-				response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
-				return
-			}
-		}
-
 		err = ssl.SetSSL(cast.ToString(reqData["ssl_type"]), cast.ToString(reqData["key_path"]), cast.ToString(reqData["crt_path"]))
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+			writeSetupError(ctx, w, err)
 			return
 		}
 
 		if reqData["ssl_type"] == config.SSLTypeAutoHTTP || reqData["ssl_type"] == config.SSLTypeAutoDNS {
 			err = ssl.GenSSL(false)
 			if err != nil {
-				response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+				writeSetupError(ctx, w, err)
 				return
 			}
 		}
 
-		response.NewSuccessResponse("Succ").FPrint(w)
-
 		if reqData["ssl_type"] == config.SSLTypeUser {
-			setup.Finish()
+			if err := setup.Finish(); err != nil {
+				writeSetupError(ctx, w, err)
+				return
+			}
 		}
+		response.NewSuccessResponse("Succ").FPrint(w)
 		return
 	}
 

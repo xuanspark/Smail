@@ -3,20 +3,27 @@ package pop3_server
 import (
 	"bytes"
 	"fmt"
-	"github.com/Jinnrry/gopop"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/internal/gopop"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-message/mail"
 	"io"
+	"path/filepath"
 	"testing"
 )
 
 func Test_action_Retr(t *testing.T) {
-	config.Init()
-	config.Instance.DbType = config.DBTypeSQLite
-	config.Instance.DbDSN = config.ROOT_PATH + "./config/smail_temp.db"
-	db.Init("")
+	testRoot := t.TempDir()
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "pop3.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if db.Instance != nil {
+			_ = db.Instance.Close()
+		}
+	})
 
 	a := action{}
 	session := &gopop.Session{

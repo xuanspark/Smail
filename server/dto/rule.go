@@ -2,7 +2,10 @@ package dto
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"git.pcux.cn/xuans/Smail/models"
+	"strings"
 )
 
 type RuleType int
@@ -31,19 +34,32 @@ type Value struct {
 	Rule  string `json:"rule"`
 }
 
-func (p *Rule) Decode(data *models.Rule) *Rule {
-	json.Unmarshal([]byte(data.Value), &p.Rules)
+func (p *Rule) Decode(data *models.Rule) (*Rule, error) {
+	if p == nil || data == nil {
+		return nil, errors.New("rule is nil")
+	}
+	if strings.TrimSpace(data.Value) != "" {
+		if err := json.Unmarshal([]byte(data.Value), &p.Rules); err != nil {
+			return nil, fmt.Errorf("decode stored rule: %w", err)
+		}
+	}
 	p.Id = data.Id
 	p.Name = data.Name
 	p.Action = RuleType(data.Action)
 	p.Sort = data.Sort
 	p.Params = data.Params
 	p.UserId = data.UserId
-	return p
+	return p, nil
 }
 
-func (p *Rule) Encode() *models.Rule {
-	v, _ := json.Marshal(p.Rules)
+func (p *Rule) Encode() (*models.Rule, error) {
+	if p == nil {
+		return nil, errors.New("rule is nil")
+	}
+	v, err := json.Marshal(p.Rules)
+	if err != nil {
+		return nil, fmt.Errorf("encode rule: %w", err)
+	}
 	ret := &models.Rule{
 		Id:     p.Id,
 		Name:   p.Name,
@@ -52,5 +68,5 @@ func (p *Rule) Encode() *models.Rule {
 		Sort:   p.Sort,
 		Params: p.Params,
 	}
-	return ret
+	return ret, nil
 }

@@ -84,8 +84,8 @@ func (e WordEncoder) bEncode(buf *strings.Builder, charset, s string) {
 	// If the charset is not UTF-8 or if the content is short, do not bother
 	// splitting the encoded-word.
 	if !isUTF8(charset) || base64.StdEncoding.EncodedLen(len(s)) <= maxContentLen {
-		io.WriteString(w, s)
-		w.Close()
+		_, _ = io.WriteString(w, s)
+		_ = w.Close()
 		return
 	}
 
@@ -98,15 +98,15 @@ func (e WordEncoder) bEncode(buf *strings.Builder, charset, s string) {
 		if currentLen+runeLen <= maxBase64Len {
 			currentLen += runeLen
 		} else {
-			io.WriteString(w, s[last:i])
-			w.Close()
+			_, _ = io.WriteString(w, s[last:i])
+			_ = w.Close()
 			e.splitWord(buf, charset)
 			last = i
 			currentLen = runeLen
 		}
 	}
-	io.WriteString(w, s[last:])
-	w.Close()
+	_, _ = io.WriteString(w, s[last:])
+	_ = w.Close()
 }
 
 // qEncode encodes s using Q encoding and writes it to buf. It splits the

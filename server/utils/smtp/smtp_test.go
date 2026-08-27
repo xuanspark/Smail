@@ -1,15 +1,67 @@
 package smtp
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/textproto"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestDialRejectsNonPublicRemoteAddress(t *testing.T) {
+	tests := []string{
+		"127.0.0.1",
+		"::1",
+		"10.0.0.1",
+		"172.16.0.1",
+		"192.168.0.1",
+		"169.254.0.1",
+		"100.64.0.1",
+		"192.0.2.1",
+		"198.51.100.1",
+		"203.0.113.1",
+		"2001:db8::1",
+		"0.0.0.0",
+	}
+	for _, host := range tests {
+		t.Run(host, func(t *testing.T) {
+			_, err := Dial(net.JoinHostPort(host, "25"), "example.com")
+			if !errors.Is(err, ErrUnsafeRemoteAddress) {
+				t.Fatalf("Dial() error = %v, want ErrUnsafeRemoteAddress", err)
+			}
+		})
+	}
+}
+
+func TestSendMailUnsafeRejectsNonLoopbackTargets(t *testing.T) {
+	tests := []struct {
+		name   string
+		domain string
+		addr   string
+	}{
+		{name: "external domain", domain: "example.com", addr: "127.0.0.1:25"},
+		{name: "private address", domain: "localhost", addr: "10.0.0.1:25"},
+		{name: "public address", domain: "localhost", addr: "8.8.8.8:25"},
+		{name: "hostname target", domain: "localhost", addr: "localhost:25"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := SendMailUnsafe(tt.domain, tt.addr, nil, "sender@example.com", "example.com", []string{"recipient@example.net"}, []byte("test"))
+			if !errors.Is(err, ErrUnsafePlaintextTarget) {
+				t.Fatalf("SendMailUnsafe() error = %v, want ErrUnsafePlaintextTarget", err)
+			}
+		})
+	}
+}
 
 func TestSendMailUnsafeUsesFinalDataResponseAsDeliveryResult(t *testing.T) {
 	tests := []struct {
@@ -38,7 +90,7 @@ func TestSendMailUnsafeUsesFinalDataResponseAsDeliveryResult(t *testing.T) {
 
 			start := time.Now()
 			err := SendMailUnsafe(
-				"",
+				"localhost",
 				addr,
 				nil,
 				"sender@example.com",
@@ -179,4 +231,79 @@ func expectSMTPCommand(conn *textproto.Conn, prefix string) error {
 		return fmt.Errorf("SMTP command = %q, want prefix %q", line, prefix)
 	}
 	return nil
+}
+
+func TestSMTPGreetingTimeout(t *testing.T) {
+	client, server := net.Pipe()
+	defer server.Close()
+
+	started := time.Now()
+	if _, err := newClientWithTimeout(client, "localhost", "example.com", 25*time.Millisecond); err == nil {
+		t.Fatal("silent SMTP server did not time out")
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("SMTP greeting timeout took too long: %v", elapsed)
+	}
+}
+
+func TestTLSHandshakeTimeout(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	started := time.Now()
+	if _, err := handshakeTLS(client, &tls.Config{MinVersion: tls.VersionTLS12}, 25*time.Millisecond); err == nil {
+		t.Fatal("silent TLS peer did not time out")
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("TLS handshake timeout took too long: %v", elapsed)
+	}
+}
+
+func TestDialTlsRejectsUntrustedCertificate(t *testing.T) {
+	certificate := newUntrustedTestCertificate(t)
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	accepted := make(chan struct{})
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			close(accepted)
+			_ = conn.Close()
+		}
+	}()
+	if _, err = dialTLS(listener.Addr().String(), "localhost", "example.com", false); err == nil {
+		t.Fatal("DialTls accepted an untrusted certificate")
+	}
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("TLS test server did not accept a connection")
+	}
+}
+
+func newUntrustedTestCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		DNSNames:     []string{"localhost"},
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: privateKey}
 }

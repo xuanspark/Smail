@@ -1,11 +1,15 @@
 package send
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/textproto"
 	"testing"
+
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
 
 func TestIsPermanentSMTPResponse(t *testing.T) {
@@ -76,5 +80,81 @@ func TestDeliveryFailureCauseKeepsExplicitSMTPRejection(t *testing.T) {
 
 	if got := deliveryFailureCause(lookupErr, rejection); got != rejection {
 		t.Fatalf("deliveryFailureCause() = %v, want explicit SMTP rejection %v", got, rejection)
+	}
+}
+
+func TestCertificateVerificationErrorStopsFallback(t *testing.T) {
+	verificationErr := &tls.CertificateVerificationError{Err: errors.New("hostname mismatch")}
+	if !isCertificateVerificationError(fmt.Errorf("STARTTLS failed: %w", verificationErr)) {
+		t.Fatal("wrapped certificate verification error was not detected")
+	}
+	if isCertificateVerificationError(errors.New("connection refused")) {
+		t.Fatal("network error was treated as a certificate verification error")
+	}
+}
+
+func TestAllowUnsafeSMTPRequiresExplicitLoopbackTestTarget(t *testing.T) {
+	tests := []struct {
+		name   string
+		domain mxDomain
+		want   bool
+	}{
+		{name: "explicit local test", domain: mxDomain{domain: "localhost", mxHost: "127.0.0.1", localTest: true}, want: true},
+		{name: "external domain", domain: mxDomain{domain: "example.com", mxHost: "mx.example.com"}},
+		{name: "forged localhost name", domain: mxDomain{domain: "localhost", mxHost: "127.0.0.1"}},
+		{name: "test flag with external host", domain: mxDomain{domain: "localhost", mxHost: "192.0.2.1", localTest: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := allowUnsafeSMTP(tt.domain); got != tt.want {
+				t.Fatalf("allowUnsafeSMTP() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseRecipientAddressRejectsUnsafeInput(t *testing.T) {
+	tests := []struct {
+		name string
+		user *parsemail.User
+	}{
+		{name: "nil recipient"},
+		{name: "empty address", user: &parsemail.User{}},
+		{name: "missing domain", user: &parsemail.User{EmailAddress: "recipient"}},
+		{name: "surrounding whitespace", user: &parsemail.User{EmailAddress: " recipient@example.com"}},
+		{name: "header injection", user: &parsemail.User{EmailAddress: "recipient@example.com\r\nBcc: victim@example.com"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, _, err := parseRecipientAddress(tt.user); err == nil {
+				t.Fatal("unsafe recipient address was accepted")
+			}
+		})
+	}
+}
+
+func TestDoSendReportsInvalidRecipients(t *testing.T) {
+	err, failures := doSend(
+		&appcontext.Context{},
+		"example.com",
+		[]byte("message"),
+		[]*parsemail.User{{EmailAddress: "invalid"}, nil},
+		"sender@example.com",
+	)
+	if err == nil {
+		t.Fatal("invalid recipients were reported as delivered")
+	}
+	if len(failures) != 2 {
+		t.Fatalf("failure count = %d, want 2", len(failures))
+	}
+}
+
+func TestDoSendRejectsEmptyRecipientList(t *testing.T) {
+	err, failures := doSend(&appcontext.Context{}, "example.com", []byte("message"), nil, "sender@example.com")
+	if err == nil {
+		t.Fatal("empty recipient list was reported as delivered")
+	}
+	if len(failures) != 1 {
+		t.Fatalf("failure count = %d, want 1", len(failures))
 	}
 }

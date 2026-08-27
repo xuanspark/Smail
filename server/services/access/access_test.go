@@ -1,0 +1,135 @@
+package access
+
+import "testing"
+
+func TestDefaultDeny(t *testing.T) {
+	tests := []struct {
+		name string
+		req  Request
+		code DenialCode
+	}{
+		{name: "invalid role", req: Request{ActorRole: Role("root"), Capability: CapabilityConfigRead}, code: CodeInvalidRole},
+		{name: "unknown capability", req: Request{ActorRole: RoleSuperAdmin, Capability: Capability("config.delete")}, code: CodeUnknownCapability},
+		{name: "missing grant", req: Request{ActorRole: RoleUser, Capability: CapabilityConfigRollback}, code: CodeAccessDenied},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := Authorize(test.req); !IsDenied(err, test.code) {
+				t.Fatalf("expected %s, got %v", test.code, err)
+			}
+		})
+	}
+}
+
+func TestRoleBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		req  Request
+		code DenialCode
+	}{
+		{name: "super admin resets admin", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPasswordReset, TargetRole: RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}},
+		{name: "super admin cannot be web reset target", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPasswordReset, TargetRole: RoleSuperAdmin, RecentAuth: true, RecoveryCodeConfigured: true}, code: CodeTargetRoleDenied},
+		{name: "admin resets user", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPasswordReset, TargetRole: RoleUser, RecentAuth: true, RecoveryCodeConfigured: true}},
+		{name: "admin cannot reset admin", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPasswordReset, TargetRole: RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}, code: CodeTargetRoleDenied},
+		{name: "user cannot reset another user", req: Request{ActorRole: RoleUser, Capability: CapabilityPasswordReset, TargetRole: RoleUser, RecentAuth: true, RecoveryCodeConfigured: true}, code: CodeAccessDenied},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := Authorize(test.req)
+			if test.code == "" && err != nil {
+				t.Fatalf("expected allow, got %v", err)
+			}
+			if test.code != "" && !IsDenied(err, test.code) {
+				t.Fatalf("expected %s, got %v", test.code, err)
+			}
+		})
+	}
+}
+
+func TestRecoveryAndRecentAuthentication(t *testing.T) {
+	admin := Request{ActorRole: RoleAdmin, Capability: CapabilityPluginRestart, RecentAuth: true, PluginInstanceAuthorized: true}
+	if err := Authorize(admin); !IsDenied(err, CodeRecoveryCodeRequired) {
+		t.Fatalf("expected recovery code requirement, got %v", err)
+	}
+	admin.RecoveryCodeConfigured = true
+	admin.RecentAuth = false
+	if err := Authorize(admin); !IsDenied(err, CodeRecentAuthRequired) {
+		t.Fatalf("expected recent authentication requirement, got %v", err)
+	}
+	superAdmin := Request{ActorRole: RoleSuperAdmin, Capability: CapabilityConfigRollback, RecentAuth: true}
+	if err := Authorize(superAdmin); !IsDenied(err, CodeRecoveryCodeRequired) {
+		t.Fatalf("super admin without recovery code must be denied: %v", err)
+	}
+	superAdmin.RecoveryCodeConfigured = true
+	if err := Authorize(superAdmin); err != nil {
+		t.Fatalf("super admin with recovery code should be allowed: %v", err)
+	}
+}
+
+func TestRoleChangeRequiresTargetRecovery(t *testing.T) {
+	req := Request{ActorRole: RoleSuperAdmin, Capability: CapabilityRoleManage, TargetRole: RoleUser, NewRole: RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}
+	if err := Authorize(req); !IsDenied(err, CodeRecoveryCodeRequired) {
+		t.Fatalf("expected target recovery requirement, got %v", err)
+	}
+	req.TargetRecoveryConfigured = true
+	if err := Authorize(req); err != nil {
+		t.Fatalf("expected role change to be allowed, got %v", err)
+	}
+}
+
+func TestAdminPluginRestartScope(t *testing.T) {
+	req := Request{ActorRole: RoleAdmin, Capability: CapabilityPluginRestart, RecentAuth: true, RecoveryCodeConfigured: true}
+	if err := Authorize(req); !IsDenied(err, CodePluginScopeDenied) {
+		t.Fatalf("expected plugin scope denial, got %v", err)
+	}
+	req.PluginInstanceAuthorized = true
+	if err := Authorize(req); err != nil {
+		t.Fatalf("expected plugin restart to be allowed, got %v", err)
+	}
+}
+
+func TestManagementEndpointCatalog(t *testing.T) {
+	endpoints := ManagementEndpoints()
+	if len(endpoints) != 7 {
+		t.Fatalf("unexpected endpoint count: %d", len(endpoints))
+	}
+	seen := map[string]struct{}{}
+	for _, endpoint := range endpoints {
+		key := endpoint.Method + " " + endpoint.Path
+		if _, ok := seen[key]; ok {
+			t.Fatalf("duplicate endpoint: %s", key)
+		}
+		seen[key] = struct{}{}
+		if _, ok := GetPolicy(endpoint.Capability); !ok {
+			t.Fatalf("endpoint %s references unknown capability", key)
+		}
+	}
+	endpoint, ok := LookupEndpoint("POST", "/api/plugin/settings/example")
+	if !ok || endpoint.Capability != CapabilityPluginWriteOwn {
+		t.Fatal("plugin settings endpoint was not matched")
+	}
+}
+
+func TestEveryManagementEndpointHasAllowAndDeny(t *testing.T) {
+	for _, endpoint := range ManagementEndpoints() {
+		actorRole := RoleSuperAdmin
+		allowed := Request{
+			ActorRole:                actorRole,
+			Capability:               endpoint.Capability,
+			TargetRole:               RoleUser,
+			OwnResource:              true,
+			RecentAuth:               true,
+			RecoveryCodeConfigured:   true,
+			TargetRecoveryConfigured: true,
+			PluginInstanceAuthorized: true,
+		}
+		if err := Authorize(allowed); err != nil {
+			t.Fatalf("expected allow for %s %s: %v", endpoint.Method, endpoint.Path, err)
+		}
+		denied := allowed
+		denied.ActorRole = Role("unknown")
+		if err := Authorize(denied); !IsDenied(err, CodeInvalidRole) {
+			t.Fatalf("expected deny for %s %s, got %v", endpoint.Method, endpoint.Path, err)
+		}
+	}
+}

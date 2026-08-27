@@ -1,0 +1,80 @@
+.settings-card {
+  padding: 0;
+}
+
+.settings-header {
+  margin-bottom: 24px;
+}
+
+.settings-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--pm-text-primary);
+  margin: 0 0 8px 0;
+}
+
+.settings-desc {
+  font-size: 14px;
+  color: var(--pm-text-secondary);
+  margin: 0;
+}
+
+.table-container {
+  border: 1px solid var(--pm-border-color);
+  border-radius: var(--pm-radius-sm);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.modern-table :deep(th.el-table__cell) {
+  background-color: var(--pm-bg-secondary);
+  color: var(--pm-text-secondary);
+  font-weight: 600;
+}
+
+.status-tag {
+  border-radius: var(--pm-radius-sm);
+}
+
+.new-btn {
+  border-radius: var(--pm-radius-sm);
+}
+
+.action-btn {
+  border-radius: var(--pm-radius-sm);
+  padding: 4px 12px;
+}
+
+.pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Dialog Styles */
+.premium-dialog :deep(.el-dialog__header) {
+  border-bottom: 1px solid var(--pm-border-color);
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.dialog-content {
+  padding: 0 8px;
+}
+
+.status-switch {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--pm-bg-secondary);
+  border-radius: var(--pm-radius-sm);
+  border: 1px solid var(--pm-border-color);
+}
+
+.switch-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pm-text-primary);
+}

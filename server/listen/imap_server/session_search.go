@@ -1,6 +1,8 @@
 package imap_server
 
 import (
+	"fmt"
+
 	"git.pcux.cn/xuans/Smail/services/list"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
@@ -12,13 +14,13 @@ import (
 // Supports: UID, SeqNum, Date filters, Header search, Body/Text search,
 // Flag filters, Size filters, and logical combinations (NOT, OR)
 func (s *serverSession) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
-	log.WithContext(s.ctx).Debugf("IMAP SEARCH: mailbox=%s, kind=%v, criteria=%+v", s.currentMailbox, kind, criteria)
+	log.WithContext(s.ctx).Debugf("IMAP SEARCH started: kind=%v", kind)
 
 	// Use the new comprehensive search function
 	retList, err := list.SearchEmails(s.ctx, s.currentMailbox, criteria)
 	if err != nil {
 		log.WithContext(s.ctx).Errorf("IMAP SEARCH error: %v", err)
-		return nil, err
+		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Search failed"}
 	}
 
 	ret := &imap.SearchData{}
@@ -27,29 +29,37 @@ func (s *serverSession) Search(kind imapserver.NumKind, criteria *imap.SearchCri
 		// Return sequence numbers
 		idList := imap.SeqSet{}
 		for _, data := range retList {
+			sequence, err := imapUint32(data.SerialNumber)
+			if err != nil || sequence == 0 {
+				return nil, fmt.Errorf("IMAP sequence number out of range")
+			}
 			idList = append(idList, imap.SeqRange{
-				Start: cast.ToUint32(data.SerialNumber),
-				Stop:  cast.ToUint32(data.SerialNumber),
+				Start: sequence,
+				Stop:  sequence,
 			})
 		}
+		count, err := imapUint32(len(retList))
+		if err != nil {
+			return nil, err
+		}
 		ret.All = idList
-		ret.Count = uint32(len(retList))
+		ret.Count = count
 
 		// Handle ESEARCH options
-		if options != nil {
-			if options.ReturnMin && len(retList) > 0 {
-				ret.Min = cast.ToUint32(retList[0].SerialNumber)
-				for _, data := range retList {
-					if cast.ToUint32(data.SerialNumber) < ret.Min {
-						ret.Min = cast.ToUint32(data.SerialNumber)
+		if options != nil && len(idList) > 0 {
+			if options.ReturnMin {
+				ret.Min = idList[0].Start
+				for _, item := range idList[1:] {
+					if item.Start < ret.Min {
+						ret.Min = item.Start
 					}
 				}
 			}
-			if options.ReturnMax && len(retList) > 0 {
-				ret.Max = cast.ToUint32(retList[0].SerialNumber)
-				for _, data := range retList {
-					if cast.ToUint32(data.SerialNumber) > ret.Max {
-						ret.Max = cast.ToUint32(data.SerialNumber)
+			if options.ReturnMax {
+				ret.Max = idList[0].Start
+				for _, item := range idList[1:] {
+					if item.Start > ret.Max {
+						ret.Max = item.Start
 					}
 				}
 			}
@@ -58,30 +68,40 @@ func (s *serverSession) Search(kind imapserver.NumKind, criteria *imap.SearchCri
 		// Return UIDs
 		idList := imap.UIDSet{}
 		for _, data := range retList {
+			uid, err := imapUID(data.ID)
+			if err != nil {
+				return nil, err
+			}
 			idList = append(idList, imap.UIDRange{
-				Start: imap.UID(data.ID),
-				Stop:  imap.UID(data.ID),
+				Start: uid,
+				Stop:  uid,
 			})
+		}
+		count, err := imapUint32(len(retList))
+		if err != nil {
+			return nil, err
 		}
 		ret.UID = true
 		ret.All = idList
-		ret.Count = uint32(len(retList))
+		ret.Count = count
 
 		// Handle ESEARCH options
-		if options != nil {
-			if options.ReturnMin && len(retList) > 0 {
-				ret.Min = cast.ToUint32(retList[0].ID)
-				for _, data := range retList {
-					if cast.ToUint32(data.ID) < ret.Min {
-						ret.Min = cast.ToUint32(data.ID)
+		if options != nil && len(idList) > 0 {
+			if options.ReturnMin {
+				ret.Min = cast.ToUint32(idList[0].Start)
+				for _, item := range idList[1:] {
+					value := cast.ToUint32(item.Start)
+					if value < ret.Min {
+						ret.Min = value
 					}
 				}
 			}
-			if options.ReturnMax && len(retList) > 0 {
-				ret.Max = cast.ToUint32(retList[0].ID)
-				for _, data := range retList {
-					if cast.ToUint32(data.ID) > ret.Max {
-						ret.Max = cast.ToUint32(data.ID)
+			if options.ReturnMax {
+				ret.Max = cast.ToUint32(idList[0].Start)
+				for _, item := range idList[1:] {
+					value := cast.ToUint32(item.Start)
+					if value > ret.Max {
+						ret.Max = value
 					}
 				}
 			}

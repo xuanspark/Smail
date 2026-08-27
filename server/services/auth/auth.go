@@ -1,24 +1,124 @@
 package auth
 
 import (
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/mail"
+	"path/filepath"
+	"strings"
+
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/password"
+	"git.pcux.cn/xuans/Smail/utils/validation"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"strings"
 )
 
-// HasAuth 检查当前用户是否有某个邮件的auth
-func HasAuth(ctx *context.Context, email *models.Email) bool {
-	if ctx.IsAdmin {
+// Authenticate 统一校验网页、SMTP、IMAP 和 POP3 的用户凭据。
+func NormalizeAccount(account string) string {
+	account = strings.TrimSpace(account)
+	if index := strings.IndexByte(account, '@'); index > 0 {
+		account = account[:index]
+	}
+	return account
+}
+
+// AuthenticateIdentifier 支持账号和受信主域名邮箱两种登录标识，最终统一到同一账号密码校验。
+func AuthenticateIdentifier(identifier, plain string) (*models.User, error) {
+	account, err := NormalizeIdentifier(identifier)
+	if err != nil {
+		if plain != "" {
+			password.VerifyDummy(plain)
+		}
+		return nil, errors.New("invalid credentials")
+	}
+	return Authenticate(account, plain)
+}
+
+// NormalizeIdentifier 将完整邮箱解析为本地账号，并拒绝未配置的域名。
+func NormalizeIdentifier(identifier string) (string, error) {
+	identifier = strings.TrimSpace(strings.ToLower(identifier))
+	if identifier == "" || strings.ContainsAny(identifier, "\r\n") {
+		return "", errors.New("invalid identifier")
+	}
+	if !strings.Contains(identifier, "@") {
+		return validation.NormalizeAccount(identifier)
+	}
+	parsed, err := mail.ParseAddress(identifier)
+	if err != nil || parsed.Address != identifier {
+		return "", errors.New("invalid identifier")
+	}
+	parts := strings.Split(identifier, "@")
+	if len(parts) != 2 || parts[0] == "" || !isConfiguredLoginDomain(parts[1]) {
+		return "", errors.New("invalid identifier")
+	}
+	return validation.NormalizeAccount(parts[0])
+}
+
+func isConfiguredLoginDomain(domain string) bool {
+	current := config.CurrentConfig()
+	if current == nil {
+		return false
+	}
+	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+	if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(current.Domain)), ".") == domain {
 		return true
+	}
+	for _, item := range current.Domains {
+		if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(item)), ".") == domain {
+			return true
+		}
+	}
+	return false
+}
+
+func Authenticate(account, plain string) (*models.User, error) {
+	account = NormalizeAccount(account)
+	account, err := validation.NormalizeAccount(account)
+	if err != nil || plain == "" || len([]byte(plain)) > 256 {
+		return nil, errors.New("invalid credentials")
+	}
+	var user models.User
+	has, err := db.Instance.Where("account = ? and disabled = 0", account).Get(&user)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			password.VerifyDummy(plain)
+			return nil, errors.New("invalid credentials")
+		}
+		return nil, fmt.Errorf("load user: %w", err)
+	}
+	if !has || user.ID == 0 {
+		password.VerifyDummy(plain)
+		return nil, errors.New("invalid credentials")
+	}
+	if !password.Verify(user.Password, plain) {
+		return nil, errors.New("invalid credentials")
+	}
+	return &user, nil
+}
+
+// HashPassword 统一生成新密码哈希。
+func HashPassword(plain string) (string, error) {
+	return password.Hash(plain)
+}
+
+// SetPassword 为用户设置新密码。
+func SetPassword(user *models.User, plain string) error {
+	hash, err := HashPassword(plain)
+	if err != nil {
+		return err
+	}
+	user.Password = hash
+	return nil
+}
+
+// HasAuth 检查当前用户是否有某个邮件的访问权限。
+func HasAuth(ctx *context.Context, email *models.Email) bool {
+	if ctx == nil || email == nil || ctx.UserID <= 0 || email.Id <= 0 || db.Instance == nil {
+		return false
 	}
 	var ue []models.UserEmail
 	err := db.Instance.Table(&models.UserEmail{}).Where("email_id = ? and user_id = ?", email.Id, ctx.UserID).Find(&ue)
@@ -30,73 +130,19 @@ func HasAuth(ctx *context.Context, email *models.Email) bool {
 	return len(ue) != 0
 }
 
-func DkimGen() string {
-	privKeyStr, _ := os.ReadFile("./config/dkim/dkim.priv")
-	publicKeyStr, _ := os.ReadFile("./config/dkim/dkim.public")
-	if len(privKeyStr) > 0 && len(publicKeyStr) > 0 {
-		return string(publicKeyStr)
+func DkimGen() (string, error) {
+	basePath := filepath.Join(config.ROOT_PATH, "config", "dkim")
+	cfg := config.CurrentConfig()
+	if cfg == nil {
+		return "", fmt.Errorf("runtime configuration is unavailable")
 	}
-
-	var (
-		privKey crypto.Signer
-		err     error
-	)
-
-	privKey, err = rsa.GenerateKey(rand.Reader, 1024)
-
+	privatePath := cfg.DkimPrivateKeyPath
+	if privatePath == "" {
+		privatePath = filepath.Join(basePath, "dkim.priv")
+	}
+	publicKey, err := ensureDKIMKeyPair(basePath, privatePath)
 	if err != nil {
-		log.Fatalf("Failed to generate key: %v", err)
+		return "", fmt.Errorf("generate DKIM key pair: %w", err)
 	}
-
-	privBytes, err := x509.MarshalPKCS8PrivateKey(privKey)
-	if err != nil {
-		log.Fatalf("Failed to marshal private key: %v", err)
-	}
-
-	f, err := os.OpenFile("./config/dkim/dkim.priv", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Fatalf("Failed to create key file: %v", err)
-	}
-	defer f.Close()
-
-	privBlock := pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: privBytes,
-	}
-	if err := pem.Encode(f, &privBlock); err != nil {
-		log.Fatalf("Failed to write key PEM block: %v", err)
-	}
-	if err := f.Close(); err != nil {
-		log.Fatalf("Failed to close key file: %v", err)
-	}
-
-	var pubBytes []byte
-
-	switch pubKey := privKey.Public().(type) {
-	case *rsa.PublicKey:
-		// RFC 6376 is inconsistent about whether RSA public keys should
-		// be formatted as RSAPublicKey or SubjectPublicKeyInfo.
-		// Erratum 3017 (https://www.rfc-editor.org/errata/eid3017)
-		// proposes allowing both.  We use SubjectPublicKeyInfo for
-		// consistency with other implementations including opendkim,
-		// Gmail, and Fastmail.
-		pubBytes, err = x509.MarshalPKIXPublicKey(pubKey)
-		if err != nil {
-			log.Fatalf("Failed to marshal public key: %v", err)
-		}
-	default:
-		panic("unreachable")
-	}
-
-	params := []string{
-		"v=DKIM1",
-		"k=rsa",
-		"p=" + base64.StdEncoding.EncodeToString(pubBytes),
-	}
-
-	publicKey := strings.Join(params, "; ")
-
-	os.WriteFile("./config/dkim/dkim.public", []byte(publicKey), 0666)
-
-	return publicKey
+	return publicKey, nil
 }

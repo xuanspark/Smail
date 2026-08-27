@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"encoding/json"
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/i18n"
@@ -10,18 +9,22 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 )
 
 func GetUserGroupList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	defaultGroup := []*models.Group{
-		{models.INBOX, i18n.GetText(ctx.Lang, "inbox"), 0, 0, "/"},     // 收件箱
-		{models.Junk, i18n.GetText(ctx.Lang, "junk"), 0, 0, "/"},       //垃圾邮件
-		{models.Deleted, i18n.GetText(ctx.Lang, "deleted"), 0, 0, "/"}, //已删除
+		{ID: models.INBOX, Name: i18n.GetText(ctx.Lang, "inbox"), ParentId: 0, UserId: 0, FullPath: "/"},     // 收件箱
+		{ID: models.Junk, Name: i18n.GetText(ctx.Lang, "junk"), ParentId: 0, UserId: 0, FullPath: "/"},       //垃圾邮件
+		{ID: models.Deleted, Name: i18n.GetText(ctx.Lang, "deleted"), ParentId: 0, UserId: 0, FullPath: "/"}, //已删除
 	}
 
-	infos := group.GetGroupList(ctx)
+	infos, err := group.GetGroupList(ctx)
+	if err != nil {
+		log.WithContext(ctx).WithError(err).Error("query group list failed")
+		response.NewErrorResponse(response.ServerError, "\u83b7\u53d6\u5206\u7ec4\u5217\u8868\u5931\u8d25", "").FPrint(w)
+		return
+	}
 
 	response.NewSuccessResponse(append(defaultGroup, infos...)).FPrint(w)
 }
@@ -51,7 +54,13 @@ func GetUserGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request
 		},
 	}
 
-	retData = array.Merge(retData, group.GetGroupInfoList(ctx))
+	infos, err := group.GetGroupInfoList(ctx)
+	if err != nil {
+		log.WithContext(ctx).WithError(err).Error("query group tree failed")
+		response.NewErrorResponse(response.ServerError, "\u83b7\u53d6\u5206\u7ec4\u5217\u8868\u5931\u8d25", "").FPrint(w)
+		return
+	}
+	retData = array.Merge(retData, infos)
 
 	response.NewSuccessResponse(retData).FPrint(w)
 }
@@ -62,20 +71,17 @@ type addGroupRequest struct {
 }
 
 func AddGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	var reqData *addGroupRequest
-	reqBytes, err := io.ReadAll(req.Body)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
-	}
-	err = json.Unmarshal(reqBytes, &reqData)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
+	var reqData addGroupRequest
+	if err := decodeJSONRequest(w, req, &reqData); err != nil {
+		log.WithContext(ctx).WithError(err).Info("invalid group create request")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		return
 	}
 
 	newGroup, err := group.CreateGroup(ctx, reqData.Name, reqData.ParentId)
-
 	if err != nil {
-		response.NewErrorResponse(response.ServerError, "DBError", err.Error()).FPrint(w)
+		log.WithContext(ctx).WithError(err).Error("create group failed")
+		response.NewErrorResponse(response.ServerError, "\u521b\u5efa\u5206\u7ec4\u5931\u8d25", "").FPrint(w)
 		return
 	}
 
@@ -87,19 +93,16 @@ type delGroupRequest struct {
 }
 
 func DelGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	var reqData *delGroupRequest
-	reqBytes, err := io.ReadAll(req.Body)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
-	}
-	err = json.Unmarshal(reqBytes, &reqData)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
+	var reqData delGroupRequest
+	if err := decodeJSONRequest(w, req, &reqData); err != nil {
+		log.WithContext(ctx).WithError(err).Info("invalid group delete request")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		return
 	}
 	succ, err := group.DelGroup(ctx, reqData.Id)
-
 	if err != nil {
-		response.NewErrorResponse(response.ServerError, "DBError", err.Error()).FPrint(w)
+		log.WithContext(ctx).WithError(err).Error("delete group failed")
+		response.NewErrorResponse(response.ServerError, "\u5220\u9664\u5206\u7ec4\u5931\u8d25", "").FPrint(w)
 		return
 	}
 	response.NewSuccessResponse(succ).FPrint(w)

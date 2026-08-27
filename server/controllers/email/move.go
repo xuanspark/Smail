@@ -1,13 +1,11 @@
 package email
 
 import (
-	"encoding/json"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/group"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 )
 
@@ -18,17 +16,14 @@ type moveRequest struct {
 }
 
 func Move(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	reqBytes, err := io.ReadAll(req.Body)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
-	}
 	var reqData moveRequest
-	err = json.Unmarshal(reqBytes, &reqData)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
+	if err := decodeEmailJSONRequest(w, req, &reqData, maxEmailJSONRequestBytes); err != nil {
+		log.WithContext(ctx).WithError(err).Info("invalid email move request")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		return
 	}
 
-	if len(reqData.IDs) <= 0 {
+	if len(reqData.IDs) <= 0 || len(reqData.IDs) > maxEmailOperationIDs {
 		response.NewErrorResponse(response.ParamsError, "ID错误", "").FPrint(w)
 		return
 	}
@@ -36,11 +31,13 @@ func Move(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if name, ok := models.GroupCodeToName[reqData.GroupId]; ok {
 		err := group.Move2DefaultBox(ctx, reqData.IDs, name)
 		if err != nil {
-			response.NewErrorResponse(response.ServerError, "Error", err.Error()).FPrint(w)
+			log.WithContext(ctx).WithError(err).Error("move email failed")
+			response.NewErrorResponse(response.ServerError, "\u79fb\u52a8\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
 			return
 		}
-	} else if !group.MoveMailToGroup(ctx, reqData.IDs, reqData.GroupId) {
-		response.NewErrorResponse(response.ServerError, "Error", "").FPrint(w)
+	} else if err := group.MoveMailToGroup(ctx, reqData.IDs, reqData.GroupId); err != nil {
+		log.WithContext(ctx).WithError(err).Error("move email to user mailbox failed")
+		response.NewErrorResponse(response.ServerError, "\u79fb\u52a8\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
 		return
 	}
 	response.NewSuccessResponse("success").FPrint(w)

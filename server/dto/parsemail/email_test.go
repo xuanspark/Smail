@@ -13,6 +13,15 @@ import (
 	"github.com/emersion/go-message"
 )
 
+func mustParseEmail(t *testing.T, to []string, r io.Reader, size int) *Email {
+	t.Helper()
+	email, err := NewEmailFromReader(to, r, size)
+	if err != nil {
+		t.Fatalf("parse email: %v", err)
+	}
+	return email
+}
+
 func builtMessageDate(t *testing.T, raw []byte) time.Time {
 	t.Helper()
 
@@ -42,7 +51,7 @@ func TestEmailDateFromReaderPreservesInstant(t *testing.T) {
 		t.Fatalf("parse fixture date: %v", err)
 	}
 
-	email := NewEmailFromReader([]string{"recipient@example.com"}, bytes.NewReader(raw), len(raw))
+	email := mustParseEmail(t, []string{"recipient@example.com"}, bytes.NewReader(raw), len(raw))
 	stored, err := time.Parse(time.RFC3339, email.Date)
 	if err != nil {
 		t.Fatalf("stored Date is not RFC3339: %q: %v", email.Date, err)
@@ -51,7 +60,11 @@ func TestEmailDateFromReaderPreservesInstant(t *testing.T) {
 		t.Fatalf("stored Date changed instant: got %s, want %s", stored, expected)
 	}
 
-	got := builtMessageDate(t, email.BuildBytes(nil, false))
+	built, err := email.BuildBytes(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := builtMessageDate(t, built)
 	if !got.Equal(expected) {
 		t.Fatalf("rebuilt Date changed instant: got %s, want %s", got, expected)
 	}
@@ -59,7 +72,7 @@ func TestEmailDateFromReaderPreservesInstant(t *testing.T) {
 
 func TestEmailDateFromModelPreservesUTCInstant(t *testing.T) {
 	expected := time.Date(2026, time.August, 9, 11, 51, 8, 0, time.UTC)
-	email := NewEmailFromModel(models.Email{
+	email, err := NewEmailFromModel(models.Email{
 		Id:          1,
 		FromAddress: "sender@example.com",
 		To:          `[{"EmailAddress":"recipient@example.com","Name":""}]`,
@@ -67,12 +80,19 @@ func TestEmailDateFromModelPreservesUTCInstant(t *testing.T) {
 		SendDate:    expected,
 		MsgID:       "date-model@example.com",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if email.Date != expected.Format(time.RFC3339) {
 		t.Fatalf("model Date = %q, want %q", email.Date, expected.Format(time.RFC3339))
 	}
 
-	got := builtMessageDate(t, email.BuildBytes(nil, false))
+	built, err := email.BuildBytes(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := builtMessageDate(t, built)
 	if !got.Equal(expected) {
 		t.Fatalf("rebuilt model Date changed instant: got %s, want %s", got, expected)
 	}
@@ -94,7 +114,11 @@ func TestEmailBuildBytesAcceptsLegacyDate(t *testing.T) {
 		MsgID:   "date-legacy@example.com",
 	}
 
-	got := builtMessageDate(t, email.BuildBytes(nil, false))
+	built, err := email.BuildBytes(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := builtMessageDate(t, built)
 	if !got.Equal(expected) {
 		t.Fatalf("legacy Date changed instant: got %s, want %s", got, expected)
 	}
@@ -155,7 +179,7 @@ dGhpcyBpcyB0eHQgZmlsZSBjb250ZW50IQ==
 
 ------=_NextPart_6A102A6A_F16B7280_56878F2C--`
 
-	email := NewEmailFromReader([]string{"admin@jinnrry.com"}, bytes.NewReader([]byte(emailBytes)), len(emailBytes))
+	email := mustParseEmail(t, []string{"admin@jinnrry.com"}, bytes.NewReader([]byte(emailBytes)), len(emailBytes))
 
 	if strings.Contains(string(email.Text), "file") {
 		t.Errorf("formatContentError:%s", "邮件内容解析错误，文件内容被解析到邮件中！")
@@ -207,7 +231,7 @@ Content-Type: text/plain
 dGhpcyBpcyB0eHQgZmlsZSBjb250ZW50IQ==
 --ee32d21f4234ae8884badf33c4eec57d61a93bc5048453d42dd9313d5974--`
 
-	email = NewEmailFromReader([]string{"admin@jinnrry.com"}, bytes.NewReader([]byte(emailBytes)), len(emailBytes))
+	email = mustParseEmail(t, []string{"admin@jinnrry.com"}, bytes.NewReader([]byte(emailBytes)), len(emailBytes))
 
 	if strings.Contains(string(email.Text), "file") {
 		t.Errorf("formatContentError:%s", "邮件内容解析错误，文件内容被解析到邮件中！")
@@ -280,6 +304,7 @@ func TestEmail_builder(t *testing.T) {
 		From:    buildUser("i@test.com"),
 		To:      buildUsers([]string{"to@test.com"}),
 		Subject: "Title中文",
+		MsgID:   "builder@example.com",
 		HTML:    []byte("Html"),
 		Text:    []byte("Text"),
 		Attachments: []*Attachment{
@@ -292,7 +317,10 @@ func TestEmail_builder(t *testing.T) {
 		},
 	}
 
-	rest := e.BuildBytes(nil, false)
+	rest, err := e.BuildBytes(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fmt.Println(string(rest))
 }
 
@@ -304,4 +332,58 @@ func TestEmail_BuildPart(t *testing.T) {
 	res := e.BuildPart(nil, []int{1, 2})
 	fmt.Println(string(res))
 
+}
+
+func TestNewEmailFromReaderRejectsMalformedSubject(t *testing.T) {
+	raw := "From: sender@example.com\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Subject: =?X-UNKNOWN?Q?broken?=\r\n" +
+		"Content-Type: text/plain; charset=UTF-8\r\n\r\n" +
+		"body"
+	email, err := NewEmailFromReader([]string{"recipient@example.com"}, strings.NewReader(raw), len(raw))
+	if err == nil {
+		t.Fatal("malformed subject was accepted")
+	}
+	if email != nil {
+		t.Fatal("malformed subject returned a partial email")
+	}
+}
+
+func TestNewEmailFromReaderRejectsMalformedMessage(t *testing.T) {
+	email, err := NewEmailFromReader(nil, strings.NewReader("invalid header\r\n\r\nbody"), 22)
+	if err == nil {
+		t.Fatal("malformed message was accepted")
+	}
+	if email != nil {
+		t.Fatal("malformed message returned a partial email")
+	}
+}
+
+func TestNewEmailFromModelRejectsCorruptedStoredJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		apply func(*models.Email)
+	}{
+		{name: "to", apply: func(email *models.Email) { email.To = "{" }},
+		{name: "reply-to", apply: func(email *models.Email) { email.ReplyTo = "{" }},
+		{name: "sender", apply: func(email *models.Email) { email.Sender = "{" }},
+		{name: "bcc", apply: func(email *models.Email) { email.Bcc = "{" }},
+		{name: "cc", apply: func(email *models.Email) { email.Cc = "{" }},
+		{name: "attachments", apply: func(email *models.Email) { email.Attachments = "{" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := models.Email{}
+			tt.apply(&model)
+			if _, err := NewEmailFromModel(model); err == nil {
+				t.Fatal("corrupted stored JSON was accepted")
+			}
+		})
+	}
+}
+
+func TestNewEmailFromModelAcceptsBlankStoredJSON(t *testing.T) {
+	if _, err := NewEmailFromModel(models.Email{To: "  ", Attachments: "	"}); err != nil {
+		t.Fatal(err)
+	}
 }

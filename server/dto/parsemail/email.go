@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -22,6 +23,8 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
+	xhtml "golang.org/x/net/html"
+	xhtmlatom "golang.org/x/net/html/atom"
 )
 
 type User struct {
@@ -90,12 +93,62 @@ type Email struct {
 	Authentication *EmailAuthentication
 }
 
+type StoredEmailFields struct {
+	ReplyTo     string
+	To          string
+	Bcc         string
+	Cc          string
+	Sender      string
+	Attachments string
+}
+
+func (e *Email) EncodeStoredFields() (StoredEmailFields, error) {
+	if e == nil {
+		return StoredEmailFields{}, errors.New("email is nil")
+	}
+	marshal := func(field string, value any) (string, error) {
+		data, err := json.Marshal(value)
+		if err != nil {
+			return "", fmt.Errorf("encode %s: %w", field, err)
+		}
+		return string(data), nil
+	}
+
+	var fields StoredEmailFields
+	var err error
+	if fields.ReplyTo, err = marshal("reply-to", e.ReplyTo); err != nil {
+		return StoredEmailFields{}, err
+	}
+	if fields.To, err = marshal("recipients", e.To); err != nil {
+		return StoredEmailFields{}, err
+	}
+	if fields.Bcc, err = marshal("bcc", e.Bcc); err != nil {
+		return StoredEmailFields{}, err
+	}
+	if fields.Cc, err = marshal("cc", e.Cc); err != nil {
+		return StoredEmailFields{}, err
+	}
+	if fields.Sender, err = marshal("sender", e.Sender); err != nil {
+		return StoredEmailFields{}, err
+	}
+	if fields.Attachments, err = marshal("attachments", e.Attachments); err != nil {
+		return StoredEmailFields{}, err
+	}
+	return fields, nil
+}
+
 // GenerateMsgID creates an RFC-compliant Message-ID unique enough to avoid spam filters.
 // It must be called once at email creation time and the result persisted to DB.
-func GenerateMsgID(domain string) string {
+func GenerateMsgID(domain string) (string, error) {
+	domain = strings.TrimSpace(domain)
+	if domain == "" || len(domain) > 253 || strings.ContainsAny(domain, "\r\n\t <>@") {
+		return "", errors.New("invalid message id domain")
+	}
 	randBytes := make([]byte, 16)
-	_, _ = rand.Read(randBytes)
-	return fmt.Sprintf("%x.%d@%s", randBytes, time.Now().UnixNano(), domain)
+	if _, err := io.ReadFull(rand.Reader, randBytes); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x.%d@%s", randBytes, time.Now().UnixNano(), domain), nil
 }
 
 // Xss filter policy
@@ -119,17 +172,16 @@ func init() {
 	relaxedPolicy.AllowAttrs("align", "valign", "colspan", "rowspan").OnElements("td", "th")
 	relaxedPolicy.AllowAttrs("align").OnElements("tr")
 
-	relaxedPolicy.AllowAttrs("style").Globally()
 	relaxedPolicy.AllowAttrs("class", "id").Globally()
 
 	relaxedPolicy.AllowAttrs("bgcolor", "color", "background").Globally()
 	relaxedPolicy.AllowAttrs("align").OnElements("p", "div", "h1", "h2", "h3", "h4", "h5", "h6")
 
 	relaxedPolicy.AllowElements("img")
-	relaxedPolicy.AllowAttrs("src", "alt", "width", "height", "style", "align").OnElements("img")
+	relaxedPolicy.AllowAttrs("src", "alt", "width", "height", "align").OnElements("img")
 
 	relaxedPolicy.AllowElements("a")
-	relaxedPolicy.AllowAttrs("href", "style").OnElements("a")
+	relaxedPolicy.AllowAttrs("href").OnElements("a")
 	relaxedPolicy.RequireNoReferrerOnLinks(true)
 	relaxedPolicy.AddTargetBlankToFullyQualifiedLinks(true)
 	relaxedPolicy.RequireNoFollowOnLinks(true)
@@ -137,10 +189,8 @@ func init() {
 	relaxedPolicy.AllowElements("font")
 	relaxedPolicy.AllowAttrs("size", "color", "face").OnElements("font")
 
-	relaxedPolicy.AllowElements("style")
-	relaxedPolicy.AllowAttrs("type").OnElements("style")
-
-	relaxedPolicy.AllowURLSchemes("http", "https", "mailto")
+	relaxedPolicy.AllowURLSchemes("http", "https", "mailto", "cid")
+	relaxedPolicy.AllowRelativeURLs(true)
 
 	relaxedPolicy.SkipElementsContent("script", "object", "embed", "iframe", "frame", "frameset")
 }
@@ -151,6 +201,7 @@ func sanitizeHTML(htmlContent string) string {
 	}
 
 	sanitized := relaxedPolicy.Sanitize(htmlContent)
+	sanitized = sanitizeHTMLFragment(sanitized)
 
 	dataUrlRegex := regexp.MustCompile(`href\s*=\s*["']data:[^"']*["']`)
 	sanitized = dataUrlRegex.ReplaceAllString(sanitized, `rel="nofollow"`)
@@ -168,6 +219,53 @@ func sanitizeHTML(htmlContent string) string {
 	sanitized = cssJsRegex.ReplaceAllString(sanitized, "")
 
 	return sanitized
+}
+
+func sanitizeHTMLFragment(content string) string {
+	container := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: xhtmlatom.Div}
+	nodes, err := xhtml.ParseFragment(strings.NewReader(content), container)
+	if err != nil {
+		return ""
+	}
+	var builder strings.Builder
+	for _, node := range nodes {
+		if sanitizeHTMLNode(node) {
+			if err := xhtml.Render(&builder, node); err != nil {
+				return ""
+			}
+		}
+	}
+	return builder.String()
+}
+
+func sanitizeHTMLNode(node *xhtml.Node) bool {
+	if node.Type == xhtml.ElementNode && node.Data == "style" {
+		return false
+	}
+	if node.Type == xhtml.ElementNode {
+		filtered := node.Attr[:0]
+		for _, attr := range node.Attr {
+			if strings.EqualFold(attr.Key, "style") {
+				continue
+			}
+			if node.Data == "img" && strings.EqualFold(attr.Key, "src") {
+				value := strings.TrimSpace(strings.ToLower(attr.Val))
+				if strings.HasPrefix(value, "http:") || strings.HasPrefix(value, "https:") || strings.HasPrefix(value, "//") {
+					continue
+				}
+			}
+			filtered = append(filtered, attr)
+		}
+		node.Attr = filtered
+	}
+	for child := node.FirstChild; child != nil; {
+		next := child.NextSibling
+		if !sanitizeHTMLNode(child) {
+			node.RemoveChild(child)
+		}
+		child = next
+	}
+	return true
 }
 
 // Sanitize Text
@@ -198,25 +296,37 @@ func (e *Email) BuildBcc2String() string {
 	return users2String(e.Bcc)
 }
 
-func NewEmailFromModel(d models.Email) *Email {
+func NewEmailFromModel(d models.Email) (*Email, error) {
 
-	var To []*User
-	json.Unmarshal([]byte(d.To), &To)
+	var to []*User
+	if err := decodeModelField(d.To, &to, "recipients"); err != nil {
+		return nil, err
+	}
 
-	var ReplyTo []*User
-	json.Unmarshal([]byte(d.ReplyTo), &ReplyTo)
+	var replyTo []*User
+	if err := decodeModelField(d.ReplyTo, &replyTo, "reply-to"); err != nil {
+		return nil, err
+	}
 
-	var Sender *User
-	json.Unmarshal([]byte(d.Sender), &Sender)
+	var sender *User
+	if err := decodeModelField(d.Sender, &sender, "sender"); err != nil {
+		return nil, err
+	}
 
-	var Bcc []*User
-	json.Unmarshal([]byte(d.Bcc), &Bcc)
+	var bcc []*User
+	if err := decodeModelField(d.Bcc, &bcc, "bcc"); err != nil {
+		return nil, err
+	}
 
-	var Cc []*User
-	json.Unmarshal([]byte(d.Cc), &Cc)
+	var cc []*User
+	if err := decodeModelField(d.Cc, &cc, "cc"); err != nil {
+		return nil, err
+	}
 
-	var Attachments []*Attachment
-	json.Unmarshal([]byte(d.Attachments), &Attachments)
+	var attachments []*Attachment
+	if err := decodeModelField(d.Attachments, &attachments, "attachments"); err != nil {
+		return nil, err
+	}
 
 	ret := &Email{
 		MessageId: cast.ToInt64(d.Id),
@@ -225,28 +335,40 @@ func NewEmailFromModel(d models.Email) *Email {
 			Name:         d.FromName,
 			EmailAddress: d.FromAddress,
 		},
-		To:          To,
+		To:          to,
 		Subject:     d.Subject,
 		Text:        []byte(d.Text.String),
 		HTML:        []byte(d.Html.String),
-		Sender:      Sender,
-		ReplyTo:     ReplyTo,
-		Bcc:         Bcc,
-		Cc:          Cc,
-		Attachments: Attachments,
+		Sender:      sender,
+		ReplyTo:     replyTo,
+		Bcc:         bcc,
+		Cc:          cc,
+		Attachments: attachments,
 		Date:        d.SendDate.Format(time.RFC3339),
 	}
 	if d.Type == 0 {
 		ret.Authentication = NewEmailAuthentication(d.SPFCheck == 1, d.DKIMCheck == 1)
 	}
-	return ret
+	return ret, nil
 }
 
-func NewEmailFromReader(to []string, r io.Reader, size int) *Email {
+func decodeModelField(raw string, target any, field string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(raw), target); err != nil {
+		return fmt.Errorf("decode stored %s: %w", field, err)
+	}
+	return nil
+}
+func NewEmailFromReader(to []string, r io.Reader, size int) (*Email, error) {
 	ret := &Email{}
 	m, err := message.Read(r)
 	if err != nil {
 		log.Errorf("email解析错误！ Error %+v", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parse message: %w", err)
 	}
 
 	ret.Size = size
@@ -279,11 +401,14 @@ func NewEmailFromReader(to []string, r io.Reader, size int) *Email {
 	ret.Cc = buildUsers(m.Header.Values("Cc"))
 	ret.ReplyTo = buildUsers(m.Header.Values("ReplyTo"))
 	ret.Sender = buildUser(m.Header.Get("Sender"))
-	if ret.Sender == nil {
+	if ret.Sender == nil || strings.TrimSpace(ret.Sender.EmailAddress) == "" {
 		ret.Sender = ret.From
 	}
 
-	subject, _ := m.Header.Text("Subject")
+	subject, err := m.Header.Text("Subject")
+	if err != nil {
+		return nil, fmt.Errorf("decode message subject: %w", err)
+	}
 	ret.Subject = strictPolicy.Sanitize(subject)
 
 	sendTime, err := time.Parse(time.RFC1123Z, m.Header.Get("Date"))
@@ -291,19 +416,30 @@ func NewEmailFromReader(to []string, r io.Reader, size int) *Email {
 		sendTime = time.Now()
 	}
 	ret.Date = sendTime.Format(time.RFC3339)
-	m.Walk(func(path []int, entity *message.Entity, err error) error {
+	if err = m.Walk(func(path []int, entity *message.Entity, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entity == nil {
+			return fmt.Errorf("message part is missing")
+		}
 		return formatContent(entity, ret)
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("read message content: %w", err)
+	}
 
 	if ret.From != nil {
 		ret.From.Name = strictPolicy.Sanitize(ret.From.Name)
 		ret.From.EmailAddress = strictPolicy.Sanitize(ret.From.EmailAddress)
 	}
 
-	return ret
+	return ret, nil
 }
 
 func formatContent(entity *message.Entity, ret *Email) error {
+	if entity == nil {
+		return fmt.Errorf("message part is missing")
+	}
 	contentType, p, err := entity.Header.ContentType()
 
 	if err != nil {
@@ -316,7 +452,10 @@ func formatContent(entity *message.Entity, ret *Email) error {
 	case "multipart/alternative":
 	case "multipart/mixed":
 	case "text/plain":
-		body, _ := io.ReadAll(entity.Body)
+		body, err := io.ReadAll(entity.Body)
+		if err != nil {
+			return err
+		}
 
 		if isAttachment {
 			fileName := getFileName(entity, p)
@@ -333,7 +472,10 @@ func formatContent(entity *message.Entity, ret *Email) error {
 
 		ret.Text = []byte(strictPolicy.Sanitize(string(body)))
 	case "text/html":
-		body, _ := io.ReadAll(entity.Body)
+		body, err := io.ReadAll(entity.Body)
+		if err != nil {
+			return err
+		}
 
 		if isAttachment {
 			fileName := getFileName(entity, p)
@@ -348,16 +490,13 @@ func formatContent(entity *message.Entity, ret *Email) error {
 			return nil
 		}
 
-		ret.HTML = []byte(relaxedPolicy.Sanitize(string(body)))
+		ret.HTML = []byte(sanitizeHTML(string(body)))
 	case "multipart/related":
-		entity.Walk(func(path []int, entity *message.Entity, err error) error {
-			if t, _, _ := entity.Header.ContentType(); t == "multipart/related" {
-				return nil
-			}
-			return formatContent(entity, ret)
-		})
 	default:
-		c, _ := io.ReadAll(entity.Body)
+		c, err := io.ReadAll(entity.Body)
+		if err != nil {
+			return err
+		}
 		fileName := getFileName(entity, p)
 
 		ret.Attachments = append(ret.Attachments, &Attachment{
@@ -454,14 +593,40 @@ func buildUsers(strs []string) []*User {
 	return ret
 }
 
-func (e *Email) ForwardBuildBytes(ctx *context.Context, sender *models.User, forwardAddress string) []byte {
+func writeMessagePart(w io.WriteCloser, content []byte) error {
+	n, writeErr := w.Write(content)
+	closeErr := w.Close()
+	if writeErr != nil {
+		return errors.Join(writeErr, closeErr)
+	}
+	if n != len(content) {
+		return errors.Join(io.ErrShortWrite, closeErr)
+	}
+	return closeErr
+}
+
+func closeMessageWriters(primary error, closers ...io.Closer) error {
+	for _, closer := range closers {
+		primary = errors.Join(primary, closer.Close())
+	}
+	return primary
+}
+
+func (e *Email) ForwardBuildBytes(ctx *context.Context, sender *models.User, forwardAddress string) ([]byte, error) {
 	var b bytes.Buffer
 
+	cfg := config.CurrentConfig()
+	if e == nil || sender == nil || cfg == nil || len(cfg.Domains) == 0 {
+		return nil, errors.New("invalid forwarding configuration")
+	}
 	forwardUser := buildUser(forwardAddress)
-	to := []*mail.Address{{forwardUser.Name, forwardUser.EmailAddress}}
+	if forwardUser == nil || forwardUser.EmailAddress == "" {
+		return nil, errors.New("invalid forwarding address")
+	}
+	to := []*mail.Address{{Name: forwardUser.Name, Address: forwardUser.EmailAddress}}
 
-	senderEmailAddress := fmt.Sprintf("%s@%s", sender.Account, config.Instance.Domains[0])
-	senderAddress := []*mail.Address{{sender.Name, senderEmailAddress}}
+	senderEmailAddress := fmt.Sprintf("%s@%s", sender.Account, cfg.Domains[0])
+	senderAddress := []*mail.Address{{Name: sender.Name, Address: senderEmailAddress}}
 	// Create our mail header
 	var h mail.Header
 	h.SetDate(time.Now())
@@ -469,13 +634,17 @@ func (e *Email) ForwardBuildBytes(ctx *context.Context, sender *models.User, for
 	h.SetAddressList("Sender", senderAddress)
 	h.SetAddressList("To", to)
 	if e.From != nil && e.From.EmailAddress != "" {
-		h.SetAddressList("Reply-To", []*mail.Address{{e.From.Name, e.From.EmailAddress}})
+		h.SetAddressList("Reply-To", []*mail.Address{{Name: e.From.Name, Address: e.From.EmailAddress}})
 		h.Set("X-Original-From", e.From.Build())
 	}
 	h.Set("X-Forwarded-By", senderEmailAddress)
 	h.Set("X-Forwarded-To", forwardUser.EmailAddress)
 	h.SetText("Subject", e.Subject)
-	h.SetMessageID(GenerateMsgID(config.Instance.Domain))
+	msgID, err := GenerateMsgID(cfg.Domain)
+	if err != nil {
+		return nil, fmt.Errorf("generate message id: %w", err)
+	}
+	h.SetMessageID(msgID)
 	if e.MsgID != "" {
 		h.Set("References", fmt.Sprintf("<%s>", e.MsgID))
 		h.Set("In-Reply-To", fmt.Sprintf("<%s>", e.MsgID))
@@ -484,52 +653,61 @@ func (e *Email) ForwardBuildBytes(ctx *context.Context, sender *models.User, for
 	// Create a new mail writer
 	mw, err := mail.CreateWriter(&b, h)
 	if err != nil {
-		log.WithContext(ctx).Fatal(err)
+		return nil, fmt.Errorf("create mail writer: %w", err)
 	}
 
 	// Create a text part
 	tw, err := mw.CreateInline()
 	if err != nil {
-		log.WithContext(ctx).Fatal(err)
+		return nil, closeMessageWriters(fmt.Errorf("create inline writer: %w", err), mw)
 	}
 	var th mail.InlineHeader
 	th.Set("Content-Type", "text/plain")
 	w, err := tw.CreatePart(th)
 	if err != nil {
-		log.Fatal(err)
+		return nil, closeMessageWriters(fmt.Errorf("create text part: %w", err), tw, mw)
 	}
-	io.WriteString(w, string(e.Text))
-	w.Close()
+	if err := writeMessagePart(w, e.Text); err != nil {
+		return nil, closeMessageWriters(fmt.Errorf("write text part: %w", err), tw, mw)
+	}
 
 	var html mail.InlineHeader
 	html.Set("Content-Type", "text/html")
 	w, err = tw.CreatePart(html)
 	if err != nil {
-		log.Fatal(err)
+		return nil, closeMessageWriters(fmt.Errorf("create html part: %w", err), tw, mw)
 	}
-	io.WriteString(w, string(e.HTML))
-	w.Close()
+	if err := writeMessagePart(w, e.HTML); err != nil {
+		return nil, closeMessageWriters(fmt.Errorf("write html part: %w", err), tw, mw)
+	}
 
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		return nil, closeMessageWriters(fmt.Errorf("close inline writer: %w", err), mw)
+	}
 
 	// Create an attachment
 	for _, attachment := range e.Attachments {
+		if attachment == nil {
+			return nil, closeMessageWriters(errors.New("nil attachment"), mw)
+		}
 		var ah mail.AttachmentHeader
 		ah.Set("Content-Type", attachment.ContentType)
 		ah.SetFilename(attachment.Filename)
 		w, err = mw.CreateAttachment(ah)
 		if err != nil {
-			log.WithContext(ctx).Fatal(err)
-			continue
+			return nil, closeMessageWriters(fmt.Errorf("create attachment: %w", err), mw)
 		}
-		w.Write(attachment.Content)
-		w.Close()
+		if err := writeMessagePart(w, attachment.Content); err != nil {
+			return nil, closeMessageWriters(fmt.Errorf("write attachment: %w", err), mw)
+		}
 	}
 
-	mw.Close()
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("close mail writer: %w", err)
+	}
 
 	if instance == nil {
-		return b.Bytes()
+		return b.Bytes(), nil
 	}
 
 	// dkim 签名后返回
@@ -599,12 +777,22 @@ func (e *Email) BuildPart(ctx *context.Context, loc []int) []byte {
 	return nil
 }
 
-func (e *Email) BuildBytes(ctx *context.Context, dkim bool) []byte {
+func (e *Email) BuildBytes(ctx *context.Context, dkim bool) ([]byte, error) {
 	var b bytes.Buffer
 
-	from := []*mail.Address{{e.From.Name, e.From.EmailAddress}}
+	if e == nil || e.From == nil || e.From.EmailAddress == "" {
+		return nil, errors.New("invalid sender")
+	}
+	cfg := config.CurrentConfig()
+	if e.MsgID == "" && (cfg == nil || cfg.Domain == "") {
+		return nil, errors.New("message id domain is not configured")
+	}
+	from := []*mail.Address{{Name: e.From.Name, Address: e.From.EmailAddress}}
 	to := []*mail.Address{}
 	for _, user := range e.To {
+		if user == nil || user.EmailAddress == "" {
+			return nil, errors.New("invalid recipient")
+		}
 		to = append(to, &mail.Address{
 			Name:    user.Name,
 			Address: user.EmailAddress,
@@ -631,7 +819,7 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) []byte {
 	if e.MsgID != "" {
 		h.SetMessageID(e.MsgID)
 	} else {
-		h.SetMessageID(fmt.Sprintf("%d@%s", e.MessageId, config.Instance.Domain))
+		h.SetMessageID(fmt.Sprintf("%d@%s", e.MessageId, cfg.Domain))
 	}
 	h.SetAddressList("From", from)
 	h.SetAddressList("Sender", from)
@@ -640,6 +828,9 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) []byte {
 	if len(e.Cc) != 0 {
 		cc := []*mail.Address{}
 		for _, user := range e.Cc {
+			if user == nil || user.EmailAddress == "" {
+				return nil, errors.New("invalid cc recipient")
+			}
 			cc = append(cc, &mail.Address{
 				Name:    user.Name,
 				Address: user.EmailAddress,
@@ -651,13 +842,13 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) []byte {
 	// Create a new mail writer
 	mw, err := mail.CreateWriter(&b, h)
 	if err != nil {
-		log.WithContext(ctx).Fatal(err)
+		return nil, fmt.Errorf("create mail writer: %w", err)
 	}
 
 	// Create a text part
 	tw, err := mw.CreateInline()
 	if err != nil {
-		log.WithContext(ctx).Fatal(err)
+		return nil, closeMessageWriters(fmt.Errorf("create inline writer: %w", err), mw)
 	}
 
 	if len(e.Text) > 0 {
@@ -668,10 +859,11 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) []byte {
 		})
 		w, err := tw.CreatePart(th)
 		if err != nil {
-			log.Fatal(err)
+			return nil, closeMessageWriters(fmt.Errorf("create text part: %w", err), tw, mw)
 		}
-		io.WriteString(w, string(e.Text))
-		w.Close()
+		if err := writeMessagePart(w, e.Text); err != nil {
+			return nil, closeMessageWriters(fmt.Errorf("write text part: %w", err), tw, mw)
+		}
 	}
 
 	var html mail.InlineHeader
@@ -681,37 +873,47 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) []byte {
 	html.Header.Set("Content-Transfer-Encoding", "base64")
 	w, err := tw.CreatePart(html)
 	if err != nil {
-		log.Fatal(err)
+		return nil, closeMessageWriters(fmt.Errorf("create html part: %w", err), tw, mw)
 	}
-	if len(e.HTML) > 0 {
-		io.WriteString(w, string(e.HTML))
-	} else {
-		io.WriteString(w, string(e.Text))
+	htmlContent := e.HTML
+	if len(htmlContent) == 0 {
+		htmlContent = e.Text
+	}
+	if err := writeMessagePart(w, htmlContent); err != nil {
+		return nil, closeMessageWriters(fmt.Errorf("write html part: %w", err), tw, mw)
 	}
 
-	w.Close()
-
-	tw.Close()
+	if err := tw.Close(); err != nil {
+		return nil, closeMessageWriters(fmt.Errorf("close inline writer: %w", err), mw)
+	}
 
 	// Create an attachment
 	for _, attachment := range e.Attachments {
+		if attachment == nil {
+			return nil, closeMessageWriters(errors.New("nil attachment"), mw)
+		}
 		var ah mail.AttachmentHeader
 		ah.Set("Content-Type", attachment.ContentType)
 		ah.SetFilename(attachment.Filename)
 		w, err = mw.CreateAttachment(ah)
 		if err != nil {
-			log.WithContext(ctx).Fatal(err)
-			continue
+			return nil, closeMessageWriters(fmt.Errorf("create attachment: %w", err), mw)
 		}
-		w.Write(attachment.Content)
-		w.Close()
+		if err := writeMessagePart(w, attachment.Content); err != nil {
+			return nil, closeMessageWriters(fmt.Errorf("write attachment: %w", err), mw)
+		}
 	}
 
-	mw.Close()
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("close mail writer: %w", err)
+	}
 
 	if dkim {
+		if instance == nil {
+			return nil, errors.New("DKIM signer is not initialized")
+		}
 		// dkim 签名后返回
 		return instance.Sign(b.String())
 	}
-	return b.Bytes()
+	return b.Bytes(), nil
 }

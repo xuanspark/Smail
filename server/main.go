@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/listen/cron_server"
 	"git.pcux.cn/xuans/Smail/res_init"
@@ -15,8 +18,22 @@ var (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.WithError(err).Error("Server stopped because of a fatal error")
+		os.Exit(1)
+	}
+}
 
-	config.Init()
+func run() (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("server initialization panic: %v", recovered)
+		}
+	}()
+
+	if err := config.Init(); err != nil {
+		return err
+	}
 
 	if version == "" {
 		version = "TestVersion"
@@ -34,8 +51,10 @@ func main() {
 	go cron_server.Start()
 
 	// 核心服务启动
-	res_init.Init(version)
+	if err := res_init.Init(version); err != nil {
+		return err
+	}
 
 	log.Warnf("Server Stoped \n")
-
+	return nil
 }

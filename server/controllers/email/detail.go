@@ -1,12 +1,10 @@
 package email
 
 import (
-	"encoding/json"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/detail"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 )
 
@@ -15,14 +13,11 @@ type emailDetailRequest struct {
 }
 
 func EmailDetail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	reqBytes, err := io.ReadAll(req.Body)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
-	}
 	var retData emailDetailRequest
-	err = json.Unmarshal(reqBytes, &retData)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
+	if err := decodeEmailJSONRequest(w, req, &retData, maxEmailJSONRequestBytes); err != nil {
+		log.WithContext(ctx).WithError(err).Info("invalid email detail request")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		return
 	}
 
 	if retData.ID <= 0 {
@@ -32,7 +27,8 @@ func EmailDetail(ctx *context.Context, w http.ResponseWriter, req *http.Request)
 
 	email, err := detail.GetEmailDetail(ctx, retData.ID, true)
 	if err != nil {
-		response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
+		log.WithContext(ctx).WithError(err).Error("load email detail failed")
+		response.NewErrorResponse(response.ServerError, "\u8bfb\u53d6\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
 		return
 	}
 

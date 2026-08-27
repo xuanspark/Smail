@@ -3,6 +3,7 @@ package imap_server
 import (
 	"git.pcux.cn/xuans/Smail/services/group"
 	"github.com/emersion/go-imap/v2"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 )
 
@@ -21,7 +22,11 @@ func (s *serverSession) Status(mailbox string, options *imap.StatusOptions) (*im
 		category = append(category, "UNSEEN")
 	}
 
-	_, data := group.GetGroupStatus(s.ctx, mailbox, category)
+	_, data, err := group.GetGroupStatus(s.ctx, mailbox, category)
+	if err != nil {
+		log.WithContext(s.ctx).WithError(err).Error("query mailbox status failed")
+		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Status failed"}
+	}
 
 	numMessages := cast.ToUint32(data["MESSAGES"])
 	numUnseen := cast.ToUint32(data["UNSEEN"])

@@ -3,17 +3,19 @@ package parsemail
 import (
 	"bytes"
 	"crypto"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/consts"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	securefile "git.pcux.cn/xuans/Smail/utils/file"
 	"github.com/emersion/go-msgauth/dkim"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ed25519"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -23,64 +25,99 @@ type Dkim struct {
 
 var instance *Dkim
 
-func Init() {
-	privateKey, err := loadPrivateKey(config.Instance.DkimPrivateKeyPath)
+func Init() error {
+	cfg := config.CurrentConfig()
+	if cfg == nil {
+		return fmt.Errorf("runtime configuration is unavailable")
+	}
+	privateKey, err := loadPrivateKey(cfg.DkimPrivateKeyPath)
 	if err != nil {
-		panic(config.Instance.DkimPrivateKeyPath +
-			" DKIM load fail! Please set dkim!  dkim私钥加载失败！请先设置dkim秘钥" +
-			err.Error())
+		return fmt.Errorf("load DKIM private key: %w", err)
 	}
 
 	instance = &Dkim{
 		privateKey: privateKey,
 	}
+	return nil
 }
 
 func loadPrivateKey(path string) (crypto.Signer, error) {
-	b, err := os.ReadFile(path)
+	basePath := filepath.Join(config.ROOT_PATH, "config", "dkim")
+	privateName, err := securefile.ControlledRelativePath(basePath, path)
 	if err != nil {
 		return nil, err
 	}
-
-	block, _ := pem.Decode(b)
-	if block == nil {
-		return nil, fmt.Errorf("no PEM data found")
+	root, err := os.OpenRoot(basePath)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	info, err := root.Lstat(privateName)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 64<<10 {
+		return nil, fmt.Errorf("invalid DKIM private key file")
+	}
+	data, err := root.ReadFile(privateName)
+	if err != nil {
+		return nil, err
+	}
+	block, rest := pem.Decode(data)
+	if block == nil || len(bytes.TrimSpace(rest)) != 0 {
+		return nil, fmt.Errorf("invalid DKIM private key PEM")
 	}
 
+	var privateKey *rsa.PrivateKey
 	switch strings.ToUpper(block.Type) {
 	case "PRIVATE KEY":
-		k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		parsed, parseErr := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		var ok bool
+		privateKey, ok = parsed.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("unsupported DKIM private key type")
+		}
+	case "RSA PRIVATE KEY":
+		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
 			return nil, err
 		}
-		return k.(crypto.Signer), nil
-	case "RSA PRIVATE KEY":
-		return x509.ParsePKCS1PrivateKey(block.Bytes)
-	case "EDDSA PRIVATE KEY":
-		if len(block.Bytes) != ed25519.PrivateKeySize {
-			return nil, fmt.Errorf("invalid Ed25519 private key size")
-		}
-		return ed25519.PrivateKey(block.Bytes), nil
 	default:
-		return nil, fmt.Errorf("unknown private key type: '%v'", block.Type)
+		return nil, fmt.Errorf("unsupported DKIM private key type: %q", block.Type)
 	}
+	if privateKey.N == nil || privateKey.N.BitLen() < 2048 {
+		return nil, fmt.Errorf("DKIM RSA private key is too weak")
+	}
+	if err := privateKey.Validate(); err != nil {
+		return nil, err
+	}
+	return privateKey, nil
 }
+func (p *Dkim) Sign(msgData string) ([]byte, error) {
+	if p == nil || p.privateKey == nil {
+		return nil, fmt.Errorf("DKIM signer is not initialized")
+	}
+	cfg := config.CurrentConfig()
+	if cfg == nil || strings.TrimSpace(cfg.Domain) == "" {
+		return nil, fmt.Errorf("DKIM domain is not configured")
+	}
 
-func (p *Dkim) Sign(msgData string) []byte {
 	var b bytes.Buffer
 	r := strings.NewReader(msgData)
 
 	options := &dkim.SignOptions{
-		Domain:   config.Instance.Domain,
+		Domain:   cfg.Domain,
 		Selector: "default",
 		Signer:   p.privateKey,
 	}
 
 	if err := dkim.Sign(&b, r, options); err != nil {
-		log.Errorf("%+v", err)
-		return []byte(msgData)
+		return nil, err
 	}
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 
 func Check(ctx *context.Context, mail io.Reader) bool {

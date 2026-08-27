@@ -2,9 +2,9 @@ package id
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -36,21 +36,22 @@ func getLocalIP() string {
 }
 
 func GenLogID() string {
-	r := rand.New(rand.NewSource(time.Now().UnixMicro()))
-
 	ip := getLocalIP()
 
 	now := time.Now()
-	timestamp := uint32(now.Unix())
 	timeNano := now.UnixNano()
 	pid := os.Getpid()
+	randomBytes := make([]byte, 3)
+	if _, err := rand.Read(randomBytes); err != nil {
+		randomBytes = []byte{byte(timeNano), byte(timeNano >> 8), byte(pid)}
+	}
 	b := bytes.Buffer{}
 
 	b.WriteString(hex.EncodeToString(net.ParseIP(ip).To4()))
-	b.WriteString(fmt.Sprintf("%x", timestamp&0xffffffff))
+	b.WriteString(fmt.Sprintf("%x", now.Unix()&0xffffffff))
 	b.WriteString(fmt.Sprintf("%04x", timeNano&0xffff))
 	b.WriteString(fmt.Sprintf("%04x", pid&0xffff))
-	b.WriteString(fmt.Sprintf("%06x", r.Int31n(1<<24)))
+	b.WriteString(hex.EncodeToString(randomBytes))
 	b.WriteString("b0")
 
 	return b.String()

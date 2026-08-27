@@ -80,7 +80,7 @@ func TestReceiveHooksAndDatabaseShareAuthenticationResult(t *testing.T) {
 	capture := &authenticationCaptureHook{}
 	hooks.HookList = map[string]framework.EmailHook{"capture": capture}
 
-	emailData := []byte("From: sender\r\nTo: recipient@test.domain\r\nSubject: authentication flow\r\n\r\nbody")
+	emailData := []byte("From: <sender@example.net>\r\nTo: recipient@test.domain\r\nSubject: authentication flow\r\n\r\nbody")
 	session := Session{
 		RemoteAddress: net.TCPAddrFromAddrPort(netip.MustParseAddrPort("203.0.113.1:25")),
 		Ctx:           &context.Context{},
@@ -116,6 +116,7 @@ func TestSaveSentEmailIgnoresReceiveAuthentication(t *testing.T) {
 	email := &parsemail.Email{
 		From:           &parsemail.User{EmailAddress: "sender@test.domain"},
 		Subject:        "sent authentication isolation",
+		MsgID:          "sent-authentication@test.domain",
 		Authentication: parsemail.NewEmailAuthentication(false, false),
 	}
 	_, saved, err := saveEmail(&context.Context{UserID: 1}, 0, email, 1, 1, nil, true, true)

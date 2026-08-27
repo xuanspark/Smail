@@ -1,0 +1,57 @@
+name: Security Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - name: Reject committed private keys
+        shell: bash
+        run: |
+          if git grep -n -E -- '-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----'; then
+            echo 'Committed private key detected.'
+            exit 1
+          fi
+      - name: Setup Go environment
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.6'
+      - name: Verify Go dependencies
+        run: cd server && go mod verify
+      - name: Run Go tests
+        run: cd server && go test ./...
+      - name: Run Go static analysis
+        run: cd server && go vet ./...
+      - name: Run Go race tests
+        run: cd server && go test -race ./...
+      - name: Run Go security analysis
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
+          cd server && gosec ./...
+      - name: Scan Go vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          cd server && govulncheck ./...
+      - name: Setup Node.js environment
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Install Yarn
+        run: npm install --global yarn@1.22.22
+      - name: Verify frontend dependencies and build
+        run: |
+          cd fe
+          yarn install --frozen-lockfile
+          yarn audit --groups dependencies
+          yarn eslint . --ext .vue,.js,.jsx,.cjs,.mjs --ignore-path .gitignore
+          yarn build

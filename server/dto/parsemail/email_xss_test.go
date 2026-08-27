@@ -24,7 +24,7 @@ func TestSanitizeHTML(t *testing.T) {
 		{
 			name:     "Image with onerror - should remove dangerous attributes",
 			input:    `<img src=x onerror=alert('xss')>`,
-			expected: ``, // bluemonday UGCPolicy removes img tags with dangerous attributes
+			expected: `<img src="x"/>`, // 保留图片元素并移除事件处理属性
 		},
 		{
 			name:     "SVG with onload",
@@ -191,7 +191,7 @@ func TestBuildUser_XSS(t *testing.T) {
 			name:          "Event handler in name - quotes removed in sanitization",
 			input:         `onclick="alert('xss')" <click@example.com>`,
 			expectedEmail: "click@example.com",
-			expectedName:  "onclick= alert(&#39;xss&#39;)", 
+			expectedName:  "onclick= alert(&#39;xss&#39;)",
 			shouldBeNil:   false,
 		},
 		{
@@ -206,14 +206,14 @@ func TestBuildUser_XSS(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			user := buildUser(tc.input)
-			
+
 			if tc.shouldBeNil {
 				if user != nil {
 					t.Errorf("buildUser(%q) should return nil due to heavy sanitization, but got: %+v", tc.input, user)
 				}
 				return
 			}
-			
+
 			if user == nil {
 				t.Fatalf("buildUser returned nil for input: %q", tc.input)
 			}
@@ -262,7 +262,7 @@ func TestNewEmailFromReader_XSS(t *testing.T) {
 
 	w.Close()
 
-	email := NewEmailFromReader([]string{"to@example.com"}, &b, b.Len())
+	email := mustParseEmail(t, []string{"to@example.com"}, &b, b.Len())
 
 	if email.From.EmailAddress != "from@example.com" {
 		t.Errorf("Expected From.EmailAddress to be 'from@example.com', got: %q", email.From.EmailAddress)
@@ -320,7 +320,7 @@ func TestAttachment_XSS(t *testing.T) {
 
 	w.Close()
 
-	email := NewEmailFromReader([]string{"to@example.com"}, &b, b.Len())
+	email := mustParseEmail(t, []string{"to@example.com"}, &b, b.Len())
 
 	if len(email.Attachments) != 1 {
 		t.Fatalf("Expected 1 attachment, got %d", len(email.Attachments))
@@ -419,7 +419,7 @@ func TestXSSInMultipleFields(t *testing.T) {
 	io.WriteString(w, `Email body with <script>alert('body')</script> content`)
 	w.Close()
 
-	email := NewEmailFromReader([]string{"to@example.com"}, &b, b.Len())
+	email := mustParseEmail(t, []string{"to@example.com"}, &b, b.Len())
 
 	if strings.Contains(email.Subject, "<script>") {
 		t.Errorf("Subject contains unsanitized script tag: %q", email.Subject)
@@ -437,4 +437,35 @@ func TestXSSInMultipleFields(t *testing.T) {
 	if !strings.Contains(email.Subject, "Important Email") {
 		t.Errorf("Subject should keep safe text, got: %q", email.Subject)
 	}
-} 
+}
+
+func TestNewEmailFromReaderAppliesPrivacySanitizer(t *testing.T) {
+	var body bytes.Buffer
+	var header message.Header
+	header.Set("From", "from@example.com")
+	header.Set("To", "to@example.com")
+	header.Set("Subject", "Privacy")
+	header.SetContentType("text/html", nil)
+	writer, err := message.CreateWriter(&body, header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.WriteString(writer, `<style>body{color:red}</style><div style="color:red"><img src="https://tracker.example/pixel.png"><img src="cid:logo"><a href="https://example.com/path">safe</a></div>`)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	email := mustParseEmail(t, []string{"to@example.com"}, &body, body.Len())
+	htmlContent := strings.ToLower(string(email.HTML))
+	for _, forbidden := range []string{"<style", "style=", "tracker.example", "src=\"https://"} {
+		if strings.Contains(htmlContent, forbidden) {
+			t.Fatalf("parsed HTML retained %q: %s", forbidden, htmlContent)
+		}
+	}
+	if !strings.Contains(htmlContent, "src=\"cid:logo\"") {
+		t.Fatalf("CID image was removed: %s", htmlContent)
+	}
+	if !strings.Contains(htmlContent, "https://example.com/path") {
+		t.Fatalf("safe HTTPS link was removed: %s", htmlContent)
+	}
+}

@@ -2,7 +2,9 @@ package imap_server
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 )
 
@@ -93,7 +96,11 @@ func buildEnvelope(email *response.EmailResponseData, traEmail *parsemail.Email)
 	if email.MsgID != "" {
 		messageID = fmt.Sprintf("<%s>", email.MsgID)
 	} else {
-		messageID = fmt.Sprintf("<%d@%s>", email.Id, config.Instance.Domain)
+		cfg := config.CurrentConfig()
+		if cfg == nil || cfg.Domain == "" {
+			return nil
+		}
+		messageID = fmt.Sprintf("<%d@%s>", email.Id, cfg.Domain)
 	}
 
 	return &imap.Envelope{
@@ -115,27 +122,40 @@ func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, opt
 	case imap.SeqSet:
 		seqSet := numSet.(imap.SeqSet)
 		for _, seq := range seqSet {
-			emailList := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
+			emailList, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
 				Star: cast.ToInt(seq.Start),
 				End:  cast.ToInt(seq.Stop),
 			}, false)
-			write(s.ctx, w, emailList, options)
+			if err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for fetch failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+			}
+			if err := write(s.ctx, w, emailList, options); err != nil {
+				return err
+			}
 		}
 
 	case imap.UIDSet:
 		uidSet := numSet.(imap.UIDSet)
 		for _, uid := range uidSet {
-			emailList := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
+			emailList, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
 				Star: cast.ToInt(uint32(uid.Start)),
 				End:  cast.ToInt(uint32(uid.Stop)),
 			}, true)
-			write(s.ctx, w, emailList, options)
+			if err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for UID fetch failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+			}
+			if err := write(s.ctx, w, emailList, options); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
 // 纯文本 text/plain
+
 func bsTextPlain(size uint32, numLines int64) *imap.BodyStructureSinglePart {
 	return &imap.BodyStructureSinglePart{
 		Type:     "text",
@@ -223,14 +243,53 @@ func bsMixedWithAttachments(alt *imap.BodyStructureMultiPart, extend bool, atts 
 	}
 }
 
-func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*response.EmailResponseData, options *imap.FetchOptions) {
+func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*response.EmailResponseData, options *imap.FetchOptions) error {
 	for _, email := range emailList {
-		writer := w.CreateMessage(cast.ToUint32(email.SerialNumber))
+		sequence, err := imapUint32(email.SerialNumber)
+		if err != nil || sequence == 0 {
+			return fmt.Errorf("IMAP sequence number out of range")
+		}
 
-		traEmail := parsemail.NewEmailFromModel(email.Email)
+		traEmail, err := parsemail.NewEmailFromModel(email.Email)
+		if err != nil {
+			log.WithContext(ctx).WithError(err).Error("decode IMAP message failed")
+			return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+		}
+		var uid imap.UID
+		if options.UID {
+			uid, err = imapUID(email.UeId)
+			if err != nil {
+				return err
+			}
+		}
+		var htmlSize uint32
+		var textSize uint32
+		attachmentSizes := make([]uint32, len(traEmail.Attachments))
+		if options.BodyStructure != nil {
+			if len(traEmail.HTML) > 0 {
+				htmlSize, err = imapUint32(len(traEmail.HTML))
+				if err != nil {
+					return err
+				}
+			}
+			if len(traEmail.Text) > 0 {
+				textSize, err = imapUint32(len(traEmail.Text))
+				if err != nil {
+					return err
+				}
+			}
+			for index, attachment := range traEmail.Attachments {
+				attachmentSizes[index], err = imapUint32(len(attachment.Content))
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		writer := w.CreateMessage(sequence)
 
 		if options.UID {
-			writer.WriteUID(imap.UID(email.UeId))
+			writer.WriteUID(uid)
 		}
 		if options.Envelope {
 			env := buildEnvelope(email, traEmail)
@@ -239,25 +298,29 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 		if options.BodyStructure != nil {
 			var html, text *imap.BodyStructureSinglePart
 			if len(traEmail.HTML) > 0 {
-				html = bsTextHTML(uint32(len(traEmail.HTML)), int64(bytes.Count(traEmail.HTML, []byte("\n"))+1))
+				html = bsTextHTML(htmlSize, int64(bytes.Count(traEmail.HTML, []byte("\n"))+1))
 			}
 
 			if len(traEmail.Text) > 0 {
-				text = bsTextPlain(uint32(len(traEmail.Text)), int64(bytes.Count(traEmail.Text, []byte("\n"))+1))
+				text = bsTextPlain(textSize, int64(bytes.Count(traEmail.Text, []byte("\n"))+1))
 			}
 
 			alt := bsAlternative(text, html)
 
 			var attrs []imap.BodyStructure
-			for _, attachment := range traEmail.Attachments {
-				attrs = append(attrs, bsAttachment(attachment.Filename, attachment.ContentType, uint32(len(attachment.Content)), "base64"))
+			for index, attachment := range traEmail.Attachments {
+				attrs = append(attrs, bsAttachment(attachment.Filename, attachment.ContentType, attachmentSizes[index], "base64"))
 			}
 			bs := bsMixedWithAttachments(alt, options.BodyStructure.Extended, attrs...) // 最终的 BodyStructure（接口值）
 
 			writer.WriteBodyStructure(bs)
 		}
 		if options.RFC822Size {
-			emailContent := traEmail.BuildBytes(ctx, false)
+			emailContent, err := traEmail.BuildBytes(ctx, false)
+			if err != nil {
+				log.WithContext(ctx).WithError(err).Error("build IMAP message size failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+			}
 			writer.WriteRFC822Size(cast.ToInt64(len(emailContent)))
 		}
 		if options.Flags {
@@ -272,9 +335,16 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 		}
 		for _, section := range options.BodySection {
 			if !section.Peek {
-				detail.MakeRead(ctx, email.Id, true)
+				if err := detail.MakeRead(ctx, email.Id, true); err != nil {
+					log.WithContext(ctx).WithError(err).Error("mark IMAP message as read failed")
+					return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+				}
 			}
-			emailContent := traEmail.BuildBytes(ctx, false)
+			emailContent, err := traEmail.BuildBytes(ctx, false)
+			if err != nil {
+				log.WithContext(ctx).WithError(err).Error("build IMAP message body failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+			}
 
 			// 优先检查是否请求 HEADER.FIELDS
 			if len(section.HeaderFields) > 0 || section.Specifier == imap.PartSpecifierHeader {
@@ -329,7 +399,11 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 							fmt.Fprintf(&b, "Bcc: %s\r\n", traEmail.BuildBcc2String())
 						}
 					case "message-id":
-						fmt.Fprintf(&b, "Message-ID: <%d@%s>\r\n", email.Id, config.Instance.Domain)
+						cfg := config.CurrentConfig()
+						if cfg == nil || cfg.Domain == "" {
+							return nil
+						}
+						fmt.Fprintf(&b, "Message-ID: <%d@%s>\r\n", email.Id, cfg.Domain)
 					case "content-type":
 						args := strings.SplitN(string(emailContent), "\r\n", 3)
 						if len(args) >= 2 {
@@ -346,28 +420,49 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 				b.WriteString("\r\n")
 
 				bodyWriter := writer.WriteBodySection(section, cast.ToInt64(b.Len()))
-				bodyWriter.Write(b.Bytes())
-				bodyWriter.Close()
+				if err := writeBodySectionContent(bodyWriter, b.Bytes()); err != nil {
+					log.WithContext(ctx).WithError(err).Error("write IMAP header section failed")
+					return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+				}
 			} else if section.Specifier == imap.PartSpecifierNone || section.Specifier == imap.PartSpecifierText {
 				if len(section.Part) >= 1 {
 					// 获取指定 part 的内容
 					partContent := traEmail.BuildPart(ctx, section.Part)
 					if partContent != nil {
 						bodyWriter := writer.WriteBodySection(section, cast.ToInt64(len(partContent)))
-						bodyWriter.Write(partContent)
-						bodyWriter.Close()
+						if err := writeBodySectionContent(bodyWriter, partContent); err != nil {
+							log.WithContext(ctx).WithError(err).Error("write IMAP message part failed")
+							return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+						}
 					} else {
 						// Part 不存在，返回空
 						bodyWriter := writer.WriteBodySection(section, 0)
-						bodyWriter.Close()
+						if err := writeBodySectionContent(bodyWriter, nil); err != nil {
+							log.WithContext(ctx).WithError(err).Error("close empty IMAP message part failed")
+							return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+						}
 					}
 				} else {
 					bodyWriter := writer.WriteBodySection(section, cast.ToInt64(len(emailContent)))
-					bodyWriter.Write(emailContent)
-					bodyWriter.Close()
+					if err := writeBodySectionContent(bodyWriter, emailContent); err != nil {
+						log.WithContext(ctx).WithError(err).Error("write IMAP message body failed")
+						return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+					}
 				}
 			}
 		}
-		writer.Close()
+		if err := writer.Close(); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func writeBodySectionContent(bodyWriter io.WriteCloser, content []byte) error {
+	written, writeErr := bodyWriter.Write(content)
+	if writeErr == nil && written != len(content) {
+		writeErr = io.ErrShortWrite
+	}
+	closeErr := bodyWriter.Close()
+	return errors.Join(writeErr, closeErr)
 }

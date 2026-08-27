@@ -5,6 +5,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/id"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
+	"net"
 	"sync"
 	"time"
 
@@ -39,17 +40,23 @@ type serverSession struct {
 	currentMailbox string
 	connectTime    time.Time
 	deleteUidList  []int
+	remoteAddress  string
 }
 
 // NewSession creates a new IMAP session.
-func (s *Server) NewSession() imapserver.Session {
+func (s *Server) NewSession(remoteAddresses ...net.Addr) imapserver.Session {
 	tc := &context.Context{}
 	tc.SetValue(context.LogID, id.GenLogID())
+	remoteAddress := ""
+	if len(remoteAddresses) > 0 && remoteAddresses[0] != nil {
+		remoteAddress = remoteAddresses[0].String()
+	}
 
 	return &serverSession{
-		server:      s,
-		ctx:         tc,
-		connectTime: time.Now(),
+		server:        s,
+		ctx:           tc,
+		connectTime:   time.Now(),
+		remoteAddress: remoteAddress,
 	}
 }
 

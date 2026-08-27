@@ -2,6 +2,8 @@ package context
 
 import (
 	"context"
+
+	"git.pcux.cn/xuans/Smail/services/access"
 )
 
 const (
@@ -9,13 +11,39 @@ const (
 )
 
 type Context struct {
-	context.Context `json:"-"`
-	UserID          int
-	UserAccount     string
-	UserName        string
-	Values          map[string]any
-	Lang            string
-	IsAdmin         bool
+	context.Context          `json:"-"`
+	UserID                   int
+	UserAccount              string
+	UserName                 string
+	Role                     access.Role
+	Values                   map[string]any
+	Lang                     string
+	IsAdmin                  bool
+	RecentAuth               bool
+	RecoveryCodeConfigured   bool
+	TargetRecoveryConfigured bool
+	PluginInstanceAuthorized bool
+	AuditScopeAuthorized     bool
+	DeploymentChannel        bool
+}
+
+// HasRole 判断当前请求是否属于指定角色。
+func (c *Context) HasRole(role access.Role) bool {
+	return c != nil && c.Role == role
+}
+
+// EffectiveRole 兼容旧调用方，确保旧会话仍能得到明确角色。
+func (c *Context) EffectiveRole() access.Role {
+	if c == nil {
+		return ""
+	}
+	if c.Role.Valid() {
+		return c.Role
+	}
+	if c.IsAdmin {
+		return access.RoleSuperAdmin
+	}
+	return access.RoleUser
 }
 
 func (c *Context) SetValue(key string, value any) {

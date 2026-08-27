@@ -9,47 +9,45 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/list"
-	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/errors"
-	log "github.com/sirupsen/logrus"
+	"git.pcux.cn/xuans/Smail/utils/query"
 	"strings"
 )
 import . "xorm.io/builder"
 
 func GetEmailDetail(ctx *context.Context, id int, markRead bool) (*response.EmailResponseData, error) {
+	if ctx == nil || ctx.UserID <= 0 || id <= 0 || db.Instance == nil {
+		return nil, errors.New("Not authorized")
+	}
 	// 先查是否是本人的邮件
 	var ue models.UserEmail
-	_, err := db.Instance.Where("email_id = ? AND user_id = ?", id, ctx.UserID).Get(&ue)
+	hasRelation, err := db.Instance.Where("email_id = ? AND user_id = ?", id, ctx.UserID).Get(&ue)
 	if err != nil {
-		log.Error(err)
+		return nil, fmt.Errorf("load email ownership: %w", err)
 	}
-	if ue.ID == 0 && !ctx.IsAdmin {
+	if !hasRelation {
 		return nil, errors.New("Not authorized")
 	}
 
 	//获取邮件内容
 	var email response.EmailResponseData
-	_, err = db.Instance.Select("*,1 as is_read").Table("email").Where("id=?", id).Get(&email)
+	hasEmail, err := db.Instance.Select("*,1 as is_read").Table("email").Where("id=?", id).Get(&email)
 	if err != nil {
-		log.WithContext(ctx).Errorf("SQL error:%+v", err)
-		return nil, err
+		return nil, fmt.Errorf("load email detail: %w", err)
+	}
+	if !hasEmail {
+		return nil, errors.New("Not found")
 	}
 
 	email.IsRead = ue.IsRead
 
-	if markRead && ue.IsRead == 0 {
-		ue.IsRead = 1
-		_, err = db.Instance.Where("id=?", ue.ID).Update(&ue)
-		if err != nil {
-			log.WithContext(ctx).Errorf("SQL error:%+v", err)
-		}
-	}
-
 	// 将内容中的cid内容替换成url
-	if email.Attachments != "" {
+	if strings.TrimSpace(email.Attachments) != "" {
 		var atts []parsemail.Attachment
-		_ = json.Unmarshal([]byte(email.Attachments), &atts)
+		if err := json.Unmarshal([]byte(email.Attachments), &atts); err != nil {
+			return nil, fmt.Errorf("decode stored attachments: %w", err)
+		}
 		for _, att := range atts {
 			email.Html = sql.NullString{
 				String: strings.ReplaceAll(email.Html.String, fmt.Sprintf("cid:%s", att.ContentID), fmt.Sprintf("/attachments/%d/%s", id, att.ContentID)),
@@ -57,63 +55,117 @@ func GetEmailDetail(ctx *context.Context, id int, markRead bool) (*response.Emai
 		}
 	}
 
+	if markRead && hasRelation && ue.IsRead == 0 {
+		ue.IsRead = 1
+		affected, err := db.Instance.Where("id=?", ue.ID).Cols("is_read").Update(&ue)
+		if err != nil {
+			return nil, fmt.Errorf("mark email as read: %w", err)
+		}
+		if affected != 1 {
+			return nil, errors.New("mark email as read failed")
+		}
+		email.IsRead = 1
+	}
+
 	return &email, nil
 }
 
-func MakeRead(ctx *context.Context, emailId int, hadRead bool) {
-	ue := models.UserEmail{
-		UserID:  ctx.UserID,
-		IsRead:  1,
-		EmailID: emailId,
+func MakeRead(ctx *context.Context, emailID int, read bool) error {
+	var relation models.UserEmail
+	found, err := db.Instance.Where("email_id = ? and user_id = ?", emailID, ctx.UserID).Get(&relation)
+	if err != nil {
+		return fmt.Errorf("load email relation for read update: %w", err)
 	}
-	if !hadRead {
-		ue.IsRead = 0
+	if !found || relation.ID == 0 {
+		return errors.New("Not authorized")
 	}
 
-	db.Instance.Where("email_id = ? and user_id=?", emailId, ctx.UserID).Cols("is_read").Update(&ue)
+	desired := int8(0)
+	if read {
+		desired = 1
+	}
+	if relation.IsRead == desired {
+		return nil
+	}
+
+	affected, err := db.Instance.Where("id = ? and user_id = ?", relation.ID, ctx.UserID).Cols("is_read").Update(map[string]interface{}{"is_read": desired})
+	if err != nil {
+		return fmt.Errorf("update email read state: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("update email read state affected %d rows", affected)
+	}
+	return nil
 }
-
-func FindUE(ctx *context.Context, groupName string, req list.ImapListReq, uid bool) []models.UserEmail {
+func FindUE(ctx *context.Context, groupName string, req list.ImapListReq, uid bool) ([]models.UserEmail, error) {
 	var ue []models.UserEmail
 	if uid {
-		err := db.Instance.Where(Eq{"id": req.UidList}).Find(&ue)
-		if err != nil {
-			log.WithContext(ctx).Errorf("SQL error:%+v", err)
+		if len(req.UidList) == 0 || len(req.UidList) > 10000 {
+			return nil, fmt.Errorf("invalid UID list")
 		}
-		return ue
-	} else {
-		sql := fmt.Sprintf("SELECT id,email_id, is_read from (SELECT id,email_id, is_read, ROW_NUMBER() OVER (ORDER BY id) AS serial_number FROM `user_email` WHERE (user_id = ? and status = ?)) a WHERE serial_number in (%s)",
-			array.Join(req.UidList, ","),
-		)
-		switch groupName {
-		case "INBOX":
-			db.Instance.SQL(sql, ctx.UserID, 0).Find(&ue)
-		case "Sent Messages":
-			db.Instance.SQL(sql, ctx.UserID, 1).Find(&ue)
-		case "Drafts":
-			db.Instance.SQL(sql, ctx.UserID, 4).Find(&ue)
-		case "Deleted Messages":
-			db.Instance.SQL(sql, ctx.UserID, 3).Find(&ue)
-		case "Junk":
-			db.Instance.SQL(sql, ctx.UserID, 5).Find(&ue)
-		default:
-			groupNames := strings.Split(groupName, "/")
-			groupName = groupNames[len(groupNames)-1]
-
-			var group models.Group
-			db.Instance.Table("group").Where("user_id=? and name=?", ctx.UserID, groupName).Get(&group)
-			if group.ID == 0 {
-				return nil
+		for _, value := range req.UidList {
+			if value <= 0 {
+				return nil, fmt.Errorf("invalid UID")
 			}
-			db.Instance.
-				SQL(fmt.Sprintf(
-					"SELECT * from (SELECT id,email_id, is_read, ROW_NUMBER() OVER (ORDER BY id) AS serial_number FROM `user_email` WHERE (user_id = ? and group_id = ?)) a WHERE serial_number in (%s)",
-					array.Join(req.UidList, ","),
-				)).
-				Find(&ue, ctx.UserID, group.ID)
 		}
-
-		return ue
-
+		if err := db.Instance.Where(Eq{"id": req.UidList, "user_id": ctx.UserID}).Find(&ue); err != nil {
+			return nil, fmt.Errorf("query user email by UID: %w", err)
+		}
+		return ue, nil
 	}
+	if req.Star < 0 || req.End < 0 || (req.End > 0 && req.Star > req.End) {
+		return nil, fmt.Errorf("invalid sequence range")
+	}
+
+	inner := "SELECT id,email_id,is_read,ROW_NUMBER() OVER (ORDER BY id) AS serial_number FROM `user_email` WHERE user_id = ?"
+	params := []any{ctx.UserID}
+	switch groupName {
+	case "INBOX":
+		inner += " and status = ? and group_id = 0"
+		params = append(params, 0)
+	case "Sent Messages":
+		inner += " and status = ? and group_id = 0"
+		params = append(params, 1)
+	case "Drafts":
+		inner += " and status = ? and group_id = 0"
+		params = append(params, 4)
+	case "Deleted Messages":
+		inner += " and status = ? and group_id = 0"
+		params = append(params, 3)
+	case "Junk":
+		inner += " and status = ? and group_id = 0"
+		params = append(params, 5)
+	default:
+		var group models.Group
+		found, err := db.Instance.Table("group").Where("user_id=? and full_path=?", ctx.UserID, groupName).Get(&group)
+		if err != nil {
+			return nil, fmt.Errorf("query mailbox: %w", err)
+		}
+		if !found || group.ID == 0 {
+			return nil, fmt.Errorf("mailbox not found")
+		}
+		inner += " and group_id = ?"
+		params = append(params, group.ID)
+	}
+
+	sqlText := "SELECT id,email_id,is_read FROM (" + inner + ") a WHERE "
+	if req.Star > 0 {
+		sqlText += "serial_number >= ?"
+		params = append(params, req.Star)
+		if req.End > 0 {
+			sqlText += " and serial_number <= ?"
+			params = append(params, req.End)
+		}
+	} else {
+		placeholders, sequenceArgs, ok := query.IntList(req.UidList, 10000)
+		if !ok {
+			return nil, fmt.Errorf("invalid sequence list")
+		}
+		sqlText += fmt.Sprintf("serial_number in (%s)", placeholders)
+		params = append(params, sequenceArgs...)
+	}
+	if err := db.Instance.SQL(sqlText, params...).Find(&ue); err != nil {
+		return nil, fmt.Errorf("query user email by sequence: %w", err)
+	}
+	return ue, nil
 }

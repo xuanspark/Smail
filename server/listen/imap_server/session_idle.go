@@ -5,6 +5,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/group"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2/imapserver"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"sync"
 )
@@ -77,17 +78,28 @@ func IdleNotice(ctx *context.Context, userId int, email *models.Email) error {
 	userConnectsMu.Unlock()
 
 	for _, connect := range idleConnects {
-		connect.writer.WriteNumMessages(idleNumMessages(ctx, userId, connect.mailbox))
+		numMessages, err := idleNumMessages(ctx, userId, connect.mailbox)
+		if err != nil {
+			return err
+		}
+		if err := connect.writer.WriteNumMessages(numMessages); err != nil {
+			log.WithContext(ctx).WithError(err).Error("write IMAP IDLE update failed")
+			return err
+		}
 	}
 	return nil
 }
 
-func idleNumMessages(ctx *context.Context, userId int, mailbox string) uint32 {
+func idleNumMessages(ctx *context.Context, userId int, mailbox string) (uint32, error) {
 	if mailbox == "" {
 		mailbox = "INBOX"
 	}
 	noticeCtx := *ctx
 	noticeCtx.UserID = userId
-	_, data := group.GetGroupStatus(&noticeCtx, mailbox, []string{"MESSAGES"})
-	return cast.ToUint32(data["MESSAGES"])
+	_, data, err := group.GetGroupStatus(&noticeCtx, mailbox, []string{"MESSAGES"})
+	if err != nil {
+		log.WithContext(ctx).WithError(err).Error("query IMAP IDLE mailbox status failed")
+		return 0, err
+	}
+	return cast.ToUint32(data["MESSAGES"]), nil
 }

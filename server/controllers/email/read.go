@@ -1,12 +1,10 @@
 package email
 
 import (
-	"encoding/json"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/detail"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
-	"io"
 	"net/http"
 )
 
@@ -15,28 +13,24 @@ type markReadRequest struct {
 }
 
 func MarkRead(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	reqBytes, err := io.ReadAll(req.Body)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
-	}
 	var reqData markReadRequest
-	err = json.Unmarshal(reqBytes, &reqData)
-	if err != nil {
-		log.WithContext(ctx).Errorf("%+v", err)
+	if err := decodeEmailJSONRequest(w, req, &reqData, maxEmailJSONRequestBytes); err != nil {
+		log.WithContext(ctx).WithError(err).Info("invalid email read request")
+		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		return
 	}
 
-	if len(reqData.IDs) <= 0 {
+	if len(reqData.IDs) <= 0 || len(reqData.IDs) > maxEmailOperationIDs {
 		response.NewErrorResponse(response.ParamsError, "ID错误", "").FPrint(w)
 		return
 	}
 
 	for _, id := range reqData.IDs {
-		detail.GetEmailDetail(ctx, id, true)
-	}
-
-	if err != nil {
-		response.NewErrorResponse(response.ServerError, err.Error(), "").FPrint(w)
-		return
+		if _, err := detail.GetEmailDetail(ctx, id, true); err != nil {
+			log.WithContext(ctx).WithError(err).Error("mark email read failed")
+			response.NewErrorResponse(response.ServerError, "\u66f4\u65b0\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
+			return
+		}
 	}
 	response.NewSuccessResponse("success").FPrint(w)
 

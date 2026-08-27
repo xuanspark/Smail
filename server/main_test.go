@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,6 +16,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,14 +30,32 @@ const TestPort = 17888
 var TestHost string = "http://127.0.0.1:" + cast.ToString(TestPort)
 
 func TestMain(m *testing.M) {
-	cookeieJar, err := cookiejar.New(nil)
+	if os.Getenv("SMAIL_RUN_INTEGRATION") != "1" {
+		os.Exit(m.Run())
+	}
+
+	testRoot, err := os.MkdirTemp("", "smail-main-test-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(testRoot)
+
+	originalWD, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	if err = os.Chdir(testRoot); err != nil {
+		panic(err)
+	}
+	defer os.Chdir(originalWD)
+
+	config.ROOT_PATH = filepath.Clean(testRoot) + string(os.PathSeparator)
+	cookieJar, err := cookiejar.New(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	httpClient = &http.Client{Jar: cookeieJar, Timeout: 5 * time.Minute}
-	os.Remove("config/config.json")
-	os.Remove("config/smail_temp.db")
+	httpClient = &http.Client{Jar: cookieJar, Timeout: 5 * time.Minute}
 	os.Setenv("setup_port", cast.ToString(TestPort))
 
 	go func() {
@@ -46,13 +63,16 @@ func TestMain(m *testing.M) {
 	}()
 	time.Sleep(5 * time.Second)
 
-	m.Run()
+	code := m.Run()
 
 	signal.StopChan <- true
 	time.Sleep(3 * time.Second)
+	os.Exit(code)
 }
-
 func TestMaster(t *testing.T) {
+	if os.Getenv("SMAIL_RUN_INTEGRATION") != "1" {
+		t.Skip("集成测试默认关闭，请设置 SMAIL_RUN_INTEGRATION=1")
+	}
 	t.Run("TestPort", testPort)
 	t.Run("testDataBaseSet", testDataBaseSet)
 	t.Run("testPwdSet", testPwdSet)
@@ -120,22 +140,14 @@ func TestMaster(t *testing.T) {
 	t.Run("testTokenLogin", testTokenLogin)
 }
 
-func md5Encode(str string) string {
-	h := md5.New()
-	h.Write([]byte(str))
-	return hex.EncodeToString(h.Sum(nil))
+func genLegacyToken(account string) string {
+	return account + ":legacy-token:0"
 }
-
-func genToken(account, password string) string {
-	now := cast.ToString(time.Now().Unix())
-	return fmt.Sprintf("%s:%s:%s", account, md5Encode(md5Encode(md5Encode(password+"pmail")+"pmail2023")+now), now)
-}
-
 func testTokenLogin(t *testing.T) {
 
 	req, _ := http.NewRequest("POST", TestHost+"/api/email/list", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Token", genToken("testCase", "testCase"))
+	req.Header.Set("Token", genLegacyToken("testCase"))
 
 	ret, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -298,7 +310,7 @@ func testCreateUser(t *testing.T) {
 	ret, err := httpClient.Post(TestHost+"/api/user/create", "application/json", strings.NewReader(`{
 	"account":"user1",
 	"username":"user1",
-	"password":"user1"
+	"password":"user1Pass"
 }`))
 	if err != nil {
 		t.Error(err)
@@ -315,7 +327,7 @@ func testCreateUser(t *testing.T) {
 	ret, err = httpClient.Post(TestHost+"/api/user/create", "application/json", strings.NewReader(`{
 	"account":"user2",
 	"username":"user2",
-	"password":"user2"
+	"password":"user2Pass"
 }`))
 	if err != nil {
 		t.Error(err)
@@ -331,7 +343,7 @@ func testCreateUser(t *testing.T) {
 	ret, err = httpClient.Post(TestHost+"/api/user/create", "application/json", strings.NewReader(`{
 	"account":"user3",
 	"username":"user3",
-	"password":"user3"
+	"password":"user3Pass"
 }`))
 	if err != nil {
 		t.Error(err)
@@ -601,7 +613,7 @@ func testLoginUser2(t *testing.T) {
 }
 
 func testLoginUser3(t *testing.T) {
-	ret, err := httpClient.Post(TestHost+"/api/login", "application/json", strings.NewReader("{\"account\":\"user3\",\"password\":\"user3\"}"))
+	ret, err := httpClient.Post(TestHost+"/api/login", "application/json", strings.NewReader("{\"account\":\"user3\",\"password\":\"user3Pass\"}"))
 	if err != nil {
 		t.Error(err)
 	}

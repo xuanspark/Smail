@@ -3,15 +3,11 @@ package config
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 	"git.pcux.cn/xuans/Smail/utils/errors"
-	"git.pcux.cn/xuans/Smail/utils/file"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -20,34 +16,48 @@ import (
 )
 
 var IsInit bool
+var DevelopmentMode bool
 
 type Config struct {
-	LogLevel             string            `json:"logLevel"` // 日志级别
-	Domain               string            `json:"domain"`
-	Domains              []string          `json:"domains"` //多域名设置，把所有收信域名都填进去
-	WebDomain            string            `json:"webDomain"`
-	DkimPrivateKeyPath   string            `json:"dkimPrivateKeyPath"`
-	SSLType              string            `json:"sslType"` // 0表示自动生成证书，HTTP挑战模式，1表示用户上传证书，2表示自动-DNS挑战模式
-	SSLPrivateKeyPath    string            `json:"SSLPrivateKeyPath"`
-	SSLPublicKeyPath     string            `json:"SSLPublicKeyPath"`
-	DbDSN                string            `json:"dbDSN"`
-	DbType               string            `json:"dbType"`
-	HttpsEnabled         int               `json:"httpsEnabled"`    //后台页面是否启用https，0默认（启用），1启用，2不启用
-	SpamFilterLevel      int               `json:"spamFilterLevel"` //垃圾邮件过滤级别，0不过滤、1 spf dkim 校验均失败时过滤，2 spf校验不通过时过滤 3,dkim 校验不过的时候过滤
-	HttpPort             int               `json:"httpPort"`        //http服务端口设置，默认80
-	HttpsPort            int               `json:"httpsPort"`       //https服务端口，默认443
-	WeChatPushAppId      string            `json:"weChatPushAppId"`
-	WeChatPushSecret     string            `json:"weChatPushSecret"`
-	WeChatPushTemplateId string            `json:"weChatPushTemplateId"`
-	WeChatPushUserId     string            `json:"weChatPushUserId"`
-	TgBotToken           string            `json:"tgBotToken"`
-	TgChatId             string            `json:"tgChatId"`
-	IsInit               bool              `json:"isInit"`
-	WebPushUrl           string            `json:"webPushUrl"`
-	WebPushToken         string            `json:"webPushToken"`
-	Tables               map[string]string `json:"-"`
-	TablesInitData       map[string]string `json:"-"`
-	setupPort            int               // 初始化阶段端口
+	LogLevel                string            `json:"logLevel"` // 日志级别
+	Domain                  string            `json:"domain"`
+	Domains                 []string          `json:"domains"` //多域名设置，把所有收信域名都填进去
+	WebDomain               string            `json:"webDomain"`
+	AccessHosts             []string          `json:"accessHosts,omitempty"`
+	DkimPrivateKeyPath      string            `json:"dkimPrivateKeyPath"`
+	SSLType                 string            `json:"sslType"` // 0表示自动生成证书，HTTP挑战模式，1表示用户上传证书，2表示自动-DNS挑战模式
+	SSLPrivateKeyPath       string            `json:"SSLPrivateKeyPath"`
+	SSLPublicKeyPath        string            `json:"SSLPublicKeyPath"`
+	DbDSN                   string            `json:"dbDSN"`
+	DbType                  string            `json:"dbType"`
+	HttpsEnabled            int               `json:"httpsEnabled"`    //后台页面是否启用https，0默认（启用），1启用，2不启用
+	SpamFilterLevel         int               `json:"spamFilterLevel"` //垃圾邮件过滤级别，0不过滤、1 spf dkim 校验均失败时过滤，2 spf校验不通过时过滤 3,dkim 校验不过的时候过滤
+	HttpPort                int               `json:"httpPort"`        //http服务端口设置，默认80
+	HttpsPort               int               `json:"httpsPort"`       //https服务端口，默认443
+	WeChatPushAppId         string            `json:"weChatPushAppId"`
+	WeChatPushSecret        string            `json:"weChatPushSecret"`
+	WeChatPushTemplateId    string            `json:"weChatPushTemplateId"`
+	WeChatPushUserId        string            `json:"weChatPushUserId"`
+	TgBotToken              string            `json:"tgBotToken"`
+	TgChatId                string            `json:"tgChatId"`
+	IsInit                  bool              `json:"isInit"`
+	SetupState              SetupState        `json:"setupState,omitempty"`
+	WebPushUrl              string            `json:"webPushUrl"`
+	WebPushToken            string            `json:"webPushToken"`
+	SMTPHost                string            `json:"smtpHost"`
+	SMTPPort                int               `json:"smtpPort"`
+	SMTPUsername            string            `json:"smtpUsername"`
+	SMTPPassword            string            `json:"smtpPassword"`
+	SMTPSecurity            string            `json:"smtpSecurity"`
+	SMTPFrom                string            `json:"smtpFrom"`
+	SMTPFromDomain          string            `json:"smtpFromDomain"`
+	VerificationEnabled     bool              `json:"verificationEnabled"`
+	ExternalRecoveryEnabled bool              `json:"externalRecoveryEnabled"`
+	LoginPolicy             string            `json:"loginPolicy"`
+	PluginAllowList         []string          `json:"pluginAllowList"`
+	Tables                  map[string]string `json:"-"`
+	TablesInitData          map[string]string `json:"-"`
+	setupPort               int               // 初始化阶段端口
 }
 
 var ROOT_PATH = ""
@@ -68,12 +78,16 @@ func init() {
 
 	ex, err := os.Executable()
 	if err != nil {
-		panic(err)
+		ex, err = filepath.Abs(".")
+		if err != nil {
+			ROOT_PATH = "." + string(os.PathSeparator)
+			return
+		}
 	}
 	exPath := filepath.Dir(ex)
 	realPath, err := filepath.EvalSymlinks(exPath)
 	if err != nil {
-		panic(err)
+		realPath = exPath
 	}
 	// 如果是Goland运行，不修改根路径
 	if strings.Contains(realPath, "GoLand") && strings.Contains(realPath, "JetBrains") {
@@ -88,10 +102,14 @@ func init() {
 }
 
 func (c *Config) GetSetupPort() int {
+	if port := RuntimeSetupPort(); port > 0 {
+		return port
+	}
 	return c.setupPort
 }
 
 func (c *Config) SetSetupPort(setupPort int) {
+	SetRuntimeSetupPort(setupPort)
 	c.setupPort = setupPort
 }
 
@@ -127,37 +145,57 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 	b.WriteString("\n")
 	return b.Bytes(), nil
 }
-func Init() {
+func Init() error {
 	var cfgData []byte
 	var err error
 	args := os.Args
+	DevelopmentMode = len(args) >= 2 && args[len(args)-1] == "dev"
+	configName := "config.json"
 
-	if len(args) >= 2 && args[len(args)-1] == "dev" {
-		cfgData, err = os.ReadFile(ROOT_PATH + "./config/config.dev.json")
+	if DevelopmentMode {
+		configName = "config.dev.json"
+		cfgData, err = readConfigFile(configName)
 		if err != nil {
-			return
+			return nil
 		}
 	} else {
-		cfgData, err = os.ReadFile(ROOT_PATH + "./config/config.json")
+		cfgData, err = readConfigFile(configName)
 		if err != nil {
 			log.Errorf("config file not found,%s", err.Error())
-			return
+			return nil
 		}
 	}
 
-	err = json.Unmarshal(cfgData, &Instance)
-	Instance.fixPath()
+	loaded := &Config{}
+	if err = json.Unmarshal(cfgData, loaded); err != nil {
+		return errors.Wrap(err)
+	}
+	applyLegacyLoginPolicy(cfgData, loaded)
+	migrated, err := unprotectCredentials(loaded)
 	if err != nil {
-		return
+		return errors.Wrap(err)
+	}
+	if migrated {
+		if err = writeProtectedConfigFile(configName, loaded); err != nil {
+			return errors.Wrap(err)
+		}
+	}
+	Instance = loaded
+	Instance.fixPath()
+	if !Instance.SetupState.Valid() {
+		if Instance.IsInit {
+			Instance.SetupState = SetupStateReady
+		} else {
+			Instance.SetupState = SetupStateNew
+		}
 	}
 
 	if len(Instance.Domains) == 0 && Instance.Domain != "" {
 		Instance.Domains = []string{Instance.Domain}
 	}
 
-	if Instance.Domain != "" && Instance.IsInit {
-		IsInit = true
-	}
+	IsInit = Instance.IsSetupReady()
+	PublishConfigSnapshot(Instance)
 
 	// 设置日志格式为json格式
 	log.SetFormatter(&logFormatter{})
@@ -188,43 +226,40 @@ func Init() {
 		log.SetLevel(log.InfoLevel)
 	}
 
+	return nil
 }
 
-func ReadPrivateKey() (*ecdsa.PrivateKey, bool) {
-	key, err := os.ReadFile(ROOT_PATH + "./config/ssl/account_private.pem")
-	if err != nil {
-		return createNewPrivateKey(), true
-	}
-
-	block, _ := pem.Decode(key)
-	x509Encoded := block.Bytes
-	privateKey, _ := x509.ParseECPrivateKey(x509Encoded)
-
-	return privateKey, false
+// IsSetupReady 是启动流程使用的唯一初始化状态判断。
+// IsInit 仅保留用于兼容旧配置和旧测试，不再作为新业务读路径。
+func (c *Config) IsSetupReady() bool {
+	return c != nil && c.SetupState == SetupStateReady
 }
 
-func createNewPrivateKey() *ecdsa.PrivateKey {
-	// Create a user. New accounts need an email and private key to start.
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+func ReadPrivateKey() (*ecdsa.PrivateKey, bool, error) {
+	privateKey, created, err := loadOrCreateACMEPrivateKey(filepath.Join(ROOT_PATH, "config", "ssl"), "account_private.pem")
 	if err != nil {
-		panic(err)
+		return nil, false, err
 	}
-	x509Encoded, _ := x509.MarshalECPrivateKey(privateKey)
-
-	// 将ec 密钥写入到 pem文件里
-	keypem, _ := os.OpenFile(ROOT_PATH+"./config/ssl/account_private.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-	err = pem.Encode(keypem, &pem.Block{Type: "EC PRIVATE KEY", Bytes: x509Encoded})
-	if err != nil {
-		panic(err)
-	}
-	return privateKey
+	return privateKey, created, nil
 }
-
 func WriteConfig(cfg *Config) error {
-	bytes, _ := json.Marshal(cfg)
-	_ = os.MkdirAll(ROOT_PATH+"/config/", 0755)
-	err := os.WriteFile(ROOT_PATH+"./config/config.json", bytes, 0666)
+	if err := writeProtectedConfigFile("config.json", cfg); err != nil {
+		return err
+	}
+	PublishConfigSnapshot(cfg)
+	return nil
+}
+
+func writeProtectedConfigFile(name string, cfg *Config) error {
+	stored, err := protectCredentials(cfg)
 	if err != nil {
+		return errors.Wrap(err)
+	}
+	data, err := json.Marshal(stored)
+	if err != nil {
+		return errors.Wrap(err)
+	}
+	if err = writeConfigFile(name, data); err != nil {
 		return errors.Wrap(err)
 	}
 	return nil
@@ -236,39 +271,167 @@ func ReadConfig() (*Config, error) {
 		SSLPrivateKeyPath:  ROOT_PATH + "config/ssl/private.key",
 		SSLPublicKeyPath:   ROOT_PATH + "config/ssl/public.crt",
 	}
-	if !file.PathExist(ROOT_PATH + "./config/config.json") {
-		bytes, _ := json.Marshal(configData)
-		_ = os.MkdirAll(ROOT_PATH+"/config/", 0755)
-		err := os.WriteFile(ROOT_PATH+"./config/config.json", bytes, 0666)
-		if err != nil {
-			log.Errorf("Write Config Error:%s", err.Error())
-			return nil, errors.Wrap(err)
+	cfgData, err := readConfigFile("config.json")
+	if os.IsNotExist(err) {
+		data, marshalErr := json.Marshal(configData)
+		if marshalErr != nil {
+			return nil, errors.Wrap(marshalErr)
 		}
-	} else {
-		cfgData, err := os.ReadFile(ROOT_PATH + "./config/config.json")
-		if err != nil {
-			log.Errorf("Read Config Error:%s", err.Error())
-			return nil, errors.Wrap(err)
+		if writeErr := writeConfigFile("config.json", data); writeErr != nil {
+			log.Errorf("Write Config Error:%s", writeErr.Error())
+			return nil, errors.Wrap(writeErr)
 		}
-
-		err = json.Unmarshal(cfgData, &configData)
-		configData.fixPath()
-		if err != nil {
-			log.Errorf("Read Config Unmarshal Error:%s", err.Error())
+		return &configData, nil
+	}
+	if err != nil {
+		log.Errorf("Read Config Error:%s", err.Error())
+		return nil, errors.Wrap(err)
+	}
+	if err = json.Unmarshal(cfgData, &configData); err != nil {
+		log.Error("Read Config Unmarshal Error")
+		return nil, errors.Wrap(err)
+	}
+	applyLegacyLoginPolicy(cfgData, &configData)
+	migrated, err := unprotectCredentials(&configData)
+	if err != nil {
+		log.Error("Read Config Credential Error")
+		return nil, errors.Wrap(err)
+	}
+	if migrated {
+		if err = writeProtectedConfigFile("config.json", &configData); err != nil {
+			log.Error("Migrate Config Credential Error")
 			return nil, errors.Wrap(err)
 		}
 	}
+	configData.fixPath()
 	return &configData, nil
 }
 
+func applyLegacyLoginPolicy(data []byte, cfg *Config) {
+	if cfg == nil || strings.TrimSpace(cfg.LoginPolicy) != "" {
+		return
+	}
+	var legacy struct {
+		VerificationLoginPolicy string `json:"verificationLoginPolicy"`
+	}
+	if json.Unmarshal(data, &legacy) == nil {
+		cfg.LoginPolicy = strings.TrimSpace(legacy.VerificationLoginPolicy)
+	}
+}
+
 func (c *Config) fixPath() {
-	if c.DbType == DBTypeSQLite && !strings.HasPrefix(c.DbDSN, "/") {
-		c.DbDSN = ROOT_PATH + c.DbDSN
+	if c.DbType == DBTypeSQLite {
+		c.DbDSN = resolvePath(c.DbDSN)
 	}
-	if !strings.HasPrefix(c.SSLPublicKeyPath, "/") {
-		c.SSLPublicKeyPath = ROOT_PATH + c.SSLPublicKeyPath
+	c.SSLPublicKeyPath = resolvePath(c.SSLPublicKeyPath)
+	c.SSLPrivateKeyPath = resolvePath(c.SSLPrivateKeyPath)
+	c.DkimPrivateKeyPath = resolvePath(c.DkimPrivateKeyPath)
+}
+
+func resolvePath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
 	}
-	if !strings.HasPrefix(c.SSLPrivateKeyPath, "/") {
-		c.SSLPrivateKeyPath = ROOT_PATH + c.SSLPrivateKeyPath
+	root, err := filepath.Abs(filepath.Clean(ROOT_PATH))
+	if err != nil {
+		return ""
 	}
+	if isWindowsAbsolute(value) && filepath.VolumeName(value) == "" {
+		return ""
+	}
+	target := value
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(root, target)
+	}
+	target, err = filepath.Abs(filepath.Clean(target))
+	if err != nil || !pathWithinRoot(root, target) {
+		return ""
+	}
+	realRoot, rootErr := filepath.EvalSymlinks(root)
+	realTarget, targetErr := evalWithExistingAncestor(target)
+	if rootErr == nil && targetErr == nil && !pathWithinRoot(realRoot, realTarget) {
+		return ""
+	}
+	return target
+}
+
+func pathWithinRoot(root string, target string) bool {
+	relative, err := filepath.Rel(root, target)
+	return err == nil && !filepath.IsAbs(relative) && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func isWindowsAbsolute(value string) bool {
+	if strings.HasPrefix(value, `\\`) || strings.HasPrefix(value, "//") {
+		return true
+	}
+	return len(value) >= 3 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' && (value[2] == '\\' || value[2] == '/')
+}
+
+func evalWithExistingAncestor(target string) (string, error) {
+	current := target
+	parts := make([]string, 0)
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(parts) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, parts[i])
+			}
+			return filepath.Abs(resolved)
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		parts = append(parts, filepath.Base(current))
+		current = parent
+	}
+}
+
+func protectCredentials(cfg *Config) (*Config, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid configuration")
+	}
+	stored := *cfg
+	vault, err := credential.NewVault(ROOT_PATH)
+	if err != nil {
+		return nil, fmt.Errorf("credential protection failed")
+	}
+	values := []*string{&stored.WeChatPushSecret, &stored.TgBotToken, &stored.WebPushToken, &stored.SMTPPassword}
+	for _, value := range values {
+		encrypted, err := vault.Encrypt(*value)
+		if err != nil {
+			return nil, fmt.Errorf("credential protection failed")
+		}
+		*value = encrypted
+	}
+	return &stored, nil
+}
+
+func unprotectCredentials(cfg *Config) (bool, error) {
+	if cfg == nil {
+		return false, fmt.Errorf("invalid configuration")
+	}
+	vault, err := credential.NewVault(ROOT_PATH)
+	if err != nil {
+		return false, fmt.Errorf("credential decryption failed")
+	}
+	values := []*string{&cfg.WeChatPushSecret, &cfg.TgBotToken, &cfg.WebPushToken, &cfg.SMTPPassword}
+	for _, value := range values {
+		if *value == "" {
+			continue
+		}
+		if !credential.IsEncrypted(*value) {
+			return false, fmt.Errorf("credential decryption failed")
+		}
+		plaintext, err := vault.Decrypt(credential.CurrentVersion, *value)
+		if err != nil {
+			return false, fmt.Errorf("credential decryption failed")
+		}
+		*value = plaintext
+	}
+	return false, nil
 }

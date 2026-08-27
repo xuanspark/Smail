@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"git.pcux.cn/xuans/Smail/config"
-	"git.pcux.cn/xuans/Smail/consts"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/del_email"
+	"git.pcux.cn/xuans/Smail/services/group"
 	"git.pcux.cn/xuans/Smail/services/rule/match"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/send"
@@ -17,29 +18,33 @@ import (
 	"github.com/spf13/cast"
 )
 
-func GetAllRules(ctx *context.Context, userId int) []*dto.Rule {
-	var res []*models.Rule
-	var err error
-	if userId == 0 {
-		return nil
-	} else {
-		err = db.Instance.Where("user_id=?", userId).Decr("sort").Find(&res)
+func GetAllRules(ctx *context.Context, userId int) ([]*dto.Rule, error) {
+	if userId <= 0 {
+		return nil, fmt.Errorf("invalid user id")
 	}
-
-	if err != nil {
-		log.WithContext(ctx).Errorf("sqlERror :%v", err)
+	var storedRules []*models.Rule
+	if err := db.Instance.Where("user_id=?", userId).Decr("sort").Find(&storedRules); err != nil {
+		return nil, fmt.Errorf("load rules: %w", err)
 	}
-	var ret []*dto.Rule
-	for _, rule := range res {
-		ret = append(ret, (&dto.Rule{}).Decode(rule))
+	ret := make([]*dto.Rule, 0, len(storedRules))
+	for _, storedRule := range storedRules {
+		decoded, err := (&dto.Rule{}).Decode(storedRule)
+		if err != nil {
+			return nil, fmt.Errorf("decode rule %d: %w", storedRule.Id, err)
+		}
+		ret = append(ret, decoded)
 	}
-
-	return ret
+	return ret, nil
 }
-
 func MatchRule(ctx *context.Context, rule *dto.Rule, email *parsemail.Email) bool {
+	if rule == nil || email == nil || len(rule.Rules) == 0 || ruleContextDone(ctx) {
+		return false
+	}
 
 	for _, r := range rule.Rules {
+		if ruleContextDone(ctx) || r == nil {
+			return false
+		}
 		var m match.Match
 
 		switch r.Type {
@@ -51,10 +56,10 @@ func MatchRule(ctx *context.Context, rule *dto.Rule, email *parsemail.Email) boo
 			m = match.NewEqualMatch(r.Field, r.Rule)
 		}
 		if m == nil {
-			continue
+			return false
 		}
 
-		if !m.Match(ctx, email) {
+		if !m.Match(ctx, email) || ruleContextDone(ctx) {
 			return false
 		}
 	}
@@ -62,35 +67,65 @@ func MatchRule(ctx *context.Context, rule *dto.Rule, email *parsemail.Email) boo
 	return true
 }
 
-func DoRule(ctx *context.Context, rule *dto.Rule, email *parsemail.Email, user *models.User, rawEmailData []byte) {
+func ruleContextDone(ctx *context.Context) bool {
+	return ctx != nil && ctx.Context != nil && ctx.Err() != nil
+}
+
+func DoRule(ctx *context.Context, rule *dto.Rule, email *parsemail.Email, user *models.User, rawEmailData []byte) error {
+	if ctx == nil || rule == nil || email == nil || user == nil || db.Instance == nil {
+		return fmt.Errorf("invalid rule execution context")
+	}
+	if rule.UserId <= 0 || user.ID <= 0 || rule.UserId != user.ID {
+		return fmt.Errorf("rule owner does not match execution user")
+	}
+	executionContext := *ctx
+	executionContext.UserID = user.ID
+	ctx = &executionContext
 	log.WithContext(ctx).Debugf("执行规则:%s", rule.Name)
 
 	switch rule.Action {
 	case dto.READ:
-		if email.MessageId > 0 {
-			_, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).Cols("is_read").Update(map[string]interface{}{"is_read": 1})
-			if err != nil {
-				log.WithContext(ctx).Errorf("sqlERror :%v", err)
-			}
+		if email.MessageId <= 0 {
+			return fmt.Errorf("email has not been saved")
+		}
+		var relation models.UserEmail
+		found, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, user.ID).Get(&relation)
+		if err != nil {
+			return fmt.Errorf("load rule message relation: %w", err)
+		}
+		if !found {
+			return fmt.Errorf("rule message relation not found")
+		}
+		if relation.IsRead == 1 {
+			return nil
+		}
+		affected, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=? and is_read=0", email.MessageId, user.ID).Cols("is_read").Update(map[string]interface{}{"is_read": 1})
+		if err != nil {
+			return fmt.Errorf("mark rule message as read: %w", err)
+		}
+		if affected != 1 {
+			return fmt.Errorf("mark rule message as read affected %d rows", affected)
 		}
 	case dto.DELETE:
-		_, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).Cols("status").Update(map[string]interface{}{"status": consts.EmailStatusDel})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
+		if email.MessageId <= 0 {
+			return fmt.Errorf("email has not been saved")
+		}
+		if err := del_email.DelEmail(ctx, []int{cast.ToInt(email.MessageId)}, false); err != nil {
+			return fmt.Errorf("delete rule message: %w", err)
 		}
 	case dto.FORWARD:
-		err := doForward(ctx, email, rule.Params, user, rawEmailData)
-		if err != nil {
-			log.WithContext(ctx).Errorf("Forward Error:%v", err)
-		} else {
-			log.WithContext(ctx).Infof("Forward Success:%s@%s -> %s", user.Account, config.Instance.Domains[0], rule.Params)
+		if err := doForward(ctx, email, rule.Params, user, rawEmailData); err != nil {
+			return fmt.Errorf("forward rule message: %w", err)
 		}
 	case dto.MOVE:
-		doMove(ctx, rule, email, user)
+		if err := doMove(ctx, rule, email); err != nil {
+			return fmt.Errorf("move rule message: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported rule action")
 	}
-
+	return nil
 }
-
 func doForward(ctx *context.Context, email *parsemail.Email, forwardAddress string, user *models.User, rawEmailData []byte) error {
 	forwardUser := parsemail.BuilderUser(forwardAddress)
 	if forwardUser == nil || forwardUser.EmailAddress == "" {
@@ -155,69 +190,26 @@ func forwardToLocalUser(ctx *context.Context, email *parsemail.Email, account, f
 }
 
 func isLocalDomain(domain string) bool {
-	for _, localDomain := range config.Instance.Domains {
+	cfg := config.CurrentConfig()
+	if cfg == nil {
+		return false
+	}
+	for _, localDomain := range cfg.Domains {
 		if strings.EqualFold(domain, localDomain) {
 			return true
 		}
 	}
-	return strings.EqualFold(domain, config.Instance.Domain)
+	return strings.EqualFold(domain, cfg.Domain)
 }
 
-func doMove(ctx *context.Context, rule *dto.Rule, email *parsemail.Email, user *models.User) {
-
-	groupId := cast.ToInt(rule.Params)
-	switch groupId {
-	case models.INBOX:
-		_, err := db.Instance.Table(&models.Email{}).Where("id=?", email.MessageId).
-			Cols("type").Update(map[string]interface{}{"type": consts.EmailTypeReceive})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-
-		_, err = db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).
-			Cols("group_id", "status").Update(map[string]interface{}{"group_id": 0, "status": 0})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-	case models.Sent:
-		_, err := db.Instance.Table(&models.Email{}).Where("id=?", email.MessageId).
-			Cols("type").Update(map[string]interface{}{"type": consts.EmailTypeSend})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-
-		_, err = db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).
-			Cols("group_id", "status").Update(map[string]interface{}{"group_id": 0, "status": 0})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-
-	case models.Drafts:
-		_, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).
-			Cols("group_id", "status").Update(map[string]interface{}{"group_id": 0, "status": consts.EmailStatusDrafts})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-
-	case models.Deleted:
-		_, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).
-			Cols("group_id", "status").Update(map[string]interface{}{"group_id": 0, "status": consts.EmailStatusDel})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-	case models.Junk:
-		_, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).
-			Cols("group_id", "status").Update(map[string]interface{}{"group_id": 0, "status": consts.EmailStatusJunk})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
-
-	default:
-
-		_, err := db.Instance.Table(&models.UserEmail{}).Where("email_id=? and user_id=?", email.MessageId, rule.UserId).Cols("group_id").Update(map[string]interface{}{"group_id": groupId})
-		if err != nil {
-			log.WithContext(ctx).Errorf("sqlERror :%v", err)
-		}
+func doMove(ctx *context.Context, rule *dto.Rule, email *parsemail.Email) error {
+	if rule == nil || email == nil || email.MessageId <= 0 {
+		return fmt.Errorf("invalid move rule context")
 	}
 
+	groupID := cast.ToInt(rule.Params)
+	if name, ok := models.GroupCodeToName[groupID]; ok {
+		return group.Move2DefaultBox(ctx, []int{cast.ToInt(email.MessageId)}, name)
+	}
+	return group.MoveMailToGroup(ctx, []int{cast.ToInt(email.MessageId)}, groupID)
 }

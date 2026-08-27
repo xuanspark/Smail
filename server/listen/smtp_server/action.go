@@ -1,18 +1,15 @@
 package smtp_server
 
 import (
-	"database/sql"
 	"errors"
-	"git.pcux.cn/xuans/Smail/db"
-	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/id"
-	"git.pcux.cn/xuans/Smail/utils/password"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	log "github.com/sirupsen/logrus"
 	"net"
-	"strings"
 )
 
 // The Backend implements SMTP server methods.
@@ -65,52 +62,39 @@ func (s *Session) Auth(mech string) (sasl.Server, error) {
 }
 
 func (s *Session) AuthPlain(username, pwd string) error {
-	log.WithContext(s.Ctx).Debugf("Auth %s %s", username, pwd)
-
-	s.User = username
-
-	var user models.User
-
-	encodePwd := password.Encode(pwd)
-
-	infos := strings.Split(username, "@")
-	if len(infos) > 1 {
-		username = infos[0]
+	username = auth.NormalizeAccount(username)
+	user, err := auth.AuthenticateProtocol("smtp", s.RemoteAddress.String(), username, pwd)
+	if err != nil {
+		log.WithContext(s.Ctx).Info("SMTP authentication failed")
+		return errors.New("password error")
 	}
 
-	_, err := db.Instance.Where("account =? and password =? and disabled=0", username, encodePwd).Get(&user)
-	if err != nil && err != sql.ErrNoRows {
-		log.Errorf("%+v", err)
-	}
-
-	if user.ID > 0 {
-		s.Ctx.UserAccount = user.Account
-		s.Ctx.UserID = user.ID
-		s.Ctx.UserName = user.Name
-		s.Ctx.IsAdmin = user.IsAdmin == 1
-
-		log.WithContext(s.Ctx).Debugf("Auth Success %+v", user)
-		return nil
-	}
-
-	log.WithContext(s.Ctx).Debugf("登陆错误%s %s", username, pwd)
-	return errors.New("password error")
+	s.User = user.Account
+	s.Ctx.UserAccount = user.Account
+	s.Ctx.UserID = user.ID
+	s.Ctx.UserName = user.Name
+	s.Ctx.Role = user.EffectiveRole()
+	s.Ctx.IsAdmin = s.Ctx.Role == access.RoleSuperAdmin || s.Ctx.Role == access.RoleAdmin
+	log.WithContext(s.Ctx).Debug("SMTP authentication succeeded")
+	return nil
 }
-
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
-	log.WithContext(s.Ctx).Debugf("Mail Success %+v %+v", from, opts)
+	log.WithContext(s.Ctx).Debug("SMTP MAIL accepted")
 	s.From = from
 	return nil
 }
 
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
-	log.WithContext(s.Ctx).Debugf("Rcpt Success %+v", to)
+	log.WithContext(s.Ctx).Debug("SMTP RCPT accepted")
 
 	s.To = append(s.To, to)
 	return nil
 }
 
-func (s *Session) Reset() {}
+func (s *Session) Reset() {
+	s.From = ""
+	s.To = nil
+}
 
 func (s *Session) Logout() error {
 	return nil

@@ -1,12 +1,17 @@
 package db
 
 import (
+	stdcontext "context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
-	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/services/access"
+	requestcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
@@ -17,16 +22,20 @@ import (
 var Instance *xorm.Engine
 
 func Init(version string) error {
-	dsn := config.Instance.DbDSN
+	cfg := config.CurrentConfig()
+	if cfg == nil {
+		return errors.New("runtime configuration is unavailable")
+	}
+	dsn := cfg.DbDSN
 	var err error
-	if config.Instance.DbType == config.DBTypeSQLite {
+	if cfg.DbType == config.DBTypeSQLite {
 		dsn, err = sqliteDSNWithReliabilityOptions(dsn)
 		if err != nil {
 			return errors.Wrap(err)
 		}
 	}
 
-	switch config.Instance.DbType {
+	switch cfg.DbType {
 	case "mysql":
 		Instance, err = xorm.NewEngine("mysql", dsn)
 	case "sqlite":
@@ -40,7 +49,7 @@ func Init(version string) error {
 		log.Errorf("DB init Error! %s", err.Error())
 		return errors.Wrap(err)
 	}
-	if config.Instance.DbType == config.DBTypeSQLite {
+	if cfg.DbType == config.DBTypeSQLite {
 		Instance.SetMaxOpenConns(1)
 		Instance.SetMaxIdleConns(1)
 	} else {
@@ -49,26 +58,49 @@ func Init(version string) error {
 	}
 
 	Instance.SetConnMaxLifetime(30 * time.Minute)
-	Instance.ShowSQL(config.Instance.LogLevel == "debug")
-	// 同步表结构
-	syncTables()
-
+	Instance.ShowSQL(cfg.LogLevel == "debug")
+	dialect, err := migration.ParseDialect(cfg.DbType)
+	if err != nil {
+		return errors.Wrap(err)
+	}
+	if legacySyncEnabled(version) {
+		// 先完成兼容期表结构引导，再由有版本迁移记录的迁移器执行数据迁移。
+		// 新版业务迁移不得在此处继续增加无版本的结构变更。
+		if err := syncTables(); err != nil {
+			return errors.Wrap(err)
+		}
+	}
+	report, err := (migration.Runner{
+		DB:         Instance.DB().DB,
+		Dialect:    dialect,
+		Migrations: migration.DefaultMigrations(),
+	}).Run(stdcontext.Background())
+	if err != nil {
+		return errors.Wrap(err)
+	}
+	log.Infof("\u5f53\u524d\u6570\u636e\u5e93\u7ed3\u6784\u7248\u672c: %d", report.CurrentVersion)
 	// 更新历史数据
-	fixHistoryData()
+	if err := fixHistoryData(); err != nil {
+		return errors.Wrap(err)
+	}
 
 	// 在数据库中记录程序版本
 	var v models.Version
 	_, err = Instance.Get(&v)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
 
 	if version != "" && v.Info != version && version != "test" {
 		v.Info = version
 		if v.Id == 0 {
-			Instance.Insert(&v)
+			if _, err := Instance.Insert(&v); err != nil {
+				return errors.Wrap(err)
+			}
 		} else {
-			Instance.Update(&v)
+			if _, err := Instance.ID(v.Id).Cols("info").Update(&v); err != nil {
+				return errors.Wrap(err)
+			}
 		}
 	}
 
@@ -79,84 +111,88 @@ func Init(version string) error {
 	return nil
 }
 
-func WithContext(ctx *context.Context, sql string) string {
+func WithContext(ctx *requestcontext.Context, sql string) string {
 	if ctx != nil {
-		logId := ctx.GetValue(context.LogID)
+		logId := ctx.GetValue(requestcontext.LogID)
 		return fmt.Sprintf("/* %s */ %s", logId, sql)
 	}
 	return sql
 }
 
-func syncTables() {
-	err := Instance.Sync2(&models.User{})
-	if err != nil {
-		panic(err)
+func legacySyncEnabled(version string) bool {
+	value := strings.TrimSpace(os.Getenv("SMAIL_ENABLE_LEGACY_SYNC2"))
+	if value != "1" && !strings.EqualFold(value, "true") {
+		return false
 	}
-	err = Instance.Sync2(&models.Email{})
-	if err != nil {
-		panic(err)
+	if version != "test" && !config.DevelopmentMode {
+		log.Warn("\u751f\u4ea7\u73af\u5883\u5df2\u62d2\u7edd\u542f\u7528\u65e7 Sync2 \u517c\u5bb9\u6a21\u5f0f")
+		return false
 	}
-	err = Instance.Sync2(&models.Group{})
-	if err != nil {
-		panic(err)
-	}
-	err = Instance.Sync2(&models.Rule{})
-	if err != nil {
-		panic(err)
-	}
-	err = Instance.Sync2(&models.Sessions{})
-	if err != nil {
-		panic(err)
-	}
-	err = Instance.Sync2(&models.UserEmail{})
-	if err != nil {
-		panic(err)
-	}
-	err = Instance.Sync2(&models.Version{})
-	if err != nil {
-		panic(err)
-	}
+	return true
 }
 
-func fixHistoryData() {
+func syncTables() error {
+	tables := []any{
+		&models.User{},
+		&models.Email{},
+		&models.Group{},
+		&models.Rule{},
+		&models.Sessions{},
+		&models.UserEmail{},
+		&models.ExternalEmail{},
+		&models.VerificationEvent{},
+		&models.SecurityQuestion{},
+		&models.RecoveryCode{},
+		&models.WebAuthnCredential{},
+		&models.Version{},
+	}
+	for _, table := range tables {
+		if err := Instance.Sync2(table); err != nil {
+			return fmt.Errorf("sync database table %T: %w", table, err)
+		}
+	}
+	return nil
+}
+
+func fixHistoryData() error {
 	var ueNum int
 	_, err := Instance.Table(&models.UserEmail{}).Select("count(1)").Get(&ueNum)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
 	if ueNum > 0 {
-		return
+		return nil
 	}
 
 	// 只有一个管理员用户
 	var user []models.User
 	err = Instance.Table(&models.User{}).OrderBy("id asc").Find(&user)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
 
 	// 只有一个账号，且不是管理员账号，将账号提权为管理员
 	if len(user) == 1 && user[0].IsAdmin == 0 {
 		u := user[0]
-		u.IsAdmin = 1
+		u.ApplyRole(access.RoleSuperAdmin)
 		_, err = Instance.Update(&u)
 		if err != nil {
-			panic(err)
+			return errors.Wrap(err)
 		}
 	}
 
 	if len(user) != 1 {
-		return
+		return nil
 	}
 
 	// 以前有邮件
 	var emails []*models.Email
 	err = Instance.Table(&models.Email{}).Select("id,status").OrderBy("id asc").Find(&emails)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
 	if len(emails) == 0 {
-		return
+		return nil
 	}
 
 	log.Infof("Sync History Data！Please Wait！")
@@ -170,9 +206,9 @@ func fixHistoryData() {
 		}
 		_, err = Instance.Insert(&ue)
 		if err != nil {
-			log.Errorf("SQL Error: %v", err)
+			return errors.Wrap(err)
 		}
 	}
 	log.Infof("Sync History Data Finished. Num: %d", len(emails))
-
+	return nil
 }

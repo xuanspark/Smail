@@ -1,13 +1,15 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import ListView from '../views/ListView.vue'
-import EditerView from '../views/EditerView.vue'
-import LoginView from '../views/LoginView.vue'
-import EmailDetailView from '../views/EmailDetailView.vue'
-import SetupView from '../views/SetupView.vue'
+import ListView from '../views/List/List.vue'
+import EditerView from '../views/Editer/Editer.vue'
+import LoginView from '../views/Login/Login.vue'
+import EmailDetailView from '../views/EmailDetail/EmailDetail.vue'
+import SetupView from '../views/Setup/Setup.vue'
+import PasswordRecoveryView from '../views/PasswordRecovery/PasswordRecovery.vue'
+import ResetBlockedView from '../views/ResetBlocked/ResetBlocked.vue'
 
 
 const router = createRouter({
-  history: createWebHashHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(),
   routes: [
     {
       path: '/',
@@ -33,6 +35,16 @@ const router = createRouter({
       path: '/setup',
       name: "setup",
       component: SetupView
+    },
+    {
+      path: '/forgot-password',
+      name: "forgot-password",
+      component: PasswordRecoveryView
+    },
+    {
+      path: '/reset-blocked',
+      name: 'reset-blocked',
+      component: ResetBlockedView
     },
     {
       path: '/detail/:id',

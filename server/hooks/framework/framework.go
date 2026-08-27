@@ -3,6 +3,7 @@ package framework
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -84,7 +86,72 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (p *Plugin) Run() {
+const maxPluginRPCBytes int64 = 8 << 20
+
+func decodePluginRequest(w http.ResponseWriter, request *http.Request, target any) bool {
+	if request.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return false
+	}
+	request.Body = http.MaxBytesReader(w, request.Body, maxPluginRPCBytes)
+	defer request.Body.Close()
+	decoder := json.NewDecoder(request.Body)
+	if err := decoder.Decode(target); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		w.WriteHeader(http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+func writePluginResponse(w http.ResponseWriter, contentType string, body []byte) error {
+	if int64(len(body)) > maxPluginRPCBytes {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		return errors.New("plugin response exceeds the allowed size")
+	}
+	w.Header().Set("Content-Type", contentType)
+	n, err := w.Write(body)
+	if err != nil {
+		return err
+	}
+	if n != len(body) {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
+func (p *Plugin) handleHookDTO(endpoint string, action func(*HookDTO)) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		log.Debugf("[%s] %s Start", p.name, endpoint)
+		var dto HookDTO
+		if !decodePluginRequest(w, request, &dto) {
+			return
+		}
+		action(&dto)
+		body, err := json.Marshal(dto)
+		if err != nil {
+			log.WithError(err).Errorf("[%s] %s response encoding failed", p.name, endpoint)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if err := writePluginResponse(w, "application/json", body); err != nil {
+			log.WithError(err).Errorf("[%s] %s response write failed", p.name, endpoint)
+			return
+		}
+		log.Debugf("[%s] %s End", p.name, endpoint)
+	}
+}
+
+func (p *Plugin) Run() error {
 
 	// 设置日志格式为json格式
 	log.SetFormatter(&logFormatter{})
@@ -95,107 +162,43 @@ func (p *Plugin) Run() {
 	log.SetOutput(os.Stdout)
 
 	if len(os.Args) < 2 {
-		panic("Command Params Error!")
+		return fmt.Errorf("plugin listener argument is required")
 	}
 	mux := http.NewServeMux()
-
-	mux.HandleFunc("/SendBefore", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] SendBefore Start", p.name)
-		var hookDTO HookDTO
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
+	mux.HandleFunc("/SendBefore", p.handleHookDTO("SendBefore", func(dto *HookDTO) {
+		p.hook.SendBefore(dto.Ctx, dto.Email)
+	}))
+	mux.HandleFunc("/SendAfter", p.handleHookDTO("SendAfter", func(dto *HookDTO) {
+		p.hook.SendAfter(dto.Ctx, dto.Email, dto.ErrMap)
+	}))
+	mux.HandleFunc("/ReceiveParseBefore", p.handleHookDTO("ReceiveParseBefore", func(dto *HookDTO) {
+		p.hook.ReceiveParseBefore(dto.Ctx, dto.EmailByte)
+	}))
+	mux.HandleFunc("/ReceiveParseAfter", p.handleHookDTO("ReceiveParseAfter", func(dto *HookDTO) {
+		p.hook.ReceiveParseAfter(dto.Ctx, dto.Email)
+	}))
+	mux.HandleFunc("/ReceiveSaveAfter", p.handleHookDTO("ReceiveSaveAfter", func(dto *HookDTO) {
+		p.hook.ReceiveSaveAfter(dto.Ctx, dto.Email, dto.UserEmail)
+	}))
+	mux.HandleFunc("/GetName", func(w http.ResponseWriter, request *http.Request) {
+		var dto HookDTO
+		if !decodePluginRequest(w, request, &dto) {
 			return
 		}
-		p.hook.SendBefore(hookDTO.Ctx, hookDTO.Email)
-		body, _ = json.Marshal(hookDTO)
-		writer.Write(body)
-		log.Debugf("[%s] SendBefore End", p.name)
+		name := strings.ReplaceAll(p.hook.GetName(dto.Ctx), " ", "")
+		if err := writePluginResponse(w, "text/plain; charset=utf-8", []byte(name)); err != nil {
+			log.WithError(err).Errorf("[%s] GetName response write failed", p.name)
+		}
 	})
-	mux.HandleFunc("/SendAfter", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] SendAfter Start", p.name)
-
-		var hookDTO HookDTO
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
+	mux.HandleFunc("/SettingsHtml", func(w http.ResponseWriter, request *http.Request) {
+		var dto SettingsHtmlRequest
+		if !decodePluginRequest(w, request, &dto) {
 			return
 		}
-		p.hook.SendAfter(hookDTO.Ctx, hookDTO.Email, hookDTO.ErrMap)
-		body, _ = json.Marshal(hookDTO)
-		writer.Write(body)
-		log.Debugf("[%s] SendAfter End", p.name)
-
-	})
-	mux.HandleFunc("/ReceiveParseBefore", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] ReceiveParseBefore Start", p.name)
-		var hookDTO HookDTO
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
-			return
+		html := p.hook.SettingsHtml(dto.Ctx, dto.URL, dto.RequestData)
+		if err := writePluginResponse(w, "text/html; charset=utf-8", []byte(html)); err != nil {
+			log.WithError(err).Errorf("[%s] SettingsHtml response write failed", p.name)
 		}
-		p.hook.ReceiveParseBefore(hookDTO.Ctx, hookDTO.EmailByte)
-		body, _ = json.Marshal(hookDTO)
-		writer.Write(body)
-		log.Debugf("[%s] ReceiveParseBefore End", p.name)
-	})
-	mux.HandleFunc("/ReceiveParseAfter", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] ReceiveParseAfter Start", p.name)
-		var hookDTO HookDTO
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
-			return
-		}
-		p.hook.ReceiveParseAfter(hookDTO.Ctx, hookDTO.Email)
-		body, _ = json.Marshal(hookDTO)
-		writer.Write(body)
-		log.Debugf("[%s] ReceiveParseAfter End", p.name)
-	})
-	mux.HandleFunc("/ReceiveSaveAfter", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] ReceiveSaveAfter Start", p.name)
-		var hookDTO HookDTO
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
-			return
-		}
-		p.hook.ReceiveSaveAfter(hookDTO.Ctx, hookDTO.Email, hookDTO.UserEmail)
-		body, _ = json.Marshal(hookDTO)
-		writer.Write(body)
-		log.Debugf("[%s] ReceiveSaveAfter End", p.name)
-	})
-	mux.HandleFunc("/GetName", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] GetName Start", p.name)
-		var hookDTO HookDTO
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
-			return
-		}
-		name := strings.ReplaceAll(p.hook.GetName(hookDTO.Ctx), " ", "")
-		writer.Write([]byte(name))
-		log.Debugf("[%s] GetName End", p.name)
-	})
-	mux.HandleFunc("/SettingsHtml", func(writer http.ResponseWriter, request *http.Request) {
-		log.Debugf("[%s] SettingsHtml Start", p.name)
-		var hookDTO SettingsHtmlRequest
-		body, _ := io.ReadAll(request.Body)
-		err := json.Unmarshal(body, &hookDTO)
-		if err != nil {
-			log.Errorf("params error %+v", err)
-			return
-		}
-		html := p.hook.SettingsHtml(hookDTO.Ctx, hookDTO.URL, hookDTO.RequestData)
-		writer.Write([]byte(html))
-		log.Debugf("[%s] SettingsHtml End", p.name)
 	})
 
 	server := http.Server{
@@ -204,24 +207,53 @@ func (p *Plugin) Run() {
 		Handler:      mux,
 	}
 
-	filePath := getExePath() + "/" + os.Args[1]
-	unixListener, err := net.Listen("unix", filePath)
+	unixListener, err := pluginListener(os.Args[1])
 	if err != nil {
-		panic(err)
+		return err
 	}
-	err = server.Serve(unixListener)
-	if err != nil {
-		panic(err)
+	defer unixListener.Close()
+	if err = server.Serve(unixListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve plugin: %w", err)
 	}
+	return nil
 }
 
-func getExePath() string {
+func pluginListener(socketArgument string) (net.Listener, error) {
+	if strings.HasPrefix(socketArgument, "fd:") {
+		fd, err := strconv.ParseUint(strings.TrimPrefix(socketArgument, "fd:"), 10, 32)
+		if err != nil || fd < 3 {
+			return nil, fmt.Errorf("invalid plugin listener descriptor")
+		}
+		file := os.NewFile(uintptr(fd), "smail-plugin-listener")
+		if file == nil {
+			return nil, fmt.Errorf("plugin listener descriptor is unavailable")
+		}
+		listener, err := net.FileListener(file)
+		_ = file.Close()
+		if err != nil {
+			return nil, fmt.Errorf("open plugin listener: %w", err)
+		}
+		return listener, nil
+	}
+
+	socketAddress := socketArgument
+	if !strings.HasPrefix(socketAddress, "@") {
+		exePath, err := getExePath()
+		if err != nil {
+			return nil, err
+		}
+		socketAddress = exePath + "/" + socketAddress
+	}
+	return net.Listen("unix", socketAddress)
+}
+
+func getExePath() (string, error) {
 	//return "/Smail/server/hooks/spam_block" //debug socket path
 
 	ex, err := os.Executable()
 	if err != nil {
-		panic(err)
+		return "", fmt.Errorf("resolve plugin executable: %w", err)
 	}
 	exePath := filepath.Dir(ex)
-	return exePath
+	return exePath, nil
 }

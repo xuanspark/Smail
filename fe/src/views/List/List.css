@@ -1,0 +1,235 @@
+.list-view-container {
+  display: flex;
+  flex-direction: column;
+  /* 【修复核心】让其优先贴合父元素高度，保底视口高度 */
+  height: 100%;
+  min-height: 100vh;
+  background: var(--pm-surface-glass);
+  border: 1px solid var(--pm-glass-border);
+  border-radius: var(--pm-radius-xl);
+  box-shadow: var(--pm-shadow-md);
+  backdrop-filter: blur(16px);
+  padding: 18px;
+  overflow: hidden;
+  animation: pm-rise-in 0.36s var(--pm-ease-out);
+}
+
+.list-header {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-title h2 {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--pm-text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.selection-actions {
+  display: flex;
+  padding-right: 8px;
+  margin-right: 2px;
+  border-right: 1px solid var(--pm-border-color);
+}
+
+.selection-actions .selection-btn + .selection-btn {
+  margin-left: 8px;
+}
+
+.action-btn {
+  border-radius: 999px;
+  border-color: var(--pm-border-color);
+  color: var(--pm-text-secondary);
+  background: var(--pm-surface-glass);
+  font-weight: 500;
+  transition: transform 0.2s var(--pm-ease-out), box-shadow 0.2s var(--pm-ease-out);
+}
+
+.action-btn:hover {
+  background-color: var(--pm-bg-hover);
+  color: var(--pm-text-primary);
+  border-color: var(--pm-border-color);
+  transform: translateY(-1px);
+}
+
+.compose-btn {
+  border-radius: 999px;
+  font-weight: 600;
+  margin-left: 8px;
+  padding-inline: 16px;
+  box-shadow: 0 8px 16px rgba(0, 113, 227, 0.2);
+  transition: transform 0.2s var(--pm-ease-out), box-shadow 0.2s var(--pm-ease-out);
+}
+
+.compose-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 24px rgba(0, 113, 227, 0.24);
+}
+
+.list-content {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--pm-surface-glass);
+  border-radius: var(--pm-radius-lg);
+  border: 1px solid var(--pm-border-color);
+  box-shadow: inset 0 1px 0 var(--pm-glass-border);
+}
+
+.modern-mail-table {
+  width: 100%;
+}
+
+.modern-mail-table :deep(tr) {
+  transition: all 0.2s var(--pm-ease-out);
+}
+
+.modern-mail-table :deep(tr:hover > td) {
+  background-color: var(--pm-row-hover) !important;
+}
+
+.modern-mail-table :deep(td) {
+  padding: 13px 0;
+}
+
+.status-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.mail-row-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.mail-main-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.mail-sender {
+  width: 172px;
+  min-width: 172px;
+  font-weight: 600;
+  color: var(--pm-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+.mail-subject {
+  flex: 0 1 auto;
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: #222;
+}
+
+.mail-snippet {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #999;
+}
+
+.mail-meta {
+  min-width: 80px;
+  text-align: right;
+  padding-right: 16px;
+}
+
+.mail-date {
+  font-size: 12px;
+  color: var(--pm-text-secondary);
+  font-weight: 500;
+}
+
+.is-unread .mail-sender,
+.is-unread .mail-subject {
+  font-weight: 700;
+  color: var(--pm-text-primary);
+}
+
+.is-unread .mail-date {
+  color: var(--pm-primary-color);
+  font-weight: 700;
+}
+
+.pagination-wrapper {
+  flex-shrink: 0;
+  padding: 10px 0;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom)); /* 【修复核心】适配 iPhone 底部小黑条 */
+  background-color: transparent; /* 【修复核心】去除白色背景避免暗黑模式突兀 */
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .list-content {
+    background: var(--pm-surface-glass-soft);
+  }
+}
+
+@media (max-width: 768px) {
+  .list-view-container {
+    /* 【修复核心】移动端强制计算高度，减去顶部 Mobile Header 高度 (通常约为 56px)，使用 dvh 避免滚动遮挡 */
+    height: calc(100dvh - 56px);
+    min-height: auto;
+    padding: 12px; /* 移动端适当减小 padding，留出更多可视空间 */
+  }
+
+  .list-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .header-actions {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .mail-main-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .mail-sender {
+    width: 100%;
+  }
+  .mail-subject {
+    max-width: 100%;
+  }
+  .mail-snippet {
+    display: none;
+  }
+  .mail-row-content {
+    align-items: flex-start;
+  }
+  .mail-meta {
+    padding-top: 2px;
+  }
+}

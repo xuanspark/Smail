@@ -2,7 +2,6 @@ package smtp_server
 
 import (
 	"database/sql"
-	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"strings"
@@ -28,6 +27,9 @@ const deliveryPendingError = "delivery result pending; outcome unknown after int
 type outgoingSender func(*context.Context, *parsemail.Email) (error, map[string]error)
 
 func (s *Session) deliverOutgoingEmail(email *parsemail.Email, sender outgoingSender) error {
+	if err := validateOutgoingEmail(email); err != nil {
+		return err
+	}
 	ctx := s.Ctx
 	_, saved, err := saveEmail(ctx, email.Size, email, ctx.UserID, int(consts.EmailTypeSend), nil, true, true)
 	if err != nil {
@@ -60,7 +62,7 @@ func (s *Session) deliverOutgoingEmail(email *parsemail.Email, sender outgoingSe
 
 func runSendAfterHooks(ctx *context.Context, email *parsemail.Email, domainErrors map[string]error) {
 	process := async.New(ctx)
-	for _, hook := range hooks.HookList {
+	for _, hook := range hooks.Snapshot() {
 		if hook == nil {
 			continue
 		}
@@ -138,6 +140,10 @@ func persistInitialAudit(ctx *context.Context, modelEmail models.Email, userIDs 
 }
 
 func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailType int, reallyTo []string, SPFStatus, dkimStatus bool) ([]*models.User, bool, error) {
+	cfg := config.CurrentConfig()
+	if cfg == nil {
+		return nil, false, stderrors.New("runtime configuration is unavailable")
+	}
 	if emailType != int(consts.EmailTypeReceive) {
 		return nil, false, nil
 	}
@@ -158,15 +164,15 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 	}
 
 	if DropUnknownRecipientEmails &&
-		((config.Instance.SpamFilterLevel == 1 && !SPFStatus && !dkimStatus) ||
-			(config.Instance.SpamFilterLevel == 2 && !SPFStatus) ||
-			(config.Instance.SpamFilterLevel == 3 && !dkimStatus)) {
+		((cfg.SpamFilterLevel == 1 && !SPFStatus && !dkimStatus) ||
+			(cfg.SpamFilterLevel == 2 && !SPFStatus) ||
+			(cfg.SpamFilterLevel == 3 && !dkimStatus)) {
 		log.WithContext(ctx).Infoln("垃圾邮件，拒信")
-		log.WithContext(ctx).Infof("收件人不存在且DKIM验证失败，丢弃邮件: %s -> %v", email.From.EmailAddress, accounts)
+		log.WithContext(ctx).Infof("收件人不存在且DKIM验证失败，丢弃邮件: recipient_count=%d", len(accounts))
 		return nil, true, nil
 	}
 
-	log.WithContext(ctx).Infof("收件人不存在但DKIM验证通过，转交管理员: %s -> %v", email.From.EmailAddress, accounts)
+	log.WithContext(ctx).Infof("收件人不存在但DKIM验证通过，转交管理员: recipient_count=%d", len(accounts))
 	if err := db.Instance.Table(&models.User{}).Where("is_admin=1").Find(&users); err != nil {
 		return nil, false, err
 	}
@@ -177,6 +183,10 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 }
 
 func incomingAccounts(email *parsemail.Email, reallyTo []string) []string {
+	cfg := config.CurrentConfig()
+	if cfg == nil {
+		return nil
+	}
 	var accounts []string
 	if len(reallyTo) > 0 {
 		for _, recipient := range reallyTo {
@@ -185,7 +195,7 @@ func incomingAccounts(email *parsemail.Email, reallyTo []string) []string {
 				continue
 			}
 			name, domain := account.GetDomainAccount()
-			if array.InArray(domain, config.Instance.Domains) && name != "" {
+			if array.InArray(domain, cfg.Domains) && name != "" {
 				accounts = append(accounts, strings.ToLower(name))
 			}
 		}
@@ -207,9 +217,4 @@ func boolInt8(value bool) int8 {
 		return 1
 	}
 	return 0
-}
-
-func json2string(value any) string {
-	data, _ := json.Marshal(value)
-	return string(data)
 }

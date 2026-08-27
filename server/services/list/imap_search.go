@@ -1,6 +1,8 @@
 package list
 
 import (
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -9,7 +11,7 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
-	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cast"
 )
 
 // IMAPSearchCriteria represents the search criteria for IMAP SEARCH command
@@ -62,7 +64,10 @@ type IMAPSearchResult struct {
 // SearchEmails performs IMAP search based on criteria
 func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
 	// First get the base list for the mailbox
-	baseList := GetUEListByUID(ctx, groupName, 0, 0, nil)
+	baseList, err := GetUEListByUID(ctx, groupName, 0, 0, nil)
+	if err != nil {
+		return nil, err
+	}
 	if len(baseList) == 0 {
 		return baseList, nil
 	}
@@ -92,7 +97,10 @@ func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchC
 
 	// For more complex filters, we need to fetch email data
 	if needsEmailData(criteria) {
-		baseList = filterWithEmailData(ctx, baseList, criteria)
+		baseList, err = filterWithEmailData(ctx, baseList, criteria)
+		if err != nil {
+			return nil, fmt.Errorf("filter email data: %w", err)
+		}
 	}
 
 	// Filter by flags (is_read status in this implementation)
@@ -103,13 +111,19 @@ func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchC
 	// Handle NOT criteria
 	if len(criteria.Not) > 0 {
 		for _, notCriteria := range criteria.Not {
-			baseList = applyNotCriteria(ctx, groupName, baseList, &notCriteria)
+			baseList, err = applyNotCriteria(ctx, groupName, baseList, &notCriteria)
+			if err != nil {
+				return nil, fmt.Errorf("apply NOT criteria: %w", err)
+			}
 		}
 	}
 
 	// Handle OR criteria
 	if len(criteria.Or) > 0 {
-		baseList = applyOrCriteria(ctx, groupName, baseList, criteria.Or)
+		baseList, err = applyOrCriteria(ctx, groupName, baseList, criteria.Or)
+		if err != nil {
+			return nil, fmt.Errorf("apply OR criteria: %w", err)
+		}
 	}
 
 	return baseList, nil
@@ -147,12 +161,24 @@ func needsEmailData(criteria *imap.SearchCriteria) bool {
 		criteria.Smaller > 0
 }
 
+func validIMAPNumber(value int) (uint32, bool) {
+	if value <= 0 || uint64(value) > math.MaxUint32 {
+		return 0, false
+	}
+	return cast.ToUint32(value), true
+}
+
 // filterByUIDSets filters the list by UID sets
 func filterByUIDSets(list []*response.UserEmailUIDData, uidSets []imap.UIDSet) []*response.UserEmailUIDData {
 	var result []*response.UserEmailUIDData
 	for _, item := range list {
+		number, ok := validIMAPNumber(item.ID)
+		if !ok {
+			continue
+		}
+		uid := imap.UID(number)
 		for _, uidSet := range uidSets {
-			if uidSet.Contains(imap.UID(item.ID)) {
+			if uidSet.Contains(uid) {
 				result = append(result, item)
 				break
 			}
@@ -165,8 +191,12 @@ func filterByUIDSets(list []*response.UserEmailUIDData, uidSets []imap.UIDSet) [
 func filterBySeqNumSets(list []*response.UserEmailUIDData, seqSets []imap.SeqSet) []*response.UserEmailUIDData {
 	var result []*response.UserEmailUIDData
 	for _, item := range list {
+		number, ok := validIMAPNumber(item.SerialNumber)
+		if !ok {
+			continue
+		}
 		for _, seqSet := range seqSets {
-			if seqSet.Contains(uint32(item.SerialNumber)) {
+			if seqSet.Contains(number) {
 				result = append(result, item)
 				break
 			}
@@ -226,9 +256,9 @@ func hasFlag(item *response.UserEmailUIDData, flag imap.Flag) bool {
 }
 
 // filterWithEmailData loads email data and applies filters that need it
-func filterWithEmailData(ctx *context.Context, list []*response.UserEmailUIDData, criteria *imap.SearchCriteria) []*response.UserEmailUIDData {
+func filterWithEmailData(ctx *context.Context, list []*response.UserEmailUIDData, criteria *imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
 	if len(list) == 0 {
-		return list
+		return list, nil
 	}
 
 	// Get email IDs
@@ -243,8 +273,7 @@ func filterWithEmailData(ctx *context.Context, list []*response.UserEmailUIDData
 	var emails []models.Email
 	err := db.Instance.Table("email").In("id", emailIDs).Find(&emails)
 	if err != nil {
-		log.WithContext(ctx).Errorf("Failed to fetch emails for search: %v", err)
-		return list
+		return nil, fmt.Errorf("fetch emails for search: %w", err)
 	}
 
 	// Build email map
@@ -266,7 +295,7 @@ func filterWithEmailData(ctx *context.Context, list []*response.UserEmailUIDData
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // matchesEmailCriteria checks if an email matches the search criteria
@@ -409,9 +438,12 @@ func matchesText(email *models.Email, pattern string) bool {
 }
 
 // applyNotCriteria applies NOT criteria
-func applyNotCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, notCriteria *imap.SearchCriteria) []*response.UserEmailUIDData {
+func applyNotCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, notCriteria *imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
 	// Get the list of items that match the NOT criteria
-	matchedList, _ := SearchEmails(ctx, groupName, notCriteria)
+	matchedList, err := SearchEmails(ctx, groupName, notCriteria)
+	if err != nil {
+		return nil, err
+	}
 
 	// Build a set of matched UIDs
 	matchedUIDs := make(map[int]bool)
@@ -427,13 +459,13 @@ func applyNotCriteria(ctx *context.Context, groupName string, list []*response.U
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // applyOrCriteria applies OR criteria
-func applyOrCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, orCriteria [][2]imap.SearchCriteria) []*response.UserEmailUIDData {
+func applyOrCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, orCriteria [][2]imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
 	if len(orCriteria) == 0 {
-		return list
+		return list, nil
 	}
 
 	// Build a set of current UIDs for intersection
@@ -447,7 +479,10 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 
 	for _, pair := range orCriteria {
 		// Get matches for first condition
-		matches1, _ := SearchEmails(ctx, groupName, &pair[0])
+		matches1, err := SearchEmails(ctx, groupName, &pair[0])
+		if err != nil {
+			return nil, err
+		}
 		for _, item := range matches1 {
 			if currentUIDs[item.ID] {
 				resultUIDs[item.ID] = true
@@ -455,7 +490,10 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 		}
 
 		// Get matches for second condition
-		matches2, _ := SearchEmails(ctx, groupName, &pair[1])
+		matches2, err := SearchEmails(ctx, groupName, &pair[1])
+		if err != nil {
+			return nil, err
+		}
 		for _, item := range matches2 {
 			if currentUIDs[item.ID] {
 				resultUIDs[item.ID] = true
@@ -471,5 +509,5 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 		}
 	}
 
-	return result
+	return result, nil
 }

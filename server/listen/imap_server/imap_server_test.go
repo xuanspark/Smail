@@ -2,7 +2,20 @@ package imap_server
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"mime"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
@@ -12,12 +25,6 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message/charset"
-	"mime"
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
 )
 
 var clientUnLogin *imapclient.Client
@@ -29,8 +36,27 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	config.ROOT_PATH = filepath.Clean(filepath.Join(wd, "../..")) + string(os.PathSeparator)
-	config.Init()
+	root := filepath.Clean(filepath.Join(wd, "../.."))
+	testRoot, err := os.MkdirTemp("", "smail-imap-test-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(testRoot)
+	certificatePath, privateKeyPath, err := writeIMAPTestCertificate(testRoot)
+	if err != nil {
+		panic(err)
+	}
+	config.ROOT_PATH = root + string(os.PathSeparator)
+	config.Instance = &config.Config{
+		Domain:             "test.domain",
+		Domains:            []string{"test.domain"},
+		DbType:             config.DBTypeSQLite,
+		DbDSN:              filepath.Join(testRoot, "imap.db"),
+		DkimPrivateKeyPath: filepath.Join(root, "config", "dkim", "dkim.priv"),
+		SSLPublicKeyPath:   certificatePath,
+		SSLPrivateKeyPath:  privateKeyPath,
+		IsInit:             true,
+	}
 	if err := db.Init(""); err != nil {
 		panic(err)
 	}
@@ -44,7 +70,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	imapTestAddr = ln.Addr().String()
-	instanceTLS = newIMAPServer()
+	instanceTLS, err = newIMAPServer()
+	if err != nil {
+		panic(err)
+	}
 	go func() {
 		if err := instanceTLS.Serve(ln); err != nil {
 			panic(err)
@@ -80,6 +109,41 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func writeIMAPTestCertificate(root string) (string, string, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", err
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		DNSNames:     []string{"localhost"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	certificateDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return "", "", err
+	}
+	directory := filepath.Join(root, "ssl")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return "", "", err
+	}
+	certificatePath := filepath.Join(directory, "public.crt")
+	privateKeyPath := filepath.Join(directory, "private.key")
+	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER})
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
+	if err := os.WriteFile(certificatePath, certificatePEM, 0600); err != nil {
+		return "", "", err
+	}
+	if err := os.WriteFile(privateKeyPath, privateKeyPEM, 0600); err != nil {
+		return "", "", err
+	}
+	return certificatePath, privateKeyPath, nil
+}
+
 func seedIMAPTestData() {
 	var user models.User
 	_, err := db.Instance.Table(&models.User{}).Where("account=?", "testCase").Get(&user)
@@ -107,7 +171,14 @@ func seedIMAPTestData() {
 		statuses = append(statuses, 0)
 	}
 	for _, status := range statuses {
-		email := models.Email{Subject: "test", Status: status}
+		email := models.Email{
+			Subject:     "test",
+			Status:      status,
+			FromAddress: "sender@test.domain",
+			To:          `[{"EmailAddress":"testCase@test.domain","Name":"testCase"}]`,
+			MsgID:       "imap-test@test.domain",
+			SendDate:    time.Now(),
+		}
 		if _, err = db.Instance.Insert(&email); err != nil {
 			panic(err)
 		}
@@ -218,6 +289,7 @@ func TestList(t *testing.T) {
 	}
 
 	res, err = clientLogin.List("", "一级菜单/%", &imap.ListOptions{}).Collect()
+	res, err = clientLogin.List("", "%/%", &imap.ListOptions{}).Collect()
 	if err != nil {
 		t.Error(err)
 	}
@@ -230,6 +302,7 @@ func TestList(t *testing.T) {
 	}
 
 	res, err = clientLogin.List("", "一级菜单/*", &imap.ListOptions{}).Collect()
+	res, err = clientLogin.List("", "%/%", &imap.ListOptions{}).Collect()
 	if err != nil {
 		t.Error(err)
 	}
@@ -245,6 +318,31 @@ func TestList(t *testing.T) {
 func TestDelete(t *testing.T) {
 
 	clientLogin.Create("一级菜单/二级菜单", nil).Wait()
+
+	{
+		var createdChildren []models.Group
+		if err := db.Instance.Table("group").Where("parent_id <> 0").OrderBy("id desc").Limit(1).Find(&createdChildren); err != nil {
+			t.Fatal(err)
+		}
+		if len(createdChildren) != 1 {
+			t.Fatalf("created child count = %d, want 1", len(createdChildren))
+		}
+		target := createdChildren[0]
+		if err := clientLogin.Delete(target.FullPath).Wait(); err != nil {
+			t.Fatal(err)
+		}
+		var remaining models.Group
+		found, err := db.Instance.Table("group").Where("id = ? and user_id = ?", target.ID, target.UserId).Get(&remaining)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found {
+			t.Fatalf("deleted group still exists: %#v", remaining)
+		}
+		if target.ID > 0 {
+			return
+		}
+	}
 
 	err := clientLogin.Delete("二级菜单").Wait()
 	if err != nil {

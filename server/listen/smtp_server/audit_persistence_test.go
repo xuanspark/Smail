@@ -383,11 +383,14 @@ func TestOutgoingPendingAuditMailboxVisibility(t *testing.T) {
 	}
 	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
 
-	outgoing, _ := listservice.GetEmailList(session.Ctx, dto.SearchTag{
+	outgoing, _, err := listservice.GetEmailList(session.Ctx, dto.SearchTag{
 		Type:    consts.EmailTypeSend,
 		Status:  -1,
 		GroupId: -1,
 	}, "", false, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 	found := false
 	for _, item := range outgoing {
 		if item.Id == saved.Id {
@@ -402,7 +405,11 @@ func TestOutgoingPendingAuditMailboxVisibility(t *testing.T) {
 	}
 
 	for _, mailbox := range []string{"INBOX", "Sent Messages"} {
-		for _, item := range listservice.GetUEListByUID(session.Ctx, mailbox, 0, 0, nil) {
+		items, err := listservice.GetUEListByUID(session.Ctx, mailbox, 0, 0, nil)
+		if err != nil {
+			t.Fatalf("query IMAP mailbox %q: %v", mailbox, err)
+		}
+		for _, item := range items {
 			if item.EmailID == saved.Id {
 				t.Fatalf("pending audit email %d unexpectedly appears in IMAP mailbox %q", saved.Id, mailbox)
 			}

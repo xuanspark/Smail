@@ -20,13 +20,17 @@
 package smtp
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
+	"net/netip"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -35,8 +39,15 @@ import (
 
 var NoSupportSTARTTLSError = errors.New("smtp: server doesn't support STARTTLS")
 var EOFError = errors.New("EOF")
+var ErrUnsafeRemoteAddress = errors.New("smtp: remote address is not public")
+var ErrUnsafePlaintextTarget = errors.New("smtp: plaintext delivery is restricted to localhost")
 
-const outboundSMTPQuitWriteTimeout = 250 * time.Millisecond
+const (
+	outboundSMTPDialTimeout         = 2 * time.Second
+	outboundSMTPTLSHandshakeTimeout = 2 * time.Second
+	outboundSMTPTransactionTimeout  = 2 * time.Minute
+	outboundSMTPQuitWriteTimeout    = 250 * time.Millisecond
+)
 
 // A Client represents a client connection to an SMTP server.
 type Client struct {
@@ -61,32 +72,139 @@ type Client struct {
 // Dial returns a new Client connected to an SMTP server at addr.
 // The addr must include a port, as in "mail.example.com:smtp".
 func Dial(addr, fromDomain string) (*Client, error) {
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	return dial(addr, fromDomain, true)
+}
+
+func dial(addr, fromDomain string, publicOnly bool) (*Client, error) {
+	conn, err := dialTCP(addr, publicOnly)
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host, fromDomain)
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return newClientWithTimeout(conn, host, fromDomain, outboundSMTPTransactionTimeout)
 }
 
 // with tls
 func DialTls(addr, domain, fromDomain string) (*Client, error) {
-	if domain == "" {
-		domain = fromDomain
-	}
+	return dialTLS(addr, domain, fromDomain, true)
+}
 
-	// TLS config
-	tlsconfig := &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         domain,
-	}
-
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", addr, tlsconfig)
+func dialTLS(addr, domain, fromDomain string, publicOnly bool) (*Client, error) {
+	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
+	if domain == "" {
+		domain = strings.TrimSuffix(host, ".")
+	}
+
+	tlsconfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: domain,
+	}
+
+	conn, err := dialTCP(addr, publicOnly)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn, err := handshakeTLS(conn, tlsconfig, outboundSMTPTLSHandshakeTimeout)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return newClientWithTimeout(tlsConn, host, fromDomain, outboundSMTPTransactionTimeout)
+}
+
+func handshakeTLS(conn net.Conn, config *tls.Config, timeout time.Duration) (*tls.Conn, error) {
+	tlsConn := tls.Client(conn, config)
+	if err := tlsConn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, err
+	}
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
+func newClientWithTimeout(conn net.Conn, host, fromDomain string, timeout time.Duration) (*Client, error) {
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	return NewClient(conn, host, fromDomain)
+}
+
+func dialTCP(addr string, publicOnly bool) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || host == "" || port == "" {
+		return nil, errors.New("smtp: invalid remote address")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), outboundSMTPDialTimeout)
+	defer cancel()
+	addresses, err := resolveRemoteAddresses(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	for _, address := range addresses {
+		if publicOnly && !credential.IsPublicRemoteIP(address) {
+			return nil, fmt.Errorf("%w: %s", ErrUnsafeRemoteAddress, host)
+		}
+	}
+
+	dialer := &net.Dialer{Timeout: outboundSMTPDialTimeout, KeepAlive: 30 * time.Second}
+	var lastErr error
+	for _, address := range addresses {
+		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		return nil, errors.New("smtp: remote address is unavailable")
+	}
+	return nil, fmt.Errorf("smtp: connect to remote address: %w", lastErr)
+}
+
+func resolveRemoteAddresses(ctx context.Context, host string) ([]netip.Addr, error) {
+	if address, err := netip.ParseAddr(host); err == nil {
+		return []netip.Addr{address.Unmap()}, nil
+	}
+	resolved, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("smtp: resolve remote address: %w", err)
+	}
+	addresses := make([]netip.Addr, 0, len(resolved))
+	for _, item := range resolved {
+		address, ok := netip.AddrFromSlice(item.IP)
+		if ok {
+			addresses = append(addresses, address.Unmap())
+		}
+	}
+	if len(addresses) == 0 {
+		return nil, errors.New("smtp: remote address is unavailable")
+	}
+	return addresses, nil
+}
+
+func validateUnsafePlaintextTarget(domain, addr string) error {
+	if strings.TrimSuffix(strings.ToLower(domain), ".") != "localhost" {
+		return ErrUnsafePlaintextTarget
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ErrUnsafePlaintextTarget
+	}
+	address, err := netip.ParseAddr(host)
+	if err != nil || !address.Unmap().IsLoopback() {
+		return ErrUnsafePlaintextTarget
+	}
+	return nil
 }
 
 // NewClient returns a new Client using an existing connection and host as a
@@ -95,16 +213,16 @@ func NewClient(conn net.Conn, host, fromDomain string) (*Client, error) {
 	text := textproto.NewConn(conn)
 	_, _, err := text.ReadResponse(220)
 	if err != nil {
-		text.Close()
-		return nil, err
+		closeErr := text.Close()
+		return nil, errors.Join(err, closeErr)
 	}
 
 	localName := "domain.com"
 
 	if fromDomain != "" {
 		localName = fromDomain
-	} else if config.Instance != nil && config.Instance.Domain != "" {
-		localName = config.Instance.Domain
+	} else if cfg := config.CurrentConfig(); cfg != nil && cfg.Domain != "" {
+		localName = cfg.Domain
 	}
 
 	c := &Client{Text: text, conn: conn, serverName: host, localName: localName}
@@ -199,14 +317,25 @@ func (c *Client) StartTLS(config *tls.Config) error {
 		return err
 	}
 	if config == nil {
-		config = &tls.Config{}
+		config = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 	if config.ServerName == "" {
 		// Make a copy to avoid polluting argument
 		config = config.Clone()
 		config.ServerName = c.serverName
 	}
-	c.conn = tls.Client(c.conn, config)
+	if config.MinVersion < tls.VersionTLS12 {
+		config = config.Clone()
+		config.MinVersion = tls.VersionTLS12
+	}
+	tlsConn, err := handshakeTLS(c.conn, config, outboundSMTPTLSHandshakeTimeout)
+	if err != nil {
+		return err
+	}
+	if err = tlsConn.SetDeadline(time.Now().Add(outboundSMTPTransactionTimeout)); err != nil {
+		return err
+	}
+	c.conn = tlsConn
 	c.Text = textproto.NewConn(c.conn)
 	c.tls = true
 	return c.ehlo()
@@ -248,8 +377,8 @@ func (c *Client) Auth(a smtp.Auth) error {
 	encoding := base64.StdEncoding
 	mech, resp, err := a.Start(&smtp.ServerInfo{Name: c.serverName, TLS: c.tls, Auth: c.auth})
 	if err != nil {
-		c.Quit()
-		return err
+		quitErr := c.Quit()
+		return errors.Join(err, quitErr)
 	}
 	resp64 := make([]byte, encoding.EncodedLen(len(resp)))
 	encoding.Encode(resp64, resp)
@@ -270,8 +399,8 @@ func (c *Client) Auth(a smtp.Auth) error {
 		}
 		if err != nil {
 			// abort the AUTH
-			c.cmd(501, "*")
-			c.Quit()
+			_, _, abortErr := c.cmd(501, "*")
+			err = errors.Join(err, abortErr, c.Quit())
 			break
 		}
 		if resp == nil {
@@ -326,7 +455,9 @@ type dataCloser struct {
 }
 
 func (d *dataCloser) Close() error {
-	d.WriteCloser.Close()
+	if err := d.WriteCloser.Close(); err != nil {
+		return err
+	}
 	_, _, err := d.c.Text.ReadResponse(250)
 	return err
 }
@@ -426,7 +557,7 @@ func SendMailWithTls(domain string, addr string, a smtp.Auth, from string, fromD
 // 修复TSL验证问题
 func SendMail(domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
 
-	log.Debugf("SendMail,%s ,%s ,%s ,%s ,%v ", domain, addr, from, fromDomain, to)
+	log.Debugf("SMTP delivery started: recipient_count=%d", len(to))
 
 	if err := validateLine(from); err != nil {
 		return err
@@ -452,6 +583,7 @@ func SendMail(domain string, addr string, a smtp.Auth, from string, fromDomain s
 	if domain != "" {
 		config = &tls.Config{
 			ServerName: domain,
+			MinVersion: tls.VersionTLS12,
 		}
 	}
 
@@ -483,6 +615,9 @@ func SendMail(domain string, addr string, a smtp.Auth, from string, fromDomain s
 
 // SendMailUnsafe 无TLS加密的邮件发送方式
 func SendMailUnsafe(domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
+	if err := validateUnsafePlaintextTarget(domain, addr); err != nil {
+		return err
+	}
 	if err := validateLine(from); err != nil {
 		return err
 	}
@@ -491,7 +626,7 @@ func SendMailUnsafe(domain string, addr string, a smtp.Auth, from string, fromDo
 			return err
 		}
 	}
-	c, err := Dial(addr, fromDomain)
+	c, err := dial(addr, fromDomain, false)
 	if err != nil {
 		return err
 	}

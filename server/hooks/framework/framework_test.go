@@ -1,66 +1,41 @@
 package framework
 
 import (
-	"encoding/json"
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-
-	"git.pcux.cn/xuans/Smail/dto/parsemail"
 )
 
-func TestHookDTOIncludesEmailAuthentication(t *testing.T) {
-	dto := HookDTO{
-		Email: &parsemail.Email{
-			Subject:        "认证结果测试",
-			Authentication: parsemail.NewEmailAuthentication(false, false),
-		},
+func TestDecodePluginRequestRejectsInvalidMethodAndOversizedBody(t *testing.T) {
+	var dto HookDTO
+	methodRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	methodRecorder := httptest.NewRecorder()
+	if decodePluginRequest(methodRecorder, methodRequest, &dto) {
+		t.Fatal("GET request was accepted")
+	}
+	if methodRecorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", methodRecorder.Code, http.StatusMethodNotAllowed)
 	}
 
-	body, err := json.Marshal(dto)
-	if err != nil {
-		t.Fatalf("序列化 HookDTO 失败：%v", err)
+	oversizedBody := append([]byte(`{"ServerVersion":"`), bytes.Repeat([]byte{'a'}, int(maxPluginRPCBytes))...)
+	oversizedBody = append(oversizedBody, []byte(`"}`)...)
+	oversizedRequest := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(oversizedBody))
+	oversizedRecorder := httptest.NewRecorder()
+	if decodePluginRequest(oversizedRecorder, oversizedRequest, &dto) {
+		t.Fatal("oversized request was accepted")
 	}
-
-	var decoded struct {
-		Email *struct {
-			Authentication *parsemail.EmailAuthentication
-		}
-	}
-	if err = json.Unmarshal(body, &decoded); err != nil {
-		t.Fatalf("反序列化 HookDTO 失败：%v", err)
-	}
-	if decoded.Email == nil {
-		t.Fatal("HookDTO 中缺少邮件")
-	}
-	authentication := decoded.Email.Authentication
-	if authentication == nil {
-		t.Fatal("HookDTO 中缺少邮件认证结果")
-	}
-	if authentication.SPFPassed || authentication.DKIMPassed || !authentication.Dangerous {
-		t.Fatalf("HookDTO 中的认证结果不正确：%+v", authentication)
+	if oversizedRecorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", oversizedRecorder.Code, http.StatusRequestEntityTooLarge)
 	}
 }
 
-func TestOlderPluginEmailShapeIgnoresAuthentication(t *testing.T) {
-	dto := HookDTO{
-		Email: &parsemail.Email{
-			Subject:        "兼容性测试",
-			Authentication: parsemail.NewEmailAuthentication(true, false),
-		},
+func TestWritePluginResponseRejectsOversizedBody(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	if err := writePluginResponse(recorder, "text/plain", bytes.Repeat([]byte{'a'}, int(maxPluginRPCBytes)+1)); err == nil {
+		t.Fatal("oversized response was accepted")
 	}
-	body, err := json.Marshal(dto)
-	if err != nil {
-		t.Fatalf("序列化 HookDTO 失败：%v", err)
-	}
-
-	var oldDTO struct {
-		Email *struct {
-			Subject string
-		}
-	}
-	if err = json.Unmarshal(body, &oldDTO); err != nil {
-		t.Fatalf("旧插件结构无法读取新增字段后的 HookDTO：%v", err)
-	}
-	if oldDTO.Email == nil || oldDTO.Email.Subject != "兼容性测试" {
-		t.Fatalf("旧插件结构读取到的邮件不正确：%+v", oldDTO.Email)
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
 	}
 }

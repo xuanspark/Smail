@@ -1,12 +1,14 @@
 import axios from 'axios'
 import lang from '../i18n/i18n';
-import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 import {router} from "@/router";
 
 //创建axios的一个实例
 const http = axios.create({
     baseURL: import.meta.env.VITE_APP_URL, //接口统一域名
-    timeout: 60000, //设置超时
+    timeout: 60000,
+    xsrfCookieName: 'smail_csrf',
+    xsrfHeaderName: 'X-CSRF-Token',
+    withXSRFToken: true, //设置超时
     headers: {
         'Content-Type': 'application/json;charset=UTF-8;',
         'Lang': lang.lang

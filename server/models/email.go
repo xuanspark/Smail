@@ -3,6 +3,8 @@ package models
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -49,8 +51,10 @@ func (d *Email) MarshalJSON() ([]byte, error) {
 
 	var allAtt = []attachments{}
 	var showAtt = []attachments{}
-	if d.Attachments != "" {
-		_ = json.Unmarshal([]byte(d.Attachments), &allAtt)
+	if strings.TrimSpace(d.Attachments) != "" {
+		if err := json.Unmarshal([]byte(d.Attachments), &allAtt); err != nil {
+			return nil, fmt.Errorf("decode stored attachments: %w", err)
+		}
 		for i, att := range allAtt {
 			att.Index = i
 			//if att.ContentType == "application/octet-stream" {

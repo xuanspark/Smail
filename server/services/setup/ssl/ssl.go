@@ -3,6 +3,7 @@ package ssl
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"git.pcux.cn/xuans/Smail/config"
@@ -15,6 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,22 +41,22 @@ func (u *MyUser) GetPrivateKey() crypto.PrivateKey {
 	return u.key
 }
 
-func GetSSL() string {
+func GetSSL() (string, error) {
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		return "", errors.Wrap(err)
 	}
 	if cfg.SSLType == "" {
-		return config.SSLTypeAutoHTTP
+		return config.SSLTypeAutoHTTP, nil
 	}
 
-	return cfg.SSLType
+	return cfg.SSLType, nil
 }
 
 func SetSSL(sslType, priKey, crtKey string) error {
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
 	if sslType == config.SSLTypeAutoHTTP || sslType == config.SSLTypeUser || sslType == config.SSLTypeAutoDNS {
 		cfg.SSLType = sslType
@@ -63,10 +65,14 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	}
 
 	if cfg.SSLType == config.SSLTypeUser {
-		cfg.SSLPrivateKeyPath = priKey
-		cfg.SSLPublicKeyPath = crtKey
+		privatePath, publicPath, err := validateUserCertificatePaths(priKey, crtKey)
+		if err != nil {
+			return err
+		}
+		cfg.SSLPrivateKeyPath = privatePath
+		cfg.SSLPublicKeyPath = publicPath
 		// 手动设置证书的情况下后台地址默认不启用https
-		cfg.HttpsEnabled = 2
+		cfg.HttpsEnabled = 1
 	}
 
 	err = config.WriteConfig(cfg)
@@ -77,6 +83,98 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	return nil
 }
 
+func validateUserCertificatePaths(privatePath, publicPath string) (string, string, error) {
+	rootPath, err := filepath.Abs(filepath.Clean(config.ROOT_PATH))
+	if err != nil {
+		return "", "", err
+	}
+	base := filepath.Join(rootPath, "config", "ssl")
+	baseRelative, err := filepath.Rel(rootPath, base)
+	if err != nil {
+		return "", "", err
+	}
+	workspaceRoot, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return "", "", errors.Wrap(err)
+	}
+	defer workspaceRoot.Close()
+	baseInfo, err := workspaceRoot.Lstat(baseRelative)
+	if err != nil || baseInfo.Mode()&os.ModeSymlink != 0 || !baseInfo.IsDir() {
+		return "", "", errors.New("SSL directory is invalid")
+	}
+	sslRoot, err := workspaceRoot.OpenRoot(baseRelative)
+	if err != nil {
+		return "", "", errors.New("SSL directory is invalid")
+	}
+	defer sslRoot.Close()
+
+	resolve := func(value string) (string, string, []byte, error) {
+		if strings.TrimSpace(value) == "" {
+			return "", "", nil, errors.New("SSL path is required")
+		}
+		path := value
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(rootPath, path)
+		}
+		path, err = filepath.Abs(filepath.Clean(path))
+		if err != nil {
+			return "", "", nil, err
+		}
+		relativePath, err := filepath.Rel(base, path)
+		if err != nil || relativePath == "." || filepath.IsAbs(relativePath) || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(os.PathSeparator)) {
+			return "", "", nil, errors.New("SSL path must stay inside config/ssl")
+		}
+		info, err := sslRoot.Lstat(relativePath)
+		if err != nil {
+			return "", "", nil, errors.Wrap(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
+			return "", "", nil, errors.New("SSL file is invalid")
+		}
+		content, err := sslRoot.ReadFile(relativePath)
+		if err != nil || len(content) == 0 || len(content) > 1<<20 {
+			return "", "", nil, errors.New("SSL file is invalid")
+		}
+		return filepath.Join(base, relativePath), relativePath, content, nil
+	}
+
+	privatePath, privateRelative, privatePEM, err := resolve(privatePath)
+	if err != nil {
+		return "", "", err
+	}
+	publicPath, _, publicPEM, err := resolve(publicPath)
+	if err != nil {
+		return "", "", err
+	}
+	keyPair, err := tls.X509KeyPair(publicPEM, privatePEM)
+	if err != nil || len(keyPair.Certificate) == 0 {
+		return "", "", errors.New("certificate and private key do not match")
+	}
+	certificate, err := x509.ParseCertificate(keyPair.Certificate[0])
+	if err != nil || time.Now().Before(certificate.NotBefore) || !time.Now().Before(certificate.NotAfter) {
+		return "", "", errors.New("certificate is invalid")
+	}
+	switch publicKey := certificate.PublicKey.(type) {
+	case *rsa.PublicKey:
+		if publicKey.N.BitLen() < 2048 {
+			return "", "", errors.New("certificate key is too weak")
+		}
+	case *ecdsa.PublicKey:
+		if publicKey.Curve == nil || publicKey.Curve.Params().BitSize < 256 {
+			return "", "", errors.New("certificate key is too weak")
+		}
+	default:
+		return "", "", errors.New("certificate key type is unsupported")
+	}
+	if err := sslRoot.Chmod(privateRelative, 0600); err != nil {
+		return "", "", errors.New("private key permissions are invalid")
+	}
+	return privatePath, publicPath, nil
+}
+
+func writeCertificateFiles(cfg *config.Config, privateKey, certificate, issuer []byte) error {
+	return writeCertificateBundle(cfg, privateKey, certificate, issuer)
+}
 func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 
 	myUser := MyUser{
@@ -107,7 +205,7 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 
 		log.Errorf("Please Set DNS Record/请将以下内容添加到DNS记录中:\n")
 		for _, item := range GetDnsChallengeInstance().GetDNSSettings(nil) {
-			log.Errorf("Type:%s\tHost:%s\tValue:%s\n", item.Type, item.Host, item.Value)
+			log.Errorf("Type:%s\tHost:%s\tValue generated\n", item.Type, item.Host)
 		}
 
 	}
@@ -136,21 +234,10 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 	log.Infof("wait ssl renew")
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
-	err = os.WriteFile("./config/ssl/private.key", certificates.PrivateKey, 0666)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.WriteFile("./config/ssl/public.crt", certificates.Certificate, 0666)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.WriteFile("./config/ssl/issuerCert.crt", certificates.IssuerCertificate, 0666)
-	if err != nil {
-		panic(err)
+	if err = writeCertificateFiles(cfg, certificates.PrivateKey, certificates.Certificate, certificates.IssuerCertificate); err != nil {
+		return err
 	}
 
 	return nil
@@ -219,25 +306,19 @@ func generateCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config, newAc
 		log.Infof("wait ssl")
 		certificates, err := client.Certificate.Obtain(request)
 		if err != nil {
-			panic(err)
+			log.WithError(err).Error("certificate issuance failed")
+			return
 		}
 		log.Infof("证书校验通过！")
-		err = os.WriteFile("./config/ssl/private.key", certificates.PrivateKey, 0666)
-		if err != nil {
-			panic(err)
+		if err := writeCertificateFiles(cfg, certificates.PrivateKey, certificates.Certificate, certificates.IssuerCertificate); err != nil {
+			log.WithError(err).Error("certificate storage failed")
+			return
 		}
 
-		err = os.WriteFile("./config/ssl/public.crt", certificates.Certificate, 0666)
-		if err != nil {
-			panic(err)
+		if err := setup.Finish(); err != nil {
+			log.WithError(err).Error("finish setup after certificate issuance failed")
+			return
 		}
-
-		err = os.WriteFile("./config/ssl/issuerCert.crt", certificates.IssuerCertificate, 0666)
-		if err != nil {
-			panic(err)
-		}
-
-		setup.Finish()
 
 	}, nil)
 
@@ -248,7 +329,7 @@ func GenSSL(update bool) error {
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err)
 	}
 
 	if !update {
@@ -260,7 +341,10 @@ func GenSSL(update bool) error {
 		}
 	}
 
-	privateKey, newAccount := config.ReadPrivateKey()
+	privateKey, newAccount, err := config.ReadPrivateKey()
+	if err != nil {
+		return errors.Wrap(err)
+	}
 
 	if !update {
 		return generateCertificate(privateKey, cfg, newAccount)
@@ -274,7 +358,7 @@ func CheckSSLCrtInfo() (int, time.Time, bool, error) {
 
 	cfg, err := config.ReadConfig()
 	if err != nil {
-		panic(err)
+		return -1, time.Now(), true, errors.Wrap(err)
 	}
 	// load cert and key by tls.LoadX509KeyPair
 	tlsCert, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
@@ -307,7 +391,8 @@ func CheckSSLCrtInfo() (int, time.Time, bool, error) {
 }
 
 func Update(needRestart bool) {
-	if config.Instance != nil && config.Instance.IsInit && (config.Instance.SSLType == config.SSLTypeAutoHTTP || config.Instance.SSLType == config.SSLTypeAutoDNS) {
+	cfg := config.CurrentConfig()
+	if cfg != nil && cfg.IsSetupReady() && (cfg.SSLType == config.SSLTypeAutoHTTP || cfg.SSLType == config.SSLTypeAutoDNS) {
 		days, _, nameMatchFail, err := CheckSSLCrtInfo()
 
 		if days < 30 || err != nil || nameMatchFail {
@@ -319,6 +404,7 @@ func Update(needRestart bool) {
 			err = GenSSL(true)
 			if err != nil {
 				log.Errorf("SSL Update Error! %+v", err)
+				return
 			}
 			if needRestart {
 				// 更新完证书，重启服务

@@ -7,3 +7,12 @@ server/plugins
 config
 *_KEY
 AURORA_SECRET
+.codex-edit-config.py
+server/gosec-report
+server/gosec-g104-current.json
+server/spam_block.exe
+server/wechat_push.exe
+server/utils/validation/test.tmp
+
+!server/config/
+!server/config/*.go
