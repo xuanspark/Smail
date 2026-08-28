@@ -91,3 +91,41 @@ func TestUnixEmptyAllowedUIDsRejectConnection(t *testing.T) {
 		t.Fatalf("response = %+v", response)
 	}
 }
+
+func TestUnixListenRejectsWritableControlDirectory(t *testing.T) {
+	parent := t.TempDir() + "/control"
+	if err := os.Mkdir(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(parent, 0777); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ListenUnix(parent+"/control.sock", []uint32{uint32(os.Getuid())}); err == nil {
+		t.Fatal("writable control directory was accepted")
+	}
+}
+
+func TestUnixControlSocketUsesRestrictedPermissions(t *testing.T) {
+	parent := t.TempDir() + "/control"
+	path := parent + "/control.sock"
+	server, err := ListenUnix(path, []uint32{uint32(os.Getuid())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+
+	parentInfo, err := os.Stat(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parentInfo.Mode().Perm() != 0750 {
+		t.Fatalf("control directory permissions = %04o, want 0750", parentInfo.Mode().Perm())
+	}
+	socketInfo, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if socketInfo.Mode().Perm() != 0600 {
+		t.Fatalf("control socket permissions = %04o, want 0600", socketInfo.Mode().Perm())
+	}
+}

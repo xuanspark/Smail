@@ -30,8 +30,8 @@ func ListenUnix(path string, allowedUIDs []uint32) (*UnixServer, error) {
 	if err := os.MkdirAll(parent, 0750); err != nil {
 		return nil, fmt.Errorf("create control directory: %w", err)
 	}
-	if info, err := os.Lstat(parent); err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return nil, fmt.Errorf("control directory is not secure")
+	if err := validateControlDirectory(parent); err != nil {
+		return nil, err
 	}
 	if err := os.Chmod(parent, 0750); err != nil {
 		return nil, fmt.Errorf("set control directory permissions: %w", err)
@@ -39,6 +39,9 @@ func ListenUnix(path string, allowedUIDs []uint32) (*UnixServer, error) {
 	if info, err := os.Lstat(path); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSocket == 0 {
 			return nil, fmt.Errorf("control path is not a socket")
+		}
+		if err := validateControlSocketOwner(info); err != nil {
+			return nil, err
 		}
 		if conn, dialErr := net.DialTimeout("unix", path, 100*time.Millisecond); dialErr == nil {
 			_ = conn.Close()
@@ -64,6 +67,29 @@ func ListenUnix(path string, allowedUIDs []uint32) (*UnixServer, error) {
 		allowed[uid] = true
 	}
 	return &UnixServer{listener: listener, path: path, allowed: allowed}, nil
+}
+
+func validateControlDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("control directory is not secure")
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("control directory must not be writable by group or other users")
+	}
+	return validateControlOwner(info, "control directory")
+}
+
+func validateControlSocketOwner(info os.FileInfo) error {
+	return validateControlOwner(info, "control socket")
+}
+
+func validateControlOwner(info os.FileInfo, resource string) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) {
+		return fmt.Errorf("%s owner does not match service identity", resource)
+	}
+	return nil
 }
 
 func (s *UnixServer) Serve(ctx context.Context, handler ResetHandler, guard *SessionGuard) error {
