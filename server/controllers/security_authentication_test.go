@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/services/access"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
 
@@ -43,5 +44,20 @@ func TestSecurityHandlersRejectUnauthenticatedRequests(t *testing.T) {
 				t.Fatalf("error number = %d, want %d; body=%s", result.ErrorNo, response.NeedLogin, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestSuperAdminCannotManageRecoveryCodesThroughWeb(t *testing.T) {
+	ctx := &appcontext.Context{UserID: 1, Role: access.RoleSuperAdmin}
+	request := httptest.NewRequest(http.MethodPost, "/api/security/credentials/recovery-codes", strings.NewReader(`{"count":5}`))
+	recorder := httptest.NewRecorder()
+	GenerateRecoveryCodes(ctx, recorder, request)
+
+	var result response.Response
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	if result.ErrorNo != response.NoAccessPrivileges {
+		t.Fatalf("error number = %d, want %d; body=%s", result.ErrorNo, response.NoAccessPrivileges, recorder.Body.String())
 	}
 }

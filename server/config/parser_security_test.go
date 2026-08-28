@@ -62,3 +62,22 @@ func TestParseStrictAcceptsExactNestedFields(t *testing.T) {
 		t.Fatalf("target = %+v", target)
 	}
 }
+
+func TestParseStrictDoesNotLeakSecretOrAbsolutePath(t *testing.T) {
+	secret := "super-secret-value"
+	absolutePath := `C:\private\smail\config.json`
+	tests := [][]byte{
+		[]byte(`{"password":"` + secret + `"}`),
+		[]byte(`{"absolutePath":"` + absolutePath + `"}`),
+	}
+	for _, data := range tests {
+		var target strictParserFixture
+		err := ParseStrict(data, &target)
+		if err == nil {
+			t.Fatal("unsafe configuration was accepted")
+		}
+		if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), absolutePath) {
+			t.Fatalf("error leaked sensitive value: %v", err)
+		}
+	}
+}

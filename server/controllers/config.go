@@ -365,9 +365,41 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 	publicSecret := func(value config.StoredSecret) config.SecretStatus { return value.Status() }
 	switch section {
 	case config.SectionRoot:
-		return map[string]any{"configVersion": runtime.Root.ConfigVersion, "schemaVersion": runtime.Root.SchemaVersion, "generation": runtime.Root.Generation, "setupState": runtime.Root.SetupState, "logLevel": runtime.Root.LogLevel, "domains": runtime.Root.Domains, "http": runtime.Root.HTTP, "database": map[string]any{"type": runtime.Root.Database.Type, "host": runtime.Root.Database.Host, "port": runtime.Root.Database.Port, "username": runtime.Root.Database.Username, "name": runtime.Root.Database.Name, "localRef": runtime.Root.Database.LocalRef, "password": publicSecret(runtime.Root.Database.Password)}, "security": runtime.Root.Security}, nil
+		return map[string]any{
+			"configVersion": runtime.Root.ConfigVersion,
+			"schemaVersion": runtime.Root.SchemaVersion,
+			"generation":    runtime.Root.Generation,
+			"setupState":    runtime.Root.SetupState,
+			"logLevel":      runtime.Root.LogLevel,
+			"domains":       runtime.Root.Domains,
+			"http":          runtime.Root.HTTP,
+			"database": map[string]any{
+				"type":     runtime.Root.Database.Type,
+				"host":     runtime.Root.Database.Host,
+				"port":     runtime.Root.Database.Port,
+				"username": runtime.Root.Database.Username,
+				"name":     runtime.Root.Database.Name,
+				"localRef": runtime.Root.Database.LocalRef,
+				"password": nil,
+			},
+			"databasePasswordStatus": publicSecret(runtime.Root.Database.Password),
+			"security":               runtime.Root.Security,
+		}, nil
 	case config.SectionSMTP:
-		return map[string]any{"meta": runtime.SMTP.Meta, "relay": map[string]any{"relayHost": runtime.SMTP.Relay.RelayHost, "relayPort": runtime.SMTP.Relay.RelayPort, "username": runtime.SMTP.Relay.Username, "security": runtime.SMTP.Relay.Security, "fromDomain": runtime.SMTP.Relay.FromDomain, "verificationEnabled": runtime.SMTP.Relay.VerificationEnabled, "loginPolicy": runtime.SMTP.Relay.LoginPolicy, "password": publicSecret(runtime.SMTP.Relay.Password)}}, nil
+		return map[string]any{
+			"meta": runtime.SMTP.Meta,
+			"relay": map[string]any{
+				"relayHost":           runtime.SMTP.Relay.RelayHost,
+				"relayPort":           runtime.SMTP.Relay.RelayPort,
+				"username":            runtime.SMTP.Relay.Username,
+				"security":            runtime.SMTP.Relay.Security,
+				"fromDomain":          runtime.SMTP.Relay.FromDomain,
+				"verificationEnabled": runtime.SMTP.Relay.VerificationEnabled,
+				"loginPolicy":         runtime.SMTP.Relay.LoginPolicy,
+				"password":            nil,
+			},
+			"relayPasswordStatus": publicSecret(runtime.SMTP.Relay.Password),
+		}, nil
 	case config.SectionEmail:
 		return runtime.Email, nil
 	case config.SectionSSL:
@@ -375,7 +407,13 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 	case config.SectionPlugins:
 		plugins := make(map[string]any, len(runtime.Plugins.Plugins))
 		for id, item := range runtime.Plugins.Plugins {
-			plugins[id] = map[string]any{"enabled": item.Enabled, "executable": item.Executable, "permissions": item.Permissions, "settingsConfigured": len(item.Settings) > 0}
+			plugins[id] = map[string]any{
+				"enabled":      item.Enabled,
+				"executable":   item.Executable,
+				"permissions":  item.Permissions,
+				"settings":     nil,
+				"secretStatus": publicSecret(item.Secret),
+			}
 		}
 		return map[string]any{"meta": runtime.Plugins.Meta, "plugins": plugins}, nil
 	default:

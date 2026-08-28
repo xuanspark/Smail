@@ -68,3 +68,21 @@ func TestFetchPublicIPRejectsPlainHTTP(t *testing.T) {
 		t.Fatal("plain HTTP public IP request was accepted")
 	}
 }
+
+func TestFetchPublicIPForFamilyRequiresRequestedAddressFamily(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("2001:db8::1\n"))
+	}))
+	defer server.Close()
+	request, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := fetchPublicIPForFamily(server.Client(), request, true)
+	if err != nil || value != "2001:db8::1" {
+		t.Fatalf("unexpected IPv6 result: value=%q err=%v", value, err)
+	}
+	if _, err := fetchPublicIPForFamily(server.Client(), request, false); err == nil {
+		t.Fatal("IPv6 result was accepted for IPv4 request")
+	}
+}

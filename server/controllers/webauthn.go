@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
@@ -15,13 +16,16 @@ import (
 
 type webAuthnFinishRequest struct {
 	SessionID   string          `json:"session_id"`
+	ChallengeID string          `json:"challenge_id"`
 	Identifier  string          `json:"identifier"`
+	Account     string          `json:"account"`
 	DisplayName string          `json:"display_name"`
 	Credential  json.RawMessage `json:"credential"`
 }
 
 type webAuthnLoginBeginRequest struct {
-	Identifier string `json:"identifier"`
+	ChallengeID string `json:"challenge_id"`
+	Account     string `json:"account"`
 }
 
 type webAuthnCredentialRequest struct {
@@ -186,18 +190,30 @@ func BeginWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.R
 		return
 	}
 	var input webAuthnLoginBeginRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil {
+	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.ChallengeID) == "" || strings.TrimSpace(input.Account) == "" {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u8bf7\u6c42\u65e0\u6548")
 		return
 	}
-	options, sessionID, err := service.BeginDiscoverableLogin()
+	item, ok := pendingLoginVerification(input.ChallengeID, input.Account)
+	if !ok {
+		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
+		writeSecurityError(w, response.ParamsError, "安全密钥登录请求无效")
+		return
+	}
+	options, sessionID, err := service.BeginLogin(item.UserID)
 	if err != nil {
+		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u5931\u8d25")
 		return
 	}
-	webAuthnLoginBeginIPAttempts.recordFailure(beginKey)
-	response.NewSuccessResponse(map[string]any{"session_id": sessionID, "options": options}).FPrint(w)
+	response.NewSuccessResponse(map[string]any{
+		"challenge_id": input.ChallengeID,
+		"account":      item.Account,
+		"expires_at":   item.ExpiresAt.UTC(),
+		"session_id":   sessionID,
+		"options":      options,
+	}).FPrint(w)
 }
 
 // FinishWebAuthnLogin 完成安全密钥登录并创建普通业务会话。
@@ -213,21 +229,41 @@ func FinishWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.
 		return
 	}
 	var input webAuthnFinishRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.SessionID) == "" || len(input.Credential) == 0 || !json.Valid(input.Credential) {
+	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.ChallengeID) == "" || strings.TrimSpace(input.SessionID) == "" || len(input.Credential) == 0 || !json.Valid(input.Credential) {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
 		loginIPAttempts.recordFailure(loginIPAttempts.ipKey(req))
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u8bf7\u6c42\u65e0\u6548")
 		return
 	}
+	account := strings.TrimSpace(input.Account)
+	if account == "" {
+		account = strings.TrimSpace(input.Identifier)
+	}
+	item, ok := pendingLoginVerification(input.ChallengeID, account)
+	if !ok {
+		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
+		loginIPAttempts.recordFailure(loginIPAttempts.ipKey(req))
+		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
+		return
+	}
 	credentialRequest := cloneWebAuthnRequest(req, input.Credential)
-	user, _, err := service.FinishDiscoverableLogin(input.SessionID, credentialRequest)
-	if err != nil || user == nil {
+	if _, err := service.FinishLogin(item.UserID, input.SessionID, credentialRequest); err != nil {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
 		loginIPAttempts.recordFailure(loginIPAttempts.ipKey(req))
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u5931\u8d25")
 		return
 	}
-	completeLoginSession(ctx, w, req, user)
+	var user models.User
+	has, err := db.Instance.ID(item.UserID).Get(&user)
+	if err != nil || !has || user.Disabled != 0 || user.Account != item.Account || user.SessionVersion != item.SessionVersion {
+		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
+		return
+	}
+	if securityRuntime.verification != nil && securityRuntime.verification.Store != nil {
+		securityRuntime.verification.Store.InvalidateChallenge(input.ChallengeID)
+	}
+	consumePendingLoginVerification(input.ChallengeID, item)
+	completeLoginSession(ctx, w, req, &user)
 }
 
 func BeginWebAuthnRecovery(ctx *context.Context, w http.ResponseWriter, req *http.Request) {

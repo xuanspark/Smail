@@ -30,11 +30,11 @@ type PublicIssue struct {
 }
 
 type ConfigStatus struct {
-	SetupState       SetupState
-	ActiveGeneration uint64
-	LastValidAt      *time.Time
-	PendingRestart   []ServiceName
-	DegradedReasons  []PublicIssue
+	SetupState       SetupState    `json:"setupState"`
+	ActiveGeneration uint64        `json:"activeGeneration"`
+	LastValidAt      *time.Time    `json:"lastValidAt,omitempty"`
+	PendingRestart   []ServiceName `json:"pendingRestart,omitempty"`
+	DegradedReasons  []PublicIssue `json:"degradedReasons,omitempty"`
 }
 
 type ValidateRequest struct {
@@ -67,9 +67,9 @@ type StepUpConfirmation struct {
 }
 
 type ValidationResult struct {
-	Valid      bool
-	Generation uint64
-	Issues     []PublicIssue
+	Valid      bool          `json:"valid"`
+	Generation uint64        `json:"generation"`
+	Issues     []PublicIssue `json:"issues,omitempty"`
 }
 
 type UpdateResult struct {
@@ -85,10 +85,10 @@ type ApplyResult struct {
 }
 
 type RollbackPreview struct {
-	CurrentGeneration   uint64
-	TargetGeneration    uint64
-	CandidateGeneration uint64
-	ChangedSections     []Section
+	CurrentGeneration   uint64    `json:"currentGeneration"`
+	TargetGeneration    uint64    `json:"targetGeneration"`
+	CandidateGeneration uint64    `json:"candidateGeneration"`
+	ChangedSections     []Section `json:"changedSections"`
 }
 
 type rollbackTicket struct {
@@ -624,25 +624,31 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 	candidate := cloneRuntimeConfig(current)
 	switch section {
 	case SectionRoot:
-		var value RootConfig
+		var value struct {
+			RootConfig
+			DatabasePasswordStatus json.RawMessage `json:"databasePasswordStatus"`
+		}
 		if err := ParseStrict(payload, &value); err != nil {
 			return RuntimeConfig{}, err
 		}
-		if value.Database.Password.Configured() {
+		if value.RootConfig.Database.Password.Configured() {
 			return RuntimeConfig{}, ErrInvalidSecretChange
 		}
-		value.Database.Password = current.Root.Database.Password
-		candidate.Root = normalizeRootConfig(value)
+		value.RootConfig.Database.Password = current.Root.Database.Password
+		candidate.Root = normalizeRootConfig(value.RootConfig)
 	case SectionSMTP:
-		var value SMTPSectionConfig
+		var value struct {
+			SMTPSectionConfig
+			RelayPasswordStatus json.RawMessage `json:"relayPasswordStatus"`
+		}
 		if err := ParseStrict(payload, &value); err != nil {
 			return RuntimeConfig{}, err
 		}
-		if value.Relay.Password.Configured() {
+		if value.SMTPSectionConfig.Relay.Password.Configured() {
 			return RuntimeConfig{}, ErrInvalidSecretChange
 		}
-		value.Relay.Password = current.SMTP.Relay.Password
-		candidate.SMTP = value
+		value.SMTPSectionConfig.Relay.Password = current.SMTP.Relay.Password
+		candidate.SMTP = value.SMTPSectionConfig
 	case SectionEmail:
 		var value EmailSectionConfig
 		if err := ParseStrict(payload, &value); err != nil {
@@ -659,6 +665,15 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		var value PluginsSectionConfig
 		if err := ParseStrict(payload, &value); err != nil {
 			return RuntimeConfig{}, err
+		}
+		for logicalID, plugin := range value.Plugins {
+			if storedSecretHasMaterial(plugin.Secret) {
+				return RuntimeConfig{}, ErrInvalidSecretChange
+			}
+			if currentPlugin, ok := current.Plugins.Plugins[logicalID]; ok {
+				plugin.Secret = currentPlugin.Secret
+				value.Plugins[logicalID] = plugin
+			}
 		}
 		candidate.Plugins = value
 	default:
@@ -727,11 +742,30 @@ func applySecretChanges(candidate *RuntimeConfig, section Section, changes map[s
 				return err
 			}
 			candidate.SMTP.Relay.Password = stored
+		case section == SectionPlugins && strings.HasPrefix(name, "plugins.") && strings.HasSuffix(name, ".secret"):
+			logicalID := strings.TrimSuffix(strings.TrimPrefix(name, "plugins."), ".secret")
+			if !logicalIDPattern.MatchString(logicalID) {
+				return ErrInvalidSecretChange
+			}
+			plugin, ok := candidate.Plugins.Plugins[logicalID]
+			if !ok {
+				return ErrInvalidSecretChange
+			}
+			stored, err := ApplySecretChange(vault, plugin.Secret, change, SecretPolicy{AllowClear: true, MaxLength: 4096}, now)
+			if err != nil {
+				return err
+			}
+			plugin.Secret = stored
+			candidate.Plugins.Plugins[logicalID] = plugin
 		default:
 			return ErrInvalidSecretChange
 		}
 	}
 	return nil
+}
+
+func storedSecretHasMaterial(secret StoredSecret) bool {
+	return secret.Ciphertext != "" || secret.Version != 0 || !secret.UpdatedAt.IsZero()
 }
 
 func requiresSecretStepUp(changes map[string]SecretChange) bool {

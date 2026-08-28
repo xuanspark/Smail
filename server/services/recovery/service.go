@@ -52,6 +52,7 @@ type Service struct {
 	external     *externalemail.Repository
 	credentials  *credentials.Service
 	webauthn     WebAuthnVerifier
+	invalidate   func(int, string)
 	mu           sync.Mutex
 	tickets      map[string]ticket
 	decoys       map[string]decoyChallenge
@@ -100,6 +101,13 @@ func (s *Service) SetWebAuthnVerifier(verifier WebAuthnVerifier) {
 		return
 	}
 	s.webauthn = verifier
+}
+
+func (s *Service) SetSecurityStateInvalidator(invalidator func(int, string)) {
+	if s == nil {
+		return
+	}
+	s.invalidate = invalidator
 }
 
 func (s *Service) BeginWebAuthn(identifier string) (*protocol.CredentialAssertion, string, error) {
@@ -303,6 +311,7 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if err != nil {
 		return err
 	}
+	defer clearString(&hash)
 	var user models.User
 	has, err := s.engine.ID(item.UserID).Get(&user)
 	if err != nil || !has || user.EffectiveRole() == access.RoleSuperAdmin || user.SessionVersion != item.SessionVersion {
@@ -321,6 +330,11 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if version <= 0 {
 		version = 1
 	}
+	securityVersion := user.SecurityVersion + 1
+	if securityVersion <= 0 {
+		securityVersion = 1
+	}
+	now := s.now().UTC()
 	session := s.engine.NewSession()
 	if session == nil {
 		return ErrUnavailable
@@ -329,7 +343,17 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if err := session.Begin(); err != nil {
 		return err
 	}
-	if _, err := session.ID(item.UserID).Cols("password", "session_version").Update(&models.User{Password: hash, SessionVersion: version}); err != nil {
+	if _, err := session.ID(item.UserID).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&models.User{
+		Password:           hash,
+		SessionVersion:     version,
+		SecurityVersion:    securityVersion,
+		MustChangePassword: 0,
+		PasswordChangedAt:  &now,
+	}); err != nil {
+		_ = session.Rollback()
+		return err
+	}
+	if err := s.credentials.RevokeAllWithSession(session, item.UserID); err != nil {
 		_ = session.Rollback()
 		return err
 	}
@@ -339,6 +363,9 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	s.InvalidateUser(item.UserID)
 	if s.verification != nil && s.verification.Store != nil {
 		_ = s.verification.Store.InvalidateAccount(user.Account)
+	}
+	if s.invalidate != nil {
+		s.invalidate(item.UserID, user.Account)
 	}
 	return nil
 }

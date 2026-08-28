@@ -196,15 +196,15 @@ func TestPasswordRecoveryBeginResponsesDoNotRevealAccountState(t *testing.T) {
 	}
 }
 
-func TestWebAuthnLoginBeginResponsesIgnoreIdentifier(t *testing.T) {
+func TestWebAuthnLoginBeginRequiresPendingLoginTransaction(t *testing.T) {
 	_, webAuthnService, _, _, _ := newPublicSecurityFixture(t)
 	previous := securityRuntime
 	securityRuntime.webauthn = webAuthnService
 	t.Cleanup(func() { securityRuntime = previous })
 
-	bodies := []string{`{}`, `{"identifier":"alice"}`, `{"identifier":"missing"}`}
+	bodies := []string{`{}`, `{"challenge_id":"unknown","account":"alice"}`, `{"challenge_id":"unknown","account":"missing"}`}
 	baselineStatus, baseline, baselineShape := invokePublicSecurityHandler(t, BeginWebAuthnLogin, bodies[0])
-	if baseline.ErrorNo != 0 || baseline.ErrorMsg != "" {
+	if baseline.ErrorNo == 0 || baseline.ErrorMsg == "" {
 		t.Fatalf("unexpected baseline response: %+v", baseline)
 	}
 	for _, body := range bodies[1:] {

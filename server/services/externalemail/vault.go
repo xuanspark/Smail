@@ -13,6 +13,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -165,7 +166,7 @@ func loadKey(path string) ([]byte, error) {
 	name := filepath.Base(absolute)
 	info, err := root.Lstat(name)
 	if err == nil {
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || (info.Mode().Perm()&0077) != 0 || info.Size() != keySize {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && (info.Mode().Perm()&0077) != 0) || info.Size() != keySize {
 			return nil, ErrVaultUnavailable
 		}
 		key, err := root.ReadFile(name)

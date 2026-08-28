@@ -19,6 +19,7 @@ type Context struct {
 	Values                   map[string]any
 	Lang                     string
 	IsAdmin                  bool
+	MustChangePassword       int
 	RecentAuth               bool
 	RecoveryCodeConfigured   bool
 	TargetRecoveryConfigured bool

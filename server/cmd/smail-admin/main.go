@@ -8,10 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/internal/buildinfo"
 	"git.pcux.cn/xuans/Smail/services/adminreset"
 )
-
-var version = "dev"
 
 func main() {
 	code := run(os.Args[1:])
@@ -22,7 +21,7 @@ func main() {
 
 func run(args []string) int {
 	if len(args) == 1 && (args[0] == "version" || args[0] == "--version") {
-		fmt.Println(version)
+		fmt.Println(buildinfo.Current().Version)
 		return 0
 	}
 	if len(args) == 1 && (args[0] == "doctor" || args[0] == "--doctor") {

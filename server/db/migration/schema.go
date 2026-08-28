@@ -9,7 +9,7 @@ import (
 func coreSchemaStatements() map[Dialect][]string {
 	return map[Dialect][]string{
 		DialectSQLite: {
-			`CREATE TABLE IF NOT EXISTS "user" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "account" TEXT NOT NULL UNIQUE, "name" TEXT NOT NULL, "password" TEXT NOT NULL, "disabled" INTEGER NOT NULL DEFAULT 0, "role" TEXT NOT NULL DEFAULT 'user', "is_admin" INTEGER NOT NULL DEFAULT 0, "session_version" INTEGER NOT NULL DEFAULT 1)`,
+			`CREATE TABLE IF NOT EXISTS "user" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "account" TEXT NOT NULL UNIQUE, "name" TEXT NOT NULL, "password" TEXT NOT NULL, "disabled" INTEGER NOT NULL DEFAULT 0, "role" TEXT NOT NULL DEFAULT 'user', "is_admin" INTEGER NOT NULL DEFAULT 0, "session_version" INTEGER NOT NULL DEFAULT 1, "security_version" INTEGER NOT NULL DEFAULT 1, "must_change_password" INTEGER NOT NULL DEFAULT 0, "password_changed_at" DATETIME NULL)`,
 			`CREATE TABLE IF NOT EXISTS "email" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "type" INTEGER NOT NULL DEFAULT 0, "subject" TEXT NOT NULL DEFAULT '', "reply_to" TEXT NULL, "from_name" TEXT NOT NULL DEFAULT '', "from_address" TEXT NOT NULL DEFAULT '', "to" TEXT NULL, "bcc" TEXT NULL, "cc" TEXT NULL, "text" TEXT NULL, "html" TEXT NULL, "sender" TEXT NULL, "attachments" TEXT NULL, "spf_check" INTEGER NOT NULL DEFAULT 0, "dkim_check" INTEGER NOT NULL DEFAULT 0, "status" INTEGER NOT NULL DEFAULT 0, "cron_send_time" DATETIME NULL, "update_time" DATETIME NULL, "send_user_id" INTEGER NOT NULL DEFAULT 0, "size" INTEGER NOT NULL DEFAULT 1000, "error" TEXT NULL, "send_date" DATETIME NULL, "create_time" DATETIME NULL, "msg_id" TEXT NOT NULL DEFAULT '')`,
 			`CREATE TABLE IF NOT EXISTS "group" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "name" TEXT NOT NULL DEFAULT '', "parent_id" INTEGER NOT NULL DEFAULT 0, "user_id" INTEGER NOT NULL DEFAULT 0, "full_path" TEXT NULL)`,
 			`CREATE TABLE IF NOT EXISTS "rule" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "user_id" INTEGER NOT NULL DEFAULT 0, "name" TEXT NOT NULL DEFAULT '', "value" TEXT NULL, "action" INTEGER NOT NULL DEFAULT 0, "params" TEXT NOT NULL DEFAULT '', "sort" INTEGER NOT NULL DEFAULT 0)`,
@@ -21,7 +21,7 @@ func coreSchemaStatements() map[Dialect][]string {
 			`CREATE TABLE IF NOT EXISTS "version" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "info" TEXT NOT NULL)`,
 		},
 		DialectMySQL: {
-			"CREATE TABLE IF NOT EXISTS `user` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `account` VARCHAR(20) NOT NULL, `name` VARCHAR(10) NOT NULL, `password` VARCHAR(255) NOT NULL, `disabled` INT UNSIGNED NOT NULL DEFAULT 0, `role` VARCHAR(20) NOT NULL DEFAULT 'user', `is_admin` INT UNSIGNED NOT NULL DEFAULT 0, `session_version` INT UNSIGNED NOT NULL DEFAULT 1, UNIQUE KEY `uq_user_account` (`account`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+			"CREATE TABLE IF NOT EXISTS `user` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `account` VARCHAR(20) NOT NULL, `name` VARCHAR(10) NOT NULL, `password` VARCHAR(255) NOT NULL, `disabled` INT UNSIGNED NOT NULL DEFAULT 0, `role` VARCHAR(20) NOT NULL DEFAULT 'user', `is_admin` INT UNSIGNED NOT NULL DEFAULT 0, `session_version` INT UNSIGNED NOT NULL DEFAULT 1, `security_version` INT UNSIGNED NOT NULL DEFAULT 1, `must_change_password` INT UNSIGNED NOT NULL DEFAULT 0, `password_changed_at` DATETIME(6) NULL, UNIQUE KEY `uq_user_account` (`account`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 			"CREATE TABLE IF NOT EXISTS `email` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `type` TINYINT NOT NULL DEFAULT 0, `subject` VARCHAR(1000) NOT NULL DEFAULT '', `reply_to` TEXT NULL, `from_name` VARCHAR(50) NOT NULL DEFAULT '', `from_address` VARCHAR(100) NOT NULL DEFAULT '', `to` TEXT NULL, `bcc` TEXT NULL, `cc` TEXT NULL, `text` TEXT NULL, `html` MEDIUMTEXT NULL, `sender` TEXT NULL, `attachments` LONGTEXT NULL, `spf_check` TINYINT NOT NULL DEFAULT 0, `dkim_check` TINYINT NOT NULL DEFAULT 0, `status` TINYINT NOT NULL DEFAULT 0, `cron_send_time` DATETIME(6) NULL, `update_time` DATETIME(6) NULL, `send_user_id` INT UNSIGNED NOT NULL DEFAULT 0, `size` INT UNSIGNED NOT NULL DEFAULT 1000, `error` TEXT NULL, `send_date` DATETIME(6) NULL, `create_time` DATETIME(6) NULL, `msg_id` VARCHAR(255) NOT NULL DEFAULT '') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 			"CREATE TABLE IF NOT EXISTS `group` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `name` VARCHAR(10) NOT NULL DEFAULT '', `parent_id` INT UNSIGNED NOT NULL DEFAULT 0, `user_id` INT UNSIGNED NOT NULL DEFAULT 0, `full_path` VARCHAR(600) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 			"CREATE TABLE IF NOT EXISTS `rule` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `user_id` INT NOT NULL DEFAULT 0, `name` VARCHAR(255) NOT NULL DEFAULT '', `value` TEXT NULL, `action` INT NOT NULL DEFAULT 0, `params` VARCHAR(255) NOT NULL DEFAULT '', `sort` INT NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
@@ -30,7 +30,7 @@ func coreSchemaStatements() map[Dialect][]string {
 			"CREATE TABLE IF NOT EXISTS `version` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `info` VARCHAR(255) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 		},
 		DialectPostgres: {
-			`CREATE TABLE IF NOT EXISTS "user" ("id" BIGSERIAL PRIMARY KEY, "account" VARCHAR(20) NOT NULL UNIQUE, "name" VARCHAR(10) NOT NULL, "password" VARCHAR(255) NOT NULL, "disabled" INTEGER NOT NULL DEFAULT 0, "role" VARCHAR(20) NOT NULL DEFAULT 'user', "is_admin" INTEGER NOT NULL DEFAULT 0, "session_version" INTEGER NOT NULL DEFAULT 1)`,
+			`CREATE TABLE IF NOT EXISTS "user" ("id" BIGSERIAL PRIMARY KEY, "account" VARCHAR(20) NOT NULL UNIQUE, "name" VARCHAR(10) NOT NULL, "password" VARCHAR(255) NOT NULL, "disabled" INTEGER NOT NULL DEFAULT 0, "role" VARCHAR(20) NOT NULL DEFAULT 'user', "is_admin" INTEGER NOT NULL DEFAULT 0, "session_version" INTEGER NOT NULL DEFAULT 1, "security_version" INTEGER NOT NULL DEFAULT 1, "must_change_password" INTEGER NOT NULL DEFAULT 0, "password_changed_at" TIMESTAMP NULL)`,
 			`CREATE TABLE IF NOT EXISTS "email" ("id" BIGSERIAL PRIMARY KEY, "type" SMALLINT NOT NULL DEFAULT 0, "subject" VARCHAR(1000) NOT NULL DEFAULT '', "reply_to" TEXT NULL, "from_name" VARCHAR(50) NOT NULL DEFAULT '', "from_address" VARCHAR(100) NOT NULL DEFAULT '', "to" TEXT NULL, "bcc" TEXT NULL, "cc" TEXT NULL, "text" TEXT NULL, "html" TEXT NULL, "sender" TEXT NULL, "attachments" TEXT NULL, "spf_check" SMALLINT NOT NULL DEFAULT 0, "dkim_check" SMALLINT NOT NULL DEFAULT 0, "status" SMALLINT NOT NULL DEFAULT 0, "cron_send_time" TIMESTAMPTZ NULL, "update_time" TIMESTAMPTZ NULL, "send_user_id" BIGINT NOT NULL DEFAULT 0, "size" BIGINT NOT NULL DEFAULT 1000, "error" TEXT NULL, "send_date" TIMESTAMPTZ NULL, "create_time" TIMESTAMPTZ NULL, "msg_id" VARCHAR(255) NOT NULL DEFAULT '')`,
 			`CREATE TABLE IF NOT EXISTS "group" ("id" BIGSERIAL PRIMARY KEY, "name" VARCHAR(10) NOT NULL DEFAULT '', "parent_id" BIGINT NOT NULL DEFAULT 0, "user_id" BIGINT NOT NULL DEFAULT 0, "full_path" VARCHAR(600) NULL)`,
 			`CREATE TABLE IF NOT EXISTS "rule" ("id" BIGSERIAL PRIMARY KEY, "user_id" BIGINT NOT NULL DEFAULT 0, "name" VARCHAR(255) NOT NULL DEFAULT '', "value" TEXT NULL, "action" INTEGER NOT NULL DEFAULT 0, "params" VARCHAR(255) NOT NULL DEFAULT '', "sort" INTEGER NOT NULL DEFAULT 0)`,
@@ -42,6 +42,35 @@ func coreSchemaStatements() map[Dialect][]string {
 			`CREATE TABLE IF NOT EXISTS "version" ("id" BIGSERIAL PRIMARY KEY, "info" VARCHAR(255) NOT NULL)`,
 		},
 	}
+}
+
+func applyUserLifecycleSchema(ctx context.Context, exec executor, dialect Dialect) error {
+	columns := []struct {
+		name       string
+		definition map[Dialect]string
+	}{
+		{name: "security_version", definition: map[Dialect]string{
+			DialectSQLite:   `INTEGER NOT NULL DEFAULT 1`,
+			DialectMySQL:    `INT UNSIGNED NOT NULL DEFAULT 1`,
+			DialectPostgres: `INTEGER NOT NULL DEFAULT 1`,
+		}},
+		{name: "must_change_password", definition: map[Dialect]string{
+			DialectSQLite:   `INTEGER NOT NULL DEFAULT 0`,
+			DialectMySQL:    `INT UNSIGNED NOT NULL DEFAULT 0`,
+			DialectPostgres: `INTEGER NOT NULL DEFAULT 0`,
+		}},
+		{name: "password_changed_at", definition: map[Dialect]string{
+			DialectSQLite:   `DATETIME NULL`,
+			DialectMySQL:    `DATETIME(6) NULL`,
+			DialectPostgres: `TIMESTAMP NULL`,
+		}},
+	}
+	for _, column := range columns {
+		if err := ensureColumn(ctx, exec, dialect, "user", column.name, column.definition[dialect]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func verificationOperationsStatements() map[Dialect][]string {

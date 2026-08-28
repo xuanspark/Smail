@@ -133,7 +133,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 						response.NewErrorResponse(response.ServerError, "\u4f1a\u8bdd\u6821\u9a8c\u5931\u8d25", "").FPrint(w)
 						return
 					}
-					if !found || currentUser.Disabled != 0 || currentUser.Account != identity.Account || currentUser.SessionVersion != identity.SessionVersion {
+					if !found || currentUser.Disabled != 0 || currentUser.Account != identity.Account || currentUser.SessionVersion != identity.SessionVersion || (identity.SecurityVersion > 0 && currentUser.SecurityVersion != identity.SecurityVersion) {
 						csrf.Clear(w, r, !config.DevelopmentMode)
 						if err := session.Instance.Destroy(ctx); err != nil {
 							log.WithContext(ctx).WithError(err).Warn("destroy revoked session failed")
@@ -144,11 +144,16 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 						ctx.UserAccount = currentUser.Account
 						ctx.Role = currentUser.EffectiveRole()
 						ctx.IsAdmin = ctx.Role == access.RoleSuperAdmin || ctx.Role == access.RoleAdmin
+						ctx.MustChangePassword = currentUser.MustChangePassword
 						controllers.LoadSecurityContext(ctx)
 					}
 				}
 				if ctx.UserID == 0 && !publicSecurityPath(r.URL.Path) {
 					response.NewErrorResponse(response.NeedLogin, i18n.GetText(ctx.Lang, "login_exp"), "").FPrint(w)
+					return
+				}
+				if ctx.UserID > 0 && ctx.MustChangePassword != 0 && !mustChangePasswordAllowedPath(r.URL.Path) {
+					response.NewErrorResponse(response.NoAccessPrivileges, "请先修改临时密码", "PASSWORD_CHANGE_REQUIRED").FPrint(w)
 					return
 				}
 			} else if r.URL.Path != "/api/setup" {
@@ -157,6 +162,15 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 			}
 			h(ctx, w, r)
 		})).ServeHTTP(w, r)
+	}
+}
+
+func mustChangePasswordAllowedPath(path string) bool {
+	switch path {
+	case "/api/settings/modify_password", "/api/logout", "/api/user/info":
+		return true
+	default:
+		return false
 	}
 }
 

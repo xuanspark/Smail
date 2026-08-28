@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/recovery"
@@ -79,6 +80,9 @@ func ConfigureSecurityRuntime(verify *verification.Service, external *externalem
 	securityRuntime.external = external
 	securityRuntime.recovery = recover
 	securityRuntime.credentials = credential
+	if recover != nil {
+		recover.SetSecurityStateInvalidator(InvalidateSecurityRuntimeUser)
+	}
 }
 
 func ConfigureWebAuthnRuntime(service *webauthnservice.Service) {
@@ -110,6 +114,10 @@ func InvalidateSecurityRuntimeUser(userID int, account string) {
 
 func LoadSecurityContext(ctx *context.Context) {
 	if ctx == nil || ctx.UserID <= 0 {
+		return
+	}
+	if ctx.EffectiveRole() == access.RoleSuperAdmin {
+		ctx.RecoveryCodeConfigured = false
 		return
 	}
 	service := securityRuntime.credentials
@@ -180,6 +188,14 @@ type recoveryCodeRequest struct {
 	Count int    `json:"count"`
 }
 
+func rejectSuperAdminRecoveryCodes(ctx *context.Context, w http.ResponseWriter) bool {
+	if ctx != nil && ctx.EffectiveRole() == access.RoleSuperAdmin {
+		writeSecurityError(w, response.NoAccessPrivileges, "超级管理员恢复码只能通过部署端专用通道管理")
+		return true
+	}
+	return false
+}
+
 // GetSecurityQuestion 返回当前用户的密保问题，不返回答案哈希。
 func GetSecurityQuestion(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 {
@@ -229,6 +245,9 @@ func GenerateRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *htt
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
+	if rejectSuperAdminRecoveryCodes(ctx, w) {
+		return
+	}
 	var input recoveryCodeRequest
 	if req != nil && req.Body != nil {
 		if err := decodeJSONRequest(w, req, &input); err != nil {
@@ -256,6 +275,9 @@ func GetRecoveryCodeStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
+	if rejectSuperAdminRecoveryCodes(ctx, w) {
+		return
+	}
 	service := credentialRuntime()
 	if service == nil {
 		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
@@ -273,6 +295,9 @@ func GetRecoveryCodeStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 func RevokeRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
+		return
+	}
+	if rejectSuperAdminRecoveryCodes(ctx, w) {
 		return
 	}
 	service := credentialRuntime()

@@ -11,9 +11,10 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/i18n"
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/session"
-	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/csrf"
 	log "github.com/sirupsen/logrus"
@@ -96,6 +97,25 @@ func hashedLoginKey(parts ...string) string {
 		_, _ = hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// loginSecurityFields returns the non-sensitive state used by the post-login security guide.
+func loginSecurityFields(user *models.User) map[string]any {
+	fields := map[string]any{
+		"recoveryCodesConfigured": false,
+		"showRecoverySetupPrompt": false,
+	}
+	if user == nil || user.EffectiveRole() == access.RoleSuperAdmin {
+		return fields
+	}
+
+	configured := false
+	if service := credentialRuntime(); service != nil {
+		configured, _ = service.HasValidRecoveryCode(user.ID)
+	}
+	fields["recoveryCodesConfigured"] = configured
+	fields["showRecoverySetupPrompt"] = !configured
+	return fields
 }
 
 func (limiter *loginLimiter) blocked(key string) bool {
@@ -229,22 +249,26 @@ func Login(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	currentConfig := config.CurrentConfig()
-	if currentConfig == nil {
+	domain, domains, ok := loginDomainSettings()
+	if !ok {
 		response.NewErrorResponse(response.ServerError, "登录失败", "").FPrint(w)
 		return
 	}
-	domains := currentConfig.Domains
-	domains = array.Difference(domains, []string{currentConfig.Domain})
-	domains = append([]string{currentConfig.Domain}, domains...)
+	domains = append([]string{domain}, domains...)
 
-	response.NewSuccessResponse(map[string]any{
-		"account":  user.Account,
-		"name":     user.Name,
-		"role":     user.EffectiveRole(),
-		"is_admin": user.IsAdmin,
-		"domains":  domains,
-	}).FPrint(w)
+	result := map[string]any{
+		"account":              user.Account,
+		"name":                 user.Name,
+		"role":                 user.EffectiveRole(),
+		"capabilities":         access.Capabilities(user.EffectiveRole()),
+		"is_admin":             user.IsAdmin,
+		"domains":              domains,
+		"must_change_password": user.MustChangePassword != 0,
+	}
+	for key, value := range loginSecurityFields(user) {
+		result[key] = value
+	}
+	response.NewSuccessResponse(result).FPrint(w)
 }
 
 func Logout(ctx *context.Context, w http.ResponseWriter, req *http.Request) {

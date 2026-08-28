@@ -6,7 +6,22 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 )
+
+func TestLoginSecurityFieldsByRole(t *testing.T) {
+	ordinary := loginSecurityFields(&models.User{ID: 1, Role: string(access.RoleUser)})
+	if ordinary["recoveryCodesConfigured"] != false || ordinary["showRecoverySetupPrompt"] != true {
+		t.Fatalf("ordinary user security fields = %#v", ordinary)
+	}
+
+	superAdmin := loginSecurityFields(&models.User{ID: 2, Role: string(access.RoleSuperAdmin)})
+	if superAdmin["recoveryCodesConfigured"] != false || superAdmin["showRecoverySetupPrompt"] != false {
+		t.Fatalf("super administrator security fields = %#v", superAdmin)
+	}
+}
 
 func TestLoginLimiterBlocksAndExpires(t *testing.T) {
 	limiter := newLoginLimiter()

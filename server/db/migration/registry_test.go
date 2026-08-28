@@ -13,7 +13,7 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.CurrentVersion != 9 || len(report.Applied) != 9 {
+	if report.CurrentVersion != 10 || len(report.Applied) != 10 {
 		t.Fatalf("report = %+v", report)
 	}
 
@@ -22,7 +22,7 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 			t.Fatalf("table %s was not created", table)
 		}
 	}
-	for _, column := range []string{"role", "session_version"} {
+	for _, column := range []string{"role", "session_version", "security_version", "must_change_password", "password_changed_at"} {
 		exists, err := columnExists(context.Background(), db, DialectSQLite, "user", column)
 		if err != nil {
 			t.Fatal(err)
@@ -56,11 +56,14 @@ func TestDefaultMigrationsUpgradeLegacyUserSchema(t *testing.T) {
 
 	var role string
 	var sessionVersion int
-	if err := db.QueryRow(`SELECT "role", "session_version" FROM "user" WHERE "account" = 'root'`).Scan(&role, &sessionVersion); err != nil {
+	var securityVersion int
+	var mustChangePassword int
+	var passwordChangedAt any
+	if err := db.QueryRow(`SELECT "role", "session_version", "security_version", "must_change_password", "password_changed_at" FROM "user" WHERE "account" = 'root'`).Scan(&role, &sessionVersion, &securityVersion, &mustChangePassword, &passwordChangedAt); err != nil {
 		t.Fatal(err)
 	}
-	if role != "super_admin" || sessionVersion != 1 {
-		t.Fatalf("role = %q, session version = %d", role, sessionVersion)
+	if role != "super_admin" || sessionVersion != 1 || securityVersion != 1 || mustChangePassword != 0 || passwordChangedAt != nil {
+		t.Fatalf("role = %q, session version = %d, security version = %d, must change password = %d, password changed at = %v", role, sessionVersion, securityVersion, mustChangePassword, passwordChangedAt)
 	}
 }
 

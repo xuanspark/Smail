@@ -11,6 +11,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/array"
@@ -40,6 +41,10 @@ type loginVerificationItem struct {
 	ExpiresAt      time.Time
 }
 
+type resendLoginVerificationRequest struct {
+	ID      string `json:"id"`
+	Account string `json:"account"`
+}
 type loginVerificationRequest struct {
 	ID         string `json:"id"`
 	Account    string `json:"account"`
@@ -49,11 +54,24 @@ type loginVerificationRequest struct {
 }
 
 func loginVerificationEnabled() bool {
+	if manager := config.CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.SetupState == config.SetupStateReady {
+			return loginVerificationPolicyEnabled(runtime.SMTP.Relay.VerificationEnabled, runtime.SMTP.Relay.LoginPolicy)
+		}
+	}
 	current := config.CurrentConfig()
-	if current == nil || !current.VerificationEnabled {
+	if current == nil {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(current.LoginPolicy)) {
+	return loginVerificationPolicyEnabled(current.VerificationEnabled, current.LoginPolicy)
+}
+
+func loginVerificationPolicyEnabled(enabled bool, policy string) bool {
+	if !enabled {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(policy)) {
 	case "", "off":
 		return false
 	case "always", "new_device":
@@ -106,6 +124,58 @@ func beginLoginVerification(user *models.User, remoteIP string) (map[string]any,
 		"email":        maskEmail(email),
 		"account":      user.Account,
 	}, nil
+}
+
+// ResendLoginVerification 使旧登录验证码失效后重新发送新验证码。
+func ResendLoginVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	var input resendLoginVerificationRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.ID) == "" {
+		writeSecurityError(w, response.ParamsError, "验证码请求无效")
+		return
+	}
+
+	loginVerificationState.Lock()
+	cleanupLoginVerificationLocked(time.Now())
+	item, ok := loginVerificationState.items[input.ID]
+	if ok {
+		delete(loginVerificationState.items, input.ID)
+	}
+	loginVerificationState.Unlock()
+	if !ok || !strings.EqualFold(strings.TrimSpace(input.Account), item.Account) {
+		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
+		return
+	}
+	if securityRuntime.verification == nil || securityRuntime.verification.Store == nil {
+		writeSecurityError(w, response.ParamsError, "验证码服务暂不可用")
+		return
+	}
+	securityRuntime.verification.Store.InvalidateChallenge(input.ID)
+	challenge, err := securityRuntime.verification.Issue(verification.IssueRequest{
+		Purpose: verification.PurposeLogin,
+		UserID:  item.UserID,
+		Account: item.Account,
+		Email:   item.Email,
+		TTL:     loginVerificationTTL,
+	}, remoteIP(req))
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "验证码发送失败，请稍后重试")
+		return
+	}
+
+	loginVerificationState.Lock()
+	cleanupLoginVerificationLocked(time.Now())
+	loginVerificationState.items[challenge.ID] = loginVerificationItem{
+		UserID: item.UserID, Account: item.Account, Email: item.Email,
+		SessionVersion: item.SessionVersion, ExpiresAt: challenge.ExpiresAt,
+	}
+	loginVerificationState.Unlock()
+	response.NewSuccessResponse(map[string]any{
+		"pending":      true,
+		"challenge_id": challenge.ID,
+		"expires_at":   challenge.ExpiresAt.UTC(),
+		"email":        maskEmail(item.Email),
+		"account":      item.Account,
+	}).FPrint(w)
 }
 
 // CompleteLoginVerification 只有验证码成功后才创建完整 Session。
@@ -174,16 +244,63 @@ func completeLoginSession(ctx *context.Context, w http.ResponseWriter, req *http
 		response.NewErrorResponse(response.ServerError, "登录失败", "").FPrint(w)
 		return
 	}
-	cfg := config.CurrentConfig()
-	if cfg == nil || cfg.Domain == "" {
+	domain, domains, ok := loginDomainSettings()
+	if !ok {
 		response.NewErrorResponse(response.ServerError, "登录失败", "").FPrint(w)
 		return
 	}
-	domains := cfg.Domains
-	domains = array.Difference(domains, []string{cfg.Domain})
-	domains = append([]string{cfg.Domain}, domains...)
-	response.NewSuccessResponse(map[string]any{
-		"account": user.Account, "name": user.Name, "role": user.EffectiveRole(),
-		"is_admin": user.IsAdmin, "domains": domains,
-	}).FPrint(w)
+	domains = append([]string{domain}, domains...)
+	result := map[string]any{
+		"account":              user.Account,
+		"name":                 user.Name,
+		"role":                 user.EffectiveRole(),
+		"capabilities":         access.Capabilities(user.EffectiveRole()),
+		"is_admin":             user.IsAdmin,
+		"domains":              domains,
+		"must_change_password": user.MustChangePassword != 0,
+	}
+	for key, value := range loginSecurityFields(user) {
+		result[key] = value
+	}
+	response.NewSuccessResponse(result).FPrint(w)
+}
+
+func loginDomainSettings() (string, []string, bool) {
+	if manager := config.CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		primary := strings.TrimSpace(runtime.Root.Domains.Primary)
+		if primary == "" {
+			return "", nil, false
+		}
+		domains := append([]string(nil), runtime.Root.Domains.Accepted...)
+		domains = array.Difference(domains, []string{primary})
+		return primary, domains, true
+	}
+	current := config.CurrentConfig()
+	if current == nil || strings.TrimSpace(current.Domain) == "" {
+		return "", nil, false
+	}
+	domains := array.Difference(append([]string(nil), current.Domains...), []string{current.Domain})
+	return current.Domain, domains, true
+}
+func pendingLoginVerification(challengeID, account string) (loginVerificationItem, bool) {
+	loginVerificationState.Lock()
+	defer loginVerificationState.Unlock()
+	cleanupLoginVerificationLocked(time.Now())
+	item, ok := loginVerificationState.items[strings.TrimSpace(challengeID)]
+	if !ok || !strings.EqualFold(strings.TrimSpace(account), item.Account) {
+		return loginVerificationItem{}, false
+	}
+	return item, true
+}
+
+func consumePendingLoginVerification(challengeID string, expected loginVerificationItem) bool {
+	loginVerificationState.Lock()
+	defer loginVerificationState.Unlock()
+	item, ok := loginVerificationState.items[strings.TrimSpace(challengeID)]
+	if !ok || item.UserID != expected.UserID || item.SessionVersion != expected.SessionVersion || !strings.EqualFold(item.Account, expected.Account) {
+		return false
+	}
+	delete(loginVerificationState.items, strings.TrimSpace(challengeID))
+	return true
 }

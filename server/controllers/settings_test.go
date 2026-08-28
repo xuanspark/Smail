@@ -109,7 +109,10 @@ func TestModifyPasswordRequiresCurrentPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if identity.ID != user.ID || identity.SessionVersion != unchanged.SessionVersion {
-		t.Fatalf("current session was not refreshed after password change: %+v", identity)
+	if identity.ID != 0 {
+		t.Fatalf("current session was not destroyed after password change: %+v", identity)
+	}
+	if unchanged.MustChangePassword != 0 || unchanged.SecurityVersion <= 0 || unchanged.PasswordChangedAt == nil {
+		t.Fatalf("password lifecycle fields were not updated: %+v", unchanged)
 	}
 }

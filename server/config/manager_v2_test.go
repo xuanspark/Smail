@@ -476,6 +476,158 @@ func TestConfigManagerSecretChangesUseVaultAndRejectUnknownFields(t *testing.T) 
 	}
 }
 
+func TestConfigManagerPluginSecretChangesUseUnifiedVaultSemantics(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	writeRuntimeFixture(t, root, runtime)
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plugins := manager.Snapshot().Plugins
+	plugin := plugins.Plugins["telegram_push"]
+	plugin.Secret = StoredSecret{}
+	plugins.Plugins["telegram_push"] = plugin
+	payload, err := json.Marshal(plugins)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replaceRequest := UpdateRequest{
+		Section:            SectionPlugins,
+		ExpectedGeneration: 1,
+		Payload:            payload,
+		SecretChanges: map[string]SecretChange{
+			"plugins.telegram_push.secret": {Operation: SecretReplace, Value: &SecretInput{Plaintext: "plugin-secret"}},
+		},
+		Actor:        authorizedConfigActor(),
+		Confirmation: StepUpConfirmation{Confirmed: true, Method: "recent_auth"},
+	}
+	updated, err := manager.Update(context.Background(), replaceRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := updated.Candidate.Plugins.Plugins["telegram_push"].Secret
+	if !stored.Configured() || stored.Ciphertext == "plugin-secret" {
+		t.Fatalf("plugin secret was not encrypted: %+v", stored)
+	}
+	if _, err := manager.Apply(context.Background(), updated.Generation); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins = manager.Snapshot().Plugins
+	plugin = plugins.Plugins["telegram_push"]
+	plugin.Secret = StoredSecret{}
+	plugins.Plugins["telegram_push"] = plugin
+	payload, err = json.Marshal(plugins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := manager.Update(context.Background(), UpdateRequest{
+		Section:            SectionPlugins,
+		ExpectedGeneration: 2,
+		Payload:            payload,
+		SecretChanges:      map[string]SecretChange{"plugins.telegram_push.secret": {Operation: SecretKeep}},
+		Actor:              authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept.Candidate.Plugins.Plugins["telegram_push"].Secret != stored {
+		t.Fatalf("plugin keep changed the stored secret: got %+v want %+v", kept.Candidate.Plugins.Plugins["telegram_push"].Secret, stored)
+	}
+	if _, err := manager.Apply(context.Background(), kept.Generation); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins = manager.Snapshot().Plugins
+	plugin = plugins.Plugins["telegram_push"]
+	plugin.Secret = StoredSecret{}
+	plugins.Plugins["telegram_push"] = plugin
+	payload, err = json.Marshal(plugins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := manager.Update(context.Background(), UpdateRequest{
+		Section:            SectionPlugins,
+		ExpectedGeneration: 3,
+		Payload:            payload,
+		SecretChanges:      map[string]SecretChange{"plugins.telegram_push.secret": {Operation: SecretClear, Confirmed: true}},
+		Actor:              authorizedConfigActor(),
+		Confirmation:       StepUpConfirmation{Confirmed: true, Method: "webauthn"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Candidate.Plugins.Plugins["telegram_push"].Secret.Configured() {
+		t.Fatal("plugin clear left the secret configured")
+	}
+}
+
+func TestConfigManagerRejectsInvalidPluginSecretChanges(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	writeRuntimeFixture(t, root, runtime)
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := manager.Snapshot().Plugins
+	tests := []struct {
+		name       string
+		payload    PluginsSectionConfig
+		secretPath string
+	}{
+		{
+			name:       "unknown plugin",
+			payload:    base,
+			secretPath: "plugins.unknown.secret",
+		},
+		{
+			name:       "invalid path",
+			payload:    base,
+			secretPath: "plugins.telegram_push.secret.extra",
+		},
+		{
+			name: "direct ciphertext",
+			payload: func() PluginsSectionConfig {
+				value := base
+				plugin := value.Plugins["telegram_push"]
+				plugin.Secret = StoredSecret{Ciphertext: "enc:v1:plaintext", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()}
+				value.Plugins["telegram_push"] = plugin
+				return value
+			}(),
+			secretPath: "plugins.telegram_push.secret",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payloadValue := clonePluginsSection(test.payload)
+			if test.name != "direct ciphertext" {
+				plugin := payloadValue.Plugins["telegram_push"]
+				plugin.Secret = StoredSecret{}
+				payloadValue.Plugins["telegram_push"] = plugin
+			}
+			payload, err := json.Marshal(payloadValue)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.Validate(context.Background(), ValidateRequest{
+				Section:       SectionPlugins,
+				Payload:       payload,
+				SecretChanges: map[string]SecretChange{test.secretPath: {Operation: SecretKeep}},
+			})
+			if !errors.Is(err, ErrInvalidSecretChange) {
+				t.Fatalf("error = %v, want invalid secret change", err)
+			}
+		})
+	}
+}
+
 func findTransactionDirectory(t *testing.T, root string) string {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(root, "config", "transaction"))
@@ -833,5 +985,47 @@ func TestConfigManagerWritesRedactedAuditAndDegradesOnAuditFailure(t *testing.T)
 	}
 	if manager.Status().SetupState != SetupStateDegraded {
 		t.Fatalf("status after audit failure = %+v, want degraded", manager.Status())
+	}
+}
+
+func TestConfigManagerSnapshotResultsAreIndependentCopies(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	current := manager.Snapshot()
+	current.Root.Domains.Accepted[0] = "changed.example.com"
+	current.Plugins.Plugins["telegram_push"].Settings[0] = '['
+	if got := manager.Snapshot(); got.Root.Domains.Accepted[0] != "mail.example.com" || !json.Valid(got.Plugins.Plugins["telegram_push"].Settings) {
+		t.Fatal("manager snapshot exposed active mutable data")
+	}
+
+	email := manager.Snapshot().Email
+	email.Policy.MaxMessageBytes = 8 << 20
+	payload, err := json.Marshal(email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated.Candidate.Email.Policy.MaxMessageBytes = 64 << 20
+	if got := manager.Snapshot(); got.Email.Policy.MaxMessageBytes == 64<<20 {
+		t.Fatal("update result exposed manager-owned pending data")
+	}
+
+	applied, err := manager.Apply(context.Background(), updated.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied.Snapshot.Email.Policy.MaxMessageBytes = 128 << 20
+	if got := manager.Snapshot(); got.Email.Policy.MaxMessageBytes == 128<<20 {
+		t.Fatal("apply result exposed manager-owned active data")
 	}
 }

@@ -59,11 +59,23 @@ func NormalizeIdentifier(identifier string) (string, error) {
 }
 
 func isConfiguredLoginDomain(domain string) bool {
+	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+	if manager := config.CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(runtime.Root.Domains.Primary)), ".") == domain {
+			return true
+		}
+		for _, item := range runtime.Root.Domains.Accepted {
+			if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(item)), ".") == domain {
+				return true
+			}
+		}
+		return false
+	}
 	current := config.CurrentConfig()
 	if current == nil {
 		return false
 	}
-	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
 	if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(current.Domain)), ".") == domain {
 		return true
 	}

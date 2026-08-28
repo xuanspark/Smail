@@ -10,13 +10,11 @@ import (
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
-	"git.pcux.cn/xuans/Smail/controllers"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/session"
-	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
 	"github.com/alexedwards/scs/v2"
 )
@@ -57,7 +55,7 @@ func TestModifyPasswordRouteRejectsUnauthenticatedRequest(t *testing.T) {
 	}
 }
 
-func TestSuperAdminChangesOwnPasswordAfterLogin(t *testing.T) {
+func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 	oldConfig := config.Instance
 	oldInit := config.IsInit
 	oldDB := db.Instance
@@ -93,7 +91,6 @@ func TestSuperAdminChangesOwnPasswordAfterLogin(t *testing.T) {
 	manager := scs.New()
 	session.Instance = manager
 	currentSession := passwordChangeSession(t, manager, &superAdmin)
-	staleSession := passwordChangeSession(t, manager, &superAdmin)
 
 	mux := http.NewServeMux()
 	if err := router(mux); err != nil {
@@ -107,45 +104,22 @@ func TestSuperAdminChangesOwnPasswordAfterLogin(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.ErrorNo != 0 {
-		t.Fatalf("authenticated super admin password change failed: %s", recorder.Body.String())
+	if result.ErrorNo != response.NoAccessPrivileges {
+		t.Fatalf("super admin web password change was not rejected: %s", recorder.Body.String())
 	}
 
-	var updated models.User
-	found, err := db.Instance.ID(superAdmin.ID).Get(&updated)
+	var unchanged models.User
+	found, err := db.Instance.ID(superAdmin.ID).Get(&unchanged)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !found || !password.Verify(updated.Password, "NewPass123") {
-		t.Fatal("new super admin password was not persisted")
+	if !found || !password.Verify(unchanged.Password, "CurrentPass123") {
+		t.Fatal("super admin password changed through the web route")
 	}
-	if updated.SessionVersion != superAdmin.SessionVersion+1 {
-		t.Fatalf("unexpected session version: %d", updated.SessionVersion)
+	if password.Verify(unchanged.Password, "NewPass123") {
+		t.Fatal("super admin new password was accepted through the web route")
 	}
-
-	identity, err := session.GetUser(currentSession)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identity.ID != updated.ID || identity.SessionVersion != updated.SessionVersion {
-		t.Fatalf("current session was not refreshed: %+v", identity)
-	}
-
-	called := false
-	currentHandler := contextIterceptor(controllers.HandlerFunc(func(ctx *appcontext.Context, w http.ResponseWriter, request *http.Request) {
-		called = ctx.UserID == updated.ID && ctx.IsAdmin
-		response.NewSuccessResponse("ok").FPrint(w)
-	}))
-	currentRequest := httptest.NewRequest(http.MethodGet, "/api/user/info", nil).WithContext(currentSession)
-	currentRecorder := httptest.NewRecorder()
-	currentHandler.ServeHTTP(currentRecorder, currentRequest)
-	if !called {
-		t.Fatalf("refreshed current session was rejected: %s", currentRecorder.Body.String())
-	}
-
-	assertSessionRejected(t, staleSession)
 }
-
 func passwordChangeSession(t *testing.T, manager *scs.SessionManager, user *models.User) stdcontext.Context {
 	t.Helper()
 	loaded, err := manager.Load(httptest.NewRequest(http.MethodGet, "/", nil).Context(), "")

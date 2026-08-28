@@ -12,5 +12,6 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(7, "create_webauthn_credentials", webAuthnCredentialStatements()),
 		DefineCustom(8, "mark_webauthn_discoverability", "mark_webauthn_discoverability_v1", applyWebAuthnDiscoverabilitySchema),
 		DefineForDialects(9, "create_totp_authenticator", totpAuthenticatorStatements()),
+		DefineCustom(10, "expand_user_lifecycle_security", "expand_user_lifecycle_security_v1", applyUserLifecycleSchema),
 	}
 }

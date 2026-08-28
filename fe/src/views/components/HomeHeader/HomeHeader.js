@@ -1,8 +1,10 @@
 import {EpMenu} from "vue-icons-plus/ep";
 
-import {ref, onMounted, onUnmounted} from 'vue'
+import {computed, ref, onMounted, onUnmounted} from 'vue'
 
 import SecuritySettings from '@/views/components/SecuritySettings/SecuritySettings.vue'
+
+import ConfigSettings from '@/views/components/ConfigSettings/ConfigSettings.vue'
 
 import lang from '../../../i18n/i18n';
 
@@ -43,6 +45,7 @@ export function usePage() {
     onMounted,
     onUnmounted,
     SecuritySettings,
+    ConfigSettings,
     lang,
     GroupSettings,
     RuleSettings,
@@ -53,7 +56,10 @@ export function usePage() {
     globalStatus,
     userInfos,
     isMobile,
-    handleResize
+    handleResize,
+    canReadConfig: computed(() => globalStatus.hasCapability("config.read")),
+    canManageUsers: computed(() => globalStatus.hasCapability("user.manage")),
+    canReadPlugins: computed(() => globalStatus.hasCapability("plugin.read"))
   }
 }
 
@@ -61,6 +67,7 @@ export {
   EpMenu,
   BrandLogo,
   SecuritySettings,
+  ConfigSettings,
   GroupSettings,
   RuleSettings,
   UserManagement,

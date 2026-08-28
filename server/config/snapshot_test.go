@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -145,5 +146,86 @@ func TestSnapshotStorePreservesOldSnapshotLifecycle(t *testing.T) {
 	}
 	if old.Generation != 1 || old.Root.Generation != 1 {
 		t.Fatal("publishing a new snapshot modified an old reader copy")
+	}
+}
+func TestSnapshotStoreRejectsOlderGeneration(t *testing.T) {
+	store, err := NewSnapshotStore(validRuntimeConfig(), RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newer := validRuntimeConfig()
+	newer.Generation = 3
+	newer.Root.Generation = 3
+	newer.Root.Sections = validSectionReferences(3)
+	newer.SMTP.Meta.Generation = 3
+	newer.Email.Meta.Generation = 3
+	newer.SSL.Meta.Generation = 3
+	newer.Plugins.Meta.Generation = 3
+	if err := store.Publish(newer); err != nil {
+		t.Fatal(err)
+	}
+
+	older := validRuntimeConfig()
+	older.Generation = 2
+	older.Root.Generation = 2
+	older.Root.Sections = validSectionReferences(2)
+	older.SMTP.Meta.Generation = 2
+	older.Email.Meta.Generation = 2
+	older.SSL.Meta.Generation = 2
+	older.Plugins.Meta.Generation = 2
+	if err := store.Publish(older); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("older publication error = %v, want generation conflict", err)
+	}
+	if got := store.Generation(); got != 3 {
+		t.Fatalf("active generation = %d, want 3", got)
+	}
+}
+
+func TestSnapshotStoreConcurrentOlderPublishesKeepNewestGeneration(t *testing.T) {
+	store, err := NewSnapshotStore(validRuntimeConfig(), RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newer := validRuntimeConfig()
+	newer.Generation = 3
+	newer.Root.Generation = 3
+	newer.Root.Sections = validSectionReferences(3)
+	newer.SMTP.Meta.Generation = 3
+	newer.Email.Meta.Generation = 3
+	newer.SSL.Meta.Generation = 3
+	newer.Plugins.Meta.Generation = 3
+	if err := store.Publish(newer); err != nil {
+		t.Fatal(err)
+	}
+
+	const publishers = 32
+	var group sync.WaitGroup
+	errorsFound := make(chan error, publishers)
+	for index := 0; index < publishers; index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			older := validRuntimeConfig()
+			older.Generation = 2
+			older.Root.Generation = 2
+			older.Root.Sections = validSectionReferences(2)
+			older.SMTP.Meta.Generation = 2
+			older.Email.Meta.Generation = 2
+			older.SSL.Meta.Generation = 2
+			older.Plugins.Meta.Generation = 2
+			if err := store.Publish(older); !errors.Is(err, ErrGenerationConflict) {
+				errorsFound <- err
+			}
+		}()
+	}
+	group.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Fatalf("older concurrent publication error = %v", err)
+	}
+	if got := store.Generation(); got != 3 {
+		t.Fatalf("active generation = %d, want 3", got)
 	}
 }

@@ -1,6 +1,10 @@
 package models
 
-import "git.pcux.cn/xuans/Smail/services/access"
+import (
+	"time"
+
+	"git.pcux.cn/xuans/Smail/services/access"
+)
 
 type User struct {
 	ID             int    `xorm:"id unsigned int not null pk autoincr"`
@@ -11,6 +15,9 @@ type User struct {
 	Role           string `xorm:"varchar(20) not null default('user') comment('用户角色')"`
 	IsAdmin        int    `xorm:"is_admin unsigned int not null default(0) comment('0不是管理员，1是管理员')"`
 	SessionVersion int    `xorm:"session_version unsigned int not null default(1)" json:"-"`
+	SecurityVersion int       `xorm:"security_version unsigned int not null default(1)" json:"-"`
+	MustChangePassword int    `xorm:"must_change_password unsigned int not null default(0)" json:"must_change_password"`
+	PasswordChangedAt  *time.Time `xorm:"password_changed_at datetime null" json:"-"`
 }
 
 // EffectiveRole 返回新角色字段，兼容旧版本只保存 IsAdmin 的账户。

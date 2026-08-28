@@ -39,14 +39,14 @@ export function usePage() {
       try {
         tos.value = JSON.parse(res.data.to)
       } catch (error) {
-        console.warn('收件人地址解析失败', error)
+        tos.value = []
       }
     }
     if (res.data.cc && res.data.cc !== "") {
       try {
         ccs.value = JSON.parse(res.data.cc)
       } catch (error) {
-        console.warn('抄送地址解析失败', error)
+        ccs.value = []
       }
     }
     showCC.value = ccs.value && ccs.value.length > 0

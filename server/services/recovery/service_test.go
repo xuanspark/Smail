@@ -325,7 +325,7 @@ func TestRecoveryStoresOnlyTicketDigestAndLimitsCapacity(t *testing.T) {
 	}
 }
 
-func TestRecoveryPreservesExistingStrongRecoveryCredentials(t *testing.T) {
+func TestRecoveryRevokesExistingStrongRecoveryCredentials(t *testing.T) {
 	service, verifyService, engine, user := newRecoveryFixture(t)
 	codes, err := service.credentials.GenerateRecoveryCodes(user.ID, 5)
 	if err != nil {
@@ -355,17 +355,17 @@ func TestRecoveryPreservesExistingStrongRecoveryCredentials(t *testing.T) {
 	if err := service.Complete(ticketID, "RecoveredPassword@123"); err != nil {
 		t.Fatal(err)
 	}
-	if configured, err := service.credentials.HasValidRecoveryCode(user.ID); err != nil || !configured {
+	if configured, err := service.credentials.HasValidRecoveryCode(user.ID); err != nil || configured {
 		t.Fatalf("有效离线恢复码未保留：configured=%v err=%v", configured, err)
 	}
-	if err := service.credentials.ConsumeRecoveryCode(user.ID, codes[0]); err != nil {
+	if err := service.credentials.ConsumeRecoveryCode(user.ID, codes[0]); err == nil {
 		t.Fatalf("原离线恢复码不可用：%v", err)
 	}
-	if question, configured, err := service.credentials.GetSecurityQuestion(user.ID); err != nil || !configured || question == "" {
+	if question, configured, err := service.credentials.GetSecurityQuestion(user.ID); err != nil || configured || question != "" {
 		t.Fatalf("密保问题未保留：question=%q configured=%v err=%v", question, configured, err)
 	}
 	var stored models.WebAuthnCredential
-	if found, err := engine.ID(credential.ID).Get(&stored); err != nil || !found || stored.RevokedAt != nil {
+	if found, err := engine.ID(credential.ID).Get(&stored); err != nil || !found || stored.RevokedAt == nil {
 		t.Fatalf("WebAuthn 凭据未保留：found=%v credential=%+v err=%v", found, stored, err)
 	}
 }

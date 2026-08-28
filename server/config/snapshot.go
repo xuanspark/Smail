@@ -28,8 +28,15 @@ func (s *SnapshotStore) Publish(candidate RuntimeConfig) error {
 	if err := ValidateRuntimeConfig(candidate, s.options); err != nil {
 		return err
 	}
-	s.current.Store(&candidate)
-	return nil
+	for {
+		current := s.current.Load()
+		if current != nil && candidate.Generation < current.Generation {
+			return ErrGenerationConflict
+		}
+		if s.current.CompareAndSwap(current, &candidate) {
+			return nil
+		}
+	}
 }
 
 func (s *SnapshotStore) Snapshot() (RuntimeConfig, error) {

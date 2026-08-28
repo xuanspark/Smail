@@ -7,6 +7,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/i18n"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -15,6 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type modifyPasswordRequest struct {
@@ -25,6 +27,10 @@ type modifyPasswordRequest struct {
 func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 || strings.TrimSpace(ctx.UserAccount) == "" {
 		response.NewErrorResponse(response.NoAccessPrivileges, "未登录用户不能修改密码", "").FPrint(w)
+		return
+	}
+	if ctx.EffectiveRole() == access.RoleSuperAdmin {
+		response.NewErrorResponse(response.NoAccessPrivileges, "\u8d85\u7ea7\u7ba1\u7406\u5458\u5fc5\u987b\u901a\u8fc7\u90e8\u7f72\u7aef\u4e13\u7528\u901a\u9053\u91cd\u7f6e\u5bc6\u7801", "").FPrint(w)
 		return
 	}
 	var retData modifyPasswordRequest
@@ -56,7 +62,18 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 	loginPairAttempts.clear(pairKey)
 	loginAccountAttempts.clear(accountKey)
 
-	user := models.User{ID: ctx.UserID, SessionVersion: currentUser.SessionVersion + 1}
+	securityVersion := currentUser.SecurityVersion + 1
+	if securityVersion <= 0 {
+		securityVersion = 1
+	}
+	now := time.Now().UTC()
+	user := models.User{
+		ID:                 ctx.UserID,
+		SessionVersion:     currentUser.SessionVersion + 1,
+		SecurityVersion:    securityVersion,
+		MustChangePassword: 0,
+		PasswordChangedAt:  &now,
+	}
 	if err := auth.SetPassword(&user, retData.Password); err != nil {
 		if errors.Is(err, password.ErrInvalidLength) {
 			response.NewErrorResponse(response.ParamsError, "\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8-256 \u5b57\u8282", "").FPrint(w)
@@ -90,7 +107,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		}
 	}()
 
-	affected, err := tx.Where("id = ? and password = ? and session_version = ?", ctx.UserID, currentUser.Password, currentUser.SessionVersion).Cols("password", "session_version").Update(&user)
+	affected, err := tx.Where("id = ? and password = ? and session_version = ?", ctx.UserID, currentUser.Password, currentUser.SessionVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&user)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("update password failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
@@ -112,17 +129,15 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		return
 	}
 	committed = true
-	currentUser.Password = user.Password
-	currentUser.SessionVersion = user.SessionVersion
-	if err := session.PutUser(req.Context(), currentUser); err != nil {
-		if destroyErr := session.Instance.Destroy(req.Context()); destroyErr != nil {
-			log.WithContext(ctx).WithError(destroyErr).Error("session destruction after password refresh failure failed")
-		}
-		csrf.Clear(w, req, !config.DevelopmentMode)
-		log.WithContext(ctx).WithError(err).Error("refresh password change session failed")
+	if err := session.Instance.Destroy(req.Context()); err != nil {
+		log.WithContext(ctx).WithError(err).Error("session destruction after password change failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
 	}
+	csrf.Clear(w, req, !config.DevelopmentMode)
 
-	response.NewSuccessResponse(i18n.GetText(ctx.Lang, "succ")).FPrint(w)
+	response.NewSuccessResponse(map[string]any{
+		"message":         i18n.GetText(ctx.Lang, "succ"),
+		"reauth_required": true,
+	}).FPrint(w)
 }

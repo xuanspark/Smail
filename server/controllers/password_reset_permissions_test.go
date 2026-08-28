@@ -10,6 +10,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
@@ -176,4 +177,39 @@ func assertUserPassword(t *testing.T, userID int, plainPassword string) {
 
 func authPasswordMatches(hash, plain string) bool {
 	return password.Verify(hash, plain)
+}
+
+func TestSuperAdminCannotChangePasswordThroughWeb(t *testing.T) {
+	testRoot := t.TempDir()
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		config.Instance = oldConfig
+		db.Instance = oldDB
+	})
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "web-password.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	user := newControllerTestUser(t, "web-super-admin", "super admin", access.RoleSuperAdmin, "OldPass123")
+	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &appcontext.Context{UserID: user.ID, UserAccount: user.Account, Role: access.RoleSuperAdmin, Lang: "zhCn"}
+	request := httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"OldPass123","password":"NewPass123"}`))
+	recorder := httptest.NewRecorder()
+	ModifyPassword(ctx, recorder, request)
+	var result struct {
+		ErrorNo int `json:"errorNo"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ErrorNo != response.NoAccessPrivileges {
+		t.Fatalf("expected web reset to be denied, got %d", result.ErrorNo)
+	}
+	assertUserPassword(t, user.ID, "OldPass123")
 }

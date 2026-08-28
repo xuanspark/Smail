@@ -18,6 +18,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"time"
 )
 
 const maxUserRequestBytes int64 = 64 << 10
@@ -81,7 +82,7 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
 		return
 	}
-	user := models.User{Name: username, Account: account, Disabled: reqData.Disabled, SessionVersion: 1}
+	user := models.User{Name: username, Account: account, Disabled: reqData.Disabled, SessionVersion: 1, SecurityVersion: 1}
 	user.ApplyRole(targetRole)
 	if err := auth.SetPassword(&user, reqData.Password); err != nil {
 		if errors.Is(err, password.ErrInvalidLength) {
@@ -146,13 +147,23 @@ func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	domains := cfg.Domains
 	domains = array.Difference(domains, []string{cfg.Domain})
 	domains = append([]string{cfg.Domain}, domains...)
-	response.NewSuccessResponse(map[string]any{
-		"account":  ctx.UserAccount,
-		"name":     ctx.UserName,
-		"role":     ctx.EffectiveRole(),
-		"is_admin": ctx.IsAdmin,
-		"domains":  domains,
-	}).FPrint(w)
+	result := map[string]any{
+		"account":              ctx.UserAccount,
+		"name":                 ctx.UserName,
+		"role":                 ctx.EffectiveRole(),
+		"capabilities":         access.Capabilities(ctx.EffectiveRole()),
+		"is_admin":             ctx.IsAdmin,
+		"must_change_password": ctx.MustChangePassword,
+		"domains":              domains,
+	}
+	if ctx.EffectiveRole() != access.RoleSuperAdmin {
+		result["recoveryCodesConfigured"] = ctx.RecoveryCodeConfigured
+		result["showRecoverySetupPrompt"] = !ctx.RecoveryCodeConfigured
+	} else {
+		result["recoveryCodesConfigured"] = false
+		result["showRecoverySetupPrompt"] = false
+	}
+	response.NewSuccessResponse(result).FPrint(w)
 }
 
 func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
@@ -238,6 +249,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	originalDisabled := user.Disabled
 	originalRole := user.EffectiveRole()
 	originalSessionVersion := user.SessionVersion
+	originalSecurityVersion := user.SecurityVersion
 	if reqData.Username != "" {
 		username, validationErr := validation.NormalizeDisplayName(reqData.Username)
 		if validationErr != nil {
@@ -257,9 +269,13 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			response.NewErrorResponse(response.ServerError, "密码设置失败", "").FPrint(w)
 			return
 		}
+		user.MustChangePassword = 1
+		now := time.Now().UTC()
+		user.PasswordChangedAt = &now
 	}
 	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole {
 		user.SessionVersion = originalSessionVersion + 1
+		user.SecurityVersion = originalSecurityVersion + 1
 	}
 	credentialService := credentialRuntime()
 	if reqData.Password != "" && credentialService == nil {
@@ -284,7 +300,14 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			_ = tx.Rollback()
 		}
 	}()
-	if num, err := tx.ID(user.ID).Where("session_version = ?", originalSessionVersion).Cols("name", "password", "disabled", "role", "is_admin", "session_version").Update(&user); err != nil {
+	updateColumns := []string{"name", "disabled", "role", "is_admin"}
+	if reqData.Password != "" {
+		updateColumns = append(updateColumns, "password", "must_change_password", "password_changed_at")
+	}
+	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole {
+		updateColumns = append(updateColumns, "session_version", "security_version")
+	}
+	if num, err := tx.ID(user.ID).Where("session_version = ?", originalSessionVersion).Cols(updateColumns...).Update(&user); err != nil {
 		log.WithContext(ctx).WithError(err).Error("update user failed")
 		response.NewErrorResponse(response.ServerError, "更新用户失败", "").FPrint(w)
 		return
@@ -305,6 +328,9 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	committed = true
+	if reqData.Password != "" {
+		InvalidateSecurityRuntimeUser(user.ID, user.Account)
+	}
 	_ = roleChanged
 	response.NewSuccessResponse(user).FPrint(w)
 }

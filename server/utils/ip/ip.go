@@ -7,34 +7,86 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	publicIPEndpoint   = "https://api.ipify.org"
+	publicIPv4Endpoint = "https://api.ipify.org"
+	publicIPv6Endpoint = "https://api6.ipify.org"
 	maxIPResponseBytes = 64
 )
 
 var (
-	ip             string
 	publicIPClient = &http.Client{Timeout: 3 * time.Second}
+	cacheMu        sync.Mutex
+	cachedIPv4     string
+	cachedIPv6     string
 )
 
 func GetIp() string {
-	if ip != "" {
-		return ip
+	value := GetIPv4()
+	if value == "" {
+		return "[Your Server IP]"
+	}
+	return value
+}
+
+func GetIPv4() string {
+	return getPublicIP(publicIPv4Endpoint, false)
+}
+
+func GetIPv6() string {
+	return getPublicIP(publicIPv6Endpoint, true)
+}
+
+func getPublicIP(endpoint string, wantIPv6 bool) string {
+	cacheMu.Lock()
+	if wantIPv6 && cachedIPv6 != "" {
+		value := cachedIPv6
+		cacheMu.Unlock()
+		return value
+	}
+	if !wantIPv6 && cachedIPv4 != "" {
+		value := cachedIPv4
+		cacheMu.Unlock()
+		return value
+	}
+	cacheMu.Unlock()
+
+	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return ""
+	}
+	value, err := fetchPublicIPForFamily(publicIPClient, request, wantIPv6)
+	if err != nil {
+		return ""
 	}
 
-	request, err := http.NewRequest(http.MethodGet, publicIPEndpoint, nil)
-	if err != nil {
-		return "[Your Server IP]"
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	if wantIPv6 {
+		if cachedIPv6 == "" {
+			cachedIPv6 = value
+		}
+		return cachedIPv6
 	}
-	publicIP, err := fetchPublicIP(publicIPClient, request)
-	if err != nil {
-		return "[Your Server IP]"
+	if cachedIPv4 == "" {
+		cachedIPv4 = value
 	}
-	ip = publicIP
-	return publicIP
+	return cachedIPv4
+}
+
+func fetchPublicIPForFamily(client *http.Client, request *http.Request, wantIPv6 bool) (string, error) {
+	value, err := fetchPublicIP(client, request)
+	if err != nil {
+		return "", err
+	}
+	address, err := netip.ParseAddr(value)
+	if err != nil || address.Is6() != wantIPv6 {
+		return "", errors.New("public IP address family does not match")
+	}
+	return address.String(), nil
 }
 
 func fetchPublicIP(client *http.Client, request *http.Request) (string, error) {

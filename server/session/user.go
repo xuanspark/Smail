@@ -12,12 +12,14 @@ import (
 const userSessionKey = "user"
 
 type UserIdentity struct {
-	ID             int         `json:"id"`
-	Name           string      `json:"name"`
-	Account        string      `json:"account"`
-	Role           access.Role `json:"role"`
-	IsAdmin        int         `json:"is_admin"`
-	SessionVersion int         `json:"session_version"`
+	ID                 int         `json:"id"`
+	Name               string      `json:"name"`
+	Account            string      `json:"account"`
+	Role               access.Role `json:"role"`
+	IsAdmin            int         `json:"is_admin"`
+	SessionVersion     int         `json:"session_version"`
+	SecurityVersion    int         `json:"security_version"`
+	MustChangePassword int         `json:"must_change_password"`
 }
 
 func PutUser(ctx context.Context, user *models.User) error {
@@ -26,12 +28,14 @@ func PutUser(ctx context.Context, user *models.User) error {
 	}
 	role := user.EffectiveRole()
 	encoded, err := json.Marshal(UserIdentity{
-		ID:             user.ID,
-		Name:           user.Name,
-		Account:        user.Account,
-		Role:           role,
-		IsAdmin:        user.IsAdmin,
-		SessionVersion: user.SessionVersion,
+		ID:                 user.ID,
+		Name:               user.Name,
+		Account:            user.Account,
+		Role:               role,
+		IsAdmin:            user.IsAdmin,
+		SessionVersion:     user.SessionVersion,
+		SecurityVersion:    user.SecurityVersion,
+		MustChangePassword: user.MustChangePassword,
 	})
 	if err != nil {
 		return err

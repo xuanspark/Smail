@@ -23,16 +23,19 @@
       <el-tab-pane :label="lang.security">
         <SecuritySettings/>
       </el-tab-pane>
+      <el-tab-pane v-if="canReadConfig" label="配置管理">
+        <ConfigSettings />
+      </el-tab-pane>
       <el-tab-pane :label="lang.group_settings">
         <GroupSettings/>
       </el-tab-pane>
       <el-tab-pane :label="lang.rule_setting">
         <RuleSettings/>
       </el-tab-pane>
-      <el-tab-pane v-if="userInfos.is_admin" :label="lang.user_management">
+      <el-tab-pane v-if="canManageUsers" :label="lang.user_management">
         <UserManagement/>
       </el-tab-pane>
-      <el-tab-pane :label="lang.plugin_settings">
+      <el-tab-pane v-if="canReadPlugins" :label="lang.plugin_settings">
         <PluginSettings/>
       </el-tab-pane>
     </el-tabs>
@@ -40,13 +43,15 @@
 </template>
 
 <script setup>
-import { usePage, EpMenu, BrandLogo, SecuritySettings, GroupSettings, RuleSettings, UserManagement, PluginSettings } from './HomeHeader.js'
+import { usePage, EpMenu, BrandLogo, SecuritySettings, ConfigSettings, GroupSettings, RuleSettings, UserManagement, PluginSettings } from './HomeHeader.js'
 
 const {
   globalStatus,
   isMobile,
   lang,
-  userInfos
+  canReadConfig,
+  canManageUsers,
+  canReadPlugins
 } = usePage()
 </script>
 

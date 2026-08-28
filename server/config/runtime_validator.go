@@ -61,7 +61,7 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 		return err
 	}
 	if runtime.SetupState == SetupStateReady {
-		if !options.HasSuperAdmin || runtime.Root.Domains.Primary == "" || len(runtime.Root.Domains.Accepted) == 0 || !runtime.Root.Database.IsStructured() {
+		if !options.HasSuperAdmin || runtime.Root.Domains.Primary == "" || len(runtime.Root.Domains.Accepted) == 0 || runtime.Root.Domains.Web == "" || !runtime.Root.Database.IsStructured() {
 			return ErrInvalidRuntimeConfig
 		}
 		if runtime.Email.Policy.SMTPPort == 0 || runtime.Email.Policy.IMAPPort == 0 || runtime.Email.Policy.POP3Port == 0 {
@@ -184,6 +184,9 @@ func validatePluginSection(section PluginsSectionConfig) error {
 		if len(plugin.Settings) > maxPluginSettingsBytes || !validPluginSettings(plugin.Settings) {
 			return ErrInvalidPlugin
 		}
+		if err := ValidateStoredSecret(plugin.Secret, false); err != nil {
+			return ErrInvalidPlugin
+		}
 	}
 	return nil
 }
@@ -230,7 +233,13 @@ func pluginList(section PluginsSectionConfig) []PluginConfig {
 		for _, target := range plugin.Permissions.Network {
 			targets = append(targets, target.Host)
 		}
-		result = append(result, PluginConfig{LogicalID: logicalID, FileName: plugin.Executable, Enabled: plugin.Enabled, NetworkAllowlist: targets})
+		result = append(result, PluginConfig{
+			LogicalID:        logicalID,
+			FileName:         plugin.Executable,
+			Enabled:          plugin.Enabled,
+			NetworkAllowlist: targets,
+			Secret:           plugin.Secret,
+		})
 	}
 	return result
 }

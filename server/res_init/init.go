@@ -29,7 +29,7 @@ import (
 	"git.pcux.cn/xuans/Smail/signal"
 	"git.pcux.cn/xuans/Smail/utils/file"
 	log "github.com/sirupsen/logrus"
-	// 闁哄倹婢橀·鍐晬濞嗙睒TP 閻忓繗浜崡搴ㄥ箳閵忥紕銈?
+	// 导入 HTTP 客户端，用于等待服务启动。
 	"net/http"
 )
 
@@ -60,7 +60,8 @@ func startConfigManager() error {
 		}
 	}
 	if !partitionFound {
-		// 闁哄唲鍛暭闁告娲橀弸鍐╃閸洖甯崇紓鍐惧枙缁盯鎮介崡鐐叉倯閻庡湱顢婄换宥囨偘鐏炵偓顦ч柟浣冨劵濞村洭鏁嶇仦鑲╃憹闁艰櫕鍨濋崥澶愭焻?V2 缂佺媴绱曢幃濠囧闯閵婏絺鍋?		config.SetRuntimeManager(nil)
+		// 未发现分区配置时继续使用旧版配置读取路径。
+		config.SetRuntimeManager(nil)
 		return nil
 	}
 	manager, err := config.NewConfigManager(root, config.ConfigLoaderOptions{Validation: config.RuntimeValidationOptions{
@@ -107,7 +108,7 @@ func Init(serverVersion string) error {
 		if cfg == nil {
 			return fmt.Errorf("runtime configuration is unavailable")
 		}
-		// 缂佸顭峰▍搴ㄦ晬濮橆剚鍎欓柛鏂诲妼婢х姷绮╃€ｎ亜绁柡鍥х摠閺屽﹦鎷犳担宄板闁汇劌瀚惃鐔兼偨椤帞绀夐梺顒€鐏濋崢?HTTP 闁哄牜浜滈幆搴ㄥ礉閵婏附顦ч悷娆欑畱瑜?ACME
+		// 等待 HTTP 服务就绪后再执行需要 HTTP 回调的 SSL 更新。
 		// ssl.Update(false)
 
 		if err := parsemail.Init(); err != nil {
@@ -139,13 +140,13 @@ func Init(serverVersion string) error {
 		startService(serviceErrors, "HTTPS", http_server.HttpsStart)
 		startService(serviceErrors, "HTTP", http_server.HttpStart)
 
-		// 缂佹稑顦欢?HTTP 闁哄牆绉存慨鐔轰焊鏉堚晛宕曢柛姘閸熲偓闁圭瑳鍡╂斀閻犲洣妞掗崝鐔肺涢埀顒勫蓟?缂備緡鍘藉﹢锟犳晬瀹€鍕級闁?ACME 濡ょ姴鐭侀惁澶嬪緞鏉堫偉袝
+		// 等待 HTTP 服务启动后再执行需要 HTTP 回调的 ACME 操作。
 		if err := waitHTTPReady(serviceErrors); err != nil {
 			stopServices()
 			return err
 		}
 
-		// 闁告凹鍨版慨鈺呭触鎼淬埄姊鹃柡灞诲劙缁旀挳鏌嗗鍫㈡濞戞棑璁ｇ槐娆撴閻愬搫娅㈤柛姘煎灡鑶╃€殿喖楠忕槐?
+		// 更新 SSL 配置。
 		ssl.Update(false)
 
 		// pop3 server start
@@ -258,7 +259,7 @@ func startVerificationRuntime() error {
 	})
 	if err != nil {
 		runtime.Stop()
-		return fmt.Errorf("SMTP 濡ょ姴鐭侀惁澶愭煀瀹ュ洨鏋傞柡鍐У閺? %w", err)
+		return fmt.Errorf("SMTP 投递服务初始化失败: %w", err)
 	}
 	service, err := verification.NewService(runtime.Store, delivery.Delivery(), runtime.Events)
 	if err != nil {
@@ -288,7 +289,7 @@ func smtpSecurityMode(value string) (verification.SecurityMode, error) {
 	case string(verification.SecurityPlain):
 		return verification.SecurityPlain, nil
 	default:
-		return "", fmt.Errorf("SMTP 閻庣懓顦崣蹇撐熼垾宕囩濞戞挸绉甸弫顕€骞? %s", value)
+		return "", fmt.Errorf("不支持的 SMTP 安全模式: %s", value)
 	}
 }
 
@@ -330,7 +331,7 @@ func stopVerificationRuntime() {
 	credentialService = nil
 }
 
-// startAdminResetControl 闁告瑯浜滃﹢顏呯▔閼姐倐鏌ら幖鏉戠箰閸炴挳宕ラ姘楅柡鍫墯濠р偓闂侇喓鍔庣拋鑼博椤栫偛娅㈢紓鍐惧櫍閳ь剚宀告禍楣冨Υ?
+// startAdminResetControl 启动受保护的本机超级管理员重置通道。
 func startAdminResetControl() {
 	if adminResetControl != nil {
 		return
@@ -401,7 +402,7 @@ func dirInit() error {
 	return nil
 }
 
-// 闁哄倹婢橀·鍐晬濞嗙睒TP 閻忓繗浜崡搴ㄥ箳閵忥紕銈撮柨娑樼墛濞撹埖寰勫杈╂惣鐎?~90 缂佸甯槐?
+// 等待 HTTP 服务启动，最长约 90 秒。
 func waitHTTPReady(serviceErrors <-chan error) error {
 	port := 80
 	if cfg := config.CurrentConfig(); cfg != nil && cfg.HttpPort > 0 {

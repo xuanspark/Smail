@@ -2,13 +2,14 @@
 import {RouterView, useRoute} from 'vue-router'
 import HomeHeader from '@/views/components/HomeHeader/HomeHeader.vue'
 import HomeAside from '@/views/components/HomeAside/HomeAside.vue';
+import RecoverySetupPrompt from '@/views/components/RecoverySetupPrompt/RecoverySetupPrompt.vue'
 import {ref, watch, onMounted} from 'vue'
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 const route = useRoute()
 const pageName = ref(route.name)
 const globalStatus = useGlobalStatusStore();
-const standalonePages = ['login', 'setup', 'forgot-password', 'reset-blocked']
+const standalonePages = ['login', 'login-verification', 'force-password-change', 'setup', 'forgot-password', 'reset-blocked']
 
 onMounted(() => {
   if (!standalonePages.includes(route.name)) {
@@ -55,6 +56,7 @@ watch(
           </transition>
         </RouterView>
       </div>
+      <RecoverySetupPrompt v-if="!standalonePages.includes(pageName)" />
     </div>
   </div>
 </template>

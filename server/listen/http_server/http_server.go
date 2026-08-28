@@ -48,6 +48,7 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/security/verification/request", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.RequestVerification))))
 	mux.HandleFunc("/api/security/verification/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.VerifyVerification))))
 	mux.HandleFunc("/api/security/login/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.CompleteLoginVerification))))
+	mux.HandleFunc("/api/security/login/resend", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.ResendLoginVerification))))
 	mux.HandleFunc("/api/security/webauthn/registration/begin", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.BeginWebAuthnRegistration))))
 	mux.HandleFunc("/api/security/webauthn/registration/finish", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.FinishWebAuthnRegistration))))
 	mux.HandleFunc("/api/security/webauthn/credentials", onlyMethod(http.MethodGet, contextIterceptor(controllers.ListWebAuthnCredentials)))

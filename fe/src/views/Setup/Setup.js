@@ -244,7 +244,6 @@ export function usePage() {
         ElMessage.error(res.errorMsg)
       } else {
         sslSettings.paramsList = res.data
-        console.log(sslSettings.paramsList)
       }
     })
   

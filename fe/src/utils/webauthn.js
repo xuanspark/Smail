@@ -33,7 +33,7 @@ function normalizeDescriptors(items) {
 export function normalizeCreationOptions(options) {
   const source = options?.publicKey || options?.response || options;
   if (!source?.challenge || !source?.user?.id) {
-    throw new Error('??????????');
+    throw new Error('安全密钥参数无效');
   }
   return {
     ...source,
@@ -46,7 +46,7 @@ export function normalizeCreationOptions(options) {
 export function normalizeRequestOptions(options) {
   const source = options?.publicKey || options?.response || options;
   if (!source?.challenge) {
-    throw new Error('??????????');
+    throw new Error('安全密钥参数无效');
   }
   return {
     ...source,
@@ -56,7 +56,7 @@ export function normalizeRequestOptions(options) {
 }
 
 export function serializeCredential(credential) {
-  if (!credential) throw new Error('??????????');
+  if (!credential) throw new Error('安全密钥参数无效');
   const response = credential.response;
   const result = {
     id: credential.id,

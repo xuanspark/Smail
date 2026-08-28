@@ -3,6 +3,7 @@ package adminreset
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
@@ -68,8 +69,19 @@ func ResetSuperAdmin(engine *xorm.Engine, newPassword string, invalidators ...fu
 	if version <= 0 {
 		version = 1
 	}
-	updated := &models.User{Password: passwordHash, SessionVersion: version}
-	affected, err := session.ID(target.ID).Where("session_version = ?", target.SessionVersion).Cols("password", "session_version").Update(updated)
+	securityVersion := target.SecurityVersion + 1
+	if securityVersion <= 0 {
+		securityVersion = 1
+	}
+	now := time.Now().UTC()
+	updated := &models.User{
+		Password:           passwordHash,
+		SessionVersion:     version,
+		SecurityVersion:    securityVersion,
+		MustChangePassword: 0,
+		PasswordChangedAt:  &now,
+	}
+	affected, err := session.ID(target.ID).Where("session_version = ?", target.SessionVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(updated)
 	if err != nil {
 		return fmt.Errorf("update super administrator: %w", err)
 	}

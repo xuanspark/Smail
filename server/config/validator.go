@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"net"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,6 +15,9 @@ var (
 	ErrInvalidSMTP       = errors.New("invalid SMTP configuration")
 	ErrInvalidSSL        = errors.New("invalid SSL configuration")
 	ErrInvalidPlugin     = errors.New("invalid plugin configuration")
+	ErrInvalidHTTP       = errors.New("invalid HTTP configuration")
+	ErrInvalidEmail      = errors.New("invalid email configuration")
+	ErrInvalidLogLevel   = errors.New("invalid log level")
 )
 
 var logicalIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
@@ -22,6 +26,9 @@ var databaseLocalRefPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,1
 func ValidateRootConfig(root RootConfig) error {
 	if root.ConfigVersion > CurrentConfigVersion || root.SchemaVersion <= 0 || root.SchemaVersion > CurrentSchemaVersion || root.Generation == 0 || !root.SetupState.Valid() {
 		return ErrInvalidSetupState
+	}
+	if !validLogLevel(root.LogLevel) {
+		return ErrInvalidLogLevel
 	}
 	if len(root.Sections) > 0 {
 		if err := ValidateSectionReferences(root.Sections, root.Generation); err != nil {
@@ -35,6 +42,12 @@ func ValidateRootConfig(root RootConfig) error {
 		return err
 	}
 	if err := validateSSL(root.SSL); err != nil {
+		return err
+	}
+	if err := validateHTTP(root.HTTP); err != nil {
+		return err
+	}
+	if err := validateEmail(root.Email); err != nil {
 		return err
 	}
 	seen := make(map[string]struct{}, len(root.Plugins))
@@ -76,7 +89,7 @@ func validateDatabase(database DatabaseConfig) error {
 		if err := ValidateStoredSecret(database.Password, true); err != nil {
 			return ErrInvalidDatabase
 		}
-		if net.ParseIP(database.Host) == nil && strings.ContainsAny(database.Host, "/\\ ") {
+		if net.ParseIP(database.Host) == nil && strings.ContainsAny(database.Host, `/\\ `) {
 			return ErrInvalidDatabase
 		}
 	default:
@@ -86,10 +99,47 @@ func validateDatabase(database DatabaseConfig) error {
 }
 
 func validateSMTP(smtp SMTPConfig) error {
+	if !validLoginVerificationPolicy(smtp.LoginPolicy) {
+		return ErrInvalidSMTP
+	}
 	if !smtp.VerificationEnabled {
+		if smtp.RelayHost != "" && !validSMTPHost(smtp.RelayHost) {
+			return ErrInvalidSMTP
+		}
+		if smtp.RelayPort != 0 && !validPort(smtp.RelayPort) {
+			return ErrInvalidSMTP
+		}
+		if smtp.FromDomain != "" && !validCanonicalDomain(smtp.FromDomain) {
+			return ErrInvalidSMTP
+		}
+		if strings.TrimSpace(smtp.Username) != smtp.Username {
+			return ErrInvalidSMTP
+		}
+		if err := ValidateStoredSecret(smtp.Password, false); err != nil {
+			return ErrInvalidSMTP
+		}
+		if smtp.Username != "" {
+			if err := ValidateStoredSecret(smtp.Password, true); err != nil {
+				return ErrInvalidSMTP
+			}
+		}
+		if smtp.Security != "" {
+			switch smtp.Security {
+			case "starttls", "implicit_tls", "tls":
+			case "plain":
+				if !isLocalSMTPHost(smtp.RelayHost) {
+					return ErrInvalidSMTP
+				}
+			default:
+				return ErrInvalidSMTP
+			}
+		}
 		return nil
 	}
-	if smtp.RelayHost == "" || !validPort(smtp.RelayPort) || smtp.FromDomain == "" {
+	if !validSMTPHost(smtp.RelayHost) || !validPort(smtp.RelayPort) || !validCanonicalDomain(smtp.FromDomain) {
+		return ErrInvalidSMTP
+	}
+	if strings.TrimSpace(smtp.Username) != smtp.Username {
 		return ErrInvalidSMTP
 	}
 	if smtp.Username == "" {
@@ -100,7 +150,11 @@ func validateSMTP(smtp SMTPConfig) error {
 		return ErrInvalidSMTP
 	}
 	switch smtp.Security {
-	case "starttls", "implicit_tls", "plain":
+	case "starttls", "implicit_tls", "tls":
+	case "plain":
+		if !isLocalSMTPHost(smtp.RelayHost) {
+			return ErrInvalidSMTP
+		}
 	default:
 		return ErrInvalidSMTP
 	}
@@ -108,19 +162,77 @@ func validateSMTP(smtp SMTPConfig) error {
 }
 
 func validateSSL(ssl SSLConfig) error {
+	if !isControlledRelativePath(ssl.DefaultDirectory) {
+		return ErrInvalidSSL
+	}
+	activeDirectory := ssl.DefaultDirectory
 	switch ssl.Mode {
 	case "default":
 		if ssl.DefaultDirectory == "" {
 			return ErrInvalidSSL
 		}
 	case "custom":
-		if ssl.CustomDirectory == "" || filepath.IsAbs(ssl.CustomDirectory) {
+		if !isControlledRelativePath(ssl.CustomDirectory) || ssl.CustomDirectory == "" {
 			return ErrInvalidSSL
 		}
+		activeDirectory = ssl.CustomDirectory
 	default:
 		return ErrInvalidSSL
 	}
+	if (ssl.CertificateRef != "" && !isControlledRelativePath(ssl.CertificateRef)) ||
+		(ssl.PrivateKeyRef != "" && !isControlledRelativePath(ssl.PrivateKeyRef)) {
+		return ErrInvalidSSL
+	}
+	if (ssl.CertificateRef == "") != (ssl.PrivateKeyRef == "") {
+		return ErrInvalidSSL
+	}
+	if ssl.CertificateRef != "" && (!isPathWithinDirectory(ssl.CertificateRef, activeDirectory) || !isPathWithinDirectory(ssl.PrivateKeyRef, activeDirectory)) {
+		return ErrInvalidSSL
+	}
 	return nil
+}
+
+func validateHTTP(http HTTPConfig) error {
+	if http.Port != 0 && !validPort(http.Port) {
+		return ErrInvalidHTTP
+	}
+	if http.HTTPSPort != 0 && !validPort(http.HTTPSPort) {
+		return ErrInvalidHTTP
+	}
+	if http.HTTPSEnabled && http.HTTPSPort == 0 {
+		return ErrInvalidHTTP
+	}
+	return nil
+}
+
+func validateEmail(email EmailConfig) error {
+	for _, port := range []int{email.SMTPPort, email.IMAPPort, email.POP3Port} {
+		if port != 0 && !validPort(port) {
+			return ErrInvalidEmail
+		}
+	}
+	if email.MaxMessageBytes < 0 || email.SpamFilterLevel < 0 || email.SpamFilterLevel > 3 || !validLoginVerificationPolicy(email.LoginVerificationPolicy) {
+		return ErrInvalidEmail
+	}
+	return nil
+}
+
+func isControlledRelativePath(value string) bool {
+	if value == "" || path.IsAbs(value) || filepath.IsAbs(value) || isWindowsAbsolute(value) || strings.ContainsAny(value, `\\:`) {
+		return false
+	}
+	cleaned := path.Clean(value)
+	if cleaned != value || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return false
+	}
+	return true
+}
+
+func isPathWithinDirectory(value, directory string) bool {
+	if !isControlledRelativePath(value) || !isControlledRelativePath(directory) {
+		return false
+	}
+	return value != directory && strings.HasPrefix(value, directory+"/")
 }
 
 func validatePlugin(plugin PluginConfig) error {
@@ -130,12 +242,72 @@ func validatePlugin(plugin PluginConfig) error {
 	if err := ValidateStoredSecret(plugin.Secret, false); err != nil {
 		return ErrInvalidPlugin
 	}
+	seenHosts := make(map[string]struct{}, len(plugin.NetworkAllowlist))
 	for _, host := range plugin.NetworkAllowlist {
-		if strings.TrimSpace(host) == "" || strings.ContainsAny(host, "/\\") {
+		normalized, ok := normalizeSMTPHost(host)
+		if !ok || net.ParseIP(normalized) != nil {
 			return ErrInvalidPlugin
 		}
+		if _, exists := seenHosts[normalized]; exists {
+			return ErrInvalidPlugin
+		}
+		seenHosts[normalized] = struct{}{}
 	}
 	return nil
+}
+
+func validLogLevel(value string) bool {
+	switch value {
+	case "", "debug", "info", "warn", "error":
+		return true
+	default:
+		return false
+	}
+}
+
+func validLoginVerificationPolicy(value string) bool {
+	switch value {
+	case "", "off", "always", "new_device":
+		return true
+	default:
+		return false
+	}
+}
+
+func validCanonicalDomain(value string) bool {
+	normalized, err := normalizeConfigDomain(value)
+	return err == nil && normalized == value
+}
+
+func validSMTPHost(value string) bool {
+	_, ok := normalizeSMTPHost(value)
+	return ok
+}
+
+func normalizeSMTPHost(value string) (string, bool) {
+	if value == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "@/\\\r\n\t ") {
+		return "", false
+	}
+	if parsed := net.ParseIP(value); parsed != nil {
+		return parsed.String(), true
+	}
+	normalized, err := normalizeConfigDomain(value)
+	if err != nil || normalized != value {
+		return "", false
+	}
+	return normalized, true
+}
+
+func isLocalSMTPHost(value string) bool {
+	normalized, ok := normalizeSMTPHost(value)
+	if !ok {
+		return false
+	}
+	if normalized == "localhost" {
+		return true
+	}
+	parsed := net.ParseIP(normalized)
+	return parsed != nil && parsed.IsLoopback()
 }
 
 func validPort(port int) bool { return port > 0 && port <= 65535 }

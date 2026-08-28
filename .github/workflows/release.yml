@@ -41,6 +41,7 @@ jobs:
       - name: Gen output name
         run: |
           echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
+          echo "ADMINFILENAME=smail-admin_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "ZIPNAME=${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
@@ -48,16 +49,29 @@ jobs:
         if: matrix.goos == 'windows'
         run: |
           echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
+          echo "ADMINFILENAME=smail-admin_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
       - name: FE Build
         run: cd fe && yarn install --frozen-lockfile && yarn build
       - name: BE Build
         run: |
-          cd server && cp -rf ../fe/dist listen/http_server
-          go build -ldflags "-s -w -X 'main.version=${{ env.VERSION }}' -X 'main.goVersion=$(go version)' -X 'main.gitHash=$(git show -s --format=%H)' -X 'main.buildTime=$(TZ=UTC-8 date +%Y-%m-%d" "%H:%M:%S)'" -o ${{ env.FILENAME }}  main.go
+          cd server
+          cp -rf ../fe/dist listen/http_server
+          BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+          go build -ldflags "$BUILD_FLAGS" -o ${{ env.FILENAME }} .
+          go build -ldflags "$BUILD_FLAGS" -o ${{ env.ADMINFILENAME }} ./cmd/smail-admin
           go build -ldflags "-s -w" -o ${{ env.WCFILENAME }} hooks/wechat_push/wechat_push.go
           go build -ldflags "-s -w" -o ${{ env.SPAMBLOCKFILENAME }} hooks/spam_block/spam_block.go
+          cat > release.json <<EOF
+          {
+            "version": "${{ env.VERSION }}",
+            "gitHash": "$(git show -s --format=%H)",
+            "protocolVersion": 1,
+            "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cp ../README.md README.md
           ls -alh
       - name: Zip
         run: |
@@ -65,7 +79,7 @@ jobs:
           mkdir plugins
           mv ${{ env.WCFILENAME }} plugins/
           mv ${{ env.SPAMBLOCKFILENAME }} plugins/
-          zip -r ${{ env.ZIPNAME }}.zip ${{ env.FILENAME }} plugins
+          zip -r ${{ env.ZIPNAME }}.zip ${{ env.FILENAME }} ${{ env.ADMINFILENAME }} plugins release.json README.md
           ls
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

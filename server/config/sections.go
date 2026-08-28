@@ -76,6 +76,7 @@ type PluginInstance struct {
 	Enabled     bool              `json:"enabled"`
 	Executable  string            `json:"executable"`
 	Permissions PluginPermissions `json:"permissions"`
+	Secret      StoredSecret      `json:"secret,omitempty"`
 	Settings    json.RawMessage   `json:"settings,omitempty"`
 }
 

@@ -37,7 +37,7 @@ func (f *fakeWebAuthnVerifier) FinishDiscoverableLogin(sessionID string, request
 	return f.resultUser, &models.WebAuthnCredential{UserID: f.resultUser.ID}, nil
 }
 
-func TestWebAuthnRecoveryIssuesOneTimeTicketAndPreservesCredentials(t *testing.T) {
+func TestWebAuthnRecoveryIssuesOneTimeTicketAndRevokesCredentials(t *testing.T) {
 	service, _, engine, user := newRecoveryFixture(t)
 	verifier := &fakeWebAuthnVerifier{resultUser: user}
 	service.SetWebAuthnVerifier(verifier)
@@ -68,13 +68,13 @@ func TestWebAuthnRecoveryIssuesOneTimeTicketAndPreservesCredentials(t *testing.T
 		t.Fatalf("replayed ticket error = %v", err)
 	}
 
-	if count, err := engine.Where("user_id = ?", user.ID).Count(&models.SecurityQuestion{}); err != nil || count != 1 {
+	if count, err := engine.Where("user_id = ?", user.ID).Count(&models.SecurityQuestion{}); err != nil || count != 0 {
 		t.Fatalf("security questions count=%d err=%v", count, err)
 	}
-	if count, err := engine.Where("user_id = ? AND used_at IS NULL", user.ID).Count(&models.RecoveryCode{}); err != nil || count != 5 {
+	if count, err := engine.Where("user_id = ? AND used_at IS NULL", user.ID).Count(&models.RecoveryCode{}); err != nil || count != 0 {
 		t.Fatalf("active recovery codes count=%d err=%v", count, err)
 	}
-	if count, err := engine.Where("user_id = ? AND revoked_at IS NULL", user.ID).Count(&models.WebAuthnCredential{}); err != nil || count != 1 {
+	if count, err := engine.Where("user_id = ? AND revoked_at IS NULL", user.ID).Count(&models.WebAuthnCredential{}); err != nil || count != 0 {
 		t.Fatalf("active webauthn credentials count=%d err=%v", count, err)
 	}
 }
