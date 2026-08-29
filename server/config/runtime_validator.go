@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"git.pcux.cn/xuans/Smail/plugins/catalog"
 	"net"
 	"path/filepath"
 	"regexp"
@@ -148,7 +149,11 @@ func validateRuntimePorts(http HTTPConfig, email EmailConfig) error {
 
 func validatePluginSection(section PluginsSectionConfig) error {
 	for logicalID, plugin := range section.Plugins {
-		if !logicalIDPattern.MatchString(logicalID) || filepath.Base(plugin.Executable) != plugin.Executable || plugin.Executable == "" {
+		if !logicalIDPattern.MatchString(logicalID) || filepath.Base(plugin.Executable) != plugin.Executable || !catalog.IsCurrentExecutable(logicalID, plugin.Executable) {
+			return ErrInvalidPlugin
+		}
+		definition, ok := catalog.Lookup(logicalID)
+		if !ok {
 			return ErrInvalidPlugin
 		}
 		capabilities := make(map[string]struct{}, len(plugin.Permissions.Capabilities))
@@ -160,6 +165,9 @@ func validatePluginSection(section PluginsSectionConfig) error {
 				return ErrPluginCapability
 			}
 			capabilities[capability] = struct{}{}
+		}
+		if !matchesCatalogCapabilities(capabilities, definition.Capabilities) {
+			return ErrPluginCapability
 		}
 		if len(plugin.Permissions.Network) > 0 {
 			if _, ok := capabilities["network"]; !ok {
@@ -189,6 +197,18 @@ func validatePluginSection(section PluginsSectionConfig) error {
 		}
 	}
 	return nil
+}
+
+func matchesCatalogCapabilities(actual map[string]struct{}, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for _, capability := range expected {
+		if _, ok := actual[capability]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func validPluginSettings(data json.RawMessage) bool {

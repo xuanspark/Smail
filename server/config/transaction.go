@@ -281,6 +281,22 @@ func persistRuntimeConfig(root string, current, candidate RuntimeConfig) error {
 }
 
 func marshalRuntimeFiles(runtime RuntimeConfig) (map[string][]byte, error) {
+	return marshalRuntimeFilesWithPluginSecrets(runtime, false)
+}
+
+type persistedPluginInstance struct {
+	Enabled     bool              `json:"enabled"`
+	Executable  string            `json:"executable"`
+	Permissions PluginPermissions `json:"permissions"`
+	Settings    json.RawMessage   `json:"settings,omitempty"`
+}
+
+type persistedPluginsSection struct {
+	Meta    SectionMeta                        `json:"meta"`
+	Plugins map[string]persistedPluginInstance `json:"plugins"`
+}
+
+func marshalRuntimeFilesWithPluginSecrets(runtime RuntimeConfig, keepPluginSecrets bool) (map[string][]byte, error) {
 	runtime = cloneRuntimeConfig(runtime)
 	runtime.Root.Generation = runtime.Generation
 	runtime.Root.SetupState = runtime.SetupState
@@ -299,7 +315,21 @@ func marshalRuntimeFiles(runtime RuntimeConfig) (map[string][]byte, error) {
 		case SectionSSL:
 			value = runtime.SSL
 		case SectionPlugins:
-			value = runtime.Plugins
+			if keepPluginSecrets {
+				value = runtime.Plugins
+				break
+			}
+			plugins := persistedPluginsSection{
+				Meta:    runtime.Plugins.Meta,
+				Plugins: make(map[string]persistedPluginInstance, len(runtime.Plugins.Plugins)),
+			}
+			for logicalID, plugin := range runtime.Plugins.Plugins {
+				plugins.Plugins[logicalID] = persistedPluginInstance{
+					Enabled: plugin.Enabled, Executable: plugin.Executable,
+					Permissions: plugin.Permissions, Settings: plugin.Settings,
+				}
+			}
+			value = plugins
 		default:
 			return nil, ErrInvalidSection
 		}

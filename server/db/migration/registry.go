@@ -5,7 +5,6 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(1, "create_core_schema", coreSchemaStatements()),
 		DefineCustom(2, "expand_user_security", "expand_user_security_v1", applyUserSecuritySchema),
 		DefineForDialects(3, "create_security_email_tables", securityEmailStatements()),
-
 		DefineForDialects(4, "create_account_recovery_tables", credentialStatements()),
 		DefineForDialects(5, "create_verification_operations_tables", verificationOperationsStatements()),
 		DefineCustom(6, "expand_verification_retention", "expand_verification_retention_v1", applyVerificationRetentionSchema),
@@ -13,5 +12,6 @@ func DefaultMigrations() []Migration {
 		DefineCustom(8, "mark_webauthn_discoverability", "mark_webauthn_discoverability_v1", applyWebAuthnDiscoverabilitySchema),
 		DefineForDialects(9, "create_totp_authenticator", totpAuthenticatorStatements()),
 		DefineCustom(10, "expand_user_lifecycle_security", "expand_user_lifecycle_security_v1", applyUserLifecycleSchema),
+		DefineForDialects(11, "create_plugin_configuration_tables", pluginSettingsStatements()),
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	urlpkg "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -50,6 +51,46 @@ func (s *SpamBlock) GetName(ctx *context.Context) string {
 	return "SpamBlock"
 }
 
+// Capabilities 声明插件需要访问模型服务。
+func (s *SpamBlock) Capabilities() framework.Capabilities {
+	return framework.Capabilities{
+		PluginID:     "spam_block",
+		Capabilities: []string{"network"},
+		Settings:     []string{"url", "timeout", "threshold"},
+		Protocol:     1,
+	}
+}
+
+// ValidateConfig 只校验主程序下发的运行时配置。
+func (s *SpamBlock) ValidateConfig(data json.RawMessage) error {
+	_, err := parseSpamBlockRuntimeConfig(data)
+	return err
+}
+
+// Configure 应用主程序下发的模型服务配置。
+func (s *SpamBlock) Configure(data json.RawMessage) error {
+	cfg, err := parseSpamBlockRuntimeConfig(data)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.cfg = cfg
+	s.hc = newHTTPClientForEndpoint(cfg.ApiTimeout, cfg.ApiURL)
+	s.mu.Unlock()
+	return nil
+}
+
+// Health 检查插件是否已经完成运行时配置。
+func (s *SpamBlock) Health() error {
+	s.mu.RLock()
+	client := s.hc
+	s.mu.RUnlock()
+	if client == nil {
+		return fmt.Errorf("垃圾邮件插件尚未完成运行时配置")
+	}
+	return nil
+}
+
 //go:embed static/index.html
 var index string
 
@@ -67,7 +108,7 @@ func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData s
 		if !ctx.IsAdmin {
 			return fmt.Sprintf(`
 <div>
-	Please contact the administrator for configuration.
+	请联系管理员进行配置。
 </div>
 `)
 		}
@@ -77,7 +118,7 @@ func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData s
 		return fmt.Sprintf(index, template.HTMLEscapeString(cfg.ApiURL), cfg.ApiTimeout, cfg.Threshold)
 	}
 	if !ctx.IsAdmin {
-		return "No Access Privileges"
+		return "没有访问权限"
 	}
 
 	cfg, err := decodeSpamBlockConfig([]byte(requestData))
@@ -85,12 +126,9 @@ func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData s
 		return err.Error()
 	}
 
-	s.mu.Lock()
-	s.cfg = cfg
-	s.hc = newHTTPClient(cfg.ApiTimeout)
-	s.mu.Unlock()
+	s.applyConfig(cfg)
 
-	return "success"
+	return "保存成功"
 
 }
 
@@ -119,7 +157,7 @@ func (s *SpamBlock) ReceiveParseAfter(ctx *context.Context, email *parsemail.Ema
 		return
 	}
 	if client == nil {
-		client = newHTTPClient(cfg.ApiTimeout)
+		client = newHTTPClientForEndpoint(cfg.ApiTimeout, cfg.ApiURL)
 	}
 
 	reqData := ApiRequest{
@@ -251,20 +289,7 @@ type SpamBlockConfig struct {
 }
 
 func NewSpamBlockHook() *SpamBlock {
-	pluginConfig := defaultSpamBlockConfig()
-	if cfgData, err := os.ReadFile("./plugins/spam_block_config.json"); err == nil {
-		parsed, parseErr := decodeSpamBlockConfig(cfgData)
-		if parseErr != nil {
-			log.Error("spam block configuration is invalid")
-		} else {
-			pluginConfig = parsed
-		}
-	}
-
-	return &SpamBlock{
-		cfg: pluginConfig,
-		hc:  newHTTPClient(pluginConfig.ApiTimeout),
-	}
+	return &SpamBlock{}
 }
 
 func defaultSpamBlockConfig() SpamBlockConfig {
@@ -296,6 +321,80 @@ func decodeSpamBlockConfig(data []byte) (SpamBlockConfig, error) {
 		return SpamBlockConfig{}, fmt.Errorf("invalid threshold")
 	}
 	return normalizeConfig(SpamBlockConfig{ApiURL: raw.ApiURL, ApiTimeout: timeout, Threshold: threshold})
+}
+
+type spamBlockRuntimeConfig struct {
+	PluginID     string                          `json:"pluginId"`
+	Generation   uint64                          `json:"generation"`
+	Settings     json.RawMessage                 `json:"settings,omitempty"`
+	Capabilities []string                        `json:"capabilities,omitempty"`
+	Network      []framework.PluginNetworkTarget `json:"network,omitempty"`
+}
+
+func parseSpamBlockRuntimeConfig(data json.RawMessage) (SpamBlockConfig, error) {
+	var payload spamBlockRuntimeConfig
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件运行时配置无效")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件运行时配置无效")
+	}
+	if payload.PluginID != "spam_block" {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件 ID 不匹配")
+	}
+	if payload.Generation == 0 {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件配置代次无效")
+	}
+	if !hasOnlySpamBlockCapability(payload.Capabilities, "network") {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件网络权限未配置")
+	}
+	if len(payload.Settings) == 0 || len(payload.Settings) > maxSpamBlockSourceBytes {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件配置无效")
+	}
+	cfg, err := decodeSpamBlockConfig(payload.Settings)
+	if err != nil {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件配置无效")
+	}
+	if cfg.ApiURL == "" {
+		if len(payload.Network) != 0 {
+			return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件网络权限未配置")
+		}
+	} else if !hasOnlySpamBlockNetworkTarget(payload.Network, cfg.ApiURL) {
+		return SpamBlockConfig{}, fmt.Errorf("垃圾邮件插件网络权限未配置")
+	}
+	return cfg, nil
+}
+
+func (s *SpamBlock) applyConfig(cfg SpamBlockConfig) {
+	s.mu.Lock()
+	s.cfg = cfg
+	s.hc = newHTTPClientForEndpoint(cfg.ApiTimeout, cfg.ApiURL)
+	s.mu.Unlock()
+}
+
+func hasOnlySpamBlockCapability(capabilities []string, expected string) bool {
+	return len(capabilities) == 1 && capabilities[0] == expected
+}
+
+func hasOnlySpamBlockNetworkTarget(targets []framework.PluginNetworkTarget, endpoint string) bool {
+	if len(targets) != 1 {
+		return false
+	}
+	parsed, err := urlpkg.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
+		return false
+	}
+	port := 443
+	if parsed.Port() != "" {
+		port, err = strconv.Atoi(parsed.Port())
+		if err != nil {
+			return false
+		}
+	}
+	target := targets[0]
+	return strings.EqualFold(target.Scheme, parsed.Scheme) && strings.EqualFold(target.Host, parsed.Hostname()) && target.Port == port
 }
 
 func parseConfigInt(raw json.RawMessage, fallback int) (int, error) {
@@ -346,6 +445,21 @@ func normalizeConfig(cfg SpamBlockConfig) (SpamBlockConfig, error) {
 
 func newHTTPClient(timeout int) *http.Client {
 	return credential.NewRestrictedHTTPClient(timeout)
+}
+
+func newHTTPClientForEndpoint(timeout int, endpoint string) *http.Client {
+	parsed, err := urlpkg.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
+		return newHTTPClient(timeout)
+	}
+	port := 443
+	if parsed.Port() != "" {
+		port, err = strconv.Atoi(parsed.Port())
+		if err != nil {
+			return newHTTPClient(timeout)
+		}
+	}
+	return credential.NewRestrictedHTTPClientForTargets(timeout, []credential.NetworkTarget{{Scheme: strings.ToLower(parsed.Scheme), Host: strings.ToLower(parsed.Hostname()), Port: port}})
 }
 
 func main() {

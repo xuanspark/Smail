@@ -30,15 +30,15 @@ func TestInitAppliesSchemaMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 10 {
-		t.Fatalf("schema version = %d, want 10", version)
+	if version != 11 {
+		t.Fatalf("schema version = %d, want 11", version)
 	}
 	var count int
 	if _, err = Instance.SQL("SELECT count(*) FROM schema_migration").Get(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 10 {
-		t.Fatalf("schema migration rows = %d, want 10", count)
+	if count != 11 {
+		t.Fatalf("schema migration rows = %d, want 11", count)
 	}
 }
 

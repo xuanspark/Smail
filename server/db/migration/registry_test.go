@@ -13,11 +13,11 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.CurrentVersion != 10 || len(report.Applied) != 10 {
+	if report.CurrentVersion != 11 || len(report.Applied) != 11 {
 		t.Fatalf("report = %+v", report)
 	}
 
-	for _, table := range []string{"user", "email", "group", "rule", "sessions", "user_email", "version", "external_email", "verification_event", "security_question", "recovery_code", "verification_rate_limit", "verification_cleanup_state", "webauthn_credential", "totp_authenticator", "schema_migration"} {
+	for _, table := range []string{"user", "email", "group", "rule", "sessions", "user_email", "version", "external_email", "verification_event", "security_question", "recovery_code", "verification_rate_limit", "verification_cleanup_state", "webauthn_credential", "totp_authenticator", "plugin_secret", "plugin_user_setting", "schema_migration"} {
 		if !sqliteTableExists(t, db, table) {
 			t.Fatalf("table %s was not created", table)
 		}

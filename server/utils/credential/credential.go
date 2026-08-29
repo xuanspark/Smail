@@ -89,10 +89,25 @@ var restrictedRemotePrefixes = []netip.Prefix{
 }
 
 func NewRestrictedHTTPClient(timeoutMS int) *http.Client {
+	return NewRestrictedHTTPClientForTargets(timeoutMS, nil)
+}
+
+// NetworkTarget 描述插件允许访问的网络目标。
+type NetworkTarget struct {
+	Scheme string
+	Host   string
+	Port   int
+}
+
+// NewRestrictedHTTPClientForTargets 创建仅允许访问授权目标的 HTTP 客户端。
+func NewRestrictedHTTPClientForTargets(timeoutMS int, targets []NetworkTarget) *http.Client {
 	timeout := time.Duration(NormalizeTimeoutMS(timeoutMS)) * time.Millisecond
+	allowedTargets := normalizeNetworkTargets(targets)
 	transport := &http.Transport{
-		Proxy:                 nil,
-		DialContext:           restrictedDialContext,
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return restrictedDialContext(ctx, network, address, allowedTargets)
+		},
 		ForceAttemptHTTP2:     true,
 		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,
@@ -100,21 +115,90 @@ func NewRestrictedHTTPClient(timeoutMS int) *http.Client {
 	}
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: transport,
+		Transport: restrictedRoundTripper{transport: transport, targets: allowedTargets},
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("too many redirects")
 			}
-			_, err := NormalizeHTTPSURL(request.URL.String())
-			return err
+			return validateRestrictedRequest(request, allowedTargets, "redirect target is not authorized")
 		},
 	}
 }
 
-func restrictedDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+type restrictedRoundTripper struct {
+	transport http.RoundTripper
+	targets   []NetworkTarget
+}
+
+func (r restrictedRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	if err := validateRestrictedRequest(request, r.targets, "remote target is not authorized"); err != nil {
+		return nil, err
+	}
+	return r.transport.RoundTrip(request)
+}
+
+func validateRestrictedRequest(request *http.Request, targets []NetworkTarget, targetError string) error {
+	if request == nil || request.URL == nil {
+		return errors.New("invalid endpoint")
+	}
+	if _, err := NormalizeHTTPSURL(request.URL.String()); err != nil {
+		return err
+	}
+	if !matchesNetworkTarget(request.URL, targets) {
+		return errors.New(targetError)
+	}
+	return nil
+}
+
+func normalizeNetworkTargets(targets []NetworkTarget) []NetworkTarget {
+	result := make([]NetworkTarget, 0, len(targets))
+	for _, target := range targets {
+		scheme := strings.ToLower(strings.TrimSpace(target.Scheme))
+		host := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(target.Host)), ".")
+		port := target.Port
+		if port == 0 {
+			if scheme == "https" {
+				port = 443
+			} else {
+				port = 80
+			}
+		}
+		if (scheme != "https" && scheme != "http") || host == "" || port < 1 || port > 65535 {
+			continue
+		}
+		result = append(result, NetworkTarget{Scheme: scheme, Host: host, Port: port})
+	}
+	return result
+}
+
+func matchesNetworkTarget(endpoint *url.URL, targets []NetworkTarget) bool {
+	if len(targets) == 0 {
+		return true
+	}
+	port := 443
+	if strings.EqualFold(endpoint.Scheme, "http") {
+		port = 80
+	}
+	if endpoint.Port() != "" {
+		port, _ = strconv.Atoi(endpoint.Port())
+	}
+	host := strings.TrimSuffix(strings.ToLower(endpoint.Hostname()), ".")
+	scheme := strings.ToLower(endpoint.Scheme)
+	for _, target := range targets {
+		if target.Scheme == scheme && target.Host == host && target.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
+func restrictedDialContext(ctx context.Context, network, address string, targets []NetworkTarget) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, errors.New("invalid remote address")
+	}
+	if _, err := strconv.Atoi(port); err != nil || (len(targets) > 0 && !matchesNetworkTarget(&url.URL{Scheme: "https", Host: net.JoinHostPort(host, port)}, targets) && !matchesNetworkTarget(&url.URL{Scheme: "http", Host: net.JoinHostPort(host, port)}, targets)) {
+		return nil, errors.New("remote target is not authorized")
 	}
 	resolved, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil || len(resolved) == 0 {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func writeRuntimeFixture(t *testing.T, root string, runtime RuntimeConfig) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := marshalRuntimeFiles(runtime)
+	files, err := marshalRuntimeFilesWithPluginSecrets(runtime, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +477,7 @@ func TestConfigManagerSecretChangesUseVaultAndRejectUnknownFields(t *testing.T) 
 	}
 }
 
-func TestConfigManagerPluginSecretChangesUseUnifiedVaultSemantics(t *testing.T) {
+func TestConfigManagerRejectsPluginSecretWrites(t *testing.T) {
 	root := t.TempDir()
 	runtime := validRuntimeConfig()
 	writeRuntimeFixture(t, root, runtime)
@@ -487,145 +488,128 @@ func TestConfigManagerPluginSecretChangesUseUnifiedVaultSemantics(t *testing.T) 
 	}
 
 	plugins := manager.Snapshot().Plugins
-	plugin := plugins.Plugins["telegram_push"]
-	plugin.Secret = StoredSecret{}
-	plugins.Plugins["telegram_push"] = plugin
 	payload, err := json.Marshal(plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	replaceRequest := UpdateRequest{
-		Section:            SectionPlugins,
-		ExpectedGeneration: 1,
-		Payload:            payload,
-		SecretChanges: map[string]SecretChange{
-			"plugins.telegram_push.secret": {Operation: SecretReplace, Value: &SecretInput{Plaintext: "plugin-secret"}},
-		},
-		Actor:        authorizedConfigActor(),
-		Confirmation: StepUpConfirmation{Confirmed: true, Method: "recent_auth"},
-	}
-	updated, err := manager.Update(context.Background(), replaceRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stored := updated.Candidate.Plugins.Plugins["telegram_push"].Secret
-	if !stored.Configured() || stored.Ciphertext == "plugin-secret" {
-		t.Fatalf("plugin secret was not encrypted: %+v", stored)
-	}
-	if _, err := manager.Apply(context.Background(), updated.Generation); err != nil {
-		t.Fatal(err)
+	if _, err = manager.Validate(context.Background(), ValidateRequest{
+		Section:       SectionPlugins,
+		Payload:       payload,
+		SecretChanges: map[string]SecretChange{"plugins.telegram_push.secret": {Operation: SecretReplace, Value: &SecretInput{Plaintext: "plugin-secret"}}},
+	}); !errors.Is(err, ErrInvalidSecretChange) {
+		t.Fatalf("plugin secret update error = %v, want invalid secret change", err)
 	}
 
-	plugins = manager.Snapshot().Plugins
-	plugin = plugins.Plugins["telegram_push"]
-	plugin.Secret = StoredSecret{}
+	plugin := plugins.Plugins["telegram_push"]
+	plugin.Secret = StoredSecret{Ciphertext: "smail:v1:encrypted", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()}
 	plugins.Plugins["telegram_push"] = plugin
 	payload, err = json.Marshal(plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
-	kept, err := manager.Update(context.Background(), UpdateRequest{
-		Section:            SectionPlugins,
-		ExpectedGeneration: 2,
-		Payload:            payload,
-		SecretChanges:      map[string]SecretChange{"plugins.telegram_push.secret": {Operation: SecretKeep}},
-		Actor:              authorizedConfigActor(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if kept.Candidate.Plugins.Plugins["telegram_push"].Secret != stored {
-		t.Fatalf("plugin keep changed the stored secret: got %+v want %+v", kept.Candidate.Plugins.Plugins["telegram_push"].Secret, stored)
-	}
-	if _, err := manager.Apply(context.Background(), kept.Generation); err != nil {
-		t.Fatal(err)
-	}
-
-	plugins = manager.Snapshot().Plugins
-	plugin = plugins.Plugins["telegram_push"]
-	plugin.Secret = StoredSecret{}
-	plugins.Plugins["telegram_push"] = plugin
-	payload, err = json.Marshal(plugins)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cleared, err := manager.Update(context.Background(), UpdateRequest{
-		Section:            SectionPlugins,
-		ExpectedGeneration: 3,
-		Payload:            payload,
-		SecretChanges:      map[string]SecretChange{"plugins.telegram_push.secret": {Operation: SecretClear, Confirmed: true}},
-		Actor:              authorizedConfigActor(),
-		Confirmation:       StepUpConfirmation{Confirmed: true, Method: "webauthn"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cleared.Candidate.Plugins.Plugins["telegram_push"].Secret.Configured() {
-		t.Fatal("plugin clear left the secret configured")
+	if _, err = manager.Validate(context.Background(), ValidateRequest{Section: SectionPlugins, Payload: payload}); !errors.Is(err, ErrInvalidSecretChange) {
+		t.Fatalf("direct plugin secret error = %v, want invalid secret change", err)
 	}
 }
 
-func TestConfigManagerRejectsInvalidPluginSecretChanges(t *testing.T) {
+func TestConfigManagerMigratesLegacyPluginSecrets(t *testing.T) {
 	root := t.TempDir()
 	runtime := validRuntimeConfig()
-	writeRuntimeFixture(t, root, runtime)
-	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
-	manager, err := NewConfigManager(root, options)
+	vault, err := credential.NewVault(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	stored, err := ApplySecretChange(vault, StoredSecret{}, SecretChange{Operation: SecretReplace, Value: &SecretInput{Plaintext: "legacy-token"}}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugin := runtime.Plugins.Plugins["telegram_push"]
+	plugin.Secret = stored
+	runtime.Plugins.Plugins["telegram_push"] = plugin
+	writeRuntimeFixture(t, root, runtime)
 
-	base := manager.Snapshot().Plugins
-	tests := []struct {
-		name       string
-		payload    PluginsSectionConfig
-		secretPath string
-	}{
-		{
-			name:       "unknown plugin",
-			payload:    base,
-			secretPath: "plugins.unknown.secret",
-		},
-		{
-			name:       "invalid path",
-			payload:    base,
-			secretPath: "plugins.telegram_push.secret.extra",
-		},
-		{
-			name: "direct ciphertext",
-			payload: func() PluginsSectionConfig {
-				value := base
-				plugin := value.Plugins["telegram_push"]
-				plugin.Secret = StoredSecret{Ciphertext: "enc:v1:plaintext", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()}
-				value.Plugins["telegram_push"] = plugin
-				return value
-			}(),
-			secretPath: "plugins.telegram_push.secret",
-		},
+	writer := &MemoryAuditWriter{}
+	manager, err := NewConfigManagerWithSecurity(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}, ConfigSecurity{Audit: writer})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			payloadValue := clonePluginsSection(test.payload)
-			if test.name != "direct ciphertext" {
-				plugin := payloadValue.Plugins["telegram_push"]
-				plugin.Secret = StoredSecret{}
-				payloadValue.Plugins["telegram_push"] = plugin
-			}
-			payload, err := json.Marshal(payloadValue)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = manager.Validate(context.Background(), ValidateRequest{
-				Section:       SectionPlugins,
-				Payload:       payload,
-				SecretChanges: map[string]SecretChange{test.secretPath: {Operation: SecretKeep}},
-			})
-			if !errors.Is(err, ErrInvalidSecretChange) {
-				t.Fatalf("error = %v, want invalid secret change", err)
-			}
-		})
+	var imported []LegacyPluginSecret
+	migrated, err := manager.MigrateLegacyPluginSecrets(context.Background(), func(_ context.Context, values []LegacyPluginSecret) error {
+		imported = append([]LegacyPluginSecret(nil), values...)
+		return nil
+	})
+	if err != nil || !migrated {
+		t.Fatalf("migrate legacy plugin secrets = %v, %v", migrated, err)
 	}
+	if len(imported) != 1 || imported[0].PluginID != "telegram_push" || imported[0].FieldName != "botToken" || imported[0].Plaintext != "legacy-token" {
+		t.Fatalf("imported legacy values = %+v", imported)
+	}
+	if manager.Snapshot().Generation != 2 || manager.Snapshot().Plugins.Plugins["telegram_push"].Secret.Configured() {
+		t.Fatalf("migrated snapshot = %+v", manager.Snapshot())
+	}
+	pluginData, err := os.ReadFile(filepath.Join(root, "config", "plugins.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(pluginData) == "" || containsAny(string(pluginData), "legacy-token", "ciphertext", "\"secret\"") {
+		t.Fatalf("plugins.json retained legacy secret material: %s", pluginData)
+	}
+	events := writer.Events()
+	if len(events) != 1 || events[0].Operation != ConfigOperationMigration || events[0].Section != SectionPlugins {
+		t.Fatalf("migration audit events = %+v", events)
+	}
+	migrated, err = manager.MigrateLegacyPluginSecrets(context.Background(), func(_ context.Context, values []LegacyPluginSecret) error {
+		t.Fatalf("unexpected repeated importer invocation: %+v", values)
+		return nil
+	})
+	if err != nil || migrated {
+		t.Fatalf("repeat migration = %v, %v", migrated, err)
+	}
+}
+
+func TestConfigManagerRetainsLegacySecretWhenImportFails(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	vault, err := credential.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ApplySecretChange(vault, StoredSecret{}, SecretChange{Operation: SecretReplace, Value: &SecretInput{Plaintext: "legacy-token"}}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugin := runtime.Plugins.Plugins["telegram_push"]
+	plugin.Secret = stored
+	runtime.Plugins.Plugins["telegram_push"] = plugin
+	writeRuntimeFixture(t, root, runtime)
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = manager.MigrateLegacyPluginSecrets(context.Background(), func(_ context.Context, _ []LegacyPluginSecret) error {
+		return errors.New("database unavailable")
+	}); err == nil {
+		t.Fatal("legacy import failure unexpectedly succeeded")
+	}
+	if manager.Snapshot().Generation != 1 || !manager.Snapshot().Plugins.Plugins["telegram_push"].Secret.Configured() {
+		t.Fatal("failed import altered the in-memory legacy configuration")
+	}
+	pluginData, readErr := os.ReadFile(filepath.Join(root, "config", "plugins.json"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !containsAny(string(pluginData), "ciphertext", "\"secret\"") {
+		t.Fatal("failed import removed compatibility secret from plugins.json")
+	}
+}
+
+func containsAny(value string, terms ...string) bool {
+	for _, term := range terms {
+		if strings.Contains(value, term) {
+			return true
+		}
+	}
+	return false
 }
 
 func findTransactionDirectory(t *testing.T, root string) string {

@@ -39,7 +39,7 @@ func StartWithTLSNew() error {
 	// force TLS for auth
 	instanceTlsNew.AllowInsecureAuth = false
 	// Load the certificate and key
-	cer, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	cer, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load SMTP STARTTLS certificate: %w", err)
 	}
@@ -72,7 +72,7 @@ func StartWithTLS() error {
 	// force TLS for auth
 	instanceTls.AllowInsecureAuth = true
 	// Load the certificate and key
-	cer, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	cer, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load SMTP TLS certificate: %w", err)
 	}
@@ -104,7 +104,7 @@ func Start() error {
 	// force TLS for auth
 	instance.AllowInsecureAuth = false
 	// Load the certificate and key
-	cer, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	cer, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load SMTP certificate: %w", err)
 	}

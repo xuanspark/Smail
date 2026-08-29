@@ -57,6 +57,10 @@ func HttpsStart() error {
 	if config.DevelopmentMode && cfg.HttpsEnabled == 2 {
 		return nil
 	}
+	certificatePath, privateKeyPath, err := config.ResolveRuntimeSSLPaths(cfg)
+	if err != nil {
+		return fmt.Errorf("resolve HTTPS certificate: %w", err)
+	}
 
 	httpsServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", httpsPort),
@@ -69,7 +73,7 @@ func HttpsStart() error {
 		ErrorLog:          nullLog,
 	}
 	log.Infof("HTTPS server started on port %d", httpsPort)
-	if err := httpsServer.ListenAndServeTLS(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath); err != nil {
+	if err := httpsServer.ListenAndServeTLS(certificatePath, privateKeyPath); err != nil {
 		if errors.Is(err, http.ErrServerClosed) {
 			log.Infof("HTTPS server closed normally on port %d", httpsPort)
 			return nil

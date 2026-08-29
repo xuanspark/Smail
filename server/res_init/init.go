@@ -21,12 +21,14 @@ import (
 	"git.pcux.cn/xuans/Smail/services/adminreset"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
+	pluginservice "git.pcux.cn/xuans/Smail/services/plugin"
 	"git.pcux.cn/xuans/Smail/services/recovery"
 	"git.pcux.cn/xuans/Smail/services/setup/ssl"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/signal"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 	"git.pcux.cn/xuans/Smail/utils/file"
 	log "github.com/sirupsen/logrus"
 	// 导入 HTTP 客户端，用于等待服务启动。
@@ -35,6 +37,7 @@ import (
 
 var adminResetControl adminreset.ControlServer
 var adminResetCancel context.CancelFunc
+var adminResetServeErrors chan error
 var verificationRuntime *verification.Runtime
 var credentialService *credentials.Service
 var webAuthnRuntimeService *webauthnservice.Service
@@ -78,6 +81,26 @@ func startConfigManager() error {
 func stopConfigManager() {
 	config.SetRuntimeManager(nil)
 }
+func startPluginConfigMigration() error {
+	hooks.SetPluginConfigService(nil)
+	manager := config.CurrentManager()
+	if manager == nil {
+		return nil
+	}
+	vault, err := credential.NewVault(config.ROOT_PATH)
+	if err != nil {
+		return err
+	}
+	service, err := pluginservice.NewConfigService(db.Instance, vault)
+	if err != nil {
+		return err
+	}
+	if _, err = manager.MigrateLegacyPluginSecrets(context.Background(), service.ImportLegacySecrets); err != nil {
+		return err
+	}
+	hooks.SetPluginConfigService(service)
+	return nil
+}
 func Init(serverVersion string) error {
 	cfg := config.CurrentConfig()
 	if cfg == nil || !cfg.IsSetupReady() {
@@ -120,6 +143,9 @@ func Init(serverVersion string) error {
 		if err := startConfigManager(); err != nil {
 			return err
 		}
+		if err := startPluginConfigMigration(); err != nil {
+			log.WithError(err).Warn("plugin secret migration failed; affected plugins remain disabled")
+		}
 		if err := session.Init(); err != nil {
 			return err
 		}
@@ -130,8 +156,20 @@ func Init(serverVersion string) error {
 			return err
 		}
 		startAdminResetControl()
+		if adminResetControl == nil {
+			stopServices()
+			return fmt.Errorf("administrator reset control is unavailable")
+		}
+		serviceErrors := make(chan error, 9)
+		adminResetErrors := adminResetServeErrors
+		if adminResetErrors != nil {
+			go func() {
+				if err := <-adminResetErrors; err != nil {
+					serviceErrors <- fmt.Errorf("administrator reset control failed: %w", err)
+				}
+			}()
+		}
 		hooks.Init(serverVersion)
-		serviceErrors := make(chan error, 8)
 		// smtp server start
 		startService(serviceErrors, "SMTP", smtp_server.Start)
 		startService(serviceErrors, "SMTP TLS", smtp_server.StartWithTLS)
@@ -354,10 +392,13 @@ func startAdminResetControl() {
 	adminResetControl = control
 	ctx, cancel := context.WithCancel(context.Background())
 	adminResetCancel = cancel
+	serveErrors := make(chan error, 1)
+	adminResetServeErrors = serveErrors
 	go func() {
 		err := control.Serve(ctx, func(password string) error {
 			return adminreset.ResetSuperAdmin(db.Instance, password, controllers.InvalidateSecurityRuntimeUser)
 		}, adminreset.NewSessionGuard(2*time.Minute))
+		serveErrors <- err
 		if err != nil {
 			log.WithError(err).Error("管理员重置通道启动失败")
 		}
@@ -375,6 +416,7 @@ func stopAdminResetControl() {
 			log.WithError(err).Warn("闁稿繑濞婂Λ瀵告惥閸涱垶鐛撶紒鐙呯磿閹﹪宕ㄥΟ缁樻嫳闁哄牊妞介崳鍝ョ磾椤曗偓閳ь剚宀告禍鐐緞鏉堫偉袝")
 		}
 		adminResetControl = nil
+		adminResetServeErrors = nil
 	}
 }
 

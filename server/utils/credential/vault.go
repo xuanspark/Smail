@@ -1,6 +1,9 @@
 package credential
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 )
@@ -61,4 +64,24 @@ func (v *Vault) Decrypt(version uint32, ciphertext string) (string, error) {
 		return "", ErrVaultUnavailable
 	}
 	return value, nil
+}
+
+// Fingerprint 使用数据库外主密钥计算固定长度校验值，不能用于恢复原文。
+func (v *Vault) Fingerprint(value string) (string, error) {
+	if v == nil {
+		return "", ErrVaultUnavailable
+	}
+	key, err := readKey(v.root)
+	if err != nil {
+		return "", ErrVaultUnavailable
+	}
+	defer func() {
+		for index := range key {
+			key[index] = 0
+		}
+	}()
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte("smail-plugin-setting-v1\x00"))
+	_, _ = mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }

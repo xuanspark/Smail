@@ -49,6 +49,55 @@ func writeTestCertificate(t *testing.T, root string, bits int) (string, string) 
 	return keyPath, certPath
 }
 
+func TestIsAbsoluteUserCertificatePathRejectsWindowsPaths(t *testing.T) {
+	cases := []string{
+		`C:\outside\private.key`,
+		`D:/outside/public.crt`,
+		`\\server\share\private.key`,
+		`//server/share/public.crt`,
+	}
+	for _, value := range cases {
+		if !isAbsoluteUserCertificatePath(value) {
+			t.Errorf("path %q was accepted", value)
+		}
+	}
+}
+
+func TestIsAbsoluteUserCertificatePathRejectsEmptyAndAcceptsRelative(t *testing.T) {
+	if !isAbsoluteUserCertificatePath("") {
+		t.Fatal("empty path must be rejected")
+	}
+	if isAbsoluteUserCertificatePath(`config/ssl/upload/private.key`) {
+		t.Fatal("controlled relative path must not be treated as absolute")
+	}
+}
+
+func TestApplyManagedSSLReferenceDoesNotPersistLegacyPaths(t *testing.T) {
+	cfg := &config.Config{
+		SSLPrivateKeyPath: "config/ssl/private.key",
+		SSLPublicKeyPath:  "config/ssl/public.crt",
+	}
+	reference := config.ManagedSSLReference{
+		Mode:            config.ManagedSSLModeUpload,
+		CertificateRef:  "config/ssl/managed/upload/current/public.crt",
+		PrivateKeyRef:   "config/ssl/managed/upload/current/private.key",
+		CertificatePath: `C:\server\config\ssl\managed\upload\current\public.crt`,
+		PrivateKeyPath:  `C:\server\config\ssl\managed\upload\current\private.key`,
+	}
+
+	applyManagedSSLReference(cfg, reference)
+
+	if cfg.SSLPrivateKeyPath != "" || cfg.SSLPublicKeyPath != "" {
+		t.Fatal("新受控 SSL 配置不应保留旧聚合路径")
+	}
+	if cfg.SSL.Mode != config.ManagedSSLModeUpload || cfg.SSL.CertificateRef != reference.CertificateRef || cfg.SSL.PrivateKeyRef != reference.PrivateKeyRef {
+		t.Fatalf("受控 SSL 内部引用写入错误: %+v", cfg.SSL)
+	}
+	if cfg.SSL.CustomDirectory != "config/ssl/managed/upload" {
+		t.Fatalf("自定义受控目录写入错误: %s", cfg.SSL.CustomDirectory)
+	}
+}
+
 func TestValidateUserCertificatePaths(t *testing.T) {
 	oldRoot := config.ROOT_PATH
 	root := t.TempDir()

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"git.pcux.cn/xuans/Smail/plugins/catalog"
 	"testing"
 )
 
@@ -27,7 +28,7 @@ func validRuntimeConfig() RuntimeConfig {
 		Plugins: PluginsSectionConfig{Meta: meta, Plugins: map[string]PluginInstance{
 			"telegram_push": {
 				Enabled:    true,
-				Executable: "telegram_push",
+				Executable: currentPluginExecutable("telegram_push"),
 				Permissions: PluginPermissions{
 					Capabilities: []string{"network"},
 					Network:      []PluginNetworkTarget{{Scheme: "https", Host: "api.telegram.org", Port: 443}},
@@ -36,6 +37,14 @@ func validRuntimeConfig() RuntimeConfig {
 			},
 		}},
 	}
+}
+
+func currentPluginExecutable(logicalID string) string {
+	executable, err := catalog.CurrentExecutableName(logicalID)
+	if err != nil {
+		panic(err)
+	}
+	return executable
 }
 
 func TestValidateRuntimeConfig(t *testing.T) {
@@ -73,6 +82,16 @@ func TestValidateRuntimeConfigRejectsCrossSectionViolations(t *testing.T) {
 			plugin.Settings = json.RawMessage(`{"botToken":"secret"}`)
 			runtime.Plugins.Plugins["telegram_push"] = plugin
 		}, want: ErrInvalidPlugin},
+		{name: "plugin_executable_mismatch", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) {
+			plugin := runtime.Plugins.Plugins["telegram_push"]
+			plugin.Executable = "untrusted_plugin.exe"
+			runtime.Plugins.Plugins["telegram_push"] = plugin
+		}, want: ErrInvalidPlugin},
+		{name: "plugin_capability_escalation", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) {
+			plugin := runtime.Plugins.Plugins["telegram_push"]
+			plugin.Permissions.Capabilities = append(plugin.Permissions.Capabilities, "filesystem")
+			runtime.Plugins.Plugins["telegram_push"] = plugin
+		}, want: ErrPluginCapability},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

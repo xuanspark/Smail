@@ -1,5 +1,5 @@
 <template>
-<div id="main">
+<div id="main" :class="{ 'dns-page': active === 4 }">
     <el-steps :active="active" align-center finish-status="success" id="status">
       <el-step :title="lang.welcome"/>
       <el-step :title="lang.setDatabase"/>
@@ -22,26 +22,48 @@
         <h2>{{ lang.select_db }}</h2>
         <div style="margin-top: 10px;">{{ lang.db_desc }}</div>
       </div>
-      <div class="form" style="width: 400px;">
+      <div class="form database-form">
         <el-form label-width="120px">
           <el-form-item :label="lang.type">
             <el-select :placeholder="lang.db_select_ph" v-model="dbSettings.type"
-                       @change="dbSettings.dsn = ''">
+                       @change="handleDbTypeChange">
               <el-option label="MySQL" value="mysql"/>
               <el-option label="SQLite3" value="sqlite"/>
               <el-option label="PostgreSQL" value="postgres"/>
             </el-select>
           </el-form-item>
 
-          <el-form-item :label="lang.mysql_dsn" v-if="dbSettings.type === 'mysql'">
-            <el-input :rows="2" type="textarea" v-model="dbSettings.dsn"
-                      placeholder="请输入 MySQL 数据库连接信息"></el-input>
-          </el-form-item>
+          <div v-if="dbSettings.type === 'mysql' || dbSettings.type === 'postgres'" class="mysql-fields">
+            <div class="database-hint">{{ dbSettings.type === 'mysql' ? lang.mysql_create_desc : lang.postgres_create_desc }}</div>
 
-          <el-form-item :label="lang.pg_dsn" v-if="dbSettings.type === 'postgres'">
-            <el-input :rows="2" type="textarea" v-model="dbSettings.dsn"
-                      placeholder="请输入 PostgreSQL 数据库连接信息"></el-input>
-          </el-form-item>
+            <el-form-item :label="lang.db_user">
+              <el-input v-model="dbSettings.user" :placeholder="dbSettings.type === 'mysql' ? lang.db_user_ph : lang.pg_user_ph"
+                        autocomplete="username"></el-input>
+            </el-form-item>
+
+            <div class="database-inline-fields">
+              <el-form-item :label="lang.db_host" class="database-host-field">
+                <el-input v-model="dbSettings.host" :placeholder="lang.db_host_ph"></el-input>
+              </el-form-item>
+
+              <el-form-item :label="lang.db_port" class="database-port-field">
+                <el-input v-model="dbSettings.port" :placeholder="lang.db_port_ph"
+                          inputmode="numeric"></el-input>
+              </el-form-item>
+            </div>
+
+            <el-form-item :label="lang.db_name">
+              <el-input v-model="dbSettings.name" :placeholder="lang.db_name_ph"></el-input>
+            </el-form-item>
+
+            <el-form-item :label="lang.db_password">
+              <el-input v-model="dbSettings.password" type="password"
+                        :placeholder="dbSettings.type === 'mysql' ? lang.db_password_ph : lang.pg_password_ph" autocomplete="new-password"
+                        show-password></el-input>
+              <div class="database-field-tip">{{ lang.db_password_desc }}</div>
+            </el-form-item>
+          </div>
+
 
           <el-form-item :label="lang.sqlite_db_path" v-if="dbSettings.type === 'sqlite'">
             <el-input v-model="dbSettings.dsn" placeholder="请输入 SQLite 数据文件路径"></el-input>
@@ -65,13 +87,24 @@
           </el-form-item>
 
           <el-form-item :label="lang.password">
-            <el-input type="password" v-bind:disabled="adminSettings.hadSeted" placeholder=""
-                      v-model="adminSettings.password"></el-input>
+            <el-input type="password" v-bind:disabled="adminSettings.hadSeted"
+                      placeholder="请输入 8 到 12 个字节的密码"
+                      v-model="adminSettings.password"
+                      minlength="8"
+                      maxlength="12"
+                      autocomplete="new-password"
+                      show-password></el-input>
+            <div class="password-rule-tip">{{ lang.admin_pwd_desc }}</div>
           </el-form-item>
 
           <el-form-item :label="lang.enter_again">
-            <el-input type="password" v-bind:disabled="adminSettings.hadSeted" placeholder=""
-                      v-model="adminSettings.password2"></el-input>
+            <el-input type="password" v-bind:disabled="adminSettings.hadSeted"
+                      placeholder="请再次输入密码"
+                      v-model="adminSettings.password2"
+                      minlength="8"
+                      maxlength="12"
+                      autocomplete="new-password"
+                      show-password></el-input>
           </el-form-item>
         </el-form>
       </div>
@@ -112,61 +145,102 @@
       </div>
     </div>
 
-    <div v-if="active === 4" class="ctn_s">
+    <div v-if="active === 4" class="dns-panel">
+      <div class="dns-header">
+        <div class="desc dns-heading">
+          <div class="dns-eyebrow">{{ lang.dns_setup_step }}</div>
+          <h2>{{ lang.setDNS }}</h2>
+          <div class="dns-description">{{ lang.dns_desc }}</div>
+        </div>
+        <div class="dns-header-notes">
+          <div class="dns-header-note">{{ lang.dns_record_format }}</div>
+          <div class="dns-header-note dns-header-note-secondary">{{ lang.dns_ip_source }}</div>
+          <div v-if="!hasDNSIPv6" class="dns-header-note dns-header-note-ipv6">
+            {{ lang.dns_ipv6_unavailable }}
+          </div>
+        </div>
+      </div>
 
-      <div class="desc">
-        <h2>{{ lang.setDNS }}</h2>
-        <div style="margin-top: 10px;">{{ lang.dns_desc }}</div>
-      </div>
-      <div class="form" width="600px" v-for="(info,domain) in dnsInfos" :key="info">
-        <h3>{{ domain }}</h3>
-        <el-table :data="info" border style="width: 100%">
-          <el-table-column prop="host" label="主机名" width="110px">
-            <template #default="scope">
-              <div style="display: flex; align-items: center">
-                <el-tooltip :content="lang.dns_root_desc" placement="top"
-                            v-if="scope.row.host === '' || scope.row.host === '@' ">
-                  {{ scope.row.host }}
+      <div v-if="Object.keys(dnsInfos).length > 0" class="dns-domain-list">
+        <section class="dns-domain-card" v-for="(info, domain) in dnsInfos" :key="domain">
+          <div class="dns-domain-header">
+            <div>
+              <h3>{{ domain }}</h3>
+              <span class="dns-domain-suffix">{{ lang.dns_domain_suffix }}</span>
+            </div>
+            <el-tag class="dns-domain-count" effect="plain" round>{{ info.length }} {{ lang.dns_record_count }}</el-tag>
+          </div>
+
+          <el-table :data="info" border class="dns-table" table-layout="auto">
+            <el-table-column prop="host" :label="lang.dns_host" width="190px">
+              <template #default="scope">
+                <el-tooltip :content="lang.dns_root_desc" placement="top" v-if="scope.row.host === '' || scope.row.host === '@'">
+                  <span class="dns-host dns-host-root">{{ scope.row.host || '@' }}</span>
                 </el-tooltip>
-                <span v-else>{{ scope.row.host }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="type" label="类型" width="110px"/>
-          <el-table-column prop="value" label="值">
-            <template #default="scope">
-              <div style="display: flex; align-items: center">
-                <el-tooltip :content="scope.row.tips" placement="top" v-if="scope.row.tips !== ''">
-                  {{ scope.row.value }}
-                </el-tooltip>
-                <span v-else>{{ scope.row.value }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="ttl" label="TTL" width="110px"/>
-        </el-table>
+                <span v-else class="dns-host">{{ scope.row.host }}</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="type" :label="lang.dns_type" width="110px">
+              <template #default="scope">
+                <span :class="['dns-type', 'dns-type-' + scope.row.type.toLowerCase()]">
+                  {{ scope.row.type }}
+                </span>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="value" :label="lang.dns_value" min-width="420px">
+              <template #default="scope">
+                <div class="dns-value-cell">
+                  <el-tooltip :content="scope.row.tips" placement="top" v-if="scope.row.tips">
+                    <span :class="['dns-value', { 'dns-value-long': scope.row.value.length > 80 }]">
+                      {{ scope.row.value }}
+                    </span>
+                  </el-tooltip>
+                  <span v-else :class="['dns-value', { 'dns-value-long': scope.row.value.length > 80 }]">
+                    {{ scope.row.value }}
+                  </span>
+                  <el-button class="dns-copy-button" link type="primary" @click.stop="copyDNSValue(scope.row.value)">
+                    {{ lang.dns_copy }}
+                  </el-button>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="ttl" :label="lang.dns_ttl" width="120px">
+              <template #default="scope">
+                <span class="dns-ttl">{{ formatDNSRecordTTL(scope.row.ttl) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
       </div>
+
+      <el-empty v-else :description="lang.dns_empty" />
     </div>
 
-    <el-alert :closable="false" title="警告" type="error" center
-              v-if="active === 5 && sslSettings.type === 0 && port !== 80" :description="lang.autoSSLWarn"/>
+    <div v-if="active === 5 && sslSettings.type === '0' && sslSettings.challenge === 'http' && port !== 80"
+         class="ssl-port-warning" role="alert">
+      <strong>{{ lang.warning }}</strong>
+      <span>{{ lang.autoSSLWarn }}</span>
+    </div>
 
     <div v-if="active === 5" class="ctn">
       <div class="desc">
         <h2>{{ lang.setSSL }}</h2>
         <div style="margin-top: 10px;">{{ lang.setSSL }}</div>
       </div>
-      <div class="form" width="600px">
-        <el-form label-width="120px">
+      <div class="form ssl-form">
+        <el-form label-width="140px">
           <el-form-item :label="lang.type">
-            <el-select :placeholder="lang.ssl_auto" v-model="sslSettings.type" :disabled="dnsChecking">
+            <el-select class="ssl-type-select" :placeholder="lang.ssl_auto" v-model="sslSettings.type" :disabled="dnsChecking">
               <el-option :label="lang.ssl_auto" value="0"/>
               <el-option :label="lang.ssl_manuallyf" value="1"/>
             </el-select>
           </el-form-item>
 
           <el-form-item :label="lang.ssl_challenge_type" v-if="sslSettings.type === '0'">
-            <el-select :placeholder="lang.ssl_auto_http" v-model="sslSettings.challenge"
+            <el-select class="ssl-type-select" :placeholder="lang.ssl_auto_http" v-model="sslSettings.challenge"
                        :disabled="dnsChecking">
               <el-option :label="lang.ssl_auto_http" value="http"/>
               <el-option :label="lang.ssl_auto_dns" value="dns"/>
@@ -178,13 +252,26 @@
             </el-tooltip>
           </el-form-item>
 
+          <div v-if="sslSettings.type === '0'" class="ssl-storage-card">
+            <div class="ssl-storage-title">{{ lang.ssl_auto_storage_title }}</div>
+            <div class="ssl-storage-desc">{{ lang.ssl_auto_storage_desc }}</div>
+            <div v-if="sslSettings.challenge === 'dns'" class="ssl-dns-intro">
+              {{ lang.ssl_dns_desc }}
+            </div>
+            <div class="ssl-storage-path">{{ lang.ssl_auto_certificate_path }}</div>
+            <div class="ssl-storage-path">{{ lang.ssl_auto_private_key_path }}</div>
+            <div class="ssl-storage-path">{{ lang.ssl_auto_account_key_path }}</div>
+          </div>
+
 
           <el-form-item :label="lang.ssl_key_path" v-if="sslSettings.type === '1'">
             <el-input placeholder="./config/ssl/private.key" v-model="sslSettings.key_path"></el-input>
+            <div class="ssl-manual-desc">{{ lang.ssl_manual_key_desc }}</div>
           </el-form-item>
 
           <el-form-item :label="lang.ssl_crt_path" v-if="sslSettings.type === '1'">
             <el-input placeholder="./config/ssl/public.crt" v-model="sslSettings.crt_path"></el-input>
+            <div class="ssl-manual-desc">{{ lang.ssl_manual_crt_desc }}</div>
           </el-form-item>
         </el-form>
 
@@ -193,33 +280,40 @@
 
     </div>
 
-    <div v-if="dnsChecking">
-      <label>{{ lang.dns_desc }}</label>
-      <el-table :data="sslSettings.paramsList" border v-loading="sslSettings.paramsList.length === 0">
-        <el-table-column prop="host" label="主机名" width="110px"/>
-        <el-table-column prop="type" label="类型" width="110px"/>
-        <el-table-column prop="value" label="值">
+    <div v-if="dnsChecking" class="ssl-dns-challenge">
+      <div class="ssl-dns-challenge-header">
+        <div>
+          <h3>{{ lang.ssl_dns_title }}</h3>
+          <p v-if="sslSettings.paramsList.length === 0">{{ lang.ssl_dns_waiting }}</p>
+          <p v-else>{{ lang.ssl_dns_ready }}</p>
+        </div>
+        <span v-if="sslSettings.paramsList.length > 0" class="ssl-dns-record-count">
+          {{ sslSettings.paramsList.length }} 条记录
+        </span>
+      </div>
+      <el-table v-if="sslSettings.paramsList.length > 0" :data="sslSettings.paramsList" border>
+        <el-table-column prop="host" label="主机名" width="180px"/>
+        <el-table-column prop="type" label="类型" width="100px"/>
+        <el-table-column prop="value" label="记录值" min-width="360px">
           <template #default="scope">
-            <div style="display: flex; align-items: center">
-              <el-tooltip :content="scope.row.tips" placement="top" v-if="scope.row.tips !== ''">
-                {{ scope.row.value }}
-              </el-tooltip>
-              <span v-else>{{ scope.row.value }}</span>
-            </div>
+            <div class="ssl-dns-value">{{ scope.row.value }}</div>
           </template>
-
         </el-table-column>
-        <el-table-column prop="ttl" label="TTL" width="110px"/>
+        <el-table-column prop="ttl" label="TTL" width="100px"/>
       </el-table>
-
     </div>
 
 
-    <el-button :element-loading-text="waitDesc" v-loading.fullscreen.lock="fullscreenLoading" id="next"
-               style="margin-top: 12px" @click="next">{{
-        lang.next
-      }}
-    </el-button>
+    <div class="setup-actions">
+      <el-button v-if="active > 0" id="previous" @click="previous">
+        {{ lang.previous }}
+      </el-button>
+      <el-button :loading="databaseLoading" :element-loading-text="waitDesc"
+                 v-loading.fullscreen.lock="fullscreenLoading" id="next"
+                 @click="next">
+           {{ dnsChecking ? lang.ssl_verify : lang.next }}
+      </el-button>
+    </div>
 
   </div>
 </template>
@@ -231,6 +325,7 @@ const {
   active,
   lang,
   dbSettings,
+  databaseLoading,
   adminSettings,
   domainSettings,
   addDomain,
@@ -241,6 +336,10 @@ const {
   dnsChecking,
   waitDesc,
   next,
+  previous,
+  handleDbTypeChange,
+  formatDNSRecordTTL,
+  copyDNSValue,
   fullscreenLoading
 } = usePage()
 </script>

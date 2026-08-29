@@ -129,3 +129,29 @@ func TestUnixControlSocketUsesRestrictedPermissions(t *testing.T) {
 		t.Fatalf("control socket permissions = %04o, want 0600", socketInfo.Mode().Perm())
 	}
 }
+
+func TestUnixServerStopsWhenContextIsCancelled(t *testing.T) {
+	path := t.TempDir() + "/control.sock"
+	server, err := ListenUnix(path, []uint32{uint32(os.Getuid())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- server.Serve(ctx, func(string) error { return nil }, NewSessionGuard(time.Minute))
+	}()
+
+	cancel()
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("server stop error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not stop after cancellation")
+	}
+}

@@ -116,6 +116,8 @@ func (s *UnixServer) handle(conn net.Conn, handler ResetHandler, guard *SessionG
 		_ = EncodeResponse(conn, Response{Code: "UNAUTHORIZED", Message: "本机调用者身份不受信任"})
 		return
 	}
+	_ = conn.SetDeadline(time.Now().Add(controlRequestTimeout))
+	defer conn.SetDeadline(time.Time{})
 	nonce, err := guard.Issue()
 	if err != nil {
 		_ = EncodeResponse(conn, Response{Code: "CHANNEL_UNAVAILABLE", Message: "\u91cd\u7f6e\u901a\u9053\u4e0d\u53ef\u7528"})

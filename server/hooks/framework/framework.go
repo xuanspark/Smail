@@ -2,6 +2,7 @@ package framework
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,15 +53,52 @@ type SettingsHtmlRequest struct {
 	RequestData string
 }
 
+// 插件能力宣告
+type Capabilities struct {
+	PluginID     string   `json:"pluginId"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	Settings     []string `json:"settings,omitempty"`
+	Protocol     uint32   `json:"protocol"`
+}
+
+// 插件能力提供接口
+type PluginRuntimeConfig struct {
+	PluginID     string                `json:"pluginId"`
+	Generation   uint64                `json:"generation"`
+	Settings     json.RawMessage       `json:"settings,omitempty"`
+	Secrets      map[string]string     `json:"secrets,omitempty"`
+	Capabilities []string              `json:"capabilities,omitempty"`
+	Network      []PluginNetworkTarget `json:"network,omitempty"`
+}
+
+type PluginNetworkTarget struct {
+	Scheme string `json:"scheme"`
+	Host   string `json:"host"`
+	Port   int    `json:"port"`
+}
+
+type CapabilityProvider interface {
+	Capabilities() Capabilities
+}
+
+// 可配置插件接口
+type ConfigurableHook interface {
+	ValidateConfig(json.RawMessage) error
+	Configure(json.RawMessage) error
+	Health() error
+}
+
 type Plugin struct {
-	name string
-	hook EmailHook
+	name      string
+	hook      EmailHook
+	authToken string
 }
 
 func CreatePlugin(name string, hook EmailHook) *Plugin {
 	return &Plugin{
-		name: name,
-		hook: hook,
+		name:      name,
+		hook:      hook,
+		authToken: os.Getenv("SMAIL_PLUGIN_RPC_TOKEN"),
 	}
 }
 
@@ -87,6 +125,7 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 }
 
 const maxPluginRPCBytes int64 = 8 << 20
+const pluginRPCConcurrencyLimit = 32
 
 func decodePluginRequest(w http.ResponseWriter, request *http.Request, target any) bool {
 	if request.Method != http.MethodPost {
@@ -151,6 +190,58 @@ func (p *Plugin) handleHookDTO(endpoint string, action func(*HookDTO)) http.Hand
 	}
 }
 
+func (p *Plugin) capabilities() Capabilities {
+	if provider, ok := p.hook.(CapabilityProvider); ok {
+		capabilities := provider.Capabilities()
+		if capabilities.PluginID == "" {
+			capabilities.PluginID = p.name
+		}
+		if capabilities.Protocol == 0 {
+			capabilities.Protocol = 1
+		}
+		return capabilities
+	}
+	return Capabilities{PluginID: p.name, Protocol: 1}
+}
+
+func (p *Plugin) handleConfig(action func(json.RawMessage) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		var payload json.RawMessage
+		if !decodePluginRequest(w, request, &payload) {
+			return
+		}
+		if err := action(payload); err != nil {
+			http.Error(w, "plugin configuration rejected", http.StatusBadRequest)
+			return
+		}
+		_ = writePluginResponse(w, "application/json", []byte(`{"status":"ok"}`))
+	}
+}
+
+func (p *Plugin) authenticatedHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		token := request.Header.Get("X-Smail-Plugin-Token")
+		if p.authToken == "" || token == "" || len(token) != len(p.authToken) || subtle.ConstantTimeCompare([]byte(token), []byte(p.authToken)) != 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, request)
+	})
+}
+
+func (p *Plugin) limitedHandler(next http.Handler) http.Handler {
+	semaphore := make(chan struct{}, pluginRPCConcurrencyLimit)
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		select {
+		case semaphore <- struct{}{}:
+			defer func() { <-semaphore }()
+		case <-request.Context().Done():
+			return
+		}
+		next.ServeHTTP(w, request)
+	})
+}
+
 func (p *Plugin) Run() error {
 
 	// 设置日志格式为json格式
@@ -200,11 +291,40 @@ func (p *Plugin) Run() error {
 			log.WithError(err).Errorf("[%s] SettingsHtml response write failed", p.name)
 		}
 	})
+	mux.HandleFunc("/Capabilities", func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, err := json.Marshal(p.capabilities())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = writePluginResponse(w, "application/json", body)
+	})
+	if configurable, ok := p.hook.(ConfigurableHook); ok {
+		mux.Handle("/ValidateConfig", p.handleConfig(configurable.ValidateConfig))
+		mux.Handle("/Configure", p.handleConfig(configurable.Configure))
+		mux.HandleFunc("/Health", func(w http.ResponseWriter, request *http.Request) {
+			if request.Method != http.MethodPost {
+				w.Header().Set("Allow", http.MethodPost)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if err := configurable.Health(); err != nil {
+				http.Error(w, "plugin health check failed", http.StatusServiceUnavailable)
+				return
+			}
+			_ = writePluginResponse(w, "application/json", []byte(`{"status":"ok"}`))
+		})
+	}
 
 	server := http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
-		Handler:      mux,
+		Handler:      p.authenticatedHandler(p.limitedHandler(mux)),
 	}
 
 	unixListener, err := pluginListener(os.Args[1])

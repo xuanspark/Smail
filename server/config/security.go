@@ -19,8 +19,9 @@ var (
 type ConfigOperation string
 
 const (
-	ConfigOperationUpdate   ConfigOperation = "update"
-	ConfigOperationRollback ConfigOperation = "rollback"
+	ConfigOperationUpdate    ConfigOperation = "update"
+	ConfigOperationRollback  ConfigOperation = "rollback"
+	ConfigOperationMigration ConfigOperation = "migration"
 )
 
 type ConfigAuditEvent struct {

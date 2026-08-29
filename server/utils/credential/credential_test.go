@@ -96,6 +96,35 @@ func TestRestrictedHTTPClientRejectsPrivateRedirect(t *testing.T) {
 	}
 }
 
+func TestRestrictedHTTPClientRejectsCrossTargetRedirect(t *testing.T) {
+	client := NewRestrictedHTTPClientForTargets(1000, []NetworkTarget{{Scheme: "https", Host: "allowed.example.com", Port: 443}})
+	request := httptest.NewRequest(http.MethodGet, "https://other.example.com/internal", nil)
+	if err := client.CheckRedirect(request, nil); err == nil {
+		t.Fatal("restricted client accepted a redirect outside the authorized target")
+	}
+}
+
+func TestRestrictedHTTPClientRejectsInitialHTTPRequest(t *testing.T) {
+	client := NewRestrictedHTTPClientForTargets(1000, []NetworkTarget{{Scheme: "https", Host: "allowed.example.com", Port: 443}})
+	if _, err := client.Get("http://allowed.example.com:443/internal"); err == nil {
+		t.Fatal("restricted client accepted an initial HTTP request")
+	}
+}
+
+func TestRestrictedHTTPClientRejectsInitialUnauthorizedPort(t *testing.T) {
+	client := NewRestrictedHTTPClientForTargets(1000, []NetworkTarget{{Scheme: "https", Host: "allowed.example.com", Port: 443}})
+	if _, err := client.Get("https://allowed.example.com:8443/internal"); err == nil {
+		t.Fatal("restricted client accepted an unauthorized initial port")
+	}
+}
+func TestRestrictedHTTPClientAllowsAuthorizedRedirect(t *testing.T) {
+	client := NewRestrictedHTTPClientForTargets(1000, []NetworkTarget{{Scheme: "https", Host: "allowed.example.com", Port: 443}})
+	request := httptest.NewRequest(http.MethodGet, "https://allowed.example.com/next", nil)
+	if err := client.CheckRedirect(request, nil); err != nil {
+		t.Fatalf("authorized redirect was rejected: %v", err)
+	}
+}
+
 func TestNormalizeTimeoutMS(t *testing.T) {
 	if NormalizeTimeoutMS(0) != defaultTimeoutMS || NormalizeTimeoutMS(1) != minTimeoutMS || NormalizeTimeoutMS(60000) != maxTimeoutMS {
 		t.Fatal("timeout limit was not normalized")

@@ -61,16 +61,37 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	if sslType == config.SSLTypeAutoHTTP || sslType == config.SSLTypeUser || sslType == config.SSLTypeAutoDNS {
 		cfg.SSLType = sslType
 	} else {
-		return errors.New("SSL Type Error!")
+		return errors.New("SSL 类型错误")
 	}
 
+	if cfg.SSLType != config.SSLTypeUser {
+		clearLegacySSLPaths(cfg)
+		cfg.SSL = config.SSLConfig{
+			Mode:             config.ManagedSSLModeDefault,
+			DefaultDirectory: "config/ssl",
+		}
+	}
 	if cfg.SSLType == config.SSLTypeUser {
+		if isAbsoluteUserCertificatePath(priKey) || isAbsoluteUserCertificatePath(crtKey) {
+			return errors.New("用户证书路径必须使用受控相对路径")
+		}
 		privatePath, publicPath, err := validateUserCertificatePaths(priKey, crtKey)
 		if err != nil {
 			return err
 		}
-		cfg.SSLPrivateKeyPath = privatePath
-		cfg.SSLPublicKeyPath = publicPath
+		privatePEM, err := os.ReadFile(privatePath)
+		if err != nil {
+			return errors.New("读取 SSL 私钥失败")
+		}
+		publicPEM, err := os.ReadFile(publicPath)
+		if err != nil {
+			return errors.New("读取 SSL 证书失败")
+		}
+		reference, err := config.ImportManagedSSL(config.ManagedSSLModeUpload, privatePEM, publicPEM, nil, sslDomains(cfg))
+		if err != nil {
+			return err
+		}
+		applyManagedSSLReference(cfg, reference)
 		// 手动设置证书的情况下后台地址默认不启用https
 		cfg.HttpsEnabled = 1
 	}
@@ -81,6 +102,40 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	}
 
 	return nil
+}
+
+// clearLegacySSLPaths 只清理新受控模式不再使用的旧聚合路径字段。
+func clearLegacySSLPaths(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	cfg.SSLPrivateKeyPath = ""
+	cfg.SSLPublicKeyPath = ""
+}
+
+// applyManagedSSLReference 将证书切换结果写入内部引用，不持久化服务器路径。
+func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLReference) {
+	if cfg == nil {
+		return
+	}
+	clearLegacySSLPaths(cfg)
+	cfg.SSL = config.SSLConfig{
+		Mode:             reference.Mode,
+		DefaultDirectory: "config/ssl",
+		CertificateRef:   reference.CertificateRef,
+		PrivateKeyRef:    reference.PrivateKeyRef,
+	}
+	if reference.Mode == config.ManagedSSLModeUpload {
+		cfg.SSL.CustomDirectory = "config/ssl/managed/upload"
+	}
+}
+
+func isAbsoluteUserCertificatePath(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || filepath.IsAbs(value) || filepath.VolumeName(value) != "" {
+		return true
+	}
+	return strings.HasPrefix(value, `\\`) || strings.HasPrefix(value, "//")
 }
 
 func validateUserCertificatePaths(privatePath, publicPath string) (string, string, error) {
@@ -173,7 +228,46 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 }
 
 func writeCertificateFiles(cfg *config.Config, privateKey, certificate, issuer []byte) error {
-	return writeCertificateBundle(cfg, privateKey, certificate, issuer)
+	if cfg == nil {
+		return errors.New("SSL 配置不能为空")
+	}
+	reference, err := config.ImportManagedSSL(config.ManagedSSLModeDefault, privateKey, certificate, issuer, sslDomains(cfg))
+	if err != nil {
+		return err
+	}
+	applyManagedSSLReference(cfg, reference)
+	if err := config.WriteConfig(cfg); err != nil {
+		return errors.Wrap(err)
+	}
+	return nil
+}
+
+func sslDomains(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	domains := make([]string, 0, len(cfg.Domains)*3+1)
+	appendDomain := func(domain string) {
+		domain = strings.TrimSpace(domain)
+		if domain == "" {
+			return
+		}
+		if _, exists := seen[domain]; exists {
+			return
+		}
+		seen[domain] = struct{}{}
+		domains = append(domains, domain)
+	}
+	appendDomain(cfg.WebDomain)
+	appendDomain(cfg.Domain)
+	for _, domain := range cfg.Domains {
+		appendDomain(domain)
+		appendDomain("smtp." + domain)
+		appendDomain("pop." + domain)
+		appendDomain("imap." + domain)
+	}
+	return domains
 }
 func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 
@@ -333,8 +427,13 @@ func GenSSL(update bool) error {
 	}
 
 	if !update {
-		privateFile, errpi := os.ReadFile(cfg.SSLPrivateKeyPath)
-		public, errpu := os.ReadFile(cfg.SSLPublicKeyPath)
+		privatePath, publicPath, pathErr := config.ResolveRuntimeSSLPaths(cfg)
+		privateFile, errpi := os.ReadFile(privatePath)
+		public, errpu := os.ReadFile(publicPath)
+		if pathErr != nil {
+			errpi = pathErr
+			errpu = pathErr
+		}
 		// 当前存在证书数据，就不生成了
 		if errpi == nil && errpu == nil && len(privateFile) > 0 && len(public) > 0 {
 			return nil
@@ -361,7 +460,7 @@ func CheckSSLCrtInfo() (int, time.Time, bool, error) {
 		return -1, time.Now(), true, errors.Wrap(err)
 	}
 	// load cert and key by tls.LoadX509KeyPair
-	tlsCert, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	tlsCert, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return -1, time.Now(), true, errors.Wrap(err)
 	}

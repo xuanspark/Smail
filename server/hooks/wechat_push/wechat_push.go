@@ -11,10 +11,11 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/credential"
 	log "github.com/sirupsen/logrus"
 	"io"
+	"net"
 	"net/http"
 	urlpkg "net/url"
 	"os"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -25,7 +26,7 @@ const (
 	maxWeChatMessageBytes  = 4 << 10
 )
 
-var weChatHTTPClient = &http.Client{Timeout: 10 * time.Second}
+var weChatHTTPClient = credential.NewRestrictedHTTPClient(10_000)
 
 type accessTokenRes struct {
 	AccessToken string `db:"access_token" json:"access_token"`
@@ -41,24 +42,94 @@ type WeChatPushHook struct {
 	templateId   string
 	pushUser     string
 	webDomain    string
-	httpsEnabled int
+	httpClient   *http.Client
 }
 
 func (w *WeChatPushHook) GetName(ctx *context.Context) string {
 	return "WeChatPushHook"
 }
 
+// Capabilities 声明插件需要的能力和配置字段。
+func (w *WeChatPushHook) Capabilities() framework.Capabilities {
+	return framework.Capabilities{
+		PluginID:     "wechat_push",
+		Capabilities: []string{"network"},
+		Settings:     []string{"appId", "templateId", "userId", "webDomain"},
+		Protocol:     1,
+	}
+}
+
+type weChatRuntimeConfig struct {
+	PluginID     string                          `json:"pluginId"`
+	Generation   uint64                          `json:"generation"`
+	Settings     json.RawMessage                 `json:"settings,omitempty"`
+	Secrets      map[string]string               `json:"secrets,omitempty"`
+	Capabilities []string                        `json:"capabilities,omitempty"`
+	Network      []framework.PluginNetworkTarget `json:"network,omitempty"`
+}
+
+type weChatSettings struct {
+	AppID      string `json:"appId"`
+	TemplateID string `json:"templateId"`
+	UserID     string `json:"userId"`
+	WebDomain  string `json:"webDomain"`
+}
+
+// ValidateConfig 只校验主程序下发的运行时配置，不读取本地配置文件或环境变量。
+func (w *WeChatPushHook) ValidateConfig(data json.RawMessage) error {
+	_, _, _, err := parseWeChatRuntimeConfig(data)
+	return err
+}
+
+// Configure 应用主程序下发的运行时配置，并在配置变更后清理缓存令牌。
+func (w *WeChatPushHook) Configure(data json.RawMessage) error {
+	_, settings, secret, err := parseWeChatRuntimeConfig(data)
+	if err != nil {
+		return err
+	}
+	w.tokenMu.Lock()
+	w.appId = settings.AppID
+	w.secret = secret
+	w.templateId = settings.TemplateID
+	w.pushUser = settings.UserID
+	w.webDomain = settings.WebDomain
+	w.httpClient = credential.NewRestrictedHTTPClientForTargets(10_000, []credential.NetworkTarget{{Scheme: "https", Host: "api.weixin.qq.com", Port: 443}})
+	w.token = ""
+	w.tokenExpires = 0
+	w.tokenMu.Unlock()
+	return nil
+}
+
+// Health 检查插件是否已经完成安全运行时配置。
+func (w *WeChatPushHook) Health() error {
+	if w == nil {
+		return fmt.Errorf("微信插件不可用")
+	}
+	w.tokenMu.Lock()
+	configured := w.appId != "" && w.secret != "" && w.templateId != "" && w.pushUser != "" && w.webDomain != "" && w.httpClient != nil
+	w.tokenMu.Unlock()
+	if !configured {
+		return fmt.Errorf("微信插件尚未完成运行时配置")
+	}
+	return nil
+}
+
 // SettingsHtml 插件页面
 func (w *WeChatPushHook) SettingsHtml(ctx *context.Context, url string, requestData string) string {
 	return fmt.Sprintf(`
 <div>
-	 Wechat push No Settings Page
+	暂无设置页面
 </div>
 `)
 }
 
 func (w *WeChatPushHook) ReceiveSaveAfter(ctx *context.Context, email *parsemail.Email, ue []*models.UserEmail) {
-	if email == nil || w.appId == "" || w.secret == "" || w.pushUser == "" {
+	w.tokenMu.Lock()
+	appID := w.appId
+	secret := w.secret
+	pushUser := w.pushUser
+	w.tokenMu.Unlock()
+	if email == nil || appID == "" || secret == "" || pushUser == "" {
 		return
 	}
 
@@ -68,7 +139,7 @@ func (w *WeChatPushHook) ReceiveSaveAfter(ctx *context.Context, email *parsemail
 		}
 		// 管理员（Uid=1）收到邮件且非已读、非已删除 触发通知
 		if u.UserID == 1 && u.IsRead == 0 && u.Status == 0 && email.MessageId > 0 {
-			w.sendUserMsg(ctx, w.pushUser, buildWeChatMessage(email))
+			w.sendUserMsg(ctx, pushUser, buildWeChatMessage(email))
 		}
 	}
 
@@ -114,7 +185,11 @@ func (w *WeChatPushHook) getWxAccessToken() string {
 	if err != nil {
 		return ""
 	}
-	resp, err := weChatHTTPClient.Do(request)
+	client := w.httpClient
+	if client == nil {
+		client = weChatHTTPClient
+	}
+	resp, err := client.Do(request)
 	if err != nil || resp == nil {
 		return ""
 	}
@@ -153,16 +228,19 @@ type DataItem struct {
 
 func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, content string) {
 	content = truncateWeChatText(content, maxWeChatMessageBytes)
-	url := w.webDomain
-	if w.httpsEnabled > 1 {
-		url = "http://" + url
-	} else {
-		url = "https://" + url
+	w.tokenMu.Lock()
+	webDomain := w.webDomain
+	templateID := w.templateId
+	client := w.httpClient
+	w.tokenMu.Unlock()
+	if client == nil {
+		client = weChatHTTPClient
 	}
+	url := "https://" + webDomain
 
 	sendMsgReq, err := json.Marshal(sendMsgRequest{
 		Touser:      userId,
-		Template_id: w.templateId,
+		Template_id: templateID,
 		Url:         url,
 		Data:        SendData{Content: DataItem{Value: content, Color: "#000000"}},
 	})
@@ -185,7 +263,7 @@ func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, conten
 		return
 	}
 	request.Header.Set("Content-Type", "application/json")
-	resp, err := weChatHTTPClient.Do(request)
+	resp, err := client.Do(request)
 	if err != nil || resp == nil {
 		log.WithContext(ctx).Error("wechat push request failed")
 		return
@@ -226,18 +304,90 @@ func truncateWeChatText(value string, maxBytes int) string {
 }
 
 func NewWechatPushHook() *WeChatPushHook {
-	httpsEnabled := 0
-	if value, err := strconv.Atoi(os.Getenv("SMAIL_HTTPS_ENABLED")); err == nil {
-		httpsEnabled = value
+	return &WeChatPushHook{}
+}
+
+func parseWeChatRuntimeConfig(data json.RawMessage) (weChatRuntimeConfig, weChatSettings, string, error) {
+	var payload weChatRuntimeConfig
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件运行时配置无效")
 	}
-	return &WeChatPushHook{
-		appId:        os.Getenv("SMAIL_WECHAT_APP_ID"),
-		secret:       os.Getenv("SMAIL_WECHAT_SECRET"),
-		templateId:   os.Getenv("SMAIL_WECHAT_TEMPLATE_ID"),
-		pushUser:     os.Getenv("SMAIL_WECHAT_USER_ID"),
-		webDomain:    os.Getenv("SMAIL_WEB_DOMAIN"),
-		httpsEnabled: httpsEnabled,
+	if payload.PluginID != "wechat_push" {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件 ID 不匹配")
 	}
+	if payload.Generation == 0 {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件配置代次无效")
+	}
+	if !hasOnlyWeChatCapability(payload.Capabilities, "network") {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件网络权限未配置")
+	}
+	if len(payload.Settings) == 0 || len(payload.Settings) > maxWeChatResponseBytes {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件配置无效")
+	}
+	var settings weChatSettings
+	settingsDecoder := json.NewDecoder(bytes.NewReader(payload.Settings))
+	settingsDecoder.DisallowUnknownFields()
+	if err := settingsDecoder.Decode(&settings); err != nil || settingsDecoder.Decode(&struct{}{}) != io.EOF {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件配置无效")
+	}
+	appID, err := credential.ValidateSecret(settings.AppID, 256)
+	if err != nil {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信应用 ID 无效")
+	}
+	templateID, err := credential.ValidateSecret(settings.TemplateID, 256)
+	if err != nil {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信模板 ID 无效")
+	}
+	userID, err := credential.ValidateSecret(settings.UserID, 256)
+	if err != nil {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信用户 ID 无效")
+	}
+	webDomain, err := normalizeWeChatWebDomain(settings.WebDomain)
+	if err != nil {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信回调域名无效")
+	}
+	secret, err := credential.ValidateSecret(payload.Secrets["appSecret"], 4096)
+	if err != nil {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信应用密钥未配置")
+	}
+	for name := range payload.Secrets {
+		if name != "appSecret" {
+			return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信插件密钥字段无效")
+		}
+	}
+	if !hasOnlyWeChatNetworkTarget(payload.Network) {
+		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信网络权限未配置")
+	}
+	settings.AppID = appID
+	settings.TemplateID = templateID
+	settings.UserID = userID
+	settings.WebDomain = webDomain
+	return payload, settings, secret, nil
+}
+
+func hasOnlyWeChatCapability(capabilities []string, expected string) bool {
+	return len(capabilities) == 1 && capabilities[0] == expected
+}
+
+func hasOnlyWeChatNetworkTarget(targets []framework.PluginNetworkTarget) bool {
+	return len(targets) == 1 && strings.EqualFold(targets[0].Scheme, "https") && strings.EqualFold(targets[0].Host, "api.weixin.qq.com") && targets[0].Port == 443
+}
+
+func normalizeWeChatWebDomain(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 253 || strings.ContainsAny(value, "/\\?#\x00\r\n\t ") {
+		return "", fmt.Errorf("invalid domain")
+	}
+	if net.ParseIP(strings.Trim(value, "[]")) != nil {
+		return "", fmt.Errorf("invalid domain")
+	}
+	parsed, err := urlpkg.Parse("https://" + value)
+	if err != nil || parsed.Host != value || parsed.Hostname() == "" || parsed.User != nil {
+		return "", fmt.Errorf("invalid domain")
+	}
+	return strings.TrimSuffix(strings.ToLower(parsed.Host), "."), nil
 }
 
 // 插件将以独立进程运行，因此需要主函数。

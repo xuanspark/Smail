@@ -264,3 +264,22 @@ func webAuthnCredentialStatements() map[Dialect][]string {
 		},
 	}
 }
+
+func pluginSettingsStatements() map[Dialect][]string {
+	return map[Dialect][]string{
+		DialectSQLite: {
+			`CREATE TABLE IF NOT EXISTS "plugin_secret" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "plugin_id" TEXT NOT NULL, "field_name" TEXT NOT NULL, "ciphertext" TEXT NOT NULL, "key_version" INTEGER NOT NULL, "record_version" INTEGER NOT NULL DEFAULT 1, "created_at" DATETIME NOT NULL, "updated_at" DATETIME NOT NULL, UNIQUE("plugin_id", "field_name"))`,
+			`CREATE TABLE IF NOT EXISTS "plugin_user_setting" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "plugin_id" TEXT NOT NULL, "user_id" INTEGER NOT NULL, "schema_version" INTEGER NOT NULL, "settings_ciphertext" TEXT NOT NULL, "settings_hash" TEXT NOT NULL, "enabled" INTEGER NOT NULL DEFAULT 1, "version" INTEGER NOT NULL DEFAULT 1, "created_at" DATETIME NOT NULL, "updated_at" DATETIME NOT NULL, UNIQUE("plugin_id", "user_id"))`,
+			`CREATE INDEX IF NOT EXISTS "idx_plugin_user_setting_user_id" ON "plugin_user_setting"("user_id")`,
+		},
+		DialectMySQL: {
+			"CREATE TABLE IF NOT EXISTS `plugin_secret` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `plugin_id` VARCHAR(64) NOT NULL, `field_name` VARCHAR(64) NOT NULL, `ciphertext` TEXT NOT NULL, `key_version` INT UNSIGNED NOT NULL, `record_version` BIGINT UNSIGNED NOT NULL DEFAULT 1, `created_at` DATETIME(6) NOT NULL, `updated_at` DATETIME(6) NOT NULL, UNIQUE KEY `uq_plugin_secret_field` (`plugin_id`, `field_name`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+			"CREATE TABLE IF NOT EXISTS `plugin_user_setting` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `plugin_id` VARCHAR(64) NOT NULL, `user_id` BIGINT NOT NULL, `schema_version` INT UNSIGNED NOT NULL, `settings_ciphertext` TEXT NOT NULL, `settings_hash` VARCHAR(128) NOT NULL, `enabled` TINYINT NOT NULL DEFAULT 1, `version` BIGINT UNSIGNED NOT NULL DEFAULT 1, `created_at` DATETIME(6) NOT NULL, `updated_at` DATETIME(6) NOT NULL, UNIQUE KEY `uq_plugin_user_setting_owner` (`plugin_id`, `user_id`), KEY `idx_plugin_user_setting_user_id` (`user_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+		},
+		DialectPostgres: {
+			`CREATE TABLE IF NOT EXISTS "plugin_secret" ("id" BIGSERIAL PRIMARY KEY, "plugin_id" VARCHAR(64) NOT NULL, "field_name" VARCHAR(64) NOT NULL, "ciphertext" TEXT NOT NULL, "key_version" INTEGER NOT NULL, "record_version" BIGINT NOT NULL DEFAULT 1, "created_at" TIMESTAMPTZ NOT NULL, "updated_at" TIMESTAMPTZ NOT NULL, UNIQUE("plugin_id", "field_name"))`,
+			`CREATE TABLE IF NOT EXISTS "plugin_user_setting" ("id" BIGSERIAL PRIMARY KEY, "plugin_id" VARCHAR(64) NOT NULL, "user_id" BIGINT NOT NULL, "schema_version" INTEGER NOT NULL, "settings_ciphertext" TEXT NOT NULL, "settings_hash" VARCHAR(128) NOT NULL, "enabled" BOOLEAN NOT NULL DEFAULT TRUE, "version" BIGINT NOT NULL DEFAULT 1, "created_at" TIMESTAMPTZ NOT NULL, "updated_at" TIMESTAMPTZ NOT NULL, UNIQUE("plugin_id", "user_id"))`,
+			`CREATE INDEX IF NOT EXISTS "idx_plugin_user_setting_user_id" ON "plugin_user_setting"("user_id")`,
+		},
+	}
+}

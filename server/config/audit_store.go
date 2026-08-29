@@ -261,7 +261,7 @@ func normalizeAuditEvent(event ConfigAuditEvent) (ConfigAuditEvent, error) {
 }
 
 func validateAuditEvent(event ConfigAuditEvent) error {
-	if event.Operation != ConfigOperationUpdate && event.Operation != ConfigOperationRollback {
+	if event.Operation != ConfigOperationUpdate && event.Operation != ConfigOperationRollback && event.Operation != ConfigOperationMigration {
 		return ErrAuditEventInvalid
 	}
 	if strings.TrimSpace(event.ActorID) == "" || strings.TrimSpace(event.ActorRole) == "" || event.FromGeneration == 0 || event.ToGeneration == 0 || event.CreatedAt.IsZero() {

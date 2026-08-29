@@ -40,13 +40,18 @@ func AcmeChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 type sslResponse struct {
-	Port int    `json:"port"`
-	Type string `json:"type"`
+	Port  int    `json:"port"`
+	Type  string `json:"type"`
+	Ready bool   `json:"ready"`
 }
 
 func writeSetupError(ctx *context.Context, w http.ResponseWriter, err error) {
 	log.WithContext(ctx).WithError(err).Error("setup request failed")
-	response.NewErrorResponse(response.ServerError, "\u521d\u59cb\u5316\u64cd\u4f5c\u5931\u8d25", "").FPrint(w)
+	message := setup.DatabaseSetupErrorMessage(err)
+	if message == "" {
+		message = "\u521d\u59cb\u5316\u64cd\u4f5c\u5931\u8d25"
+	}
+	response.NewErrorResponse(response.ServerError, message, "").FPrint(w)
 }
 
 func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
@@ -67,21 +72,27 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	if reqData["step"] == "database" && reqData["action"] == "get" {
-		dbType, dbDSN, err := setup.GetDatabaseSettings(ctx)
+		settings, err := setup.GetDatabaseSettingsDetail(ctx)
 		if err != nil {
 			writeSetupError(ctx, w, err)
 			return
 		}
 
-		response.NewSuccessResponse(map[string]string{
-			"db_type": dbType,
-			"db_dsn":  dbDSN,
-		}).FPrint(w)
+		response.NewSuccessResponse(settings).FPrint(w)
 		return
 	}
 
 	if reqData["step"] == "database" && reqData["action"] == "set" {
-		err := setup.SetDatabaseSettings(ctx, cast.ToString(reqData["db_type"]), cast.ToString(reqData["db_dsn"]))
+		err := setup.SetDatabaseSettingsWithOptions(ctx, setup.DatabaseSettings{
+			Type:     cast.ToString(reqData["db_type"]),
+			DSN:      cast.ToString(reqData["db_dsn"]),
+			Mode:     cast.ToString(reqData["db_mode"]),
+			User:     cast.ToString(reqData["db_user"]),
+			Host:     cast.ToString(reqData["db_host"]),
+			Port:     cast.ToString(reqData["db_port"]),
+			Password: cast.ToString(reqData["db_password"]),
+			Name:     cast.ToString(reqData["db_name"]),
+		})
 		if err != nil {
 			writeSetupError(ctx, w, err)
 			return
@@ -152,8 +163,9 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		res := sslResponse{
-			Type: sslType,
-			Port: config.CurrentConfig().GetSetupPort(),
+			Type:  sslType,
+			Port:  config.CurrentConfig().GetSetupPort(),
+			Ready: config.IsSetupReady(),
 		}
 		response.NewSuccessResponse(res).FPrint(w)
 		return

@@ -3,7 +3,10 @@
 dist
 output
 smail.db
-server/plugins
+server/plugins/*
+!server/plugins/
+!server/plugins/catalog/
+!server/plugins/catalog/*.go
 config
 *_KEY
 AURORA_SECRET
@@ -17,3 +20,7 @@ server/.codex-smail-*
 
 !server/config/
 !server/config/*.go
+.codex-cg*.patch
+server/config/credential.key
+server/smail.exe
+server/smail-admin.exe

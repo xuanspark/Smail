@@ -12,12 +12,105 @@ import (
 	"unicode/utf8"
 
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/hooks/framework"
 )
 
 type weChatRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f weChatRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return f(request)
+}
+
+func validWeChatRuntimePayload() []byte {
+	payload := weChatRuntimeConfig{
+		PluginID:     "wechat_push",
+		Generation:   1,
+		Settings:     json.RawMessage(`{"appId":"app-id","templateId":"template-id","userId":"user-id","webDomain":"mail.example.com"}`),
+		Secrets:      map[string]string{"appSecret": "app-secret"},
+		Capabilities: []string{"network"},
+		Network:      []framework.PluginNetworkTarget{{Scheme: "https", Host: "api.weixin.qq.com", Port: 443}},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func TestWeChatRuntimeConfigAcceptsAuthorizedPayload(t *testing.T) {
+	hook := NewWechatPushHook()
+	if err := hook.ValidateConfig(validWeChatRuntimePayload()); err != nil {
+		t.Fatal(err)
+	}
+	if err := hook.Configure(validWeChatRuntimePayload()); err != nil {
+		t.Fatal(err)
+	}
+	if err := hook.Health(); err != nil {
+		t.Fatal(err)
+	}
+	if hook.appId != "app-id" || hook.secret != "app-secret" || hook.webDomain != "mail.example.com" {
+		t.Fatalf("unexpected runtime configuration: %+v", hook)
+	}
+}
+
+func TestWeChatRuntimeConfigRejectsZeroGeneration(t *testing.T) {
+	var payload weChatRuntimeConfig
+	if err := json.Unmarshal(validWeChatRuntimePayload(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload.Generation = 0
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := NewWechatPushHook().ValidateConfig(data); err == nil {
+		t.Fatal("zero plugin configuration generation was accepted")
+	}
+}
+
+func TestWeChatRuntimeConfigRejectsSecurityBoundaryViolations(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*weChatRuntimeConfig)
+	}{
+		{name: "plugin id", mutate: func(payload *weChatRuntimeConfig) { payload.PluginID = "other" }},
+		{name: "missing secret", mutate: func(payload *weChatRuntimeConfig) { payload.Secrets = nil }},
+		{name: "missing capability", mutate: func(payload *weChatRuntimeConfig) { payload.Capabilities = nil }},
+		{name: "extra capability", mutate: func(payload *weChatRuntimeConfig) { payload.Capabilities = []string{"network", "filesystem"} }},
+		{name: "wrong network", mutate: func(payload *weChatRuntimeConfig) { payload.Network = nil }},
+		{name: "extra network", mutate: func(payload *weChatRuntimeConfig) {
+			payload.Network = append(payload.Network, framework.PluginNetworkTarget{Scheme: "https", Host: "example.com", Port: 443})
+		}},
+		{name: "unknown secret", mutate: func(payload *weChatRuntimeConfig) { payload.Secrets["other"] = "value" }},
+		{name: "invalid domain", mutate: func(payload *weChatRuntimeConfig) {
+			payload.Settings = json.RawMessage(`{"appId":"app-id","templateId":"template-id","userId":"user-id","webDomain":"https://example.com/path"}`)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var payload weChatRuntimeConfig
+			if err := json.Unmarshal(validWeChatRuntimePayload(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(&payload)
+			data, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := NewWechatPushHook().ValidateConfig(data); err == nil {
+				t.Fatal("invalid runtime configuration was accepted")
+			} else if strings.Contains(err.Error(), "app-secret") {
+				t.Fatal("secret material appeared in the error")
+			}
+		})
+	}
+}
+
+func TestWeChatRuntimeConfigRejectsTrailingJSON(t *testing.T) {
+	data := append(validWeChatRuntimePayload(), []byte(` {}`)...)
+	if err := NewWechatPushHook().ValidateConfig(data); err == nil {
+		t.Fatal("trailing JSON was accepted")
+	}
 }
 
 func TestBuildWeChatMessageLimitsContent(t *testing.T) {

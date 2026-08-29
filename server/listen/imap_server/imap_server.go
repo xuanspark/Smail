@@ -39,7 +39,7 @@ func newIMAPServer() (*imapserver.Server, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("runtime configuration is unavailable")
 	}
-	crt, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	crt, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("load IMAP TLS certificate: %w", err)
 	}

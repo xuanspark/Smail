@@ -28,6 +28,7 @@ type Config struct {
 	SSLType                 string            `json:"sslType"` // 0表示自动生成证书，HTTP挑战模式，1表示用户上传证书，2表示自动-DNS挑战模式
 	SSLPrivateKeyPath       string            `json:"SSLPrivateKeyPath"`
 	SSLPublicKeyPath        string            `json:"SSLPublicKeyPath"`
+	SSL                     SSLConfig         `json:"ssl,omitempty"`
 	DbDSN                   string            `json:"dbDSN"`
 	DbType                  string            `json:"dbType"`
 	HttpsEnabled            int               `json:"httpsEnabled"`    //后台页面是否启用https，0默认（启用），1启用，2不启用
@@ -255,6 +256,8 @@ func writeProtectedConfigFile(name string, cfg *Config) error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	stored.SSLPrivateKeyPath = persistControlledSSLPath(stored.SSLPrivateKeyPath)
+	stored.SSLPublicKeyPath = persistControlledSSLPath(stored.SSLPublicKeyPath)
 	data, err := json.Marshal(stored)
 	if err != nil {
 		return errors.Wrap(err)
@@ -326,6 +329,30 @@ func (c *Config) fixPath() {
 	c.SSLPublicKeyPath = resolvePath(c.SSLPublicKeyPath)
 	c.SSLPrivateKeyPath = resolvePath(c.SSLPrivateKeyPath)
 	c.DkimPrivateKeyPath = resolvePath(c.DkimPrivateKeyPath)
+}
+
+func persistControlledSSLPath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	root, err := filepath.Abs(filepath.Clean(ROOT_PATH))
+	if err != nil {
+		return ""
+	}
+	target := value
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(root, target)
+	}
+	target, err = filepath.Abs(filepath.Clean(target))
+	if err != nil || !pathWithinRoot(root, target) {
+		return ""
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || filepath.IsAbs(relative) || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return ""
+	}
+	return filepath.ToSlash(relative)
 }
 
 func resolvePath(value string) string {

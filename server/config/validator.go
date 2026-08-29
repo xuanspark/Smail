@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"errors"
@@ -167,11 +167,11 @@ func validateSSL(ssl SSLConfig) error {
 	}
 	activeDirectory := ssl.DefaultDirectory
 	switch ssl.Mode {
-	case "default":
-		if ssl.DefaultDirectory == "" {
+	case ManagedSSLModeDefault, "default":
+		if ssl.DefaultDirectory == "" || ssl.CustomDirectory != "" {
 			return ErrInvalidSSL
 		}
-	case "custom":
+	case ManagedSSLModeUpload, "custom":
 		if !isControlledRelativePath(ssl.CustomDirectory) || ssl.CustomDirectory == "" {
 			return ErrInvalidSSL
 		}

@@ -1,6 +1,6 @@
 import './Setup.js'
 
-import {reactive, ref} from 'vue'
+import {computed, reactive, ref} from 'vue'
 
 import {ElMessage} from 'element-plus'
 
@@ -25,7 +25,12 @@ export function usePage() {
   const dbSettings = reactive({
     "type": "sqlite",
     "dsn": "./config/smail.db",
-    "lable": ""
+    "mode": "fields",
+    "user": "",
+    "host": "127.0.0.1",
+    "port": "3306",
+    "password": "",
+    "name": "smail"
   })
   
   const domainSettings = reactive({
@@ -45,10 +50,16 @@ export function usePage() {
   const active = ref(0)
   
   const fullscreenLoading = ref(false)
+
+  const databaseLoading = ref(false)
   
   const dnsChecking = ref(false)
   
   const dnsInfos = ref({})
+
+  const hasDNSIPv6 = computed(() => Object.values(dnsInfos.value).some((records) =>
+    records.some((record) => record.type === 'AAAA')
+  ))
   
   const port = ref(80)
   
@@ -62,24 +73,40 @@ export function usePage() {
       getDomainConfig();
       return;
     }
-  
+
+    const passwordSize = new TextEncoder().encode(adminSettings.password).length
+    if (!adminSettings.account.trim()) {
+      ElMessage.error(lang.err_account_required)
+      return
+    }
+    if (!adminSettings.password) {
+      ElMessage.error(lang.err_required_pwd)
+      return
+    }
+    if (passwordSize < 8 || passwordSize > 12) {
+      ElMessage.error(lang.err_admin_pwd_length)
+      return
+    }
     if (adminSettings.password !== adminSettings.password2) {
       ElMessage.error(lang.err_pwd_diff)
-    } else {
-      http.post("/api/setup", {
-        "action": "set",
-        "step": "password",
-        "account": adminSettings.account,
-        "password": adminSettings.password
-      }).then((res) => {
-        if (res.errorNo !== 0) {
-          ElMessage.error(res.errorMsg)
-        } else {
-          active.value++;
-          getDomainConfig();
-        }
-      })
+      return
     }
+
+    http.post("/api/setup", {
+      "action": "set",
+      "step": "password",
+      "account": adminSettings.account,
+      "password": adminSettings.password
+    }).then((res) => {
+      if (res.errorNo !== 0) {
+        ElMessage.error(res.errorMsg || lang.setup_failed)
+      } else {
+        active.value++;
+        getDomainConfig();
+      }
+    }).catch(() => {
+      ElMessage.error(lang.setup_failed)
+    })
   }
   
   const getPassword = () => {
@@ -104,7 +131,13 @@ export function usePage() {
         ElMessage.error(res.errorMsg)
       } else {
         dbSettings.type = res.data.db_type;
-        dbSettings.dsn = res.data.db_dsn;
+        dbSettings.mode = res.data.db_mode || "dsn";
+        dbSettings.dsn = res.data.db_dsn || "";
+        dbSettings.user = res.data.db_user || "";
+        dbSettings.host = res.data.db_host || "127.0.0.1";
+        dbSettings.port = res.data.db_port || (dbSettings.type === "postgres" ? "5432" : "3306");
+        dbSettings.password = "";
+        dbSettings.name = res.data.db_name || "smail";
       }
     })
   }
@@ -122,26 +155,77 @@ export function usePage() {
   }
   
   const setDbConfig = () => {
-    // 切换数据库类型为sqlite时，数据库路径为空，则使用默认路径
-    if (dbSettings.type === "sqlite" && !dbSettings.dsn) dbSettings.dsn = "./config/smail.db";
-    else if (!dbSettings.dsn) ElMessage({
-      title: "Error",
-      message: lang.err_db_dsn_empty,
-      type: "error",
-    });
-    http.post("/api/setup", {
+    if (dbSettings.type === "sqlite" && !dbSettings.dsn) {
+      dbSettings.dsn = "./config/smail.db";
+    }
+
+    const usesStructuredFields = dbSettings.type === "mysql" || dbSettings.type === "postgres"
+    if (usesStructuredFields) {
+      if (!dbSettings.user.trim()) {
+        ElMessage.error(lang.db_user_required)
+        return
+      }
+      if (!dbSettings.host.trim()) {
+        ElMessage.error(lang.db_host_required)
+        return
+      }
+      if (!dbSettings.port.trim()) {
+        ElMessage.error(lang.db_port_required)
+        return
+      }
+      if (!dbSettings.name.trim()) {
+        ElMessage.error(lang.db_name_required)
+        return
+      }
+    } else if (!dbSettings.dsn.trim()) {
+      ElMessage.error(lang.err_db_dsn_empty)
+      return
+    }
+
+    databaseLoading.value = true
+    const payload = {
       "action": "set",
       "step": "database",
       "db_type": dbSettings.type,
-      "db_dsn": dbSettings.dsn
-    }).then((res) => {
+      "db_dsn": dbSettings.dsn,
+      "db_mode": usesStructuredFields ? "fields" : "dsn",
+      "db_user": dbSettings.user,
+      "db_host": dbSettings.host,
+      "db_port": dbSettings.port,
+      "db_password": dbSettings.password,
+      "db_name": dbSettings.name
+    }
+
+    http.post("/api/setup", payload).then((res) => {
       if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        active.value++;
-        getPassword();
+        ElMessage.error(res.errorMsg || lang.db_init_failed)
+        return
       }
+      ElMessage.success(lang.db_init_success)
+      active.value++;
+      getPassword();
+    }).catch(() => {
+      ElMessage.error(lang.db_init_failed)
+    }).finally(() => {
+      databaseLoading.value = false
     })
+  }
+
+  const handleDbTypeChange = (type) => {
+    dbSettings.dsn = ""
+    dbSettings.password = ""
+    if (type === "mysql" || type === "postgres") {
+      dbSettings.mode = "fields"
+      dbSettings.host = "127.0.0.1"
+      dbSettings.port = type === "postgres" ? "5432" : "3306"
+      dbSettings.name = "smail"
+    } else {
+      dbSettings.mode = "dsn"
+      dbSettings.dsn = "./config/smail.db"
+      dbSettings.host = "127.0.0.1"
+      dbSettings.port = ""
+      dbSettings.name = ""
+    }
   }
   
   const getDNSConfig = () => {
@@ -152,6 +236,37 @@ export function usePage() {
         dnsInfos.value = res.data
       }
     })
+  }
+
+  const copyDNSValue = async (value) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value)
+      } else {
+        const input = document.createElement('textarea')
+        input.value = value
+        input.setAttribute('readonly', '')
+        input.style.position = 'fixed'
+        input.style.opacity = '0'
+        document.body.appendChild(input)
+        input.select()
+        document.execCommand('copy')
+        document.body.removeChild(input)
+      }
+      ElMessage.success(lang.dns_copy_success)
+    } catch (error) {
+      ElMessage.error(lang.dns_copy_failed)
+    }
+  }
+
+  const formatDNSRecordTTL = (ttl) => {
+    if (ttl >= 3600 && ttl % 3600 === 0) {
+      return `${ttl / 3600}${lang.dns_ttl_hour}`
+    }
+    if (ttl >= 60 && ttl % 60 === 0) {
+      return `${ttl / 60}${lang.dns_ttl_minute}`
+    }
+    return `${ttl}${lang.dns_ttl_second}`
   }
   
   const getSSLConfig = () => {
@@ -191,10 +306,11 @@ export function usePage() {
         fullscreenLoading.value = false;
         ElMessage.error(res.errorMsg)
       } else {
-        if (sslType === 2) {
+        if (sslType === "2") {
           fullscreenLoading.value = false;
           dnsChecking.value = true;
           getSSLDNSParams();
+          return
         }
         checkStatus();
       }
@@ -202,22 +318,18 @@ export function usePage() {
   }
   
   const checkStatus = () => {
-    axios.post("/api/ping", {}).then((res) => {
-      if (res.data.errorNo !== 0) {
-        setTimeout(function () {
-          checkStatus()
-        }, 1000);
-      } else {
-        if (sslSettings.type === 1) {
+    http.post("/api/setup", {"action": "get", "step": "ssl"}).then((res) => {
+      if (res.errorNo === 0 && res.data.ready) {
+        if (sslSettings.type === "1") {
           window.location.href = "http://" + domainSettings.web_domain;
         } else {
           window.location.href = "https://" + domainSettings.web_domain;
         }
+        return
       }
+      setTimeout(checkStatus, 1000)
     }).catch(() => {
-      setTimeout(function () {
-        checkStatus()
-      }, 1000);
+      setTimeout(checkStatus, 1000)
     })
   }
   
@@ -243,17 +355,12 @@ export function usePage() {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
-        sslSettings.paramsList = res.data
+        sslSettings.paramsList = Array.isArray(res.data) ? res.data : []
+        if (dnsChecking.value && sslSettings.paramsList.length === 0) {
+          setTimeout(getSSLDNSParams, 1000)
+        }
       }
     })
-  
-    if (sslSettings.paramsList.length === 0) {
-      setTimeout(function () {
-        getSSLDNSParams()
-      }, 1000);
-    }
-  
-  
   }
   
   const next = () => {
@@ -279,12 +386,19 @@ export function usePage() {
         if (dnsChecking.value) {
           fullscreenLoading.value = true;
           waitDesc.value = lang.dns_challenge_wait;
+          checkStatus();
         } else {
           setSSLConfig();
         }
         break
     }
   
+  }
+
+  const previous = () => {
+    if (active.value > 0) {
+      active.value--
+    }
   }
 
   return {
@@ -298,12 +412,14 @@ export function usePage() {
     waitDesc,
     adminSettings,
     dbSettings,
+    databaseLoading,
     domainSettings,
     sslSettings,
     active,
     fullscreenLoading,
     dnsChecking,
     dnsInfos,
+    hasDNSIPv6,
     port,
     addDomain,
     setPassword,
@@ -311,12 +427,16 @@ export function usePage() {
     getDbConfig,
     getDomainConfig,
     setDbConfig,
+    handleDbTypeChange,
     getDNSConfig,
+    formatDNSRecordTTL,
+    copyDNSValue,
     getSSLConfig,
     setSSLConfig,
     checkStatus,
     setDomainConfig,
     getSSLDNSParams,
-    next
+    next,
+    previous
   }
 }

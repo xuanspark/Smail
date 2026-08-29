@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jinnrry/pmail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/ydzydzydz/pmail_telegram_push/model"
@@ -130,27 +130,25 @@ func (h *PmailTelegramPushHook) buildSendText(email *parsemail.Email, setting *m
 	return text
 }
 
-// buildPamilLinkButton 创建Pamil链接按钮
+// buildPamilLinkButton 创建邮件页面链接按钮
 func (h *PmailTelegramPushHook) buildPamilLinkButton() *models.InlineKeyboardMarkup {
-	var url string
-	if h.mainConfig.HttpsEnabled > 1 {
-		url = "http://" + h.mainConfig.WebDomain
-	} else {
-		url = "https://" + h.mainConfig.WebDomain
+	domain := strings.TrimSpace(h.pluginConfig.WebDomain)
+	if domain == "" {
+		return nil
 	}
-
+	scheme := "https"
+	if !h.pluginConfig.HTTPSEnabled {
+		scheme = "http"
+	}
 	return &models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{
-				{
-					Text: "查收邮件",
-					URL:  url,
-				},
-			},
-		},
+		InlineKeyboard: [][]models.InlineKeyboardButton{{{
+			Text: "查收邮件",
+			URL:  scheme + "://" + domain,
+		}}},
 	}
 }
 
+// sendText 发送文本消息
 // sendText 发送文本消息
 func (h *PmailTelegramPushHook) sendText(email *parsemail.Email, setting *model.TelegramPushSetting) (msg *models.Message, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(h.pluginConfig.Timeout)*time.Second)

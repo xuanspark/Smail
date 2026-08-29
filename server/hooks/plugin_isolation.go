@@ -75,8 +75,5 @@ func isolatedPluginEnv(env []string) []string {
 		result = append(result, item)
 	}
 	result = append(result, "SMAIL_PLUGIN_SANDBOX=1")
-	if os.Getenv("SMAIL_PLUGIN_NETWORK") == "1" {
-		result = append(result, "SMAIL_PLUGIN_NETWORK=1")
-	}
 	return result
 }

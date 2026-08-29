@@ -18,7 +18,7 @@ func StartWithTls() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
-	crt, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	crt, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load POP3 TLS certificate: %w", err)
 	}
@@ -43,7 +43,7 @@ func Start() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
-	crt, err := tls.LoadX509KeyPair(cfg.SSLPublicKeyPath, cfg.SSLPrivateKeyPath)
+	crt, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load POP3 certificate: %w", err)
 	}

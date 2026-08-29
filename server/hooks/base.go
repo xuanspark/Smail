@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/models"
+	pluginservice "git.pcux.cn/xuans/Smail/services/plugin"
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
@@ -30,9 +31,17 @@ import (
 var HookList map[string]framework.EmailHook
 
 type HookSender struct {
-	httpc  http.Client
-	name   string
-	socket string
+	httpc      http.Client
+	name       string
+	executable string
+	socket     string
+	authToken  string
+}
+
+var pluginConfigService *pluginservice.ConfigService
+
+func SetPluginConfigService(service *pluginservice.ConfigService) {
+	pluginConfigService = service
 }
 
 const (
@@ -64,6 +73,9 @@ func (h *HookSender) callWithResponseLimit(endpoint string, payload any, maxResp
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if h.authToken != "" {
+		req.Header.Set("X-Smail-Plugin-Token", h.authToken)
+	}
 	ret, err := h.httpc.Do(req)
 	if err != nil {
 		return nil, err
@@ -130,6 +142,42 @@ func (h *HookSender) ReceiveParseAfter(ctx *context.Context, email *parsemail.Em
 	}
 }
 
+func (h *HookSender) Capabilities() (framework.Capabilities, error) {
+	body, err := h.call("Capabilities", struct{}{})
+	if err != nil {
+		return framework.Capabilities{}, err
+	}
+	var capabilities framework.Capabilities
+	if err := json.Unmarshal(body, &capabilities); err != nil {
+		return framework.Capabilities{}, err
+	}
+	return capabilities, nil
+}
+
+func (h *HookSender) Health() error {
+	body, err := h.call("Health", struct{}{})
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil || response.Status != "ok" {
+		return errors.New("plugin health check returned an invalid status")
+	}
+	return nil
+}
+
+func (h *HookSender) ValidateConfig(payload framework.PluginRuntimeConfig) error {
+	_, err := h.call("ValidateConfig", payload)
+	return err
+}
+
+func (h *HookSender) Configure(payload framework.PluginRuntimeConfig) error {
+	_, err := h.call("Configure", payload)
+	return err
+}
+
 func (h *HookSender) GetName(ctx *context.Context) string {
 	body, err := h.call("GetName", framework.HookDTO{Ctx: ctx})
 	if err != nil {
@@ -152,7 +200,7 @@ func (h *HookSender) SettingsHtml(ctx *context.Context, url string, requestData 
 	return string(body)
 }
 
-func NewHookSender(socketPath string, name string, serverVersion string) *HookSender {
+func NewHookSender(socketPath string, name string, serverVersion string, authToken ...string) *HookSender {
 	httpc := http.Client{
 		Timeout: time.Second * 10,
 		Transport: &http.Transport{
@@ -161,10 +209,15 @@ func NewHookSender(socketPath string, name string, serverVersion string) *HookSe
 			},
 		},
 	}
+	token := ""
+	if len(authToken) > 0 {
+		token = authToken[0]
+	}
 	return &HookSender{
-		httpc:  httpc,
-		socket: socketPath,
-		name:   name,
+		httpc:     httpc,
+		socket:    socketPath,
+		name:      name,
+		authToken: token,
 	}
 }
 
@@ -183,8 +236,12 @@ func Init(serverVersion string) {
 		return
 	}
 
-	allowedPlugins := pluginAllowList(cfg.PluginAllowList)
-	if len(allowedPlugins) == 0 {
+	definitions, err := pluginDefinitionsForStartup(cfg)
+	if err != nil {
+		log.Warn("Plugin loading is disabled because the configured plugin target is invalid")
+		return
+	}
+	if len(definitions) == 0 {
 		log.Info("Plugin loading is disabled because the allow list is empty")
 		return
 	}
@@ -199,59 +256,60 @@ func Init(serverVersion string) {
 		return
 	}
 
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		log.Error("Plugin directory cannot be read")
-		return
-	}
-
 	pluginNo := 1
-	for _, entry := range entries {
-		name := entry.Name()
-		if !allowedPlugins[name] || entry.Type()&os.ModeSymlink != 0 {
+	for _, definition := range definitions {
+		logicalID := definition.LogicalID
+		executableName, executableErr := pluginservice.ExecutableName(logicalID, runtime.GOOS)
+		if executableErr != nil {
+			log.Warnf("[%s] Plugin executable mapping is unavailable", logicalID)
 			continue
 		}
-		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() || !isPluginExecutable(name, info.Mode()) || !securePluginFile(info.Mode()) || !securePluginFileOwner(info) {
-			log.Warnf("[%s] Plugin file was rejected", name)
+		pluginPath := filepath.Join(root, executableName)
+		info, statErr := os.Lstat(pluginPath)
+		if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || !isPluginExecutable(executableName, info.Mode()) || !securePluginFile(info.Mode()) || !securePluginFileOwner(info) {
+			log.Warnf("[%s] Plugin file was rejected", logicalID)
 			continue
 		}
-
-		pluginPath := filepath.Join(root, name)
-		socketName, err := newPluginSocketName(pluginNo)
-		if err != nil {
-			log.Warnf("[%s] Plugin socket name generation failed", name)
+		socketName, socketErr := newPluginSocketName(pluginNo)
+		if socketErr != nil {
+			log.Warnf("[%s] Plugin socket name generation failed", logicalID)
 			continue
 		}
-		env := pluginEnvironment(root, name)
-		launchSpec, err := newPluginLaunchSpec(pluginPath, root, name, socketName, env)
-		if err != nil {
+		authToken, tokenErr := newPluginAuthToken()
+		if tokenErr != nil {
+			log.Warnf("[%s] Plugin authentication material generation failed", logicalID)
+			continue
+		}
+		env := pluginEnvironment(root, logicalID)
+		env = appendPluginEnv(env, "SMAIL_PLUGIN_RPC_TOKEN", authToken)
+		launchSpec, launchErr := newPluginLaunchSpec(pluginPath, root, executableName, socketName, env)
+		if launchErr != nil {
 			if !config.DevelopmentMode {
-				log.Warnf("[%s] Plugin rejected because secure process isolation is unavailable: %v", name, err)
+				log.Warnf("[%s] Plugin rejected because secure process isolation is unavailable: %v", logicalID, launchErr)
 				continue
 			}
-			log.Warnf("[%s] Secure process isolation is unavailable in development mode: %v", name, err)
-			launchSpec = compatibilityPluginLaunchSpec(pluginPath, root, name, socketName, env)
+			log.Warnf("[%s] Secure process isolation is unavailable in development mode: %v", logicalID, launchErr)
+			launchSpec = compatibilityPluginLaunchSpec(pluginPath, root, executableName, socketName, env)
 		}
 		socketPath := launchSpec.socketPath
 		if !isAbstractPluginSocket(socketPath) {
-			if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-				log.Warnf("[%s] Plugin socket cleanup failed", name)
+			if removeErr := os.Remove(socketPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				log.Warnf("[%s] Plugin socket cleanup failed", logicalID)
 				launchSpec.cleanup()
 				continue
 			}
 		}
 
-		log.Infof("[%s] Plugin load", name)
-		process, err := os.StartProcess(launchSpec.path, launchSpec.args, launchSpec.procAttr)
-		if err != nil {
-			log.Warnf("[%s] Plugin start failed", name)
+		log.Infof("[%s] Plugin load", logicalID)
+		process, startErr := os.StartProcess(launchSpec.path, launchSpec.args, launchSpec.procAttr)
+		if startErr != nil {
+			log.Warnf("[%s] Plugin start failed", logicalID)
 			launchSpec.cleanup()
 			continue
 		}
 		launchSpec.closeParentFiles()
-		if err := applyPluginResourceLimits(process); err != nil {
-			log.Warnf("[%s] Plugin resource limits could not be applied", name)
+		if limitErr := applyPluginResourceLimits(process); limitErr != nil {
+			log.Warnf("[%s] Plugin resource limits could not be applied", logicalID)
 			_ = process.Kill()
 			_, _ = process.Wait()
 			launchSpec.cleanup()
@@ -262,30 +320,167 @@ func Init(serverVersion string) {
 		processListMu.Unlock()
 		pluginNo++
 
-		go waitPlugin(process, name, socketPath, launchSpec)
+		go waitPlugin(process, logicalID, socketPath, launchSpec)
 
 		if !waitPluginSocket(socketPath) {
-			log.Warnf("[%s] Plugin socket was not created", name)
+			log.Warnf("[%s] Plugin socket was not created", logicalID)
 			_ = process.Kill()
 			continue
 		}
 		if runtime.GOOS != "windows" && !isAbstractPluginSocket(socketPath) {
-			if err := os.Chmod(socketPath, 0600); err != nil {
-				log.Warnf("[%s] Plugin socket permissions could not be tightened", name)
+			if chmodErr := os.Chmod(socketPath, 0600); chmodErr != nil {
+				log.Warnf("[%s] Plugin socket permissions could not be tightened", logicalID)
 				_ = process.Kill()
 				continue
 			}
 		}
 
-		hook := NewHookSender(socketPath, name, serverVersion)
+		hook := NewHookSender(socketPath, logicalID, serverVersion, authToken)
+		hook.executable = executableName
+		capabilities, capabilityErr := hook.Capabilities()
+		if capabilityErr != nil || !pluginCapabilitiesMatch(definition, capabilities) {
+			log.Warnf("[%s] Plugin capability handshake failed", logicalID)
+			_ = process.Kill()
+			continue
+		}
+		if instance, generation, ok := pluginInstanceForStartup(logicalID); ok {
+			payload, payloadErr := pluginRuntimeConfig(logicalID, generation, instance)
+			if payloadErr != nil || hook.ValidateConfig(payload) != nil || hook.Configure(payload) != nil {
+				log.Warnf("[%s] Plugin runtime configuration failed", logicalID)
+				_ = process.Kill()
+				continue
+			}
+		}
+		if healthErr := hook.Health(); healthErr != nil {
+			log.Warnf("[%s] Plugin health check failed", logicalID)
+			_ = process.Kill()
+			continue
+		}
+
 		hookName := strings.TrimSpace(hook.GetName(&context.Context{}))
 		if hookName == "" || !RegisterHook(hookName, hook) {
-			log.Warnf("[%s] Plugin reported an invalid hook name", name)
+			log.Warnf("[%s] Plugin reported an invalid hook name", logicalID)
 			_ = process.Kill()
 			continue
 		}
 		log.Infof("[%s] Plugin load success", hookName)
 	}
+}
+
+func pluginInstanceForStartup(logicalID string) (config.PluginInstance, uint64, bool) {
+	manager := config.CurrentManager()
+	if manager == nil {
+		return config.PluginInstance{}, 0, false
+	}
+	snapshot := manager.Snapshot()
+	instance, ok := snapshot.Plugins.Plugins[logicalID]
+	return instance, snapshot.Generation, ok
+}
+
+func pluginRuntimeConfig(logicalID string, generation uint64, instance config.PluginInstance) (framework.PluginRuntimeConfig, error) {
+	if err := validatePluginRuntimeBinding(logicalID, instance); err != nil {
+		return framework.PluginRuntimeConfig{}, err
+	}
+	if generation == 0 {
+		return framework.PluginRuntimeConfig{}, errors.New("plugin configuration generation is invalid")
+	}
+	result := framework.PluginRuntimeConfig{
+		PluginID:     logicalID,
+		Generation:   generation,
+		Settings:     append(json.RawMessage(nil), instance.Settings...),
+		Capabilities: append([]string(nil), instance.Permissions.Capabilities...),
+		Network:      make([]framework.PluginNetworkTarget, 0, len(instance.Permissions.Network)),
+		Secrets:      make(map[string]string),
+	}
+	for _, target := range instance.Permissions.Network {
+		result.Network = append(result.Network, framework.PluginNetworkTarget{Scheme: target.Scheme, Host: target.Host, Port: target.Port})
+	}
+	if pluginConfigService == nil {
+		if instance.Secret.Configured() {
+			return framework.PluginRuntimeConfig{}, errors.New("plugin secret service is unavailable")
+		}
+		return result, nil
+	}
+	fieldName := ""
+	switch logicalID {
+	case "wechat_push":
+		fieldName = "appSecret"
+	case "telegram_push":
+		fieldName = "botToken"
+	}
+	if fieldName != "" {
+		secret, err := pluginConfigService.OpenSecretForPlugin(logicalID, fieldName)
+		if err != nil {
+			return framework.PluginRuntimeConfig{}, err
+		}
+		result.Secrets[fieldName] = secret
+	}
+	return result, nil
+}
+
+// validatePluginRuntimeBinding 在启动插件前再次校验配置与插件目录声明一致。
+// 该校验不能替代 ConfigManager 的完整校验，只用于阻止错误或过期快照被下发。
+func validatePluginRuntimeBinding(logicalID string, instance config.PluginInstance) error {
+	if !instance.Enabled {
+		return errors.New("plugin is disabled")
+	}
+	definition, ok := pluginservice.Lookup(logicalID)
+	if !ok {
+		return pluginservice.ErrUnknownPluginID
+	}
+	if !sameStringSet(instance.Permissions.Capabilities, definition.Capabilities) {
+		return errors.New("plugin capabilities do not match catalog")
+	}
+	if instance.Secret.Ciphertext != "" || instance.Secret.Version != 0 || !instance.Secret.UpdatedAt.IsZero() {
+		return errors.New("legacy plugin secret migration is required")
+	}
+	return nil
+}
+
+func pluginCapabilitiesMatch(definition pluginservice.Definition, capabilities framework.Capabilities) bool {
+	return capabilities.PluginID == definition.LogicalID &&
+		capabilities.Protocol == 1 &&
+		sameStringSet(capabilities.Capabilities, definition.HandshakeCapabilities) &&
+		sameStringSet(capabilities.Settings, definition.SettingsFields)
+}
+
+func sameStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	values := make(map[string]struct{}, len(left))
+	for _, value := range left {
+		if _, exists := values[value]; exists {
+			return false
+		}
+		values[value] = struct{}{}
+	}
+	for _, value := range right {
+		if _, exists := values[value]; !exists {
+			return false
+		}
+	}
+	return true
+}
+
+func pluginDefinitionsForStartup(legacy *config.Config) ([]pluginservice.Definition, error) {
+	if manager := config.CurrentManager(); manager != nil {
+		return pluginDefinitionsFromRuntime(manager.Snapshot())
+	}
+	if legacy == nil {
+		return nil, errors.New("plugin configuration is unavailable")
+	}
+	return pluginservice.EnabledDefinitions(legacy.PluginAllowList, runtime.GOOS)
+}
+
+func pluginDefinitionsFromRuntime(runtimeConfig config.RuntimeConfig) ([]pluginservice.Definition, error) {
+	values := make([]string, 0, len(runtimeConfig.Plugins.Plugins))
+	for logicalID, instance := range runtimeConfig.Plugins.Plugins {
+		if instance.Enabled {
+			values = append(values, logicalID)
+		}
+	}
+	return pluginservice.EnabledDefinitions(values, runtime.GOOS)
 }
 
 func pluginAllowList(values []string) map[string]bool {
@@ -354,6 +549,14 @@ func waitPlugin(process *os.Process, name string, socketPath string, launchSpec 
 	launchSpec.cleanup()
 }
 
+func newPluginAuthToken() (string, error) {
+	token := make([]byte, 32)
+	if _, err := rand.Read(token); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(token), nil
+}
+
 func newPluginSocketName(pluginNo int) (string, error) {
 	token := make([]byte, 16)
 	if _, err := rand.Read(token); err != nil {
@@ -379,14 +582,16 @@ func minimalPluginEnv(root string) []string {
 
 func pluginEnvironment(root, name string) []string {
 	ret := minimalPluginEnv(root)
+	if config.CurrentManager() != nil {
+		return ret
+	}
 	cfg := config.CurrentConfig()
 	if cfg == nil {
 		return ret
 	}
-	pluginName := strings.TrimSuffix(strings.ToLower(name), filepath.Ext(name))
+	pluginName := strings.ToLower(strings.TrimSpace(name))
 	if pluginName == "wechat_push" {
 		ret = appendPluginEnv(ret, "SMAIL_WECHAT_APP_ID", cfg.WeChatPushAppId)
-		ret = appendPluginEnv(ret, "SMAIL_WECHAT_SECRET", cfg.WeChatPushSecret)
 		ret = appendPluginEnv(ret, "SMAIL_WECHAT_TEMPLATE_ID", cfg.WeChatPushTemplateId)
 		ret = appendPluginEnv(ret, "SMAIL_WECHAT_USER_ID", cfg.WeChatPushUserId)
 		ret = appendPluginEnv(ret, "SMAIL_WEB_DOMAIN", cfg.WebDomain)
@@ -418,7 +623,11 @@ func PersistPluginConfig(pluginName, payload string) error {
 	if err != nil || !securePluginDirectory(root) || !securePluginDirectoryOwner(root) {
 		return errors.New("plugin directory is unsafe")
 	}
-	configPath := filepath.Join(root, pluginConfigFileName(sender.name))
+	executableName := sender.executable
+	if executableName == "" {
+		executableName = sender.name
+	}
+	configPath := filepath.Join(root, pluginConfigFileName(executableName))
 	info, err := os.Lstat(configPath)
 	if err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("plugin configuration path is unsafe")

@@ -98,6 +98,16 @@ type rollbackTicket struct {
 	ExpiresAt        time.Time
 }
 
+type LegacyPluginSecret struct {
+	PluginID  string
+	FieldName string
+	Plaintext string
+}
+
+type LegacyPluginSecretImporter func(context.Context, []LegacyPluginSecret) error
+
+var ErrPluginSecretMigrationRequired = errors.New("plugin secret migration is required")
+
 type ConfigManager struct {
 	mu              sync.RWMutex
 	writeMu         sync.Mutex
@@ -666,13 +676,14 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		if err := ParseStrict(payload, &value); err != nil {
 			return RuntimeConfig{}, err
 		}
-		for logicalID, plugin := range value.Plugins {
+		for _, plugin := range value.Plugins {
 			if storedSecretHasMaterial(plugin.Secret) {
 				return RuntimeConfig{}, ErrInvalidSecretChange
 			}
-			if currentPlugin, ok := current.Plugins.Plugins[logicalID]; ok {
-				plugin.Secret = currentPlugin.Secret
-				value.Plugins[logicalID] = plugin
+		}
+		for _, plugin := range current.Plugins.Plugins {
+			if storedSecretHasMaterial(plugin.Secret) {
+				return RuntimeConfig{}, ErrPluginSecretMigrationRequired
 			}
 		}
 		candidate.Plugins = value
@@ -742,21 +753,6 @@ func applySecretChanges(candidate *RuntimeConfig, section Section, changes map[s
 				return err
 			}
 			candidate.SMTP.Relay.Password = stored
-		case section == SectionPlugins && strings.HasPrefix(name, "plugins.") && strings.HasSuffix(name, ".secret"):
-			logicalID := strings.TrimSuffix(strings.TrimPrefix(name, "plugins."), ".secret")
-			if !logicalIDPattern.MatchString(logicalID) {
-				return ErrInvalidSecretChange
-			}
-			plugin, ok := candidate.Plugins.Plugins[logicalID]
-			if !ok {
-				return ErrInvalidSecretChange
-			}
-			stored, err := ApplySecretChange(vault, plugin.Secret, change, SecretPolicy{AllowClear: true, MaxLength: 4096}, now)
-			if err != nil {
-				return err
-			}
-			plugin.Secret = stored
-			candidate.Plugins.Plugins[logicalID] = plugin
 		default:
 			return ErrInvalidSecretChange
 		}
@@ -766,6 +762,98 @@ func applySecretChanges(candidate *RuntimeConfig, section Section, changes map[s
 
 func storedSecretHasMaterial(secret StoredSecret) bool {
 	return secret.Ciphertext != "" || secret.Version != 0 || !secret.UpdatedAt.IsZero()
+}
+
+// MigrateLegacyPluginSecrets moves compatibility-only plugin secrets out of plugins.json.
+// The importer must persist all received values atomically before this method commits the new configuration generation.
+func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer LegacyPluginSecretImporter) (bool, error) {
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
+	if m == nil || importer == nil || m.vault == nil {
+		return false, ErrPluginSecretMigrationRequired
+	}
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.RLock()
+	current := cloneRuntimeConfig(m.current)
+	pending := m.pending != nil
+	m.mu.RUnlock()
+	if pending {
+		return false, ErrGenerationConflict
+	}
+
+	values := make([]LegacyPluginSecret, 0, len(current.Plugins.Plugins))
+	for logicalID, instance := range current.Plugins.Plugins {
+		if !storedSecretHasMaterial(instance.Secret) {
+			continue
+		}
+		fieldName, ok := legacyPluginSecretField(logicalID)
+		if !ok || !instance.Secret.Configured() {
+			return false, ErrPluginSecretMigrationRequired
+		}
+		plaintext, err := m.vault.Decrypt(instance.Secret.Version, instance.Secret.Ciphertext)
+		if err != nil || plaintext == "" {
+			return false, ErrPluginSecretMigrationRequired
+		}
+		values = append(values, LegacyPluginSecret{PluginID: logicalID, FieldName: fieldName, Plaintext: plaintext})
+	}
+	if len(values) == 0 {
+		return false, nil
+	}
+	if err := importer(ctx, values); err != nil {
+		return false, err
+	}
+
+	candidate := cloneRuntimeConfig(current)
+	for logicalID, instance := range candidate.Plugins.Plugins {
+		instance.Secret = StoredSecret{}
+		candidate.Plugins.Plugins[logicalID] = instance
+	}
+	setCandidateGeneration(&candidate, current.Generation+1)
+	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
+		return false, err
+	}
+	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+		return false, err
+	}
+	if err := m.transactions.Commit(current, candidate); err != nil {
+		return false, err
+	}
+	if err := m.snapshots.Publish(candidate); err != nil {
+		return false, err
+	}
+	now := time.Now().UTC()
+	m.mu.Lock()
+	m.current = cloneRuntimeConfig(candidate)
+	m.pending = nil
+	m.status = ConfigStatus{SetupState: candidate.SetupState, ActiveGeneration: candidate.Generation, LastValidAt: &now, PendingRestart: []ServiceName{ServicePlugins}}
+	m.mu.Unlock()
+	if err := m.writeAudit(ctx, ConfigAuditEvent{
+		Operation:      ConfigOperationMigration,
+		Section:        SectionPlugins,
+		ActorID:        "system",
+		ActorRole:      "system",
+		FromGeneration: current.Generation,
+		ToGeneration:   candidate.Generation,
+		ChangedFields:  []string{"plugins.legacySecret"},
+		Result:         "success",
+		CreatedAt:      now,
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func legacyPluginSecretField(logicalID string) (string, bool) {
+	switch logicalID {
+	case "wechat_push":
+		return "appSecret", true
+	case "telegram_push":
+		return "botToken", true
+	default:
+		return "", false
+	}
 }
 
 func requiresSecretStepUp(changes map[string]SecretChange) bool {

@@ -61,10 +61,6 @@ func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string
 		return nil, err
 	}
 
-	cloneFlags := uintptr(0)
-	if os.Getenv("SMAIL_PLUGIN_NETWORK") != "1" {
-		cloneFlags = unix.CLONE_NEWNET
-	}
 	isolatedEnv := isolatedPluginEnv(env)
 	abstractSocket := "@" + socketName
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: abstractSocket, Net: "unix"})
@@ -80,6 +76,7 @@ func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string
 		cleanup()
 		return nil, fmt.Errorf("prepare plugin listener: %w", err)
 	}
+	cloneFlags := uintptr(unix.CLONE_NEWNET)
 	return &pluginLaunchSpec{
 		path:        "/" + name,
 		args:        []string{name, "fd:3"},

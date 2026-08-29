@@ -11,6 +11,20 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
+func TestValidateAdminPasswordLengthBoundaries(t *testing.T) {
+	for _, candidate := range []string{"12345678", "123456789012"} {
+		if err := validateAdminPassword(candidate); err != nil {
+			t.Fatalf("password length %d was rejected: %v", len(candidate), err)
+		}
+	}
+
+	for _, candidate := range []string{"1234567", "1234567890123"} {
+		if err := validateAdminPassword(candidate); err == nil {
+			t.Fatalf("password length %d was accepted", len(candidate))
+		}
+	}
+}
+
 func TestSetAdminPasswordValidatesAndPreventsDuplicates(t *testing.T) {
 	oldConfig := config.Instance
 	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(t.TempDir(), "setup.db")}
@@ -21,16 +35,16 @@ func TestSetAdminPasswordValidatesAndPreventsDuplicates(t *testing.T) {
 	t.Cleanup(func() { _ = db.Instance.Close() })
 
 	ctx := &context.Context{}
-	if err := SetAdminPassword(ctx, ".invalid", "StrongPass123"); err == nil {
+	if err := SetAdminPassword(ctx, ".invalid", "StrongP12"); err == nil {
 		t.Fatal("invalid administrator account was accepted")
 	}
 	if err := SetAdminPassword(ctx, "admin-user", "short"); err == nil {
 		t.Fatal("short administrator password was accepted")
 	}
-	if err := SetAdminPassword(ctx, "admin-user", "StrongPass123"); err != nil {
+	if err := SetAdminPassword(ctx, "admin-user", "StrongP12"); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetAdminPassword(ctx, "second-admin", "StrongPass456"); err == nil {
+	if err := SetAdminPassword(ctx, "second-admin", "StrongP45"); err == nil {
 		t.Fatal("duplicate administrator initialization was accepted")
 	}
 
@@ -38,7 +52,20 @@ func TestSetAdminPasswordValidatesAndPreventsDuplicates(t *testing.T) {
 	if _, err := db.Instance.Where("account = ?", "admin-user").Get(&user); err != nil {
 		t.Fatal(err)
 	}
-	if user.ID == 0 || user.IsAdmin != 1 || !password.Verify(user.Password, "StrongPass123") {
+	if user.ID == 0 || user.IsAdmin != 1 || !password.Verify(user.Password, "StrongP12") {
 		t.Fatal("administrator was not initialized correctly")
+	}
+}
+func TestAdminPasswordRequiresInitializedDatabase(t *testing.T) {
+	oldInstance := db.Instance
+	db.Instance = nil
+	t.Cleanup(func() { db.Instance = oldInstance })
+
+	ctx := &context.Context{}
+	if _, err := GetAdminPassword(ctx); err == nil {
+		t.Fatal("admin account lookup succeeded without an initialized database")
+	}
+	if err := SetAdminPassword(ctx, "admin-user", "StrongP12"); err == nil {
+		t.Fatal("admin account creation succeeded without an initialized database")
 	}
 }
