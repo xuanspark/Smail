@@ -139,14 +139,13 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 }
 
 func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	cfg := config.CurrentConfig()
-	if cfg == nil || cfg.Domain == "" {
+	mailDomains := config.CurrentMailDomains()
+	if mailDomains.Primary == "" {
 		response.NewErrorResponse(response.ServerError, "服务配置不可用", "").FPrint(w)
 		return
 	}
-	domains := cfg.Domains
-	domains = array.Difference(domains, []string{cfg.Domain})
-	domains = append([]string{cfg.Domain}, domains...)
+	domains := array.Difference(mailDomains.Accepted, []string{mailDomains.Primary})
+	domains = append([]string{mailDomains.Primary}, domains...)
 	result := map[string]any{
 		"account":              ctx.UserAccount,
 		"name":                 ctx.UserName,

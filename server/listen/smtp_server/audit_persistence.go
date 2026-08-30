@@ -140,12 +140,14 @@ func persistInitialAudit(ctx *context.Context, modelEmail models.Email, userIDs 
 }
 
 func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailType int, reallyTo []string, SPFStatus, dkimStatus bool) ([]*models.User, bool, error) {
-	cfg := config.CurrentConfig()
-	if cfg == nil {
-		return nil, false, stderrors.New("runtime configuration is unavailable")
-	}
 	if emailType != int(consts.EmailTypeReceive) {
 		return nil, false, nil
+	}
+
+	policy := config.CurrentEmailPolicy()
+	domains := config.CurrentMailDomains()
+	if len(domains.Accepted) == 0 {
+		return nil, false, stderrors.New("runtime configuration is unavailable")
 	}
 
 	accounts := incomingAccounts(email, reallyTo)
@@ -164,9 +166,9 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 	}
 
 	if DropUnknownRecipientEmails &&
-		((cfg.SpamFilterLevel == 1 && !SPFStatus && !dkimStatus) ||
-			(cfg.SpamFilterLevel == 2 && !SPFStatus) ||
-			(cfg.SpamFilterLevel == 3 && !dkimStatus)) {
+		((policy.SpamFilterLevel == 1 && !SPFStatus && !dkimStatus) ||
+			(policy.SpamFilterLevel == 2 && !SPFStatus) ||
+			(policy.SpamFilterLevel == 3 && !dkimStatus)) {
 		log.WithContext(ctx).Infoln("垃圾邮件，拒信")
 		log.WithContext(ctx).Infof("收件人不存在且DKIM验证失败，丢弃邮件: recipient_count=%d", len(accounts))
 		return nil, true, nil
@@ -183,10 +185,7 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 }
 
 func incomingAccounts(email *parsemail.Email, reallyTo []string) []string {
-	cfg := config.CurrentConfig()
-	if cfg == nil {
-		return nil
-	}
+	domains := config.CurrentMailDomains()
 	var accounts []string
 	if len(reallyTo) > 0 {
 		for _, recipient := range reallyTo {
@@ -195,7 +194,7 @@ func incomingAccounts(email *parsemail.Email, reallyTo []string) []string {
 				continue
 			}
 			name, domain := account.GetDomainAccount()
-			if array.InArray(domain, cfg.Domains) && name != "" {
+			if array.InArray(domain, domains.Accepted) && name != "" {
 				accounts = append(accounts, strings.ToLower(name))
 			}
 		}

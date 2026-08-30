@@ -60,8 +60,8 @@ type attachment struct {
 }
 
 func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	cfg := config.CurrentConfig()
-	if cfg == nil || cfg.Domain == "" || len(cfg.Domains) == 0 {
+	domains := config.CurrentMailDomains()
+	if domains.Primary == "" || len(domains.Accepted) == 0 {
 		response.NewErrorResponse(response.ServerError, "服务配置不可用", "").FPrint(w)
 		return
 	}
@@ -73,17 +73,17 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	log.WithContext(ctx).Infof("发送邮件")
 
-	if reqData.From.Email != "" && !validation.IsAuthorizedSender(reqData.From.Email, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+	if reqData.From.Email != "" && !validation.IsAuthorizedSender(reqData.From.Email, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "\u53d1\u4ef6\u4eba\u5730\u5740\u4e0d\u5141\u8bb8", "").FPrint(w)
 		return
 	}
-	if reqData.Sender.Email != "" && !validation.IsAuthorizedSender(reqData.Sender.Email, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+	if reqData.Sender.Email != "" && !validation.IsAuthorizedSender(reqData.Sender.Email, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "\u53d1\u9001\u8005\u5730\u5740\u4e0d\u5141\u8bb8", "").FPrint(w)
 		return
 	}
 
 	if reqData.From.Email == "" {
-		reqData.From.Email = ctx.UserAccount + "@" + cfg.Domain
+		reqData.From.Email = ctx.UserAccount + "@" + domains.Primary
 	}
 
 	if reqData.From.Email == "" {
@@ -192,7 +192,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	log.WithContext(ctx).Debugf("插件执行--SendBefore End")
 
-	if e.From == nil || e.Sender == nil || !validation.IsAuthorizedSender(e.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) || !validation.IsAuthorizedSender(e.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+	if e.From == nil || e.Sender == nil || !validation.IsAuthorizedSender(e.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) || !validation.IsAuthorizedSender(e.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "\u63d2\u4ef6\u4fee\u6539\u4e86\u672a\u6388\u6743\u7684\u53d1\u4ef6\u4eba", "").FPrint(w)
 		return
 	}
@@ -208,7 +208,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	msgID, err := parsemail.GenerateMsgID(cfg.Domain)
+	msgID, err := parsemail.GenerateMsgID(domains.Primary)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("generate outgoing message ID failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "send_fail"), "").FPrint(w)

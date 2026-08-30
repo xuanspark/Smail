@@ -75,6 +75,52 @@ func TestCurrentMailPortsUsesSafeDefaultsWithoutRuntimeManager(t *testing.T) {
 	}
 }
 
+func TestCurrentEmailPolicyReadsPartitionSnapshot(t *testing.T) {
+	previousManager := CurrentManager()
+	defer SetRuntimeManager(previousManager)
+
+	runtime := validRuntimeConfig()
+	runtime.Email.Policy = EmailConfig{
+		SMTPPort:                2525,
+		IMAPPort:                1143,
+		POP3Port:                1110,
+		MaxMessageBytes:         8 << 20,
+		SpamFilterLevel:         2,
+		LoginVerificationPolicy: "new_device",
+		ExternalRecoveryEnabled: true,
+	}
+	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
+
+	got := CurrentEmailPolicy()
+	if got != runtime.Email.Policy {
+		t.Fatalf("email policy = %+v, want partition snapshot", got)
+	}
+}
+
+func TestCurrentEmailPolicyFallsBackToLegacyConfig(t *testing.T) {
+	previousManager := CurrentManager()
+	previousInstance := Instance
+	defer func() {
+		SetRuntimeManager(previousManager)
+		Instance = previousInstance
+		PublishConfigSnapshot(previousInstance)
+	}()
+	SetRuntimeManager(nil)
+
+	Instance = &Config{
+		SMTPPort:                2525,
+		SpamFilterLevel:         2,
+		LoginPolicy:             "new_device",
+		ExternalRecoveryEnabled: true,
+	}
+	PublishConfigSnapshot(Instance)
+
+	got := CurrentEmailPolicy()
+	if got.SMTPPort != 2525 || got.IMAPPort != 0 || got.POP3Port != 0 || got.MaxMessageBytes != 0 || got.SpamFilterLevel != 2 || got.LoginVerificationPolicy != "new_device" || !got.ExternalRecoveryEnabled {
+		t.Fatalf("legacy email policy = %+v, want mapped fallback", got)
+	}
+}
+
 func TestCurrentMailPortsReadsEmailPolicySnapshot(t *testing.T) {
 	previousManager := CurrentManager()
 	defer SetRuntimeManager(previousManager)

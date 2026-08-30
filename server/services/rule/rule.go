@@ -190,16 +190,13 @@ func forwardToLocalUser(ctx *context.Context, email *parsemail.Email, account, f
 }
 
 func isLocalDomain(domain string) bool {
-	cfg := config.CurrentConfig()
-	if cfg == nil {
-		return false
-	}
-	for _, localDomain := range cfg.Domains {
+	domains := config.CurrentMailDomains()
+	for _, localDomain := range domains.Accepted {
 		if strings.EqualFold(domain, localDomain) {
 			return true
 		}
 	}
-	return strings.EqualFold(domain, cfg.Domain)
+	return strings.EqualFold(domain, domains.Primary)
 }
 
 func doMove(ctx *context.Context, rule *dto.Rule, email *parsemail.Email) error {

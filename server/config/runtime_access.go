@@ -161,6 +161,27 @@ func CurrentMailDomains() MailDomains {
 	return domains
 }
 
+func CurrentEmailPolicy() EmailConfig {
+	manager := CurrentManager()
+	if manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.Generation != 0 {
+			return runtime.Email.Policy
+		}
+	}
+
+	cfg := CurrentConfig()
+	if cfg == nil {
+		return EmailConfig{}
+	}
+	return EmailConfig{
+		SMTPPort:                cfg.SMTPPort,
+		SpamFilterLevel:         cfg.SpamFilterLevel,
+		LoginVerificationPolicy: cfg.LoginPolicy,
+		ExternalRecoveryEnabled: cfg.ExternalRecoveryEnabled,
+	}
+}
+
 type SMTPRuntimeSettings struct {
 	Relay                   SMTPConfig
 	Password                string
@@ -213,22 +234,15 @@ func CurrentSMTPRuntimeSettings() (SMTPRuntimeSettings, error) {
 
 func CurrentMailPorts() MailPorts {
 	ports := MailPorts{SMTP: 25, IMAP: 143, POP3: 110}
-	manager := CurrentManager()
-	if manager == nil {
-		return ports
+	policy := CurrentEmailPolicy()
+	if policy.SMTPPort > 0 && policy.SMTPPort <= 65535 {
+		ports.SMTP = policy.SMTPPort
 	}
-	runtime := manager.Snapshot()
-	if runtime.Generation == 0 {
-		return ports
+	if policy.IMAPPort > 0 && policy.IMAPPort <= 65535 {
+		ports.IMAP = policy.IMAPPort
 	}
-	if runtime.Email.Policy.SMTPPort > 0 && runtime.Email.Policy.SMTPPort <= 65535 {
-		ports.SMTP = runtime.Email.Policy.SMTPPort
-	}
-	if runtime.Email.Policy.IMAPPort > 0 && runtime.Email.Policy.IMAPPort <= 65535 {
-		ports.IMAP = runtime.Email.Policy.IMAPPort
-	}
-	if runtime.Email.Policy.POP3Port > 0 && runtime.Email.Policy.POP3Port <= 65535 {
-		ports.POP3 = runtime.Email.Policy.POP3Port
+	if policy.POP3Port > 0 && policy.POP3Port <= 65535 {
+		ports.POP3 = policy.POP3Port
 	}
 	return ports
 }
