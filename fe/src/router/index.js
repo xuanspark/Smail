@@ -1,13 +1,4 @@
 import { createRouter, createWebHashHistory } from "vue-router";
-import ListView from "../views/List/List.vue";
-import EditerView from "../views/Editer/Editer.vue";
-import LoginView from "../views/Login/Login.vue";
-import EmailDetailView from "../views/EmailDetail/EmailDetail.vue";
-import SetupView from "../views/Setup/Setup.vue";
-import PasswordRecoveryView from "../views/PasswordRecovery/PasswordRecovery.vue";
-import ResetBlockedView from "../views/ResetBlocked/ResetBlocked.vue";
-import LoginVerificationView from "../views/LoginVerification/LoginVerification.vue";
-import ForcePasswordChangeView from "../views/ForcePasswordChange/ForcePasswordChange.vue";
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 const router = createRouter({
@@ -16,56 +7,56 @@ const router = createRouter({
         {
             path: "/",
             name: "home",
-            component: ListView,
+            component: () => import("../views/List/List.vue"),
             meta: {requiresAuth: true}
         },
         {
             path: "/list",
             name: "list",
-            component: ListView,
+            component: () => import("../views/List/List.vue"),
             meta: {requiresAuth: true}
         },
         {
             path: "/editer",
             name: "editer",
-            component: EditerView,
+            component: () => import("../views/Editer/Editer.vue"),
             meta: {requiresAuth: true}
         },
         {
             path: "/login",
             name: "login",
-            component: LoginView
+            component: () => import("../views/Login/Login.vue")
         },
         {
             path: "/login-verification",
             name: "login-verification",
-            component: LoginVerificationView
+            component: () => import("../views/LoginVerification/LoginVerification.vue")
         },
         {
             path: "/force-password-change",
             name: "force-password-change",
-            component: ForcePasswordChangeView,
+            component: () => import("../views/ForcePasswordChange/ForcePasswordChange.vue"),
             meta: {requiresAuth: true}
         },
         {
             path: "/setup",
             name: "setup",
-            component: SetupView
+            component: () => import("../views/Setup/Setup.vue")
         },
         {
             path: "/forgot-password",
             name: "forgot-password",
-            component: PasswordRecoveryView
+            component: () => import("../views/PasswordRecovery/PasswordRecovery.vue")
         },
         {
             path: "/reset-blocked",
             name: "reset-blocked",
-            component: ResetBlockedView
+            component: () => import("../views/ResetBlocked/ResetBlocked.vue")
         },
         {
             path: "/detail/:id",
             name: "detail",
-            component: EmailDetailView,
+            component: () => import("../views/EmailDetail/EmailDetail.vue"),
             meta: {requiresAuth: true}
         }
     ]
