@@ -8,6 +8,7 @@ import PasswordRecoveryView from "../views/PasswordRecovery/PasswordRecovery.vue
 import ResetBlockedView from "../views/ResetBlocked/ResetBlocked.vue";
 import LoginVerificationView from "../views/LoginVerification/LoginVerification.vue";
 import ForcePasswordChangeView from "../views/ForcePasswordChange/ForcePasswordChange.vue";
+import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 const router = createRouter({
     history: createWebHashHistory(),
@@ -71,7 +72,6 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-    const {useGlobalStatusStore} = await import("@/stores/useGlobalStatusStore");
     const globalStatus = useGlobalStatusStore();
     const needsAuthentication = to.meta.requiresAuth || to.name === "force-password-change";
     const authenticated = globalStatus.isLogin || (needsAuthentication && await globalStatus.refresh());
