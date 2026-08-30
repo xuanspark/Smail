@@ -37,13 +37,14 @@ func AuthenticateIdentifier(identifier, plain string) (*models.User, error) {
 
 // NormalizeIdentifier 将完整邮箱解析为本地账号，并拒绝未配置的域名。
 func NormalizeIdentifier(identifier string) (string, error) {
-	identifier = strings.TrimSpace(strings.ToLower(identifier))
+	identifier = strings.TrimSpace(identifier)
 	if identifier == "" || strings.ContainsAny(identifier, "\r\n") {
 		return "", errors.New("invalid identifier")
 	}
 	if !strings.Contains(identifier, "@") {
 		return validation.NormalizeAccount(identifier)
 	}
+	identifier = strings.ToLower(identifier)
 	parsed, err := mail.ParseAddress(identifier)
 	if err != nil || parsed.Address != identifier {
 		return "", errors.New("invalid identifier")
