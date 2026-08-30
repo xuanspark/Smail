@@ -149,3 +149,35 @@ func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T
 		t.Fatal("unconfigured email domain should be rejected")
 	}
 }
+
+func TestAuthenticateDoesNotTruncateFullEmailIdentifier(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	config.Instance = &config.Config{
+		DbType:  config.DBTypeSQLite,
+		DbDSN:   filepath.Join(t.TempDir(), "no-truncation-auth.db"),
+		Domain:  "example.com",
+		Domains: []string{"example.com"},
+	}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		db.Instance = oldDB
+		config.Instance = oldConfig
+	})
+
+	user := models.User{Account: "alice", Name: "Alice"}
+	if err := SetPassword(&user, "CorrectP12"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Authenticate("alice@example.com", "CorrectP12"); err == nil {
+		t.Fatal("direct account authentication must not truncate a full email identifier")
+	}
+}

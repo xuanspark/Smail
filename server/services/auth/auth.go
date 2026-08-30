@@ -18,12 +18,9 @@ import (
 )
 
 // Authenticate 统一校验网页、SMTP、IMAP 和 POP3 的用户凭据。
+// NormalizeAccount 只清理外围空白，不再截断完整邮箱标识。
 func NormalizeAccount(account string) string {
-	account = strings.TrimSpace(account)
-	if index := strings.IndexByte(account, '@'); index > 0 {
-		account = account[:index]
-	}
-	return account
+	return strings.TrimSpace(account)
 }
 
 // AuthenticateIdentifier 支持账号和受信主域名邮箱两种登录标识，最终统一到同一账号密码校验。
