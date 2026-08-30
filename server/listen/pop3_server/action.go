@@ -79,12 +79,6 @@ func (a action) User(session *gopop.Session, username string) error {
 		session.Ctx = tc
 	}
 	log.WithContext(session.Ctx).Debug("POP3 USER received")
-
-	infos := strings.Split(username, "@")
-	if len(infos) > 1 {
-		username = infos[0]
-	}
-
 	log.WithContext(session.Ctx).Debug("POP3 user name normalized")
 
 	session.User = username

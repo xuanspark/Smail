@@ -106,3 +106,46 @@ func TestHasAuthRequiresMailboxOwnershipForAdministrators(t *testing.T) {
 		t.Fatal("administrator bypassed mailbox ownership")
 	}
 }
+
+func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	config.Instance = &config.Config{
+		DbType:  config.DBTypeSQLite,
+		DbDSN:   filepath.Join(t.TempDir(), "full-email-auth.db"),
+		Domain:  "example.com",
+		Domains: []string{"example.com"},
+	}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		db.Instance = oldDB
+		config.Instance = oldConfig
+	})
+
+	user := models.User{Account: "alice", Name: "Alice"}
+	if err := SetPassword(&user, "CorrectP12"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, protocol := range []string{"smtp", "imap", "pop3"} {
+		got, err := AuthenticateProtocol(protocol, "192.0.2.10:12345", " Alice@Example.com ", "CorrectP12")
+		if err != nil {
+			t.Fatalf("%s full email authentication failed: %v", protocol, err)
+		}
+		if got == nil || got.Account != "alice" {
+			t.Fatalf("%s authenticated user = %+v", protocol, got)
+		}
+	}
+
+	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice@other.example", "CorrectP12"); err == nil {
+		t.Fatal("unconfigured email domain should be rejected")
+	}
+}

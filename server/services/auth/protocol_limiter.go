@@ -42,7 +42,10 @@ var (
 )
 
 func AuthenticateProtocol(protocol string, remoteAddress string, account string, plain string) (*models.User, error) {
-	normalizedAccount := strings.ToLower(NormalizeAccount(account))
+	normalizedAccount := strings.ToLower(strings.TrimSpace(account))
+	if resolvedAccount, err := NormalizeIdentifier(account); err == nil {
+		normalizedAccount = resolvedAccount
+	}
 	normalizedRemote := protocolRemoteHost(remoteAddress)
 	pairKey := hashedProtocolLoginKey("pair", protocol, normalizedRemote, normalizedAccount)
 	accountKey := hashedProtocolLoginKey("account", normalizedAccount)
@@ -51,7 +54,7 @@ func AuthenticateProtocol(protocol string, remoteAddress string, account string,
 	if protocolPairAttempts.blocked(pairKey) || protocolAccountAttempts.blocked(accountKey) || protocolRemoteAttempts.blocked(remoteKey) {
 		return nil, errors.New("invalid credentials")
 	}
-	user, err := Authenticate(account, plain)
+	user, err := AuthenticateIdentifier(account, plain)
 	if err != nil {
 		protocolPairAttempts.recordFailure(pairKey)
 		protocolAccountAttempts.recordFailure(accountKey)

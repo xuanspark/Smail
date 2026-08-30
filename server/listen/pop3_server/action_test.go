@@ -62,3 +62,13 @@ func Test_email(t *testing.T) {
 	fmt.Printf("%s", b.String())
 
 }
+
+func TestActionUserPreservesFullEmailIdentifier(t *testing.T) {
+	session := &gopop.Session{}
+	if err := (action{}).User(session, "Alice@Example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if session.User != "Alice@Example.com" {
+		t.Fatalf("POP3 user identifier = %q, want full email identifier", session.User)
+	}
+}
