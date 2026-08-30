@@ -96,6 +96,7 @@ type rollbackTicket struct {
 	SessionID        string
 	TargetGeneration uint64
 	ExpiresAt        time.Time
+	InFlight         bool
 }
 
 type LegacyPluginSecret struct {
@@ -524,31 +525,60 @@ func (m *ConfigManager) RollbackWithTicket(ctx context.Context, token string, ac
 		m.ticketMu.Unlock()
 		return nil, ErrAuthorizationRequired
 	}
-	delete(m.rollbackTickets, token)
+	if ticket.InFlight {
+		m.ticketMu.Unlock()
+		return nil, ErrRollbackInProgress
+	}
+	ticket.InFlight = true
+	m.rollbackTickets[token] = ticket
 	m.ticketMu.Unlock()
-	return m.rollback(ctx, ticket.TargetGeneration, actor, StepUpConfirmation{Confirmed: true, Method: "ticket"})
+
+	result, applied, err := m.rollbackWithState(ctx, ticket.TargetGeneration, actor, StepUpConfirmation{Confirmed: true, Method: "ticket"})
+	m.ticketMu.Lock()
+	if err == nil || applied || !rollbackTicketRetryable(err) {
+		delete(m.rollbackTickets, token)
+	} else if current, exists := m.rollbackTickets[token]; exists {
+		current.InFlight = false
+		m.rollbackTickets[token] = current
+	}
+	m.ticketMu.Unlock()
+	return result, err
+}
+
+func rollbackTicketRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ErrRuntimeSnapshotUnavailable)
 }
 
 func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor AuditActor, confirmation StepUpConfirmation) (*ApplyResult, error) {
+	result, _, err := m.rollbackWithState(ctx, generation, actor, confirmation)
+	return result, err
+}
+
+func (m *ConfigManager) rollbackWithState(ctx context.Context, generation uint64, actor AuditActor, confirmation StepUpConfirmation) (*ApplyResult, bool, error) {
 	if err := contextError(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if m == nil {
-		return nil, ErrManagerStorage
+		return nil, false, ErrManagerStorage
 	}
 	if generation == 0 {
-		return nil, ErrGenerationConflict
+		return nil, false, ErrGenerationConflict
 	}
 	if err := m.authorize(ctx, actor, ConfigOperationRollback, SectionRoot); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if confirmation.Method != "ticket" {
 		if err := m.confirm(ctx, actor, confirmation, ConfigOperationRollback, SectionRoot); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	if err := contextError(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
@@ -557,40 +587,40 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 	pending := m.pending != nil
 	m.mu.RUnlock()
 	if pending || generation >= current.Generation {
-		return nil, ErrGenerationConflict
+		return nil, false, ErrGenerationConflict
 	}
 	candidate, err := m.transactions.LoadBackup(generation)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := contextError(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	setCandidateGeneration(&candidate, current.Generation+1)
 	candidate.Root.UpdatedAt = time.Now().UTC()
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := m.snapshots.Validate(candidate); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := contextError(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := contextError(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := m.transactions.Commit(current, candidate); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := m.snapshots.Publish(candidate); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	now := time.Now().UTC()
 	m.mu.Lock()
@@ -615,9 +645,9 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 		Result:             "success",
 		CreatedAt:          now,
 	}); err != nil {
-		return nil, err
+		return nil, true, err
 	}
-	return &ApplyResult{Snapshot: cloneRuntimeConfig(candidate), Generation: candidate.Generation, AppliedAt: now}, nil
+	return &ApplyResult{Snapshot: cloneRuntimeConfig(candidate), Generation: candidate.Generation, AppliedAt: now}, true, nil
 }
 
 func (m *ConfigManager) authorize(ctx context.Context, actor AuditActor, operation ConfigOperation, section Section) error {

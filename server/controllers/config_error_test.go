@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -165,5 +166,15 @@ func TestConfigErrorDetailsMapsDatabaseMigrationFailures(t *testing.T) {
 				t.Fatalf("config error details = (%q, %d, %q, %#v), want (%q, %d, %q, nil)", code, status, message, fields, test.code, test.status, test.message)
 			}
 		})
+	}
+}
+
+func TestConfigErrorDetailsMapsRollbackInProgress(t *testing.T) {
+	code, status, message, _ := configErrorDetails(config.ErrRollbackInProgress)
+	if code != "CONFIG_ROLLBACK_IN_PROGRESS" || status != http.StatusConflict {
+		t.Fatalf("rollback in progress mapping = %q/%d, want conflict", code, status)
+	}
+	if message == "" || strings.Contains(message, "rollback in progress") {
+		t.Fatalf("rollback in progress message is not a Chinese public message: %q", message)
 	}
 }

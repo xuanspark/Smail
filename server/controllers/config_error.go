@@ -53,6 +53,10 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 		code = "CONFIG_MANAGER_UNAVAILABLE"
 		status = http.StatusServiceUnavailable
 		message = "配置服务暂时不可用，请稍后重试"
+	case errors.Is(err, config.ErrRollbackInProgress):
+		code = "CONFIG_ROLLBACK_IN_PROGRESS"
+		status = http.StatusConflict
+		message = "配置回滚正在执行，请稍后查看结果"
 	case errors.Is(err, config.ErrGenerationConflict):
 		code = "CONFIG_GENERATION_CONFLICT"
 		status = http.StatusConflict

@@ -17,6 +17,7 @@ import (
 
 var (
 	ErrGenerationConflict = errors.New("configuration generation conflict")
+	ErrRollbackInProgress = errors.New("configuration rollback is already in progress")
 	ErrNoBackup           = errors.New("configuration backup not found")
 	ErrManagerStorage     = errors.New("configuration manager storage unavailable")
 )

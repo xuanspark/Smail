@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1474,5 +1475,77 @@ func TestConfigManagerSnapshotResultsAreIndependentCopies(t *testing.T) {
 	applied.Snapshot.Email.Policy.MaxMessageBytes = 128 << 20
 	if got := manager.Snapshot(); got.Email.Policy.MaxMessageBytes == 128<<20 {
 		t.Fatal("apply result exposed manager-owned active data")
+	}
+}
+
+type flakyRuntimeSnapshotStore struct {
+	mu       sync.Mutex
+	current  RuntimeConfig
+	failures int
+}
+
+func (s *flakyRuntimeSnapshotStore) Validate(RuntimeConfig) error {
+	return nil
+}
+
+func (s *flakyRuntimeSnapshotStore) Publish(candidate RuntimeConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failures > 0 {
+		s.failures--
+		return ErrRuntimeSnapshotUnavailable
+	}
+	s.current = cloneRuntimeConfig(candidate)
+	return nil
+}
+
+func (s *flakyRuntimeSnapshotStore) Snapshot() (RuntimeConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneRuntimeConfig(s.current), nil
+}
+
+func TestConfigManagerRollbackTicketCanRetryAfterSnapshotFailure(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedEmail := manager.Snapshot().Email
+	updatedEmail.Policy.MaxMessageBytes = 8 << 20
+	payload, err := json.Marshal(updatedEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Apply(context.Background(), updated.Generation); err != nil {
+		t.Fatal(err)
+	}
+	manager.snapshots = &flakyRuntimeSnapshotStore{current: manager.Snapshot(), failures: 1}
+	actor := authorizedConfigActor()
+	ticket, err := manager.IssueRollbackTicket(context.Background(), 1, actor, StepUpConfirmation{Confirmed: true, Method: "webauthn"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.RollbackWithTicket(context.Background(), ticket, actor); !errors.Is(err, ErrRuntimeSnapshotUnavailable) {
+		t.Fatalf("first rollback error = %v, want snapshot unavailable", err)
+	}
+	stored, exists := manager.rollbackTickets[ticket]
+	if !exists || stored.InFlight {
+		t.Fatalf("rollback ticket state after retryable failure = %+v, exists=%v", stored, exists)
+	}
+	result, err := manager.RollbackWithTicket(context.Background(), ticket, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Generation != 3 || result.Snapshot.Email.Policy.MaxMessageBytes == 8<<20 {
+		t.Fatalf("retry rollback result = %+v", result)
+	}
+	if _, err := manager.RollbackWithTicket(context.Background(), ticket, actor); !errors.Is(err, ErrAuthorizationRequired) {
+		t.Fatalf("replayed retry ticket error = %v, want authorization required", err)
 	}
 }
