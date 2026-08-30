@@ -12,6 +12,8 @@ import {Plus} from '@element-plus/icons-vue'
 
 import {http} from "@/utils/axios";
 
+import {buildFinalURL as buildSetupFinalURL, probeService} from './SetupNavigation.js'
+
 const setupRequest = (payload) => http.post("/api/v1/setup", payload).then((response) => {
   if (!response || typeof response.errorNo !== "number") {
     throw new Error(lang.setup_failed)
@@ -374,48 +376,78 @@ export function usePage() {
       return null
     })
   }
-  const buildFinalURL = (sslData) => {
-    const scheme = "https:"
-    const configuredDomain = String(domainSettings.web_domain || "").trim()
-    if (!configuredDomain) {
-      return window.location.href
-    }
+  const buildFinalURL = (sslData) => buildSetupFinalURL(sslData, domainSettings.web_domain)
 
-    let target
-    try {
-      target = new URL(`${scheme}//${configuredDomain}`)
-    } catch (error) {
-      return window.location.href
-    }
+  let statusTimer = null
+  let statusCheckRunning = false
+  let statusCheckStartedAt = 0
+  const statusCheckTimeout = 10 * 60 * 1000
 
-    const currentHost = window.location.hostname.toLowerCase()
-    const targetHost = target.hostname.toLowerCase()
-    const currentPort = window.location.port
-    const isSameHost = currentHost === targetHost
-    const targetPort = Number(sslData?.httpsPort) || 443
-    const proxyMode = sslData?.tlsMode === "proxy"
-    if (isSameHost && currentPort && !proxyMode) {
-      target.port = targetPort > 0 ? String(targetPort) : currentPort
-    } else if (targetPort > 0 && ((scheme === "http:" && targetPort !== 80) || (scheme === "https:" && targetPort !== 443))) {
-      target.port = String(targetPort)
+  const stopStatusCheck = () => {
+    if (statusTimer !== null) {
+      window.clearTimeout(statusTimer)
+      statusTimer = null
     }
-
-    target.pathname = window.location.pathname
-    target.search = window.location.search
-    target.hash = window.location.hash
-    return target.toString()
+    statusCheckRunning = false
+    statusCheckStartedAt = 0
   }
 
-  const checkStatus = () => {
-    setupRequest({"action": "get", "step": "ssl"}).then((res) => {
-      if (res.errorNo === 0 && res.data.ready) {
-        window.location.href = buildFinalURL(res.data)
-        return
+  const navigateToFormalService = (sslData) => {
+    stopStatusCheck()
+    fullscreenLoading.value = false
+    const target = buildFinalURL(sslData)
+    if (target && target !== window.location.href) {
+      window.location.href = target
+    }
+  }
+
+  const scheduleStatusCheck = () => {
+    if (statusTimer !== null) {
+      window.clearTimeout(statusTimer)
+    }
+    statusTimer = window.setTimeout(() => {
+      statusTimer = null
+      checkStatus()
+    }, 1000)
+  }
+
+  const checkStatus = async () => {
+    if (statusCheckRunning) {
+      return
+    }
+    if (!statusCheckStartedAt) {
+      statusCheckStartedAt = Date.now()
+    }
+    if (Date.now() - statusCheckStartedAt > statusCheckTimeout) {
+      stopStatusCheck()
+      fullscreenLoading.value = false
+      ElMessage.error(lang.setup_failed)
+      return
+    }
+
+    statusCheckRunning = true
+    let sslData = sslRuntime.value || {}
+    try {
+      const response = await setupRequest({"action": "get", "step": "ssl"})
+      if (response.errorNo === 0) {
+        sslData = response.data || sslData
+        sslRuntime.value = sslData
+        if (sslData.ready) {
+          navigateToFormalService(sslData)
+          return
+        }
       }
-      setTimeout(checkStatus, 1000)
-    }).catch(() => {
-      setTimeout(checkStatus, 1000)
-    })
+    } catch (error) {
+      // 服务切换期间失败属于预期状态。
+    } finally {
+      statusCheckRunning = false
+    }
+
+    if (await probeService(sslData, domainSettings.web_domain)) {
+      navigateToFormalService(sslData)
+      return
+    }
+    scheduleStatusCheck()
   }
 
   const setDomainConfig = () => {
