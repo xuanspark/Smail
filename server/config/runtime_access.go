@@ -118,6 +118,33 @@ func cloneConfig(source *Config) *Config {
 	return &clone
 }
 
+type MailPorts struct {
+	SMTP int
+	IMAP int
+	POP3 int
+}
+
+func CurrentMailPorts() MailPorts {
+	ports := MailPorts{SMTP: 25, IMAP: 143, POP3: 110}
+	manager := CurrentManager()
+	if manager == nil {
+		return ports
+	}
+	runtime := manager.Snapshot()
+	if runtime.Generation == 0 {
+		return ports
+	}
+	if runtime.Email.Policy.SMTPPort > 0 && runtime.Email.Policy.SMTPPort <= 65535 {
+		ports.SMTP = runtime.Email.Policy.SMTPPort
+	}
+	if runtime.Email.Policy.IMAPPort > 0 && runtime.Email.Policy.IMAPPort <= 65535 {
+		ports.IMAP = runtime.Email.Policy.IMAPPort
+	}
+	if runtime.Email.Policy.POP3Port > 0 && runtime.Email.Policy.POP3Port <= 65535 {
+		ports.POP3 = runtime.Email.Policy.POP3Port
+	}
+	return ports
+}
 func cloneHTTPConfig(source HTTPConfig) HTTPConfig {
 	clone := source
 	clone.TrustedProxyCIDRs = append([]string(nil), source.TrustedProxyCIDRs...)

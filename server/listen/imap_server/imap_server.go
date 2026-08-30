@@ -27,8 +27,9 @@ func StarTLS() error {
 		return err
 	}
 	instanceTLS = server
-	log.Infof("IMAP With TLS Server Start On Port :993")
-	if err := instanceTLS.ListenAndServeTLS(":993"); err != nil {
+	port := config.CurrentMailPorts().IMAP
+	log.Infof("IMAP With TLS Server Start On Port :%d", port)
+	if err := instanceTLS.ListenAndServeTLS(fmt.Sprintf(":%d", port)); err != nil {
 		return fmt.Errorf("serve IMAP TLS: %w", err)
 	}
 	return nil

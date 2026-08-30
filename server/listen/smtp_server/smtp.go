@@ -95,7 +95,7 @@ func Start() error {
 
 	instance = smtp.NewServer(be)
 
-	instance.Addr = ":25"
+	instance.Addr = fmt.Sprintf(":%d", config.CurrentMailPorts().SMTP)
 	instance.Domain = cfg.Domain
 	instance.ReadTimeout = 10 * time.Second
 	instance.WriteTimeout = 10 * time.Second
