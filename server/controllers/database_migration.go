@@ -69,7 +69,7 @@ func ExecuteDatabaseMigration(ctx *appcontext.Context, w http.ResponseWriter, re
 		writeConfigError(w, dbmigration.ErrInvalidRequest)
 		return
 	}
-	record, err := dbmigration.Current().Execute(req.Context(), input.ID, input.Token)
+	record, err := dbmigration.Current().ExecuteAuthorized(req.Context(), input.ID, input.Token, configActor(ctx, req))
 	if err != nil {
 		writeConfigError(w, err)
 		return

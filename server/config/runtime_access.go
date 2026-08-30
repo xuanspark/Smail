@@ -1,6 +1,9 @@
 package config
 
-import "sync/atomic"
+import (
+	"strings"
+	"sync/atomic"
+)
 
 // publishedConfig 是旧配置模型的只读兼容快照。
 // 新业务应通过 CurrentConfig 读取，禁止在请求处理中直接持有并修改 Instance。
@@ -43,6 +46,45 @@ func CurrentConfig() *Config {
 	return cloneConfig(Instance)
 }
 
+// CurrentHTTPConfig 返回当前进程实际使用的 HTTP 配置。
+// 分区配置存在时优先读取分区配置，旧版配置仅作为兼容回退。
+func CurrentHTTPConfig() HTTPConfig {
+	if manager := CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.Generation != 0 {
+			return cloneHTTPConfig(runtime.Root.HTTP)
+		}
+	}
+	cfg := CurrentConfig()
+	if cfg == nil {
+		return HTTPConfig{}
+	}
+	mode := strings.ToLower(strings.TrimSpace(cfg.TLSMode))
+	return HTTPConfig{
+		Port:              cfg.HttpPort,
+		HTTPSPort:         cfg.HttpsPort,
+		HTTPSEnabled:      cfg.HttpsEnabled != 2,
+		TLSMode:           mode,
+		TrustedProxyCIDRs: append([]string(nil), cfg.TrustedProxyCIDRs...),
+	}
+}
+
+// CurrentWebDomain 返回当前进程实际使用的 Web 域名。
+// 分区配置存在时优先读取分区配置，旧版配置仅作为兼容回退。
+func CurrentWebDomain() string {
+	if manager := CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.Generation != 0 {
+			return runtime.Root.Domains.Web
+		}
+	}
+	cfg := CurrentConfig()
+	if cfg == nil {
+		return ""
+	}
+	return cfg.WebDomain
+}
+
 // SetRuntimeSetupPort stores the temporary setup listener port outside the persisted configuration.
 func SetRuntimeSetupPort(port int) {
 	setupPort.Store(int64(port))
@@ -59,6 +101,7 @@ func cloneConfig(source *Config) *Config {
 	clone := *source
 	clone.Domains = append([]string(nil), source.Domains...)
 	clone.AccessHosts = append([]string(nil), source.AccessHosts...)
+	clone.TrustedProxyCIDRs = append([]string(nil), source.TrustedProxyCIDRs...)
 	clone.PluginAllowList = append([]string(nil), source.PluginAllowList...)
 	if source.Tables != nil {
 		clone.Tables = make(map[string]string, len(source.Tables))
@@ -73,4 +116,10 @@ func cloneConfig(source *Config) *Config {
 		}
 	}
 	return &clone
+}
+
+func cloneHTTPConfig(source HTTPConfig) HTTPConfig {
+	clone := source
+	clone.TrustedProxyCIDRs = append([]string(nil), source.TrustedProxyCIDRs...)
+	return clone
 }

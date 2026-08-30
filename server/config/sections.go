@@ -41,10 +41,17 @@ type DomainConfig struct {
 }
 
 type HTTPConfig struct {
-	Port         int  `json:"port,omitempty"`
-	HTTPSPort    int  `json:"httpsPort,omitempty"`
-	HTTPSEnabled bool `json:"httpsEnabled"`
+	Port              int      `json:"port,omitempty"`
+	HTTPSPort         int      `json:"httpsPort,omitempty"`
+	HTTPSEnabled      bool     `json:"httpsEnabled"`
+	TLSMode           string   `json:"tlsMode,omitempty"`
+	TrustedProxyCIDRs []string `json:"trustedProxyCidrs,omitempty"`
 }
+
+const (
+	HTTPSTLSModeDirect = "direct"
+	HTTPSTLSModeProxy  = "proxy"
+)
 
 type SMTPSectionConfig struct {
 	Meta  SectionMeta `json:"meta"`

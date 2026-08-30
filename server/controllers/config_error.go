@@ -93,6 +93,46 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 		code = "DATABASE_MIGRATION_UNAVAILABLE"
 		status = http.StatusServiceUnavailable
 		message = "数据库迁移执行器暂未配置，请先完成服务部署"
+	case errors.Is(err, dbmigration.ErrSwitchUnavailable):
+		code = "DATABASE_MIGRATION_SWITCH_UNAVAILABLE"
+		status = http.StatusServiceUnavailable
+		message = "数据库迁移已完成校验，但配置切换通道暂不可用，当前配置未切换"
+	case errors.Is(err, dbmigration.ErrSwitchOutcomeUnknown):
+		code = "SWITCH_OUTCOME_UNKNOWN"
+		status = http.StatusServiceUnavailable
+		message = "数据库迁移配置切换结果暂不确定，请先确认当前配置和目标数据库状态"
+	case errors.Is(err, dbmigration.ErrTargetExists):
+		code = "DATABASE_MIGRATION_TARGET_EXISTS"
+		status = http.StatusConflict
+		message = "目标数据库已存在，请更换数据库名称"
+	case errors.Is(err, dbmigration.ErrSQLTargetExists):
+		code = "DATABASE_MIGRATION_TARGET_EXISTS"
+		status = http.StatusConflict
+		message = "目标数据库已存在，请更换数据库名称"
+	case errors.Is(err, dbmigration.ErrSQLCopyUnavailable):
+		code = "DATABASE_MIGRATION_COPIER_UNAVAILABLE"
+		status = http.StatusServiceUnavailable
+		message = "数据库迁移复制器暂不可用，请先完成服务部署"
+	case errors.Is(err, dbmigration.ErrSQLConnectionUnavailable):
+		code = "DATABASE_MIGRATION_CONNECTION_UNAVAILABLE"
+		status = http.StatusServiceUnavailable
+		message = "数据库连接暂不可用，请检查数据库配置和服务状态"
+	case errors.Is(err, dbmigration.ErrSQLUnsupportedObject):
+		code = "DATABASE_MIGRATION_UNSUPPORTED_OBJECT"
+		status = http.StatusUnprocessableEntity
+		message = "源数据库包含暂不支持迁移的对象，请先处理后重试"
+	case errors.Is(err, dbmigration.ErrSQLDataVerification):
+		code = "SQL_DATA_VERIFICATION_FAILED"
+		status = http.StatusConflict
+		message = "数据库迁移数据校验未通过，源数据库可能在迁移期间发生变化"
+	case errors.Is(err, dbmigration.ErrSQLSourceBusy):
+		code = "SQL_SOURCE_BUSY"
+		status = http.StatusConflict
+		message = "源数据库存在活动连接，请停止相关连接后重试迁移"
+	case errors.Is(err, dbmigration.ErrUnsupportedDatabase):
+		code = "DATABASE_MIGRATION_UNSUPPORTED"
+		status = http.StatusUnprocessableEntity
+		message = "当前数据库类型暂不支持在线迁移"
 	case errors.Is(err, dbmigration.ErrMigrationState):
 		code = "DATABASE_MIGRATION_STATE_INVALID"
 		status = http.StatusConflict
@@ -101,7 +141,7 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 		code = "DATABASE_MIGRATION_PREVIEW_INVALID"
 		status = http.StatusForbidden
 		message = "数据库迁移预览票据无效"
-	case errors.Is(err, dbmigration.ErrInvalidRequest), errors.Is(err, dbmigration.ErrInvalidTargetName), errors.Is(err, dbmigration.ErrImmutableSetting), errors.Is(err, dbmigration.ErrSourceDatabase):
+	case errors.Is(err, config.ErrDatabaseMigrationTarget), errors.Is(err, dbmigration.ErrInvalidRequest), errors.Is(err, dbmigration.ErrInvalidTargetName), errors.Is(err, dbmigration.ErrImmutableSetting), errors.Is(err, dbmigration.ErrSourceDatabase):
 		code = "DATABASE_MIGRATION_VALIDATION_FAILED"
 		status = http.StatusUnprocessableEntity
 		message = "数据库迁移参数校验未通过"

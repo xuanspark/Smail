@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -39,9 +40,14 @@ func (w *nullWrite) Write(p []byte) (int, error) {
 
 // HttpsStart 启动仅承载业务的 HTTPS 服务。
 func HttpsStart() error {
-	cfg := config.CurrentConfig()
-	if cfg == nil {
+	legacyCfg := config.CurrentConfig()
+	if legacyCfg == nil && config.CurrentManager() == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
+	}
+	httpCfg := config.CurrentHTTPConfig()
+	if httpCfg.TLSMode == config.HTTPSTLSModeProxy {
+		log.Info("HTTPS 使用反向代理终止模式，跳过 Smail 内部 HTTPS 监听")
+		return nil
 	}
 	mux := http.NewServeMux()
 	if err := router(mux); err != nil {
@@ -50,14 +56,17 @@ func HttpsStart() error {
 
 	nullLog := olog.New(&nullWrite{}, "", olog.Ldate)
 	httpsPort := 443
-	if cfg.HttpsPort > 0 {
-		httpsPort = cfg.HttpsPort
+	if httpCfg.HTTPSPort > 0 {
+		httpsPort = httpCfg.HTTPSPort
 	}
 
-	if config.DevelopmentMode && cfg.HttpsEnabled == 2 {
+	if config.DevelopmentMode && legacyCfg != nil && legacyCfg.HttpsEnabled == 2 {
 		return nil
 	}
-	certificatePath, privateKeyPath, err := config.ResolveRuntimeSSLPaths(cfg)
+	if legacyCfg == nil {
+		return fmt.Errorf("legacy SSL configuration is unavailable")
+	}
+	certificatePath, privateKeyPath, err := config.ResolveRuntimeSSLPaths(legacyCfg)
 	if err != nil {
 		return fmt.Errorf("resolve HTTPS certificate: %w", err)
 	}
@@ -281,10 +290,9 @@ func sameOriginRequest(r *http.Request) bool {
 		return false
 	}
 	u, err := url.Parse(origin)
-	expectedScheme := "http"
+	expectedScheme := requestScheme(r)
 	defaultPort := "80"
-	if r.TLS != nil {
-		expectedScheme = "https"
+	if expectedScheme == "https" {
 		defaultPort = "443"
 	}
 	if err != nil || u.User != nil || u.Scheme != expectedScheme || u.Host == "" {
@@ -301,12 +309,57 @@ func sameOriginRequest(r *http.Request) bool {
 	if config.DevelopmentMode {
 		return true
 	}
-	cfg := config.CurrentConfig()
-	if cfg == nil {
+	if config.CurrentConfig() == nil && config.CurrentManager() == nil {
 		return false
 	}
-	configuredHost, _, ok := normalizeAuthority(strings.TrimSpace(cfg.WebDomain), defaultPort)
+	configuredHost, _, ok := normalizeAuthority(strings.TrimSpace(config.CurrentWebDomain()), defaultPort)
 	return ok && requestHost == configuredHost
+}
+
+func requestScheme(r *http.Request) string {
+	if r != nil && r.TLS != nil {
+		return "https"
+	}
+	if r == nil || config.CurrentHTTPConfig().TLSMode != config.HTTPSTLSModeProxy || !isTrustedProxyRequest(r) {
+		return "http"
+	}
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+	if strings.Contains(forwarded, ",") {
+		return "http"
+	}
+	switch strings.ToLower(forwarded) {
+	case "https":
+		return "https"
+	case "http", "":
+		return "http"
+	default:
+		return "http"
+	}
+}
+
+func isTrustedProxyRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	remoteHost := strings.TrimSpace(r.RemoteAddr)
+	if host, _, err := net.SplitHostPort(remoteHost); err == nil {
+		remoteHost = host
+	}
+	remoteIP := net.ParseIP(strings.Trim(remoteHost, "[]"))
+	if remoteIP == nil {
+		return false
+	}
+	cfg := config.CurrentHTTPConfig()
+	if len(cfg.TrustedProxyCIDRs) == 0 {
+		return remoteIP.IsLoopback()
+	}
+	for _, cidr := range cfg.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(cidr))
+		if err == nil && network.Contains(remoteIP) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeAuthority(value string, defaultPort string) (string, string, bool) {

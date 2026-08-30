@@ -42,9 +42,15 @@ function attachApiErrorDetails(error) {
 
     return error
 }
+
+function isSetupRequest(config) {
+    const url = String(config?.url || '').split('?')[0]
+    return url === '/api/setup' || url === '/api/v1/setup'
+}
+
 http.interceptors.response.use(async (response) => {
     //响应成功
-    if (response.data.errorNo === 403) {
+    if (response.data.errorNo === 403 && !isSetupRequest(response.config)) {
 
         await router.replace({
             path: '/login',
@@ -75,12 +81,16 @@ http.interceptors.response.use(async (response) => {
                 message = '请求错误';
                 break;
             case 403:
-               await router.replace({
-                    path: '/login',
-                    query: {
-                        redirect: router.currentRoute.fullPath
-                    }
-                });
+                if (isSetupRequest(error.config)) {
+                    message = lang.setup_failed
+                } else {
+                    await router.replace({
+                        path: '/login',
+                        query: {
+                            redirect: router.currentRoute.fullPath
+                        }
+                    });
+                }
                 break;
             case 404:
                 message = '请求地址出错';

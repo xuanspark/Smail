@@ -119,6 +119,7 @@ func cloneRootConfig(source RootConfig) RootConfig {
 	clone.Security.WebAuthnRPOrigins = append([]string(nil), source.Security.WebAuthnRPOrigins...)
 	clone.Domains.Accepted = append([]string(nil), source.Domains.Accepted...)
 	clone.Domains.AccessHosts = append([]string(nil), source.Domains.AccessHosts...)
+	clone.HTTP.TrustedProxyCIDRs = append([]string(nil), source.HTTP.TrustedProxyCIDRs...)
 	if source.Sections != nil {
 		clone.Sections = make(map[Section]SectionRef, len(source.Sections))
 		for section, reference := range source.Sections {

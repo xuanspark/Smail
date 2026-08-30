@@ -10,6 +10,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/dbmigration"
 )
 
 func TestWriteConfigErrorKeepsStableAuthorizationCode(t *testing.T) {
@@ -88,5 +89,81 @@ func TestWriteConfigErrorUsesStableCodeAndHTTPStatus(t *testing.T) {
 	}
 	if payload.ErrorMsg == "" || strings.Contains(payload.ErrorMsg, "generation conflict") {
 		t.Fatalf("configuration error message is not a Chinese public message: %q", payload.ErrorMsg)
+	}
+}
+
+func TestConfigErrorDetailsMapsDatabaseMigrationFailures(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		code    string
+		status  int
+		message string
+	}{
+		{
+			name:    "invalid target",
+			err:     config.ErrDatabaseMigrationTarget,
+			code:    "DATABASE_MIGRATION_VALIDATION_FAILED",
+			status:  422,
+			message: "数据库迁移参数校验未通过",
+		},
+		{
+			name:    "structured target exists",
+			err:     dbmigration.ErrSQLTargetExists,
+			code:    "DATABASE_MIGRATION_TARGET_EXISTS",
+			status:  409,
+			message: "目标数据库已存在，请更换数据库名称",
+		},
+		{
+			name:    "copier unavailable",
+			err:     dbmigration.ErrSQLCopyUnavailable,
+			code:    "DATABASE_MIGRATION_COPIER_UNAVAILABLE",
+			status:  503,
+			message: "数据库迁移复制器暂不可用，请先完成服务部署",
+		},
+		{
+			name:    "connection unavailable",
+			err:     dbmigration.ErrSQLConnectionUnavailable,
+			code:    "DATABASE_MIGRATION_CONNECTION_UNAVAILABLE",
+			status:  503,
+			message: "数据库连接暂不可用，请检查数据库配置和服务状态",
+		},
+		{
+			name:    "unsupported object",
+			err:     dbmigration.ErrSQLUnsupportedObject,
+			code:    "DATABASE_MIGRATION_UNSUPPORTED_OBJECT",
+			status:  422,
+			message: "源数据库包含暂不支持迁移的对象，请先处理后重试",
+		},
+		{
+			name:    "data verification failed",
+			err:     dbmigration.ErrSQLDataVerification,
+			code:    "SQL_DATA_VERIFICATION_FAILED",
+			status:  409,
+			message: "数据库迁移数据校验未通过，源数据库可能在迁移期间发生变化",
+		},
+		{
+			name:    "source busy",
+			err:     dbmigration.ErrSQLSourceBusy,
+			code:    "SQL_SOURCE_BUSY",
+			status:  409,
+			message: "源数据库存在活动连接，请停止相关连接后重试迁移",
+		},
+		{
+			name:    "switch outcome unknown",
+			err:     dbmigration.ErrSwitchOutcomeUnknown,
+			code:    "SWITCH_OUTCOME_UNKNOWN",
+			status:  503,
+			message: "数据库迁移配置切换结果暂不确定，请先确认当前配置和目标数据库状态",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, status, message, fields := configErrorDetails(test.err)
+			if code != test.code || status != test.status || message != test.message || fields != nil {
+				t.Fatalf("config error details = (%q, %d, %q, %#v), want (%q, %d, %q, nil)", code, status, message, fields, test.code, test.status, test.message)
+			}
+		})
 	}
 }

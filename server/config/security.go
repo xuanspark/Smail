@@ -144,6 +144,8 @@ func DefaultConfigAuthorization(_ context.Context, actor AuditActor, operation C
 	capability := access.CapabilityConfigWriteGlobal
 	if operation == ConfigOperationRollback {
 		capability = access.CapabilityConfigRollback
+	} else if operation == ConfigOperationMigration {
+		capability = access.CapabilityDatabaseMigrate
 	}
 	request := access.Request{
 		ActorRole:              access.Role(actor.Role),

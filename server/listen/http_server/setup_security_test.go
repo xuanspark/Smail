@@ -227,3 +227,41 @@ func TestSetupAPIRoutesBecomeInvalidAfterSetupCompletes(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupSecurityBootstrapCookieForAllowedRemote(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	oldToken := os.Getenv("SMAIL_SETUP_TOKEN")
+	oldCIDRs := os.Getenv("SMAIL_SETUP_ALLOWED_CIDRS")
+	oldInit := config.IsInit
+	if err := os.Setenv("SMAIL_SETUP_TOKEN", token); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Setenv("SMAIL_SETUP_ALLOWED_CIDRS", "192.168.2.0/24"); err != nil {
+		t.Fatal(err)
+	}
+	config.IsInit = false
+	t.Cleanup(func() {
+		config.IsInit = oldInit
+		_ = os.Setenv("SMAIL_SETUP_TOKEN", oldToken)
+		_ = os.Setenv("SMAIL_SETUP_ALLOWED_CIDRS", oldCIDRs)
+	})
+
+	security, err := newSetupSecurity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := security.bootstrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodGet, "http://192.168.2.3/", nil)
+	request.RemoteAddr = "192.168.2.2:12345"
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("remote bootstrap returned %d", recorder.Code)
+	}
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != setupCookieName || cookies[0].Value != token || !cookies[0].HttpOnly || cookies[0].Secure || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Path != "/api/" {
+		t.Fatalf("unsafe remote setup cookie: %+v", cookies)
+	}
+}

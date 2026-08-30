@@ -20,6 +20,7 @@ import (
 	"git.pcux.cn/xuans/Smail/listen/smtp_server"
 	"git.pcux.cn/xuans/Smail/services/adminreset"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	pluginservice "git.pcux.cn/xuans/Smail/services/plugin"
 	"git.pcux.cn/xuans/Smail/services/recovery"
@@ -49,6 +50,7 @@ func startConfigManager() error {
 	if _, err := os.Stat(rootConfig); err != nil {
 		if os.IsNotExist(err) {
 			config.SetRuntimeManager(nil)
+			dbmigration.SetCurrent(nil)
 			return nil
 		}
 		return err
@@ -66,6 +68,7 @@ func startConfigManager() error {
 	if !partitionFound {
 		// 未发现分区配置时继续使用旧版配置读取路径。
 		config.SetRuntimeManager(nil)
+		dbmigration.SetCurrent(nil)
 		return nil
 	}
 	manager, err := config.NewConfigManager(root, config.ConfigLoaderOptions{Validation: config.RuntimeValidationOptions{
@@ -76,11 +79,30 @@ func startConfigManager() error {
 		return fmt.Errorf("load partitioned configuration: %w", err)
 	}
 	config.SetRuntimeManager(manager)
+	authorizedSwitch := func(ctx context.Context, expectedGeneration uint64, target config.DatabaseConfig, actor config.AuditActor) error {
+		return manager.SwitchDatabase(ctx, expectedGeneration, target, actor)
+	}
+	sqliteExecutor := dbmigration.NewAuthorizedSQLiteExecutor(config.ROOT_PATH, authorizedSwitch)
+	var structuredExecutor dbmigration.Runner
+	if manager.Snapshot().Root.Database.Type != config.DatabaseTypeSQLite {
+		factory, factoryErr := dbmigration.NewRuntimeSQLConnectionFactory(config.ROOT_PATH)
+		if factoryErr != nil {
+			return fmt.Errorf("initialize structured database migration: %w", factoryErr)
+		}
+		structuredExecutor = dbmigration.NewSQLExecutor(dbmigration.NewSQLCopier(factory), authorizedSwitch)
+	}
+	dbmigration.SetCurrent(
+		dbmigration.NewService(
+			dbmigration.NewDatabaseExecutor(sqliteExecutor, structuredExecutor),
+		),
+	)
+
 	return nil
 }
 
 func stopConfigManager() {
 	config.SetRuntimeManager(nil)
+	dbmigration.SetCurrent(nil)
 }
 func startPluginConfigMigration() error {
 	hooks.SetPluginConfigService(nil)

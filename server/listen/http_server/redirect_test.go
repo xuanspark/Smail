@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/session"
+	"github.com/alexedwards/scs/v2"
 )
 
 func TestRedirectToHTTPSPreservesPathQueryAndPort(t *testing.T) {
@@ -22,6 +24,51 @@ func TestRedirectToHTTPSPreservesPathQueryAndPort(t *testing.T) {
 	}
 	if location := recorder.Header().Get("Location"); location != "https://mail.example.com:8443/a%2Fb?x=1&y=2" {
 		t.Fatalf("unexpected redirect location: %q", location)
+	}
+}
+
+func TestProxyHTTPHandlerServesBusinessRoutesWithoutRedirect(t *testing.T) {
+	oldConfig := config.Instance
+	oldManager := config.CurrentManager()
+	oldSession := session.Instance
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{WebDomain: "xuans.com", TLSMode: config.HTTPSTLSModeProxy}
+	session.Instance = scs.New()
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+		session.Instance = oldSession
+	})
+
+	handler, err := newHTTPHandler(config.CurrentHTTPConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://xuans.com/", nil))
+	if recorder.Code == http.StatusPermanentRedirect || recorder.Code == http.StatusTemporaryRedirect {
+		t.Fatalf("proxy HTTP handler redirected the request: %d", recorder.Code)
+	}
+}
+
+func TestDirectHTTPHandlerKeepsHTTPSRedirect(t *testing.T) {
+	oldConfig := config.Instance
+	oldManager := config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{WebDomain: "xuans.com", HttpsEnabled: 1, HttpsPort: 443}
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+	})
+
+	handler, err := newHTTPHandler(config.CurrentHTTPConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://xuans.com/inbox", nil))
+	if recorder.Code != http.StatusPermanentRedirect || recorder.Header().Get("Location") != "https://xuans.com/inbox" {
+		t.Fatalf("unexpected direct HTTP redirect: status=%d location=%q", recorder.Code, recorder.Header().Get("Location"))
 	}
 }
 

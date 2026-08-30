@@ -126,6 +126,78 @@
       </div>
     </section>
 
+    <section v-if="canMigrate" class="migration-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="section-eyebrow">数据库迁移</span>
+          <h4>安全迁移数据库</h4>
+        </div>
+        <el-tag type="warning" effect="plain">仅允许修改数据库名称</el-tag>
+      </div>
+      <p class="panel-desc">系统会先生成一次性预览票据，再复制并校验数据。主机、端口、用户名和密码保持不变，旧数据库不会自动删除。</p>
+      <div class="migration-source">
+        <div>
+          <span>当前数据库类型</span>
+          <strong>{{ databaseTypeLabel(databaseConfig.type) }}</strong>
+        </div>
+        <div>
+          <span>当前数据库</span>
+          <strong>{{ databaseConfig.type === 'sqlite' ? databaseConfig.localRef || '-' : databaseConfig.name || '-' }}</strong>
+        </div>
+      </div>
+      <el-form label-position="top" class="migration-form">
+        <el-form-item :label="databaseConfig.type === 'sqlite' ? '目标数据库文件引用' : '目标数据库名称'">
+          <el-input
+            v-model="migrationTargetName"
+            :placeholder="databaseConfig.type === 'sqlite' ? '例如 smail-next.db' : '例如 smail_next'"
+            maxlength="128"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <div class="action-row">
+        <el-button :loading="working === 'migration-preview'" @click="previewDatabaseMigration">生成迁移预览</el-button>
+        <el-button type="primary" :loading="working === 'migration-execute'" :disabled="!migrationPreview || !migrationToken" @click="executeDatabaseMigration">
+          执行迁移
+        </el-button>
+        <el-button v-if="migrationRecord?.id" plain :loading="working === 'migration-status'" @click="loadMigrationStatus">刷新迁移状态</el-button>
+      </div>
+      <div v-if="migrationRecord" class="preview-box migration-result">
+        <div class="migration-result-heading">
+          <strong>迁移状态</strong>
+          <el-tag :type="migrationStatusType(migrationRecord.status)" effect="plain">{{ migrationStatusLabel(migrationRecord.status) }}</el-tag>
+        </div>
+        <span>迁移编号：{{ migrationRecord.id }}</span>
+        <span>源数据库：{{ migrationRecord.source?.name || migrationRecord.source?.localRef || '-' }}</span>
+        <span>目标数据库：{{ migrationRecord.target?.name || migrationRecord.target?.localRef || '-' }}</span>
+        <span v-if="migrationRecord.errorCode" class="migration-error">错误代码：{{ migrationRecord.errorCode }}</span>
+      </div>
+    </section>
+
+    <section v-if="canRestart && status.pendingRestart?.length" class="restart-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="section-eyebrow">受控重启</span>
+          <h4>应用待重启服务</h4>
+        </div>
+        <el-tag type="warning" effect="plain">固定目标：Smail</el-tag>
+      </div>
+      <p class="panel-desc">配置变更需要重启时，只能通过固定的 Smail 服务管理器提交请求，不接受外部命令、服务名或参数。</p>
+      <div class="tag-list restart-services">
+        <el-tag v-for="service in status.pendingRestart" :key="service" type="warning">{{ serviceLabel(service) }}</el-tag>
+      </div>
+      <div class="action-row">
+        <el-button :loading="working === 'restart-preview'" @click="previewRestart">查看重启预览</el-button>
+        <el-button type="danger" :loading="working === 'restart'" :disabled="!restartPreview?.triggerAvailable" @click="requestRestart">提交重启请求</el-button>
+      </div>
+      <div v-if="restartPreview" class="preview-box restart-result">
+        <strong>重启预览</strong>
+        <span>目标：{{ restartPreview.target }} · 操作：{{ restartPreview.action }}</span>
+        <span>服务管理器：{{ restartPreview.serviceManager }}</span>
+        <span>{{ restartPreview.triggerAvailable ? '重启通道可用' : '重启通道暂不可用，请先检查服务部署' }}</span>
+      </div>
+    </section>
+
     <section v-if="canRollback" class="rollback-panel">
       <div class="panel-heading">
         <div>
@@ -218,12 +290,28 @@ const {
   rollbackPreview,
   auditLoading,
   auditItems,
+  databaseConfig,
+  migrationTargetName,
+  migrationPreview,
+  migrationToken,
+  migrationRecord,
+  migrationStatusLabel,
+  migrationStatusType,
+  databaseTypeLabel,
+  canMigrate,
+  canRestart,
+  restartPreview,
   loadAll,
   loadSection,
   validateConfig,
   saveConfig,
   applyConfig,
   loadBackups,
+  previewDatabaseMigration,
+  loadMigrationStatus,
+  executeDatabaseMigration,
+  previewRestart,
+  requestRestart,
   previewRollback,
   executeRollback,
   loadAudit,

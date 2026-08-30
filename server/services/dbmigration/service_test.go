@@ -2,12 +2,16 @@ package dbmigration
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/credential"
+	_ "modernc.org/sqlite"
 )
 
 type testRunner struct{}
@@ -89,6 +93,29 @@ func TestFailedExecutionKeepsSafeState(t *testing.T) {
 	}
 	if failed.Status != StatusFailed || failed.ErrorCode != "EXECUTOR_UNAVAILABLE" {
 		t.Fatalf("unexpected failed state: %+v", failed)
+	}
+}
+
+func TestMigrationErrorCodeMapsExecutorFailures(t *testing.T) {
+	tests := []struct {
+		err  error
+		code string
+	}{
+		{err: ErrSQLTargetExists, code: "TARGET_EXISTS"},
+		{err: ErrSQLCopyUnavailable, code: "COPIER_UNAVAILABLE"},
+		{err: ErrSQLConnectionUnavailable, code: "CONNECTION_UNAVAILABLE"},
+		{err: ErrSQLUnsupportedObject, code: "UNSUPPORTED_OBJECT"},
+		{err: ErrSQLDataVerification, code: "DATA_VERIFICATION_FAILED"},
+		{err: ErrSQLSourceBusy, code: "SOURCE_BUSY"},
+		{err: ErrSwitchUnavailable, code: "SWITCH_UNAVAILABLE"},
+		{err: ErrSwitchOutcomeUnknown, code: "SWITCH_OUTCOME_UNKNOWN"},
+	}
+	for _, test := range tests {
+		t.Run(test.code, func(t *testing.T) {
+			if got := migrationErrorCode(test.err); got != test.code {
+				t.Fatalf("migration error code = %q, want %q", got, test.code)
+			}
+		})
 	}
 }
 
@@ -175,5 +202,54 @@ func TestMigrationRecordsRemainIndependentDuringConcurrentExecution(t *testing.T
 	}
 	if firstState.Target.Name != "smail_first" || secondState.Target.Name != "smail_second" {
 		t.Fatalf("migration records crossed: first=%+v second=%+v", firstState.Target, secondState.Target)
+	}
+}
+func TestExecuteAuthorizedPassesActorToSQLiteSwitch(t *testing.T) {
+	var received config.AuditActor
+	var receivedGeneration uint64
+	root := t.TempDir()
+	switchConfig := func(_ context.Context, generation uint64, _ config.DatabaseConfig, actor config.AuditActor) error {
+		receivedGeneration = generation
+		received = actor
+		return nil
+	}
+	executor := NewAuthorizedSQLiteExecutor(root, switchConfig)
+	service := NewService(executor)
+	actor := config.AuditActor{UserID: "admin-1", Role: "super_admin", SessionID: "session-1"}
+	if _, err := service.ExecuteAuthorized(context.Background(), "missing", "missing", actor); !errors.Is(err, ErrMigrationNotFound) {
+		t.Fatalf("missing migration error = %v, want migration not found", err)
+	}
+	if _, err := service.ExecuteAuthorized(context.Background(), "missing", "missing", config.AuditActor{UserID: "admin-1"}); !errors.Is(err, config.ErrAuthorizationRequired) {
+		t.Fatalf("missing session error = %v, want authorization required", err)
+	}
+
+	root = t.TempDir()
+	executor = NewAuthorizedSQLiteExecutor(root, switchConfig)
+	service = NewService(executor)
+	configDirectory := filepath.Join(root, "config")
+	if err := os.Mkdir(configDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", filepath.Join(configDirectory, "smail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("CREATE TABLE messages (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	record, token, err := service.Preview(context.Background(), config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "smail.db"}, 1, "next.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := service.ExecuteAuthorized(context.Background(), record.ID, token, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Status != StatusSucceeded || received != actor || receivedGeneration != record.CurrentGeneration {
+		t.Fatalf("authorized execution = %+v, received actor = %+v, generation = %d", completed, received, receivedGeneration)
 	}
 }

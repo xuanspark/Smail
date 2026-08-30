@@ -13,7 +13,8 @@ type OperationalCleanupRunner struct {
 	store      *EventStore
 	rateLimits *PersistentRateLimiter
 	interval   time.Duration
-	once       sync.Once
+	running    bool
+	stopping   bool
 	stop       chan struct{}
 	done       chan struct{}
 	now        func() time.Time
@@ -31,29 +32,32 @@ func (r *OperationalCleanupRunner) Start() {
 	if r == nil || r.store == nil {
 		return
 	}
-	r.once.Do(func() {
-		r.mu.Lock()
-		r.stop = make(chan struct{})
-		r.done = make(chan struct{})
-		stop, done := r.stop, r.done
-		interval := r.interval
+	r.mu.Lock()
+	if r.running || r.stopping {
 		r.mu.Unlock()
+		return
+	}
+	r.running = true
+	r.stop = make(chan struct{})
+	r.done = make(chan struct{})
+	stop, done := r.stop, r.done
+	interval := r.interval
+	r.mu.Unlock()
 
-		go func() {
-			defer close(done)
-			r.runOnce()
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					r.runOnce()
-				case <-stop:
-					return
-				}
+	go func() {
+		defer close(done)
+		r.runOnce()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				r.runOnce()
+			case <-stop:
+				return
 			}
-		}()
-	})
+		}
+	}()
 }
 
 func (r *OperationalCleanupRunner) Stop() {
@@ -66,11 +70,15 @@ func (r *OperationalCleanupRunner) Stop() {
 		r.mu.Unlock()
 		return
 	}
-	r.stop, r.done = nil, nil
+	r.stop, r.done, r.running = nil, nil, false
+	r.stopping = true
 	r.mu.Unlock()
 
 	close(stop)
 	<-done
+	r.mu.Lock()
+	r.stop, r.done, r.stopping = nil, nil, false
+	r.mu.Unlock()
 }
 
 func (r *OperationalCleanupRunner) runOnce() {

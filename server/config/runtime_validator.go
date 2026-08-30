@@ -72,7 +72,7 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 			return ErrInvalidRuntimeConfig
 		}
 	}
-	if options.Production && runtime.SetupState == SetupStateDegraded && !runtime.Root.HTTP.HTTPSEnabled {
+	if options.Production && runtime.SetupState == SetupStateDegraded && !runtime.Root.HTTP.HTTPSEnabled && runtime.Root.HTTP.TLSMode != HTTPSTLSModeProxy {
 		return ErrInvalidRuntimeConfig
 	}
 	return nil

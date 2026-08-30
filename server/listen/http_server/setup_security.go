@@ -111,12 +111,10 @@ func (s *setupSecurity) bootstrap(next http.Handler) http.Handler {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		if setupRemoteIP(r).IsLoopback() {
-			http.SetCookie(w, &http.Cookie{
-				Name: setupCookieName, Value: s.token, Path: "/api/",
-				HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode,
-			})
-		}
+		http.SetCookie(w, &http.Cookie{
+			Name: setupCookieName, Value: s.token, Path: "/api/",
+			HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+		})
 		next.ServeHTTP(w, r)
 	})
 }

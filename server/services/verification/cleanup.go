@@ -9,11 +9,11 @@ import (
 var ErrCleanupAlreadyStarted = errors.New("verification cleanup already started")
 
 type CleanupRunner struct {
-	store *Store
-	once  sync.Once
-	mu    sync.Mutex
-	stop  chan struct{}
-	done  chan struct{}
+	store    *Store
+	mu       sync.Mutex
+	stop     chan struct{}
+	done     chan struct{}
+	stopping bool
 }
 
 func NewCleanupRunner(store *Store) *CleanupRunner {
@@ -25,31 +25,28 @@ func (r *CleanupRunner) Start(interval time.Duration) error {
 	if r == nil || r.store == nil || interval <= 0 {
 		return ErrInvalidChallenge
 	}
-	started := false
-	r.once.Do(func() {
-		started = true
-		r.mu.Lock()
-		r.stop = make(chan struct{})
-		r.done = make(chan struct{})
-		stop, done := r.stop, r.done
+	r.mu.Lock()
+	if r.stop != nil || r.stopping {
 		r.mu.Unlock()
-		go func() {
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			defer close(done)
-			for {
-				select {
-				case <-ticker.C:
-					r.store.Cleanup()
-				case <-stop:
-					return
-				}
-			}
-		}()
-	})
-	if !started {
 		return ErrCleanupAlreadyStarted
 	}
+	r.stop = make(chan struct{})
+	r.done = make(chan struct{})
+	stop, done := r.stop, r.done
+	r.mu.Unlock()
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer close(done)
+		for {
+			select {
+			case <-ticker.C:
+				r.store.Cleanup()
+			case <-stop:
+				return
+			}
+		}
+	}()
 	return nil
 }
 
@@ -59,10 +56,17 @@ func (r *CleanupRunner) Stop() {
 	}
 	r.mu.Lock()
 	stop, done := r.stop, r.done
-	r.stop, r.done = nil, nil
+	if stop == nil || r.stopping {
+		r.mu.Unlock()
+		return
+	}
+	r.stopping = true
 	r.mu.Unlock()
 	if stop != nil {
 		close(stop)
 		<-done
 	}
+	r.mu.Lock()
+	r.stop, r.done, r.stopping = nil, nil, false
+	r.mu.Unlock()
 }

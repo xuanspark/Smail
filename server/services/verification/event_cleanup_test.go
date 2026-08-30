@@ -53,6 +53,20 @@ func TestCleanupLeaseIsSingleInstanceAndHasPersistedSchedule(t *testing.T) {
 	}
 }
 
+func TestOperationalCleanupRunnerCanRestartAfterStop(t *testing.T) {
+	engine := newCleanupEngine(t)
+	defer engine.Close()
+	store, err := NewEventStore(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := NewOperationalCleanupRunner(store)
+	runner.Start()
+	runner.Stop()
+	runner.Start()
+	runner.Stop()
+}
+
 func TestCleanupFailureSchedulesSixHourRetry(t *testing.T) {
 	engine := newCleanupEngine(t)
 	defer engine.Close()

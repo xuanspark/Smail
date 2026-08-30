@@ -59,6 +59,8 @@ type legacyMigrationConfig struct {
 	SpamFilterLevel         int        `json:"spamFilterLevel"`
 	HttpPort                int        `json:"httpPort"`
 	HttpsPort               int        `json:"httpsPort"`
+	TLSMode                 string     `json:"tlsMode"`
+	TrustedProxyCIDRs       []string   `json:"trustedProxyCidrs"`
 	WeChatPushAppID         string     `json:"weChatPushAppId"`
 	WeChatPushSecret        string     `json:"weChatPushSecret"`
 	WeChatPushTemplateID    string     `json:"weChatPushTemplateId"`
@@ -86,7 +88,7 @@ type legacyMigrationConfig struct {
 var legacyMigrationKnownFields = map[string]struct{}{
 	"logLevel": {}, "domain": {}, "domains": {}, "webDomain": {}, "accessHosts": {},
 	"dkimPrivateKeyPath": {}, "sslType": {}, "SSLPrivateKeyPath": {}, "SSLPublicKeyPath": {},
-	"dbDSN": {}, "dbType": {}, "httpsEnabled": {}, "spamFilterLevel": {}, "httpPort": {}, "httpsPort": {},
+	"dbDSN": {}, "dbType": {}, "httpsEnabled": {}, "spamFilterLevel": {}, "httpPort": {}, "httpsPort": {}, "tlsMode": {}, "trustedProxyCidrs": {},
 	"weChatPushAppId": {}, "weChatPushSecret": {}, "weChatPushTemplateId": {}, "weChatPushUserId": {},
 	"tgBotToken": {}, "tgChatId": {}, "isInit": {}, "setupState": {}, "webPushUrl": {}, "webPushToken": {},
 	"smtpHost": {}, "smtpPort": {}, "smtpUsername": {}, "smtpPassword": {}, "smtpSecurity": {}, "smtpFrom": {},
@@ -454,6 +456,11 @@ func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConf
 	}
 	httpsEnabled := legacy.HttpsEnabled != 2
 	httpsPort := legacy.HttpsPort
+	tlsMode := strings.ToLower(strings.TrimSpace(legacy.TLSMode))
+	if tlsMode == HTTPSTLSModeProxy {
+		httpsEnabled = false
+		httpsPort = 0
+	}
 	if httpsEnabled && httpsPort == 0 {
 		httpsPort = 443
 	}
@@ -485,7 +492,13 @@ func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConf
 			Web:         legacy.WebDomain,
 			AccessHosts: append([]string(nil), legacy.AccessHosts...),
 		},
-		HTTP:      HTTPConfig{Port: legacy.HttpPort, HTTPSPort: httpsPort, HTTPSEnabled: httpsEnabled},
+		HTTP: HTTPConfig{
+			Port:              legacy.HttpPort,
+			HTTPSPort:         httpsPort,
+			HTTPSEnabled:      httpsEnabled,
+			TLSMode:           tlsMode,
+			TrustedProxyCIDRs: append([]string(nil), legacy.TrustedProxyCIDRs...),
+		},
 		Security:  SecurityConfig{PasswordVersion: "argon2id", EncryptionKeyRef: "credential.key"},
 		UpdatedAt: time.Now().UTC(),
 	}

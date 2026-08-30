@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"errors"
@@ -198,6 +198,20 @@ func validateHTTP(http HTTPConfig) error {
 	}
 	if http.HTTPSPort != 0 && !validPort(http.HTTPSPort) {
 		return ErrInvalidHTTP
+	}
+	if http.TLSMode != "" && http.TLSMode != HTTPSTLSModeDirect && http.TLSMode != HTTPSTLSModeProxy {
+		return ErrInvalidHTTP
+	}
+	if http.TLSMode == HTTPSTLSModeProxy && (http.HTTPSEnabled || http.HTTPSPort != 0) {
+		return ErrInvalidHTTP
+	}
+	for _, cidr := range http.TrustedProxyCIDRs {
+		if strings.TrimSpace(cidr) != cidr {
+			return ErrInvalidHTTP
+		}
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return ErrInvalidHTTP
+		}
 	}
 	if http.HTTPSEnabled && http.HTTPSPort == 0 {
 		return ErrInvalidHTTP

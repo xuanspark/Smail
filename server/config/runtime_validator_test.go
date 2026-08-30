@@ -118,3 +118,35 @@ func TestProductionDegradedRuntimeRequiresHTTPS(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateHTTPProxyMode(t *testing.T) {
+	runtime := validRuntimeConfig()
+	runtime.Root.HTTP = HTTPConfig{
+		Port:              15184,
+		TLSMode:           HTTPSTLSModeProxy,
+		TrustedProxyCIDRs: []string{"127.0.0.1/32", "::1/128"},
+	}
+	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); err != nil {
+		t.Fatalf("proxy mode was rejected: %v", err)
+	}
+
+	invalid := runtime
+	invalid.Root.HTTP.HTTPSPort = 443
+	if err := ValidateRuntimeConfig(invalid, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); !errors.Is(err, ErrInvalidHTTP) {
+		t.Fatalf("proxy mode with HTTPS port returned %v, want %v", err, ErrInvalidHTTP)
+	}
+}
+
+func TestValidateHTTPRejectsInvalidProxySettings(t *testing.T) {
+	cases := []HTTPConfig{
+		{Port: 15184, TLSMode: "unsupported"},
+		{Port: 15184, TLSMode: HTTPSTLSModeProxy, HTTPSEnabled: true},
+		{Port: 15184, TLSMode: HTTPSTLSModeProxy, TrustedProxyCIDRs: []string{"0.0.0.0"}},
+		{Port: 15184, TLSMode: HTTPSTLSModeProxy, TrustedProxyCIDRs: []string{" 127.0.0.1/32"}},
+	}
+	for index, candidate := range cases {
+		if err := validateHTTP(candidate); !errors.Is(err, ErrInvalidHTTP) {
+			t.Fatalf("case %d returned %v, want %v", index, err, ErrInvalidHTTP)
+		}
+	}
+}

@@ -37,6 +37,9 @@ var (
 	ErrMigrationState      = errors.New("database migration state is invalid")
 	ErrExecutorUnavailable = errors.New("database migration executor unavailable")
 	ErrSourceDatabase      = errors.New("source database configuration is invalid")
+	ErrTargetExists        = errors.New("database migration target already exists")
+	ErrSwitchUnavailable   = errors.New("database migration configuration switch unavailable")
+	ErrUnsupportedDatabase = errors.New("database migration database type is unsupported")
 )
 
 const previewLifetime = 10 * time.Minute
@@ -54,8 +57,12 @@ type DatabaseIdentity struct {
 }
 
 type Plan struct {
-	Source DatabaseIdentity
-	Target DatabaseIdentity
+	Source             DatabaseIdentity
+	Target             DatabaseIdentity
+	sourceConfig       config.DatabaseConfig
+	targetConfig       config.DatabaseConfig
+	expectedGeneration uint64
+	actor              config.AuditActor
 }
 
 type Record struct {
@@ -82,8 +89,10 @@ type Service struct {
 
 type record struct {
 	Record
-	tokenHash [32]byte
-	expiresAt time.Time
+	tokenHash    [32]byte
+	expiresAt    time.Time
+	sourceConfig config.DatabaseConfig
+	targetConfig config.DatabaseConfig
 }
 
 var current struct {
@@ -131,7 +140,7 @@ func (s *Service) Preview(_ context.Context, source config.DatabaseConfig, curre
 		return Record{}, "", ErrInvalidRequest
 	}
 	now := s.currentTime()
-	item := &record{Record: Record{ID: id, Status: StatusPreviewed, Source: plan.Source, Target: plan.Target, CurrentGeneration: currentGeneration, CreatedAt: now, UpdatedAt: now}, tokenHash: sha256.Sum256([]byte(token)), expiresAt: now.Add(previewLifetime)}
+	item := &record{Record: Record{ID: id, Status: StatusPreviewed, Source: plan.Source, Target: plan.Target, CurrentGeneration: currentGeneration, CreatedAt: now, UpdatedAt: now}, tokenHash: sha256.Sum256([]byte(token)), expiresAt: now.Add(previewLifetime), sourceConfig: plan.sourceConfig, targetConfig: plan.targetConfig}
 	s.mu.Lock()
 	s.records[id] = item
 	s.mu.Unlock()
@@ -139,6 +148,19 @@ func (s *Service) Preview(_ context.Context, source config.DatabaseConfig, curre
 }
 
 func (s *Service) Execute(ctx context.Context, id, token string) (Record, error) {
+	return s.execute(ctx, id, token, config.AuditActor{})
+}
+
+// ExecuteAuthorized executes a migration while preserving the authenticated
+// operator for the final configuration switch.
+func (s *Service) ExecuteAuthorized(ctx context.Context, id, token string, actor config.AuditActor) (Record, error) {
+	if actor.UserID == "" || actor.SessionID == "" {
+		return Record{}, config.ErrAuthorizationRequired
+	}
+	return s.execute(ctx, id, token, actor)
+}
+
+func (s *Service) execute(ctx context.Context, id, token string, actor config.AuditActor) (Record, error) {
 	if s == nil || strings.TrimSpace(id) == "" || strings.TrimSpace(token) == "" {
 		return Record{}, ErrInvalidRequest
 	}
@@ -169,11 +191,11 @@ func (s *Service) Execute(ctx context.Context, id, token string) (Record, error)
 	item.tokenHash = [32]byte{}
 	item.Status = StatusCreated
 	item.UpdatedAt = now
-	plan := Plan{Source: item.Source, Target: item.Target}
+	plan := Plan{Source: item.Source, Target: item.Target, sourceConfig: item.sourceConfig, targetConfig: item.targetConfig, expectedGeneration: item.CurrentGeneration, actor: actor}
 	s.mu.Unlock()
 
 	if err := s.setStatus(id, StatusCopying); err != nil {
-		return Record{}, err
+		return s.fail(id, err)
 	}
 	if s.runner == nil {
 		return s.fail(id, ErrExecutorUnavailable)
@@ -182,7 +204,7 @@ func (s *Service) Execute(ctx context.Context, id, token string) (Record, error)
 		return s.fail(id, err)
 	}
 	if err := s.setStatus(id, StatusSucceeded); err != nil {
-		return Record{}, err
+		return s.fail(id, err)
 	}
 	return s.Get(id)
 }
@@ -273,7 +295,18 @@ func buildPlan(source config.DatabaseConfig, targetName string) (Plan, error) {
 	if target.Type != source.Type || target.Host != source.Host || target.Port != source.Port || target.Username != source.Username {
 		return Plan{}, ErrImmutableSetting
 	}
-	return Plan{Source: identity, Target: target}, nil
+	if target.Name == source.Name && target.LocalRef == source.LocalRef {
+		return Plan{}, ErrInvalidTargetName
+	}
+	return Plan{Source: identity, Target: target, sourceConfig: source, targetConfig: func() config.DatabaseConfig {
+		candidate := source
+		if source.Type == config.DatabaseTypeSQLite {
+			candidate.LocalRef = targetName
+		} else {
+			candidate.Name = targetName
+		}
+		return candidate
+	}()}, nil
 }
 
 func randomID(prefix string) (string, error) {
@@ -294,6 +327,26 @@ func migrationErrorCode(err error) string {
 		return "EXECUTOR_UNAVAILABLE"
 	case errors.Is(err, ErrPreviewExpired):
 		return "PREVIEW_EXPIRED"
+	case errors.Is(err, ErrTargetExists):
+		return "TARGET_EXISTS"
+	case errors.Is(err, ErrSQLTargetExists):
+		return "TARGET_EXISTS"
+	case errors.Is(err, ErrSQLCopyUnavailable):
+		return "COPIER_UNAVAILABLE"
+	case errors.Is(err, ErrSQLConnectionUnavailable):
+		return "CONNECTION_UNAVAILABLE"
+	case errors.Is(err, ErrSQLUnsupportedObject):
+		return "UNSUPPORTED_OBJECT"
+	case errors.Is(err, ErrSQLDataVerification):
+		return "DATA_VERIFICATION_FAILED"
+	case errors.Is(err, ErrSQLSourceBusy):
+		return "SOURCE_BUSY"
+	case errors.Is(err, ErrSwitchUnavailable):
+		return "SWITCH_UNAVAILABLE"
+	case errors.Is(err, ErrSwitchOutcomeUnknown):
+		return "SWITCH_OUTCOME_UNKNOWN"
+	case errors.Is(err, ErrUnsupportedDatabase):
+		return "UNSUPPORTED_DATABASE"
 	default:
 		return "MIGRATION_FAILED"
 	}

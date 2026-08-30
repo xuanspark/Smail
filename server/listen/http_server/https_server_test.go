@@ -179,6 +179,103 @@ func TestCSRFAllowsConfiguredHostOnNonStandardPort(t *testing.T) {
 	}
 }
 
+func TestSameOriginUsesTrustedForwardedProto(t *testing.T) {
+	oldConfig := config.Instance
+	oldManager := config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{
+		WebDomain:         "xuans.com",
+		TLSMode:           config.HTTPSTLSModeProxy,
+		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
+	}
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "http://xuans.com/api/settings", nil)
+	request.Host = "xuans.com"
+	request.RemoteAddr = "127.0.0.1:15184"
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("Origin", "https://xuans.com")
+	if requestScheme(request) != "https" || !sameOriginRequest(request) {
+		t.Fatal("trusted HTTPS proxy request was rejected")
+	}
+}
+
+func TestSameOriginDoesNotTrustForwardedProtoFromUntrustedClient(t *testing.T) {
+	oldConfig := config.Instance
+	oldManager := config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{
+		WebDomain:         "xuans.com",
+		TLSMode:           config.HTTPSTLSModeProxy,
+		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
+	}
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "http://xuans.com/api/settings", nil)
+	request.Host = "xuans.com"
+	request.RemoteAddr = "192.0.2.10:15184"
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set("Origin", "https://xuans.com")
+	if requestScheme(request) != "http" || sameOriginRequest(request) {
+		t.Fatal("untrusted client controlled the forwarded protocol")
+	}
+}
+
+func TestSameOriginRejectsAmbiguousForwardedProto(t *testing.T) {
+	oldConfig := config.Instance
+	oldManager := config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{
+		WebDomain:         "xuans.com",
+		TLSMode:           config.HTTPSTLSModeProxy,
+		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
+	}
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "http://xuans.com/api/settings", nil)
+	request.Host = "xuans.com"
+	request.RemoteAddr = "127.0.0.1:15184"
+	request.Header.Set("X-Forwarded-Proto", "https, http")
+	request.Header.Set("Origin", "https://xuans.com")
+	if requestScheme(request) != "http" || sameOriginRequest(request) {
+		t.Fatal("ambiguous forwarded protocol was trusted")
+	}
+}
+
+func TestHttpsStartSkipsListenerInProxyMode(t *testing.T) {
+	oldConfig := config.Instance
+	oldManager := config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{
+		WebDomain:    "xuans.com",
+		TLSMode:      config.HTTPSTLSModeProxy,
+		HttpsEnabled: 1,
+		HttpsPort:    443,
+	}
+	httpsServer = nil
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+		httpsServer = nil
+	})
+
+	if err := HttpsStart(); err != nil {
+		t.Fatalf("proxy mode started HTTPS listener: %v", err)
+	}
+	if httpsServer != nil {
+		t.Fatal("proxy mode created an internal HTTPS server")
+	}
+}
+
 func TestSecurityHeadersRespectPluginFrameBoundary(t *testing.T) {
 	oldConfig := config.Instance
 	defer func() { config.Instance = oldConfig }()

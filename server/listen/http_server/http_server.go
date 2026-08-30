@@ -246,31 +246,23 @@ func allowRouteMethod(w http.ResponseWriter, r *http.Request, allowed ...string)
 }
 
 func HttpStart() error {
-	cfg := config.CurrentConfig()
-	if cfg == nil {
+	if config.CurrentConfig() == nil && config.CurrentManager() == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
-	mux := http.NewServeMux()
+	cfg := config.CurrentHTTPConfig()
 	httpPort := 80
-	if cfg.HttpPort > 0 {
-		httpPort = cfg.HttpPort
+	if cfg.Port > 0 {
+		httpPort = cfg.Port
 	}
 
-	var handler http.Handler = mux
-	if config.DevelopmentMode && cfg.HttpsEnabled == 2 {
-		if err := router(mux); err != nil {
-			return err
-		}
-		handler = session.Instance.LoadAndSave(mux)
-	} else {
-		mux.HandleFunc("/.well-known/", controllers.AcmeChallenge)
-		mux.HandleFunc("/api/ping", controllers.Ping)
-		mux.HandleFunc("/", redirectToHTTPS)
+	handler, err := newHTTPHandler(cfg)
+	if err != nil {
+		return err
 	}
 
 	httpServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", httpPort),
-		Handler:           securityHeaders(handler),
+		Handler:           handler,
 		ReadTimeout:       time.Second * 90,
 		ReadHeaderTimeout: time.Second * 10,
 		WriteTimeout:      time.Second * 90,
@@ -284,14 +276,32 @@ func HttpStart() error {
 	return nil
 }
 
+func newHTTPHandler(cfg config.HTTPConfig) (http.Handler, error) {
+	mux := http.NewServeMux()
+	var handler http.Handler = mux
+	if cfg.TLSMode == config.HTTPSTLSModeProxy || (config.DevelopmentMode && !cfg.HTTPSEnabled) {
+		if err := router(mux); err != nil {
+			return nil, err
+		}
+		if session.Instance == nil {
+			return nil, fmt.Errorf("session manager is unavailable")
+		}
+		handler = session.Instance.LoadAndSave(mux)
+	} else {
+		mux.HandleFunc("/.well-known/", controllers.AcmeChallenge)
+		mux.HandleFunc("/api/ping", controllers.Ping)
+		mux.HandleFunc("/", redirectToHTTPS)
+	}
+	return securityHeaders(handler), nil
+}
+
 func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
-	cfg := config.CurrentConfig()
-	if cfg == nil {
+	if config.CurrentConfig() == nil && config.CurrentManager() == nil {
 		w.Header().Set("Connection", "close")
 		http.Error(w, "HTTPS is required", http.StatusUpgradeRequired)
 		return
 	}
-	host := strings.TrimSpace(cfg.WebDomain)
+	host := strings.TrimSpace(config.CurrentWebDomain())
 	if host == "" {
 		w.Header().Set("Connection", "close")
 		http.Error(w, "HTTPS is required", http.StatusUpgradeRequired)
@@ -308,8 +318,9 @@ func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
-	if cfg.HttpsPort > 0 && cfg.HttpsPort != 443 {
-		host = fmt.Sprintf("%s:%d", host, cfg.HttpsPort)
+	httpsPort := config.CurrentHTTPConfig().HTTPSPort
+	if httpsPort > 0 && httpsPort != 443 {
+		host = fmt.Sprintf("%s:%d", host, httpsPort)
 	}
 	target := "https://" + host + r.URL.EscapedPath()
 	if r.URL.RawQuery != "" {
