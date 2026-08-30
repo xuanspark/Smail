@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
@@ -74,6 +75,9 @@ func TestBuildMySQLDSNUsesStructuredFields(t *testing.T) {
 	}
 	if parsed.DBName != "smail_1" || !parsed.ParseTime {
 		t.Fatalf("unexpected database options: name=%q parseTime=%v", parsed.DBName, parsed.ParseTime)
+	}
+	if parsed.Loc != time.UTC {
+		t.Fatalf("unexpected database location: %v", parsed.Loc)
 	}
 	if !strings.Contains(dsn, "charset=utf8mb4") {
 		t.Fatalf("charset option is missing from DSN: %q", dsn)
@@ -210,12 +214,24 @@ func TestBuildMySQLDSNRejectsInvalidInput(t *testing.T) {
 		{User: "root", Port: "0", Name: "smail"},
 		{User: "root", Port: "65536", Name: "smail"},
 		{User: "root", Port: "3306", Name: "smail-test"},
+		{User: "root", Host: "mysql server", Port: "3306", Name: "smail"},
 		{Port: "3306", Name: "smail"},
 	}
 	for _, settings := range tests {
 		if _, err := buildMySQLDSN(settings, ""); err == nil {
 			t.Fatalf("invalid settings were accepted: %+v", settings)
 		}
+	}
+}
+
+func TestBuildMySQLDSNAcceptsDatabaseServiceHost(t *testing.T) {
+	if _, err := buildMySQLDSN(DatabaseSettings{
+		User: "root",
+		Host: "mysql",
+		Port: "3306",
+		Name: "smail",
+	}, ""); err != nil {
+		t.Fatalf("database service host was rejected: %v", err)
 	}
 }
 

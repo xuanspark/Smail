@@ -33,40 +33,66 @@
             </el-select>
           </el-form-item>
 
+          <el-alert
+            v-if="databaseError"
+            :title="databaseError"
+            type="error"
+            show-icon
+            :closable="false"
+            class="database-error"
+          />
+
           <div v-if="dbSettings.type === 'mysql' || dbSettings.type === 'postgres'" class="mysql-fields">
-            <div class="database-hint">{{ dbSettings.type === 'mysql' ? lang.mysql_create_desc : lang.postgres_create_desc }}</div>
+            <div class="database-hint">
+              {{ dbSettings.type === 'mysql' ? lang.mysql_create_desc : lang.postgres_create_desc }}
+            </div>
+
 
             <el-form-item :label="lang.db_user">
-              <el-input v-model="dbSettings.user" :placeholder="dbSettings.type === 'mysql' ? lang.db_user_ph : lang.pg_user_ph"
+              <el-input v-model="dbSettings.user" @input="clearDatabaseError"
+                        :disabled="databaseLoading"
+                        :placeholder="dbSettings.type === 'mysql' ? lang.db_user_ph : lang.pg_user_ph"
                         autocomplete="username"></el-input>
             </el-form-item>
 
             <div class="database-inline-fields">
               <el-form-item :label="lang.db_host" class="database-host-field">
-                <el-input v-model="dbSettings.host" :placeholder="lang.db_host_ph"></el-input>
+                <el-input v-model="dbSettings.host" @input="clearDatabaseError"
+                          :disabled="databaseLoading"
+                          :placeholder="lang.db_host_ph"></el-input>
               </el-form-item>
 
               <el-form-item :label="lang.db_port" class="database-port-field">
-                <el-input v-model="dbSettings.port" :placeholder="lang.db_port_ph"
+                <el-input v-model="dbSettings.port" @input="clearDatabaseError"
+                          :disabled="databaseLoading"
+                          :placeholder="lang.db_port_ph"
                           inputmode="numeric"></el-input>
               </el-form-item>
             </div>
 
             <el-form-item :label="lang.db_name">
-              <el-input v-model="dbSettings.name" :placeholder="lang.db_name_ph"></el-input>
+              <el-input v-model="dbSettings.name" @input="clearDatabaseError"
+                        :disabled="databaseLoading"
+                        :placeholder="lang.db_name_ph"></el-input>
             </el-form-item>
 
             <el-form-item :label="lang.db_password">
-              <el-input v-model="dbSettings.password" type="password"
+              <el-input v-model="dbSettings.password" @input="clearDatabaseError"
+                        :disabled="databaseLoading"
+                        type="password"
                         :placeholder="dbSettings.type === 'mysql' ? lang.db_password_ph : lang.pg_password_ph" autocomplete="new-password"
                         show-password></el-input>
               <div class="database-field-tip">{{ lang.db_password_desc }}</div>
             </el-form-item>
+
           </div>
 
+          <div class="database-retry-tip">{{ lang.db_init_retry_tip }}</div>
 
           <el-form-item :label="lang.sqlite_db_path" v-if="dbSettings.type === 'sqlite'">
-            <el-input v-model="dbSettings.dsn" placeholder="请输入 SQLite 数据文件路径"></el-input>
+            <el-input v-model="dbSettings.dsn" @input="clearDatabaseError"
+                      :disabled="databaseLoading"
+                      placeholder="请输入 SQLite 数据文件路径"></el-input>
           </el-form-item>
         </el-form>
       </div>
@@ -308,7 +334,8 @@
       <el-button v-if="active > 0" id="previous" @click="previous">
         {{ lang.previous }}
       </el-button>
-      <el-button :loading="databaseLoading" :element-loading-text="waitDesc"
+      <el-button :loading="databaseLoading" :disabled="databaseLoading"
+                 :element-loading-text="waitDesc"
                  v-loading.fullscreen.lock="fullscreenLoading" id="next"
                  @click="next">
            {{ dnsChecking ? lang.ssl_verify : lang.next }}
@@ -326,6 +353,7 @@ const {
   lang,
   dbSettings,
   databaseLoading,
+  databaseError,
   adminSettings,
   domainSettings,
   addDomain,
@@ -338,6 +366,7 @@ const {
   next,
   previous,
   handleDbTypeChange,
+  clearDatabaseError,
   formatDNSRecordTTL,
   copyDNSValue,
   fullscreenLoading

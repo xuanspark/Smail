@@ -212,6 +212,10 @@ func SetDatabaseSettingsWithOptions(ctx *context.Context, settings DatabaseSetti
 		return errors.New("dbtype error")
 	}
 
+	// 兼容未携带模式字段的旧调用：只要提交了结构化数据库字段，就按字段模式处理。
+	if strings.TrimSpace(settings.Mode) == "" && (dbType == config.DBTypeMySQL || dbType == config.DBTypePostgres) {
+		settings.Mode = "fields"
+	}
 	dbDSN := strings.TrimSpace(settings.DSN)
 	if settings.Mode == "fields" {
 		switch dbType {
@@ -278,11 +282,17 @@ func buildPostgresDSN(settings DatabaseSettings, previousDSN string) (string, er
 	if user == "" {
 		return "", errors.New("PostgreSQL 用户不能为空")
 	}
+	if !validDatabaseField(user, 128) {
+		return "", errors.New("PostgreSQL 用户格式无效")
+	}
 	host := strings.TrimSpace(settings.Host)
 	if host == "" {
 		host = "127.0.0.1"
 	}
 	host = normalizeDatabaseHost(host)
+	if !validDatabaseHost(host) {
+		return "", errors.New("PostgreSQL 主机地址格式无效")
+	}
 	portText := strings.TrimSpace(settings.Port)
 	if portText == "" {
 		portText = "5432"
@@ -392,11 +402,17 @@ func buildMySQLDSN(settings DatabaseSettings, previousDSN string) (string, error
 	if user == "" {
 		return "", errors.New("MySQL 用户不能为空")
 	}
+	if !validDatabaseField(user, 128) {
+		return "", errors.New("MySQL 用户格式无效")
+	}
 	host := strings.TrimSpace(settings.Host)
 	if host == "" {
 		host = "127.0.0.1"
 	}
 	host = normalizeMySQLHost(host)
+	if !validDatabaseHost(host) {
+		return "", errors.New("MySQL 主机地址格式无效")
+	}
 	portText := strings.TrimSpace(settings.Port)
 	if portText == "" {
 		portText = "3306"
@@ -424,7 +440,8 @@ func buildMySQLDSN(settings DatabaseSettings, previousDSN string) (string, error
 	dsnConfig.Addr = net.JoinHostPort(host, strconv.Itoa(port))
 	dsnConfig.DBName = databaseName
 	dsnConfig.ParseTime = true
-	dsnConfig.Loc = time.Local
+	// 使用跨平台稳定的时区，避免 Windows 交叉编译后的 CST 在 Linux 上无法解析。
+	dsnConfig.Loc = time.UTC
 	dsnConfig.Params = map[string]string{"charset": "utf8mb4"}
 	return dsnConfig.FormatDSN(), nil
 }
@@ -458,6 +475,44 @@ func normalizeMySQLHost(host string) string {
 		return host[1 : len(host)-1]
 	}
 	return host
+}
+
+func validDatabaseField(value string, maxLength int) bool {
+	if value == "" || len(value) > maxLength {
+		return false
+	}
+	for _, char := range value {
+		if char == '\r' || char == '\n' || char == '\t' || char == ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+func validDatabaseHost(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	if strings.ContainsAny(host, "\r\n\t /\\?@#") {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	if strings.Contains(host, ":") {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+		for _, char := range label {
+			if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validMySQLIdentifier(value string) bool {

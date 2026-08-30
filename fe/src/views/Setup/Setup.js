@@ -52,6 +52,16 @@ export function usePage() {
   const fullscreenLoading = ref(false)
 
   const databaseLoading = ref(false)
+
+  const databaseError = ref("")
+
+  const getDatabaseErrorMessage = (error) => {
+    const message = typeof error?.message === "string" ? error.message.trim() : ""
+    if (message && !/^network error$/i.test(message) && !/^timeout of \d+ms exceeded$/i.test(message) && !/^request failed with status code \d+$/i.test(message)) {
+      return message
+    }
+    return lang.db_request_failed
+  }
   
   const dnsChecking = ref(false)
   
@@ -109,22 +119,19 @@ export function usePage() {
     })
   }
   
-  const getPassword = () => {
-    http.post("/api/v1/setup", {"action": "get", "step": "password"}).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        adminSettings.hadSeted = res.data !== ""
-        if (adminSettings.hadSeted) {
-          adminSettings.account = res.data
-          adminSettings.password = "*******"
-          adminSettings.password2 = "*******"
-        }
-  
-      }
-    })
-  }
-  
+  const getPassword = () => http.post("/api/v1/setup", {"action": "get", "step": "password"}).then((res) => {
+    if (res.errorNo !== 0) {
+      throw new Error(res.errorMsg || lang.db_init_failed)
+    }
+
+    adminSettings.hadSeted = res.data != ""
+    if (adminSettings.hadSeted) {
+      adminSettings.account = res.data
+      adminSettings.password = "*******"
+      adminSettings.password2 = "*******"
+    }
+  })
+
   const getDbConfig = () => {
     http.post("/api/v1/setup", {"action": "get", "step": "database"}).then((res) => {
       if (res.errorNo !== 0) {
@@ -155,6 +162,11 @@ export function usePage() {
   }
   
   const setDbConfig = () => {
+    if (databaseLoading.value) {
+      return
+    }
+    databaseError.value = ""
+
     if (dbSettings.type === "sqlite" && !dbSettings.dsn) {
       dbSettings.dsn = "./config/smail.db";
     }
@@ -171,6 +183,10 @@ export function usePage() {
       }
       if (!dbSettings.port.trim()) {
         ElMessage.error(lang.db_port_required)
+        return
+      }
+      if (!/^\d+$/.test(dbSettings.port.trim()) || Number(dbSettings.port) < 1 || Number(dbSettings.port) > 65535) {
+        ElMessage.error("数据库端口必须是 1 到 65535 之间的数字")
         return
       }
       if (!dbSettings.name.trim()) {
@@ -198,20 +214,27 @@ export function usePage() {
 
     http.post("/api/v1/setup", payload).then((res) => {
       if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg || lang.db_init_failed)
+        databaseError.value = res.errorMsg || lang.db_init_failed
+        ElMessage.error(databaseError.value)
         return
       }
-      ElMessage.success(lang.db_init_success)
-      active.value++;
-      getPassword();
-    }).catch(() => {
-      ElMessage.error(lang.db_init_failed)
+      getPassword().then(() => {
+        ElMessage.success(lang.db_init_success)
+        active.value++
+      }).catch((error) => {
+        databaseError.value = getDatabaseErrorMessage(error)
+        ElMessage.error(databaseError.value)
+      })
+    }).catch((error) => {
+      databaseError.value = getDatabaseErrorMessage(error)
+      ElMessage.error(databaseError.value)
     }).finally(() => {
       databaseLoading.value = false
     })
   }
 
   const handleDbTypeChange = (type) => {
+    databaseError.value = ""
     dbSettings.dsn = ""
     dbSettings.password = ""
     if (type === "mysql" || type === "postgres") {
@@ -257,6 +280,10 @@ export function usePage() {
     } catch (error) {
       ElMessage.error(lang.dns_copy_failed)
     }
+  }
+
+  const clearDatabaseError = () => {
+    databaseError.value = ""
   }
 
   const formatDNSRecordTTL = (ttl) => {
@@ -413,6 +440,7 @@ export function usePage() {
     adminSettings,
     dbSettings,
     databaseLoading,
+    databaseError,
     domainSettings,
     sslSettings,
     active,
@@ -428,6 +456,7 @@ export function usePage() {
     getDomainConfig,
     setDbConfig,
     handleDbTypeChange,
+    clearDatabaseError,
     getDNSConfig,
     formatDNSRecordTTL,
     copyDNSValue,

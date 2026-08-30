@@ -89,6 +89,8 @@ const lang = {
     "db_name_required": "请输入数据库名",
     "db_init_success": "数据库连接成功，数据库和数据表已初始化",
     "db_init_failed": "数据库初始化失败，请检查连接信息和数据库权限",
+    "db_init_retry_tip": "连接失败不会跳转登录页，请修正信息后重新点击下一步。",
+    "db_request_failed": "数据库初始化请求失败，请检查 Smail 服务状态后重试",
     "pg_user_ph": "请输入 PostgreSQL 用户名",
     "pg_password_ph": "请输入 PostgreSQL 密码",
     "pg_dsn": "PostgreSQL DSN",

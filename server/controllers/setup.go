@@ -46,7 +46,8 @@ type sslResponse struct {
 }
 
 func writeSetupError(ctx *context.Context, w http.ResponseWriter, err error) {
-	log.WithContext(ctx).WithError(err).Error("setup request failed")
+	// 保留底层错误原因，便于定位数据库驱动、网络和权限问题；响应仍只返回安全的业务提示。
+	log.WithContext(ctx).WithError(err).Errorf("setup request failed: %v", err)
 	message := setup.DatabaseSetupErrorMessage(err)
 	if message == "" {
 		message = "\u521d\u59cb\u5316\u64cd\u4f5c\u5931\u8d25"
