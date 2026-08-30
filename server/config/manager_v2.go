@@ -217,7 +217,7 @@ func (m *ConfigManager) Load(ctx context.Context) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if err := m.snapshots.Publish(runtime); err != nil {
+	if err := m.publishSnapshot(runtime); err != nil {
 		return err
 	}
 	now := runtime.LoadedAt
@@ -395,7 +395,7 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	if err := m.transactions.Commit(current, candidate); err != nil {
 		return nil, err
 	}
-	if err := m.snapshots.Publish(candidate); err != nil {
+	if err := m.publishSnapshot(candidate); err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
@@ -554,6 +554,25 @@ func rollbackTicketRetryable(err error) bool {
 		errors.Is(err, ErrRuntimeSnapshotUnavailable)
 }
 
+func (m *ConfigManager) publishSnapshot(candidate RuntimeConfig) error {
+	if m == nil || m.snapshots == nil {
+		return ErrRuntimeSnapshotUnavailable
+	}
+	if err := m.snapshots.Publish(candidate); err != nil {
+		if errors.Is(err, ErrRuntimeSnapshotUnavailable) {
+			m.mu.Lock()
+			m.status.SetupState = SetupStateDegraded
+			m.status.DegradedReasons = []PublicIssue{{
+				Code:    "RUNTIME_SNAPSHOT_UNAVAILABLE",
+				Message: "配置已保存，但运行时配置尚未切换，请重试应用",
+			}}
+			m.mu.Unlock()
+		}
+		return err
+	}
+	return nil
+}
+
 func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor AuditActor, confirmation StepUpConfirmation) (*ApplyResult, error) {
 	result, _, err := m.rollbackWithState(ctx, generation, actor, confirmation)
 	return result, err
@@ -619,7 +638,7 @@ func (m *ConfigManager) rollbackWithState(ctx context.Context, generation uint64
 	if err := m.transactions.Commit(current, candidate); err != nil {
 		return nil, false, err
 	}
-	if err := m.snapshots.Publish(candidate); err != nil {
+	if err := m.publishSnapshot(candidate); err != nil {
 		return nil, false, err
 	}
 	now := time.Now().UTC()
@@ -942,7 +961,7 @@ func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer
 	if err := m.transactions.Commit(current, candidate); err != nil {
 		return false, err
 	}
-	if err := m.snapshots.Publish(candidate); err != nil {
+	if err := m.publishSnapshot(candidate); err != nil {
 		return false, err
 	}
 	now := time.Now().UTC()

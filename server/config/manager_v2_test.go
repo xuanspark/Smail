@@ -1505,6 +1505,58 @@ func (s *flakyRuntimeSnapshotStore) Snapshot() (RuntimeConfig, error) {
 	return cloneRuntimeConfig(s.current), nil
 }
 
+func TestConfigManagerApplyCanRetryAfterSnapshotFailure(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedEmail := manager.Snapshot().Email
+	updatedEmail.Policy.MaxMessageBytes = 8 << 20
+	payload, err := json.Marshal(updatedEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager.snapshots = &flakyRuntimeSnapshotStore{current: manager.Snapshot(), failures: 1}
+	if _, err := manager.Apply(context.Background(), updated.Generation); !errors.Is(err, ErrRuntimeSnapshotUnavailable) {
+		t.Fatalf("first apply error = %v, want snapshot unavailable", err)
+	}
+	status := manager.Status()
+	if status.SetupState != SetupStateDegraded || len(status.DegradedReasons) != 1 || status.DegradedReasons[0].Code != "RUNTIME_SNAPSHOT_UNAVAILABLE" {
+		t.Fatalf("degraded status after snapshot failure = %+v", status)
+	}
+	if manager.Snapshot().Generation != 1 {
+		t.Fatalf("runtime snapshot generation after failed publish = %d, want 1", manager.Snapshot().Generation)
+	}
+	persisted, err := NewConfigLoader(root, options).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Generation != 2 || persisted.Email.Policy.MaxMessageBytes != 8<<20 {
+		t.Fatalf("persisted candidate after snapshot failure = %+v", persisted)
+	}
+
+	applied, err := manager.Apply(context.Background(), updated.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.Generation != 2 || manager.Snapshot().Generation != 2 || manager.Snapshot().Email.Policy.MaxMessageBytes != 8<<20 {
+		t.Fatalf("retried apply result = %+v, runtime = %+v", applied, manager.Snapshot())
+	}
+	if manager.Status().SetupState == SetupStateDegraded || len(manager.Status().DegradedReasons) != 0 {
+		t.Fatalf("status was not recovered after retry: %+v", manager.Status())
+	}
+}
+
 func TestConfigManagerRollbackTicketCanRetryAfterSnapshotFailure(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())

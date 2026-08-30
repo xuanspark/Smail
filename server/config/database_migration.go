@@ -77,7 +77,7 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if err := m.transactions.Commit(current, candidate); err != nil {
 		return err
 	}
-	if err := m.snapshots.Publish(candidate); err != nil {
+	if err := m.publishSnapshot(candidate); err != nil {
 		return err
 	}
 	now := time.Now().UTC()

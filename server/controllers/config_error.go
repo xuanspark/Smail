@@ -57,6 +57,10 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 		code = "CONFIG_ROLLBACK_IN_PROGRESS"
 		status = http.StatusConflict
 		message = "配置回滚正在执行，请稍后查看结果"
+	case errors.Is(err, config.ErrRuntimeSnapshotUnavailable):
+		code = "CONFIG_RUNTIME_SNAPSHOT_UNAVAILABLE"
+		status = http.StatusServiceUnavailable
+		message = "配置已保存，但运行时配置尚未切换，请重试应用"
 	case errors.Is(err, config.ErrGenerationConflict):
 		code = "CONFIG_GENERATION_CONFLICT"
 		status = http.StatusConflict

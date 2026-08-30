@@ -169,6 +169,22 @@ func TestConfigErrorDetailsMapsDatabaseMigrationFailures(t *testing.T) {
 	}
 }
 
+func TestConfigErrorDetailsMapsRuntimeSnapshotUnavailable(t *testing.T) {
+	code, status, message, fields := configErrorDetails(config.ErrRuntimeSnapshotUnavailable)
+	if code != "CONFIG_RUNTIME_SNAPSHOT_UNAVAILABLE" {
+		t.Fatalf("error code = %q", code)
+	}
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d", status)
+	}
+	if message != "配置已保存，但运行时配置尚未切换，请重试应用" {
+		t.Fatalf("message = %q", message)
+	}
+	if fields != nil {
+		t.Fatalf("fields = %+v, want nil", fields)
+	}
+}
+
 func TestConfigErrorDetailsMapsRollbackInProgress(t *testing.T) {
 	code, status, message, _ := configErrorDetails(config.ErrRollbackInProgress)
 	if code != "CONFIG_ROLLBACK_IN_PROGRESS" || status != http.StatusConflict {
