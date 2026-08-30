@@ -125,6 +125,9 @@ func (w *FileAuditWriter) Query(ctx context.Context, query ConfigAuditQuery) ([]
 	scanner.Buffer(make([]byte, 4096), 256*1024)
 	lineNumber := 0
 	for scanner.Scan() {
+		if err := auditContextError(ctx); err != nil {
+			return nil, err
+		}
 		lineNumber++
 		var event ConfigAuditEvent
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
@@ -214,6 +217,9 @@ func (w *FileAuditWriter) Cleanup(ctx context.Context, now time.Time) (int, erro
 	scanner.Buffer(make([]byte, 4096), 256*1024)
 	lineNumber := 0
 	for scanner.Scan() {
+		if err := auditContextError(ctx); err != nil {
+			return deleted, err
+		}
 		lineNumber++
 		var event ConfigAuditEvent
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
@@ -240,6 +246,9 @@ func (w *FileAuditWriter) Cleanup(ctx context.Context, now time.Time) (int, erro
 	}
 	if err := file.Close(); err != nil {
 		return deleted, ErrAuditStorageUnavailable
+	}
+	if err := auditContextError(ctx); err != nil {
+		return deleted, err
 	}
 	if deleted == 0 {
 		return 0, nil

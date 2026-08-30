@@ -2,6 +2,7 @@ package dbmigration
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/url"
 	"strings"
@@ -36,6 +37,31 @@ func validStructuredPlan(t *testing.T) Plan {
 		sourceConfig: database,
 		targetConfig: target,
 		actor:        config.AuditActor{UserID: "admin-1", Role: "super_admin", SessionID: "session-1"},
+	}
+}
+
+func TestSQLCopierRejectsNilDatabaseWithoutPanicking(t *testing.T) {
+	copier := NewSQLCopier(func(context.Context, config.DatabaseConfig, string) (*sql.DB, error) {
+		return nil, nil
+	})
+	if err := copier.Copy(context.Background(), testDatabase(t), testDatabase(t)); !errors.Is(err, ErrSQLConnectionUnavailable) {
+		t.Fatalf("nil admin database error = %v, want connection unavailable", err)
+	}
+}
+
+func TestSQLCopierStopsAfterAdminConnectionWhenContextIsCanceled(t *testing.T) {
+	openCalls := 0
+	copier := NewSQLCopier(func(context.Context, config.DatabaseConfig, string) (*sql.DB, error) {
+		openCalls++
+		return nil, errors.New("open should not continue")
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := copier.Copy(ctx, testDatabase(t), testDatabase(t)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled copy error = %v, want context canceled", err)
+	}
+	if openCalls != 0 {
+		t.Fatalf("open calls = %d, want zero for canceled context", openCalls)
 	}
 }
 

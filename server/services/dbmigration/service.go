@@ -170,6 +170,9 @@ func (s *Service) execute(ctx context.Context, id, token string, actor config.Au
 	if s == nil || strings.TrimSpace(id) == "" || strings.TrimSpace(token) == "" {
 		return Record{}, ErrInvalidRequest
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	now := s.currentTime()
 	s.mu.Lock()
 	item, ok := s.records[id]

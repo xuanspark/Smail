@@ -94,6 +94,9 @@ func (w *MemoryAuditWriter) Query(ctx context.Context, query ConfigAuditQuery) (
 	defer w.mu.Unlock()
 	result := make([]ConfigAuditEvent, 0, minAuditLimit(limit, len(w.events)))
 	for _, event := range w.events {
+		if err := auditContextError(ctx); err != nil {
+			return nil, err
+		}
 		if !auditEventMatches(event, query) {
 			continue
 		}

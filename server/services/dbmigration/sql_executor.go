@@ -184,15 +184,21 @@ func (c *SQLCopier) Copy(ctx context.Context, source, target config.DatabaseConf
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
 	adminDB, err := c.open(ctx, source, "")
-	if err != nil {
+	if err != nil || adminDB == nil {
 		return ErrSQLConnectionUnavailable
 	}
 	defer adminDB.Close()
+	if err := contextError(ctx); err != nil {
+		return err
+	}
 	switch source.Type {
 	case config.DatabaseTypeMySQL:
 		sourceDB, err := c.open(ctx, source, source.Name)
-		if err != nil {
+		if err != nil || sourceDB == nil {
 			return ErrSQLConnectionUnavailable
 		}
 		defer sourceDB.Close()
@@ -243,6 +249,9 @@ func (c *SQLCopier) copyMySQL(ctx context.Context, sourceDB, adminDB *sql.DB, so
 	tableNames := make([]string, 0)
 	sourceRowCounts := make(map[string]int64)
 	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
 		var tableName, tableType string
 		if err := rows.Scan(&tableName, &tableType); err != nil {
 			return fmt.Errorf("read mysql table: %w", err)
@@ -266,6 +275,9 @@ func (c *SQLCopier) copyMySQL(ctx context.Context, sourceDB, adminDB *sql.DB, so
 		return fmt.Errorf("read mysql tables: %w", err)
 	}
 	for _, tableName := range tableNames {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
 		sourceTable := quoteMySQLIdentifier(sourceName) + "." + quoteMySQLIdentifier(tableName)
 		targetTable := quoteMySQLIdentifier(targetName) + "." + quoteMySQLIdentifier(tableName)
 		if _, err := adminDB.ExecContext(ctx, "INSERT INTO "+targetTable+" SELECT * FROM "+sourceTable); err != nil {
@@ -343,6 +355,9 @@ func (c *SQLCopier) copyMySQLForeignKeys(ctx context.Context, database *sql.DB, 
 	foreignKeys := make([]mysqlForeignKey, 0)
 	indexes := make(map[string]int)
 	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
 		var item mysqlForeignKey
 		var column, referencedColumn string
 		if err := rows.Scan(&item.tableName, &item.constraintName, &column, &item.referencedSchema, &item.referencedTable, &referencedColumn, &item.updateRule, &item.deleteRule); err != nil {
@@ -365,6 +380,9 @@ func (c *SQLCopier) copyMySQLForeignKeys(ctx context.Context, database *sql.DB, 
 		return fmt.Errorf("%w: read mysql foreign keys", ErrSQLConnectionUnavailable)
 	}
 	for _, foreignKey := range foreignKeys {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
 		referencedSchema := foreignKey.referencedSchema
 		if referencedSchema == sourceName {
 			referencedSchema = targetName
