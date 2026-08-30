@@ -334,7 +334,7 @@
       <el-button v-if="active > 0" id="previous" @click="previous">
         {{ lang.previous }}
       </el-button>
-      <el-button :loading="databaseLoading" :disabled="databaseLoading"
+      <el-button :loading="databaseLoading || stepLoading" :disabled="databaseLoading || stepLoading || fullscreenLoading"
                  :element-loading-text="waitDesc"
                  v-loading.fullscreen.lock="fullscreenLoading" id="next"
                  @click="next">
@@ -353,6 +353,7 @@ const {
   lang,
   dbSettings,
   databaseLoading,
+  stepLoading,
   databaseError,
   adminSettings,
   domainSettings,

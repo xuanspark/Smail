@@ -42,14 +42,14 @@ const assertSetupSuccess = (response, fallback = lang.setup_failed) => {
 
 export function usePage() {
   const waitDesc = ref(lang.wait_desc);
-  
+
   const adminSettings = reactive({
     "account": "admin",
     "password": "",
     "password2": "",
     "hadSeted": false
   })
-  
+
   const dbSettings = reactive({
     "type": "sqlite",
     "dsn": "./config/smail.db",
@@ -60,13 +60,13 @@ export function usePage() {
     "password": "",
     "name": "smail"
   })
-  
+
   const domainSettings = reactive({
     "web_domain": "",
     "smtp_domain": "",
     "multi_domain": []
   })
-  
+
   const sslSettings = reactive({
     "type": "0",
     "challenge": "http",
@@ -74,12 +74,13 @@ export function usePage() {
     "crt_path": "./config/ssl/public.crt",
     "paramsList": [],
   })
-  
+
   const active = ref(0)
-  
+
   const fullscreenLoading = ref(false)
 
   const databaseLoading = ref(false)
+  const stepLoading = ref(false)
 
   const databaseError = ref("")
 
@@ -90,26 +91,29 @@ export function usePage() {
     }
     return lang.db_request_failed
   }
-  
+
   const dnsChecking = ref(false)
-  
+
   const dnsInfos = ref({})
 
   const hasDNSIPv6 = computed(() => Object.values(dnsInfos.value).some((records) =>
     records.some((record) => record.type === 'AAAA')
   ))
-  
+
   const port = ref(80)
-`r`n  const sslRuntime = ref({})`r`n  
+  const sslRuntime = ref({})
+
   const addDomain = () => {
     domainSettings.multi_domain.push([])
   }
-  
+
   const setPassword = () => {
     if (adminSettings.hadSeted) {
-      active.value++;
-      getDomainConfig();
-      return;
+      return getDomainConfig().then((response) => {
+        if (response) {
+          active.value++
+        }
+      })
     }
 
     const passwordSize = new TextEncoder().encode(adminSettings.password).length
@@ -130,20 +134,22 @@ export function usePage() {
       return
     }
 
-    setupRequest({
+    return setupRequest({
       "action": "set",
       "step": "password",
       "account": adminSettings.account,
       "password": adminSettings.password
     }).then((res) => {
       assertSetupSuccess(res)
-      active.value++
-      return getDomainConfig()
+      return getDomainConfig().then((response) => {
+        if (response) {
+          active.value++
+        }
+      })
     }).catch((error) => {
       showSetupError(error)
     })
   }
-  
   const getPassword = () => setupRequest({"action": "get", "step": "password"}).then((res) => {
     assertSetupSuccess(res, lang.db_init_failed)
     adminSettings.hadSeted = res.data != ""
@@ -152,6 +158,7 @@ export function usePage() {
       adminSettings.password = "*******"
       adminSettings.password2 = "*******"
     }
+    return res
   })
 
   const getDbConfig = () => {
@@ -165,25 +172,26 @@ export function usePage() {
       dbSettings.port = res.data.db_port || (dbSettings.type === "postgres" ? "5432" : "3306");
       dbSettings.password = "";
       dbSettings.name = res.data.db_name || "smail";
+      return res
     }).catch((error) => {
       databaseError.value = getDatabaseErrorMessage(error)
       ElMessage.error(databaseError.value)
+      return null
     })
   }
-  
   const getDomainConfig = () => {
     return setupRequest({"action": "get", "step": "domain"}).then((res) => {
       assertSetupSuccess(res)
       domainSettings.web_domain = res.data.web_domain;
       domainSettings.smtp_domain = res.data.smtp_domain;
-      domainSettings.multi_domain = res.data.domains;
+      domainSettings.multi_domain = Array.isArray(res.data.domains) ? res.data.domains : []
       return res
     }).catch((error) => {
       showSetupError(error)
       return null
     })
   }
-  
+
   const setDbConfig = () => {
     if (databaseLoading.value) {
       return
@@ -269,7 +277,7 @@ export function usePage() {
       dbSettings.name = ""
     }
   }
-  
+
   const getDNSConfig = () => {
     return setupRequest({"action": "get", "step": "dns"}).then((res) => {
       assertSetupSuccess(res)
@@ -315,7 +323,7 @@ export function usePage() {
     }
     return `${ttl}${lang.dns_ttl_second}`
   }
-  
+
   const getSSLConfig = () => {
     return setupRequest({"action": "get", "step": "ssl"}).then((res) => {
       assertSetupSuccess(res)
@@ -324,24 +332,24 @@ export function usePage() {
         sslSettings.type = "0"
         sslSettings.challenge = "dns"
       }
-      sslRuntime.value = res.data`r`n      port.value = res.data.port || res.data.httpPort || 80
+      sslRuntime.value = res.data || {}
+      port.value = res.data?.port || res.data?.httpPort || 80
       return res
     }).catch((error) => {
       showSetupError(error)
       return null
     })
   }
-  
+
   const setSSLConfig = () => {
     fullscreenLoading.value = true;
-  
+
     let sslType = sslSettings.type;
     if (sslType === "0" && sslSettings.challenge === "dns") {
       sslType = "2"
     }
-  
-  
-    setupRequest({
+
+    return setupRequest({
       "action": "set",
       "step": "ssl",
       "ssl_type": sslType,
@@ -352,16 +360,20 @@ export function usePage() {
       if (sslType === "2") {
         fullscreenLoading.value = false
         dnsChecking.value = true
-        getSSLDNSParams()
-        return
+        return getSSLDNSParams()
       }
-      if (sslType === "1") {`r`n        window.location.href = buildFinalURL(sslRuntime.value)`r`n        return`r`n      }`r`n      checkStatus()
+      if (sslType === "1") {
+        window.location.href = buildFinalURL(sslRuntime.value)
+        return res
+      }
+      checkStatus()
+      return res
     }).catch((error) => {
       fullscreenLoading.value = false
       showSetupError(error)
+      return null
     })
   }
-
   const buildFinalURL = (sslData) => {
     const scheme = "https:"
     const configuredDomain = String(domainSettings.web_domain || "").trim()
@@ -380,7 +392,7 @@ export function usePage() {
     const targetHost = target.hostname.toLowerCase()
     const currentPort = window.location.port
     const isSameHost = currentHost === targetHost
-    const targetPort = sslSettings.type === "1" ? sslData?.httpPort : sslData?.httpsPort
+    const targetPort = Number(sslData?.httpsPort) || 443
     const proxyMode = sslData?.tlsMode === "proxy"
     if (isSameHost && currentPort && !proxyMode) {
       target.port = targetPort > 0 ? String(targetPort) : currentPort
@@ -393,7 +405,7 @@ export function usePage() {
     target.hash = window.location.hash
     return target.toString()
   }
-  
+
   const checkStatus = () => {
     setupRequest({"action": "get", "step": "ssl"}).then((res) => {
       if (res.errorNo === 0 && res.data.ready) {
@@ -405,9 +417,9 @@ export function usePage() {
       setTimeout(checkStatus, 1000)
     })
   }
-  
+
   const setDomainConfig = () => {
-    setupRequest({
+    return setupRequest({
       "action": "set",
       "step": "domain",
       "web_domain": domainSettings.web_domain,
@@ -415,13 +427,16 @@ export function usePage() {
       "multi_domain": domainSettings.multi_domain.join(",")
     }).then((res) => {
       assertSetupSuccess(res)
-      active.value++
-      return getDNSConfig()
+      return getDNSConfig().then((response) => {
+        if (response) {
+          active.value++
+        }
+      })
     }).catch((error) => {
       showSetupError(error)
     })
   }
-  
+
   const getSSLDNSParams = () => {
     return setupRequest({"action": "getParams", "step": "ssl"}).then((res) => {
       assertSetupSuccess(res)
@@ -435,42 +450,59 @@ export function usePage() {
       return null
     })
   }
-  
+
+  const runStep = (action) => {
+    if (stepLoading.value) {
+      return
+    }
+    stepLoading.value = true
+    return Promise.resolve()
+      .then(action)
+      .finally(() => {
+        stepLoading.value = false
+      })
+  }
+
   const next = () => {
+    if (databaseLoading.value || stepLoading.value || fullscreenLoading.value) {
+      return
+    }
+
     switch (active.value) {
       case 0:
-        active.value++
-        getDbConfig();
-        break
-      case 1:
-        setDbConfig();
-        break;
-      case 2:
-        setPassword();
-        break;
-      case 3:
-        setDomainConfig();
-        break;
-      case 4:
-        getSSLConfig().then((response) => {
+        runStep(() => getDbConfig().then((response) => {
           if (response) {
             active.value++
           }
-        })
+        }))
+        break
+      case 1:
+        setDbConfig()
+        break
+      case 2:
+        runStep(setPassword)
+        break
+      case 3:
+        runStep(setDomainConfig)
+        break
+      case 4:
+        runStep(() => getSSLConfig().then((response) => {
+          if (response) {
+            active.value++
+          }
+        }))
         break
       case 5:
         if (dnsChecking.value) {
-          fullscreenLoading.value = true;
-          waitDesc.value = lang.dns_challenge_wait;
-          checkStatus();
+          fullscreenLoading.value = true
+          waitDesc.value = lang.dns_challenge_wait
+          checkStatus()
         } else {
-          setSSLConfig();
+          runStep(setSSLConfig)
         }
         break
     }
-  
   }
-
   const previous = () => {
     if (active.value > 0) {
       active.value--
@@ -489,6 +521,7 @@ export function usePage() {
     adminSettings,
     dbSettings,
     databaseLoading,
+    stepLoading,
     databaseError,
     domainSettings,
     sslSettings,
