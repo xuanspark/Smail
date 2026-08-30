@@ -19,6 +19,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	pcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
@@ -30,6 +31,7 @@ import (
 var clientUnLogin *imapclient.Client
 var clientLogin *imapclient.Client
 var imapTestAddr string
+var imapTestProtocolCode string
 
 func TestMain(m *testing.M) {
 	wd, err := os.Getwd()
@@ -97,7 +99,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	err = clientLogin.Login("testCase", "testCase").Wait()
+	err = clientLogin.Login("testCase@test.domain", imapTestProtocolCode).Wait()
 	if err != nil {
 		panic(err)
 	}
@@ -158,34 +160,66 @@ func seedIMAPTestData() {
 	}
 
 	var num int
-	_, err = db.Instance.Table(&models.UserEmail{}).Where("user_id=?", user.ID).Select("count(1)").Get(&num)
+	_, err = db.Instance.Table(&models.UserEmail{}).Where("user_id=? AND email_id > 0", user.ID).Select("count(1)").Get(&num)
 	if err != nil {
 		panic(err)
 	}
-	if num > 0 {
-		return
+	if num == 0 {
+		statuses := []int8{3}
+		for i := 0; i < 10; i++ {
+			statuses = append(statuses, 0)
+		}
+		for _, status := range statuses {
+			email := models.Email{
+				Subject:     "test",
+				Status:      status,
+				FromAddress: "sender@test.domain",
+				To:          `[{"EmailAddress":"testCase@test.domain","Name":"testCase"}]`,
+				MsgID:       "imap-test@test.domain",
+				SendDate:    time.Now(),
+			}
+			if _, err = db.Instance.Insert(&email); err != nil {
+				panic(err)
+			}
+			ue := models.UserEmail{UserID: user.ID, EmailID: email.Id, Status: status}
+			if _, err = db.Instance.Insert(&ue); err != nil {
+				panic(err)
+			}
+		}
 	}
 
-	statuses := []int8{3}
-	for i := 0; i < 10; i++ {
-		statuses = append(statuses, 0)
+	canonicalAddress := "testcase@test.domain"
+	var loginBinding models.UserEmail
+	hasBinding, err := db.Instance.Table(&models.UserEmail{}).
+		Where("user_id = ? AND address_canonical = ?", user.ID, canonicalAddress).
+		Get(&loginBinding)
+	if err != nil {
+		panic(err)
 	}
-	for _, status := range statuses {
-		email := models.Email{
-			Subject:     "test",
-			Status:      status,
-			FromAddress: "sender@test.domain",
-			To:          `[{"EmailAddress":"testCase@test.domain","Name":"testCase"}]`,
-			MsgID:       "imap-test@test.domain",
-			SendDate:    time.Now(),
+	if !hasBinding {
+		verifiedAt := time.Now().UTC()
+		loginBinding = models.UserEmail{
+			UserID:           user.ID,
+			Address:          "testCase@test.domain",
+			AddressCanonical: &canonicalAddress,
+			VerifiedAt:       &verifiedAt,
+			IsPrimary:        1,
 		}
-		if _, err = db.Instance.Insert(&email); err != nil {
+		if _, err = db.Instance.Insert(&loginBinding); err != nil {
 			panic(err)
 		}
-		ue := models.UserEmail{UserID: user.ID, EmailID: email.Id, Status: status}
-		if _, err = db.Instance.Insert(&ue); err != nil {
-			panic(err)
-		}
+	}
+
+	credentialService, err := credentials.NewService(db.Instance)
+	if err != nil {
+		panic(err)
+	}
+	if err = credentialService.SetProtocolEnabled(user.ID, credentials.ProtocolIMAP, true); err != nil {
+		panic(err)
+	}
+	imapTestProtocolCode, err = credentialService.GenerateProtocolCode(user.ID, credentials.ProtocolIMAP)
+	if err != nil {
+		panic(err)
 	}
 }
 
@@ -210,7 +244,7 @@ func TestCapability(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	err := clientUnLogin.Login("testCase", "testCaseasdfsadf").Wait()
+	err := clientUnLogin.Login("testCase@test.domain", "wrong-imap-code").Wait()
 	sErr := err.(*imap.Error)
 	if sErr.Code != "AUTHENTICATIONFAILED" {
 		t.Error("Login Error")
@@ -495,19 +529,41 @@ func TestClose(t *testing.T) {
 
 }
 func TestExpunge(t *testing.T) {
+	if _, err := clientLogin.Select("INBOX", &imap.SelectOptions{}).Wait(); err != nil {
+		t.Fatal(err)
+	}
 
-	clientLogin.Select("INBOX", &imap.SelectOptions{}).Wait()
+	var targets []models.UserEmail
+	if err := db.Instance.Table("user_email").
+		Where("user_id = ? AND email_id > 0", 1).
+		OrderBy("id ASC").
+		Limit(2).
+		Find(&targets); err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) == 0 {
+		t.Fatal("no email relations available for expunge")
+	}
 
-	res, err := clientLogin.UIDExpunge(imap.UIDSetNum(1, 2)).Collect()
-
+	uids := make([]imap.UID, 0, len(targets))
+	for _, target := range targets {
+		uids = append(uids, imap.UID(target.ID))
+	}
+	res, err := clientLogin.UIDExpunge(imap.UIDSetNum(uids...)).Collect()
 	if err != nil {
 		t.Errorf("%+v", err)
 	}
 	t.Logf("%+v", res)
-	var ues []models.UserEmail
-	db.Instance.Table("user_email").Where("id=1 or id=2").Find(&ues)
-	if len(ues) > 0 {
-		t.Errorf("TestExpunge Error")
+
+	for _, target := range targets {
+		var remaining models.UserEmail
+		found, err := db.Instance.ID(target.ID).Get(&remaining)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found {
+			t.Errorf("email relation %d was not expunged", target.ID)
+		}
 	}
 
 }
@@ -620,6 +676,13 @@ func TestNoop(t *testing.T) {
 	}
 }
 func TestIDLE(t *testing.T) {
+	credentialService, err := credentials.NewService(db.Instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !credentialService.VerifyProtocolCode(1, credentials.ProtocolIMAP, imapTestProtocolCode) {
+		t.Fatalf("test IMAP authorization code was rejected before raw LOGIN: %q", imapTestProtocolCode)
+	}
 	conn, err := tls.Dial("tcp", imapTestAddr, &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		t.Fatal(err)
@@ -635,7 +698,7 @@ func TestIDLE(t *testing.T) {
 		t.Fatalf("unexpected greeting: %s", line)
 	}
 
-	if _, err = conn.Write([]byte("a001 LOGIN testCase testCase\r\n")); err != nil {
+	if _, err = conn.Write([]byte("a001 LOGIN testCase@test.domain " + imapTestProtocolCode + "\r\n")); err != nil {
 		t.Fatal(err)
 	}
 	if line, err = readTaggedLine(reader, "a001"); err != nil {
@@ -699,7 +762,7 @@ func TestIdleNotice(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err = client.Login("testCase", "testCase").Wait(); err != nil {
+	if err = client.Login("testCase@test.domain", imapTestProtocolCode).Wait(); err != nil {
 		t.Fatal(err)
 	}
 
