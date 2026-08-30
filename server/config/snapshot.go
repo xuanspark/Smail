@@ -20,12 +20,19 @@ func NewSnapshotStore(initial RuntimeConfig, options RuntimeValidationOptions) (
 	return store, nil
 }
 
+func (s *SnapshotStore) Validate(candidate RuntimeConfig) error {
+	if s == nil {
+		return ErrRuntimeSnapshotUnavailable
+	}
+	return ValidateRuntimeConfig(candidate, s.options)
+}
+
 func (s *SnapshotStore) Publish(candidate RuntimeConfig) error {
 	if s == nil {
 		return ErrRuntimeSnapshotUnavailable
 	}
 	candidate = cloneRuntimeConfig(candidate)
-	if err := ValidateRuntimeConfig(candidate, s.options); err != nil {
+	if err := s.Validate(candidate); err != nil {
 		return err
 	}
 	for {

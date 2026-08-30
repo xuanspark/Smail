@@ -126,12 +126,24 @@ func (e *SQLExecutor) Run(ctx context.Context, plan Plan, update func(Status) er
 		return ErrSwitchUnavailable
 	}
 	if err := e.authorizedSwitch(ctx, plan.expectedGeneration, plan.targetConfig, plan.actor); err != nil {
+		if isKnownSwitchRejection(err) {
+			cleanupStructuredTarget(e.copier, plan.sourceConfig, plan.targetConfig)
+			return err
+		}
 		return errors.Join(ErrSwitchOutcomeUnknown, err)
 	}
 	if cleanup, ok := e.copier.(StructuredDatabaseCleanup); ok {
 		cleanup.Complete(plan.sourceConfig, plan.targetConfig)
 	}
 	return nil
+}
+
+func isKnownSwitchRejection(err error) bool {
+	return errors.Is(err, config.ErrAuthorizationRequired) ||
+		errors.Is(err, config.ErrDatabaseMigrationTarget) ||
+		errors.Is(err, config.ErrGenerationConflict) ||
+		errors.Is(err, config.ErrStepUpRequired) ||
+		errors.Is(err, config.ErrInvalidRuntimeConfig)
 }
 
 func cleanupStructuredTarget(copier StructuredDatabaseCopier, source, target config.DatabaseConfig) {

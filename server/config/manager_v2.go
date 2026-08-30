@@ -108,11 +108,17 @@ type LegacyPluginSecretImporter func(context.Context, []LegacyPluginSecret) erro
 
 var ErrPluginSecretMigrationRequired = errors.New("plugin secret migration is required")
 
+type runtimeSnapshotStore interface {
+	Validate(RuntimeConfig) error
+	Publish(RuntimeConfig) error
+	Snapshot() (RuntimeConfig, error)
+}
+
 type ConfigManager struct {
 	mu              sync.RWMutex
 	writeMu         sync.Mutex
 	loader          *ConfigLoader
-	snapshots       *SnapshotStore
+	snapshots       runtimeSnapshotStore
 	current         RuntimeConfig
 	pending         *pendingConfig
 	status          ConfigStatus
@@ -349,6 +355,9 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
 		return nil, err
 	}
+	if err := m.snapshots.Validate(candidate); err != nil {
+		return nil, err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
 		return nil, err
 	}
@@ -521,6 +530,9 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 	setCandidateGeneration(&candidate, current.Generation+1)
 	candidate.Root.UpdatedAt = time.Now().UTC()
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
+		return nil, err
+	}
+	if err := m.snapshots.Validate(candidate); err != nil {
 		return nil, err
 	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
@@ -829,6 +841,9 @@ func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer
 	}
 	setCandidateGeneration(&candidate, current.Generation+1)
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
+		return false, err
+	}
+	if err := m.snapshots.Validate(candidate); err != nil {
 		return false, err
 	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {

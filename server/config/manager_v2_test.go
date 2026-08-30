@@ -56,6 +56,23 @@ func authorizedConfigActor() AuditActor {
 	return AuditActor{UserID: "1", Role: "super_admin", SessionID: "test-session", RecentAuth: true, RecoveryCodeConfigured: true}
 }
 
+type rejectingRuntimeSnapshotStore struct {
+	current RuntimeConfig
+	err     error
+}
+
+func (s *rejectingRuntimeSnapshotStore) Validate(RuntimeConfig) error {
+	return s.err
+}
+
+func (s *rejectingRuntimeSnapshotStore) Publish(RuntimeConfig) error {
+	return s.err
+}
+
+func (s *rejectingRuntimeSnapshotStore) Snapshot() (RuntimeConfig, error) {
+	return cloneRuntimeConfig(s.current), nil
+}
+
 func TestConfigLoaderLoadsFixedPartitionsAndRejectsDigestMismatch(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())
@@ -119,6 +136,40 @@ func TestConfigLoaderRejectsMissingPartitionAndGenerationMismatch(t *testing.T) 
 	}
 	if _, err := NewConfigLoader(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}).Load(); !errors.Is(err, ErrSectionGenerationMismatch) {
 		t.Fatalf("load error = %v, want generation mismatch", err)
+	}
+}
+
+func TestConfigManagerApplyPreflightsSnapshotBeforePersisting(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := manager.Snapshot()
+	manager.snapshots = &rejectingRuntimeSnapshotStore{current: current, err: errors.New("snapshot validation rejected")}
+	email := current.Email
+	email.Policy.MaxMessageBytes = 8 << 20
+	payload, err := json.Marshal(email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionEmail, ExpectedGeneration: current.Generation, Payload: payload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Apply(context.Background(), updated.Generation); !errors.Is(err, manager.snapshots.(*rejectingRuntimeSnapshotStore).err) {
+		t.Fatalf("apply error = %v, want snapshot validation error", err)
+	}
+	loaded, err := NewConfigLoader(root, options).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Generation != current.Generation || loaded.Email.Policy.MaxMessageBytes == 8<<20 {
+		t.Fatalf("candidate was persisted before snapshot validation: %+v", loaded)
 	}
 }
 

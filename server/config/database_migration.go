@@ -59,6 +59,9 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
 		return err
 	}
+	if err := m.snapshots.Validate(candidate); err != nil {
+		return err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
 		return err
 	}

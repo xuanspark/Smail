@@ -24,6 +24,28 @@ func TestSnapshotStoreRejectsInvalidCandidate(t *testing.T) {
 	}
 }
 
+func TestSnapshotStoreValidateDoesNotPublishCandidate(t *testing.T) {
+	initial := validRuntimeConfig()
+	store, err := NewSnapshotStore(initial, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := validRuntimeConfig()
+	candidate.Generation = 2
+	candidate.Root.Generation = 2
+	candidate.Root.Sections = validSectionReferences(2)
+	candidate.SMTP.Meta.Generation = 2
+	candidate.Email.Meta.Generation = 2
+	candidate.SSL.Meta.Generation = 2
+	candidate.Plugins.Meta.Generation = 2
+	if err := store.Validate(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Generation(); got != initial.Generation {
+		t.Fatalf("validation changed active generation: got %d, want %d", got, initial.Generation)
+	}
+}
+
 func TestSnapshotStoreReturnsDeepCopies(t *testing.T) {
 	initial := validRuntimeConfig()
 	store, err := NewSnapshotStore(initial, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})

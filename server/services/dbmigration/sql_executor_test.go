@@ -190,6 +190,20 @@ func (c *cleanupRecordingCopier) Complete(config.DatabaseConfig, config.Database
 	c.completeCalled = true
 }
 
+func TestSQLExecutorCleansTargetForKnownConfigurationSwitchRejection(t *testing.T) {
+	copier := &cleanupRecordingCopier{}
+	executor := NewSQLExecutor(copier, func(context.Context, uint64, config.DatabaseConfig, config.AuditActor) error {
+		return config.ErrGenerationConflict
+	})
+	err := executor.Run(context.Background(), validStructuredPlan(t), func(Status) error { return nil })
+	if !errors.Is(err, config.ErrGenerationConflict) || errors.Is(err, ErrSwitchOutcomeUnknown) {
+		t.Fatalf("known switch rejection = %v", err)
+	}
+	if !copier.cleanupCalled {
+		t.Fatal("structured target was not cleaned after known switch rejection")
+	}
+}
+
 func TestSQLExecutorPreservesStructuredTargetWhenConfigurationSwitchOutcomeIsUnknown(t *testing.T) {
 	copier := &cleanupRecordingCopier{}
 	executor := NewSQLExecutor(copier, func(context.Context, uint64, config.DatabaseConfig, config.AuditActor) error {

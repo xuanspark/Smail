@@ -134,6 +134,10 @@ func (e *SQLiteExecutor) Run(ctx context.Context, plan Plan, update func(Status)
 		switchErr = e.switchConfig(ctx, plan.targetConfig)
 	}
 	if switchErr != nil {
+		if isKnownSwitchRejection(switchErr) {
+			_ = os.Remove(targetPath)
+			return switchErr
+		}
 		return errors.Join(ErrSwitchOutcomeUnknown, switchErr)
 	}
 	switched = true

@@ -139,6 +139,23 @@ func TestSQLiteExecutorRequiresConfigurationSwitch(t *testing.T) {
 	}
 }
 
+func TestSQLiteExecutorCleansTargetForKnownConfigurationSwitchRejection(t *testing.T) {
+	service, root := newSQLiteMigrationFixture(t, func(context.Context, config.DatabaseConfig) error {
+		return config.ErrGenerationConflict
+	})
+	record, token, err := service.Preview(context.Background(), config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "smail.db"}, 1, "known-rejection.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, err := service.Execute(context.Background(), record.ID, token)
+	if !errors.Is(err, config.ErrGenerationConflict) || errors.Is(err, ErrSwitchOutcomeUnknown) {
+		t.Fatalf("known switch rejection = %v, record = %+v", err, failed)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "config", "known-rejection.db")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("target database remained after known switch rejection, stat error = %v", statErr)
+	}
+}
+
 func TestSQLiteExecutorPreservesTargetWhenConfigurationSwitchOutcomeIsUnknown(t *testing.T) {
 	service, root := newSQLiteMigrationFixture(t, func(context.Context, config.DatabaseConfig) error {
 		return errors.New("配置切换失败")
