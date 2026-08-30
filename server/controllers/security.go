@@ -314,6 +314,95 @@ func RevokeRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.
 }
 
 // RequestVerification 统一处理登录、密码恢复和外部邮箱验证申请。
+type protocolCredentialRequest struct {
+	Protocol string `json:"protocol"`
+	Enabled  *bool  `json:"enabled,omitempty"`
+}
+
+func requireProtocolCredentialContext(ctx *context.Context, w http.ResponseWriter) (*credentials.Service, bool) {
+	if ctx == nil || ctx.UserID <= 0 {
+		writeSecurityError(w, response.NeedLogin, "请先登录")
+		return nil, false
+	}
+	service := credentialRuntime()
+	if service == nil {
+		writeSecurityError(w, response.ParamsError, "安全设置暂时不可用")
+		return nil, false
+	}
+	return service, true
+}
+
+// ListProtocolCredentials 返回当前用户的协议开关和授权码状态。
+func ListProtocolCredentials(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	service, ok := requireProtocolCredentialContext(ctx, w)
+	if !ok {
+		return
+	}
+	items, err := service.ListProtocolCredentials(ctx.UserID)
+	if err != nil {
+		log.WithError(err).Error("load protocol credentials failed")
+		writeSecurityError(w, response.ParamsError, "读取第三方协议设置失败")
+		return
+	}
+	response.NewSuccessResponse(items).FPrint(w)
+}
+
+// SetProtocolCredentialEnabled 设置当前用户的第三方协议开关。
+func SetProtocolCredentialEnabled(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	service, ok := requireProtocolCredentialContext(ctx, w)
+	if !ok {
+		return
+	}
+	var input protocolCredentialRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil || input.Enabled == nil {
+		writeSecurityError(w, response.ParamsError, "协议设置请求无效")
+		return
+	}
+	if err := service.SetProtocolEnabled(ctx.UserID, input.Protocol, *input.Enabled); err != nil {
+		writeSecurityError(w, response.ParamsError, "协议设置失败")
+		return
+	}
+	response.NewSuccessResponse(map[string]any{"protocol": strings.ToLower(strings.TrimSpace(input.Protocol)), "enabled": *input.Enabled}).FPrint(w)
+}
+
+// GenerateProtocolCredential 为当前用户生成指定协议授权码，明文只返回一次。
+func GenerateProtocolCredential(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	service, ok := requireProtocolCredentialContext(ctx, w)
+	if !ok {
+		return
+	}
+	var input protocolCredentialRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.Protocol) == "" {
+		writeSecurityError(w, response.ParamsError, "协议请求无效")
+		return
+	}
+	code, err := service.GenerateProtocolCode(ctx.UserID, input.Protocol)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "请先开启协议后再生成授权码")
+		return
+	}
+	protocol, _ := credentials.NormalizeProtocol(input.Protocol)
+	response.NewSuccessResponse(map[string]any{"protocol": protocol, "code": code, "shown_once": true}).FPrint(w)
+}
+
+// RevokeProtocolCredential 撤销当前用户指定协议的授权码。
+func RevokeProtocolCredential(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	service, ok := requireProtocolCredentialContext(ctx, w)
+	if !ok {
+		return
+	}
+	var input protocolCredentialRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.Protocol) == "" {
+		writeSecurityError(w, response.ParamsError, "协议请求无效")
+		return
+	}
+	if err := service.RevokeProtocolCode(ctx.UserID, input.Protocol); err != nil {
+		writeSecurityError(w, response.ParamsError, "撤销授权码失败")
+		return
+	}
+	protocol, _ := credentials.NormalizeProtocol(input.Protocol)
+	response.NewSuccessResponse(map[string]any{"protocol": protocol, "revoked": true}).FPrint(w)
+}
 func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")

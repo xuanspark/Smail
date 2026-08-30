@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/credentials"
 )
 
 const (
@@ -42,28 +44,44 @@ var (
 )
 
 func AuthenticateProtocol(protocol string, remoteAddress string, account string, plain string) (*models.User, error) {
+	normalizedProtocol, protocolErr := credentials.NormalizeProtocol(protocol)
 	normalizedAccount := strings.ToLower(strings.TrimSpace(account))
 	if normalizedIdentifier, err := NormalizeIdentifierKey(account); err == nil {
 		normalizedAccount = normalizedIdentifier
 	}
 	normalizedRemote := protocolRemoteHost(remoteAddress)
-	pairKey := hashedProtocolLoginKey("pair", protocol, normalizedRemote, normalizedAccount)
+	pairKey := hashedProtocolLoginKey("pair", normalizedProtocol, normalizedRemote, normalizedAccount)
 	accountKey := hashedProtocolLoginKey("account", normalizedAccount)
 	remoteKey := hashedProtocolLoginKey("remote", normalizedRemote)
 
 	if protocolPairAttempts.blocked(pairKey) || protocolAccountAttempts.blocked(accountKey) || protocolRemoteAttempts.blocked(remoteKey) {
 		return nil, errors.New("invalid credentials")
 	}
-	user, err := AuthenticateIdentifier(account, plain)
-	if err != nil {
+	fail := func() (*models.User, error) {
 		protocolPairAttempts.recordFailure(pairKey)
 		protocolAccountAttempts.recordFailure(accountKey)
 		protocolRemoteAttempts.recordFailure(remoteKey)
-		return nil, err
+		return nil, errors.New("invalid credentials")
+	}
+	if protocolErr != nil || db.Instance == nil {
+		return fail()
+	}
+	identity, err := ResolveIdentifier(account)
+	if err != nil || identity.Kind != IdentifierEmail || identity.UserID <= 0 {
+		return fail()
+	}
+	service, err := credentials.NewService(db.Instance)
+	if err != nil || !service.VerifyProtocolCode(identity.UserID, normalizedProtocol, plain) {
+		return fail()
+	}
+	var user models.User
+	has, err := db.Instance.ID(identity.UserID).Where("disabled = 0").Get(&user)
+	if err != nil || !has || user.ID <= 0 {
+		return fail()
 	}
 	protocolPairAttempts.clear(pairKey)
 	protocolAccountAttempts.clear(accountKey)
-	return user, nil
+	return &user, nil
 }
 
 func newProtocolLoginLimiter(failureLimit int) *protocolLoginLimiter {

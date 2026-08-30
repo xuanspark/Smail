@@ -144,6 +144,7 @@ func syncTables() error {
 		&models.SecurityQuestion{},
 		&models.RecoveryCode{},
 		&models.WebAuthnCredential{},
+		&models.ProtocolCredential{},
 		&models.Version{},
 	}
 	for _, table := range tables {

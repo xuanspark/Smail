@@ -22,6 +22,10 @@ export function usePage() {
   const generatedCodes = ref([])
   const externalEmails = ref([])
   const externalLoading = ref(false)
+  const protocolLoading = ref(false)
+  const protocolCredentials = ref([])
+  const generatedProtocolCode = ref('')
+  const generatedProtocol = ref('')
   const bindForm = reactive({ email: '', type: 'backup', challengeId: '', bindingId: 0, code: '' })
 
   const ruleForm = reactive({ current_pwd: '', new_pwd: '', new_pwd2: '' })
@@ -53,13 +57,15 @@ export function usePage() {
     securityLoading.value = true
     try {
       const requests = [
+        http.get('/api/v1/security/credentials/protocols'),
         http.get('/api/v1/security/credentials/question'),
         http.get('/api/v1/security/external-email/list'),
       ]
       if (!isSuperAdmin.value) {
         requests.push(http.get('/api/v1/security/credentials/recovery-codes'))
       }
-      const [question, external, recovery] = await Promise.all(requests)
+      const [protocol, question, external, recovery] = await Promise.all(requests)
+      if (protocol.errorNo === 0) protocolCredentials.value = Array.isArray(protocol.data) ? protocol.data : []
       if (question.errorNo === 0 && question.data) {
         securityQuestion.configured = Boolean(question.data.configured)
         securityQuestion.question = question.data.question || ''
@@ -74,6 +80,78 @@ export function usePage() {
     }
   }
 
+  const protocolLabel = protocol => ({ imap: 'IMAP', pop3: 'POP3', smtp: 'SMTP' }[protocol] || protocol.toUpperCase())
+
+  const loadProtocolCredentials = async () => {
+    const res = await http.get('/api/v1/security/credentials/protocols')
+    if (res.errorNo !== 0) throw new Error(res.errorMsg || '读取第三方协议设置失败')
+    protocolCredentials.value = Array.isArray(res.data) ? res.data : []
+  }
+
+  const setProtocolEnabled = async (item, enabled) => {
+    const previous = item.enabled
+    item.enabled = enabled
+    protocolLoading.value = true
+    try {
+      const res = await http.put('/api/v1/security/credentials/protocols/enabled', { protocol: item.protocol, enabled })
+      if (res.errorNo !== 0) throw new Error(res.errorMsg || '协议设置失败')
+      notify(`${protocolLabel(item.protocol)} 协议已${enabled ? '开启' : '关闭'}`, 'success')
+    } catch (error) {
+      item.enabled = previous
+      notify(error?.message || '协议设置失败')
+    } finally {
+      protocolLoading.value = false
+    }
+  }
+
+  const generateProtocolCode = async item => {
+    if (!item.enabled) {
+      notify(`请先开启 ${protocolLabel(item.protocol)} 协议`)
+      return
+    }
+    protocolLoading.value = true
+    try {
+      const res = await http.post('/api/v1/security/credentials/protocols/generate', { protocol: item.protocol })
+      if (res.errorNo !== 0) throw new Error(res.errorMsg || '生成授权码失败')
+      generatedProtocol.value = item.protocol
+      generatedProtocolCode.value = res.data?.code || ''
+      item.configured = true
+      notify(`${protocolLabel(item.protocol)} 授权码已生成，请立即保存`, 'success')
+    } catch (error) {
+      notify(error?.message || '生成授权码失败')
+    } finally {
+      protocolLoading.value = false
+    }
+  }
+
+  const copyProtocolCode = async () => {
+    if (!generatedProtocolCode.value) return
+    try {
+      await navigator.clipboard.writeText(generatedProtocolCode.value)
+      notify('授权码已复制', 'success')
+    } catch {
+      notify('复制失败，请手动复制授权码')
+    }
+  }
+
+  const revokeProtocolCode = async item => {
+    try {
+      await ElMessageBox.confirm(`撤销后 ${protocolLabel(item.protocol)} 授权码将立即失效，是否继续？`, '撤销协议授权码', { type: 'warning' })
+      protocolLoading.value = true
+      const res = await http.post('/api/v1/security/credentials/protocols/revoke', { protocol: item.protocol })
+      if (res.errorNo !== 0) throw new Error(res.errorMsg || '撤销授权码失败')
+      item.configured = false
+      if (generatedProtocol.value === item.protocol) {
+        generatedProtocol.value = ''
+        generatedProtocolCode.value = ''
+      }
+      notify(`${protocolLabel(item.protocol)} 授权码已撤销`, 'success')
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') notify(error?.message || '撤销授权码失败')
+    } finally {
+      protocolLoading.value = false
+    }
+  }
   const registerCredential = async () => {
     if (!supported || registering.value) return
     registering.value = true
@@ -235,6 +313,8 @@ export function usePage() {
   return {
     lang, isSuperAdmin, supported, registering, credentialsLoading, credentials, securityLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
+    protocolLoading, protocolCredentials, generatedProtocolCode, generatedProtocol, protocolLabel,
+    setProtocolEnabled, generateProtocolCode, copyProtocolCode, revokeProtocolCode,
     bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
     saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, bindExternalEmail,
     disableExternalEmail, formatTime, logout,

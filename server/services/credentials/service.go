@@ -281,6 +281,9 @@ func (s *Service) RevokeAllWithSession(session *xorm.Session, userID int) error 
 	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at").Update(&models.WebAuthnCredential{RevokedAt: &now}); err != nil {
 		return fmt.Errorf("revoke webauthn credentials: %w", err)
 	}
+	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at", "updated_at").Update(&models.ProtocolCredential{RevokedAt: &now}); err != nil {
+		return fmt.Errorf("revoke protocol credentials: %w", err)
+	}
 	return nil
 }
 
@@ -305,6 +308,10 @@ func revokeAllOnSession(session *xorm.Session, now func() time.Time, userID int)
 	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at").Update(&models.WebAuthnCredential{RevokedAt: &when}); err != nil {
 		_ = session.Rollback()
 		return fmt.Errorf("revoke webauthn credentials: %w", err)
+	}
+	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at", "updated_at").Update(&models.ProtocolCredential{RevokedAt: &when}); err != nil {
+		_ = session.Rollback()
+		return fmt.Errorf("revoke protocol credentials: %w", err)
 	}
 	if err := session.Commit(); err != nil {
 		return fmt.Errorf("commit credential revocation: %w", err)

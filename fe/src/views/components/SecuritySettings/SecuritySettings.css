@@ -24,3 +24,19 @@
   .credential-actions { width: 100%; }
   .credential-actions .el-button { flex: 1; }
 }
+
+.protocol-section > .el-alert { margin-bottom: 18px; }
+.protocol-list { display: grid; gap: 12px; }
+.protocol-item { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px; border: 1px solid var(--pm-border-color); border-radius: var(--pm-radius-sm); background: var(--pm-bg-secondary); }
+.protocol-info { min-width: 0; }
+.protocol-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.protocol-title strong { color: var(--pm-text-primary); font-size: 16px; }
+.protocol-info p { margin: 8px 0 0; color: var(--pm-text-secondary); font-size: 13px; }
+.protocol-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; flex: none; }
+.protocol-code-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid var(--pm-primary-color); border-radius: var(--pm-radius-sm); background: color-mix(in srgb, var(--pm-primary-color) 7%, var(--pm-bg-primary)); }
+.protocol-code-panel .one-time-tip { width: 100%; color: var(--pm-text-secondary); font-size: 13px; }
+.protocol-code-panel code { padding: 8px 12px; border-radius: var(--pm-radius-sm); background: var(--pm-bg-secondary); color: var(--pm-text-primary); font-size: 16px; font-weight: 700; letter-spacing: 1px; word-break: break-all; }
+@media (max-width: 720px) {
+  .protocol-item { align-items: stretch; flex-direction: column; }
+  .protocol-actions { justify-content: flex-start; }
+}

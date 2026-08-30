@@ -3,6 +3,7 @@ package credentials
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -18,7 +19,7 @@ func newFixture(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	if err := engine.Sync2(&models.User{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}); err != nil {
+	if err := engine.Sync2(&models.User{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}, &models.ProtocolCredential{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := engine.Insert(&models.User{Account: "alice", Name: "Alice", Password: "unused", Role: "user"}); err != nil {
@@ -105,5 +106,41 @@ func TestRecoveryCodeConcurrentConsumptionHasOneWinner(t *testing.T) {
 	}
 	if winners != 1 {
 		t.Fatalf("winners = %d", winners)
+	}
+}
+
+func TestProtocolCredentialLifecycle(t *testing.T) {
+	service := newFixture(t)
+	if err := service.SetProtocolEnabled(1, ProtocolSMTP, true); err != nil {
+		t.Fatal(err)
+	}
+	statuses, err := service.ListProtocolCredentials(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 3 || !statuses[2].Enabled || statuses[2].Configured {
+		t.Fatalf("unexpected initial protocol status: %+v", statuses)
+	}
+	if _, err := service.GenerateProtocolCode(1, ProtocolIMAP); !errors.Is(err, ErrProtocolDisabled) {
+		t.Fatalf("generating a disabled protocol code error = %v", err)
+	}
+	code, err := service.GenerateProtocolCode(1, ProtocolSMTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code == "" || strings.Contains(code, " ") {
+		t.Fatalf("invalid generated protocol code %q", code)
+	}
+	if !service.VerifyProtocolCode(1, ProtocolSMTP, code) {
+		t.Fatal("generated protocol code was rejected")
+	}
+	if service.VerifyProtocolCode(1, ProtocolSMTP, "wrong-code") {
+		t.Fatal("wrong protocol code was accepted")
+	}
+	if err := service.RevokeProtocolCode(1, ProtocolSMTP); err != nil {
+		t.Fatal(err)
+	}
+	if service.VerifyProtocolCode(1, ProtocolSMTP, code) {
+		t.Fatal("revoked protocol code was accepted")
 	}
 }

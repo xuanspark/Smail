@@ -9,6 +9,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
@@ -145,16 +146,33 @@ func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T
 		t.Fatal(err)
 	}
 
+	service, err := credentials.NewService(db.Instance)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, protocol := range []string{"smtp", "imap", "pop3"} {
-		got, err := AuthenticateProtocol(protocol, "192.0.2.10:12345", " Alice@Example.com ", "CorrectP12")
+		if err := service.SetProtocolEnabled(user.ID, protocol, true); err != nil {
+			t.Fatalf("enable %s: %v", protocol, err)
+		}
+		code, err := service.GenerateProtocolCode(user.ID, protocol)
+		if err != nil {
+			t.Fatalf("generate %s code: %v", protocol, err)
+		}
+		got, err := AuthenticateProtocol(protocol, "192.0.2.10:12345", " Alice@Example.com ", code)
 		if err != nil {
 			t.Fatalf("%s full email authentication failed: %v", protocol, err)
 		}
 		if got == nil || got.Account != "alice" {
 			t.Fatalf("%s authenticated user = %+v", protocol, got)
 		}
+		if _, err := AuthenticateProtocol(protocol, "192.0.2.10:12345", "alice@example.com", "CorrectP12"); err == nil {
+			t.Fatalf("%s must reject the web password", protocol)
+		}
 	}
 
+	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice", "CorrectP12"); err == nil {
+		t.Fatal("account-only protocol login should be rejected")
+	}
 	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice@other.example", "CorrectP12"); err == nil {
 		t.Fatal("unconfigured email domain should be rejected")
 	}
