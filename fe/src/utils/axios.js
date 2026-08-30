@@ -46,13 +46,19 @@ function attachApiErrorDetails(error) {
 }
 
 function isSetupRequest(config) {
-    const url = String(config?.url || '').split('?')[0]
-    return url === '/api/setup' || url === '/api/v1/setup'
+    const rawUrl = String(config?.url || '').split('?')[0]
+    let path = rawUrl
+    try {
+        path = new URL(rawUrl, config?.baseURL || window.location.origin).pathname
+    } catch (error) {
+        path = rawUrl
+    }
+    return path === '/api/setup' || path === '/api/v1/setup'
 }
 
 http.interceptors.response.use(async (response) => {
     //响应成功
-    if (response.data.errorNo === 403 && !isSetupRequest(response.config)) {
+    if (response.data?.errorNo === 403 && !isSetupRequest(response.config)) {
 
         await router.replace({
             path: '/login',
@@ -62,7 +68,7 @@ http.interceptors.response.use(async (response) => {
         });
     }
     //响应成功
-    if (response.data.errorNo === 402) {
+    if (response.data?.errorNo === 402 && !isSetupRequest(response.config)) {
         await router.replace({
             path: '/setup',
             query: {
