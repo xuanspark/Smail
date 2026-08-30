@@ -33,6 +33,7 @@ type setupAttempt struct {
 
 type setupSecurity struct {
 	mu        sync.Mutex
+	requestMu sync.Mutex
 	token     string
 	tokenHash [32]byte
 	consumed  bool
@@ -140,6 +141,13 @@ func (s *setupSecurity) authorize(next http.HandlerFunc) http.HandlerFunc {
 		if !s.validToken(token) {
 			s.recordFailure(ip)
 			log.Warn("Setup request rejected")
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		// 一次性令牌必须串行消费请求，避免两个并发请求在状态切换前同时进入初始化处理器。
+		s.requestMu.Lock()
+		defer s.requestMu.Unlock()
+		if !s.validToken(token) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

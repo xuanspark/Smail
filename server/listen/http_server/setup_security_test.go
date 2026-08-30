@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -86,6 +87,46 @@ func TestSetupSecurityAcceptsTokenOnce(t *testing.T) {
 	}
 }
 
+func TestSetupSecuritySerializesConcurrentTokenRequests(t *testing.T) {
+	token := "0123456789abcdefghijklmnop"
+	security := withSetupSecurity(t, token)
+	started := make(chan struct{})
+	continueRequest := make(chan struct{})
+	var calls int
+	var callsMu sync.Mutex
+	handler := security.authorize(func(w http.ResponseWriter, r *http.Request) {
+		callsMu.Lock()
+		calls++
+		callsMu.Unlock()
+		close(started)
+		<-continueRequest
+		config.IsInit = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	results := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			request := setupRequest(http.MethodPost)
+			request.Header.Set("X-Setup-Token", token)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			results <- recorder.Code
+		}()
+	}
+
+	<-started
+	close(continueRequest)
+	first, second := <-results, <-results
+	if (first != http.StatusNoContent && second != http.StatusNoContent) || (first == http.StatusNoContent && second == http.StatusNoContent) {
+		t.Fatalf("concurrent setup results = %d, %d; want exactly one success", first, second)
+	}
+	callsMu.Lock()
+	defer callsMu.Unlock()
+	if calls != 1 {
+		t.Fatalf("setup handler calls = %d, want 1", calls)
+	}
+}
 func TestSetupSecurityBlocksUnauthorizedSource(t *testing.T) {
 	token := "0123456789abcdefghijklmnop"
 	security := withSetupSecurity(t, token)
