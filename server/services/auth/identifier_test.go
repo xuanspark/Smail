@@ -37,18 +37,20 @@ func TestResolveIdentifierUsesVerifiedFullEmailBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	verifiedAt := time.Now().UTC()
+	canonicalAddress := "alice@example.com"
 	if _, err := db.Instance.Insert(&models.UserEmail{
 		UserID:           user.ID,
 		Address:          "Alice@Example.com",
-		AddressCanonical: "alice@example.com",
+		AddressCanonical: &canonicalAddress,
 		VerifiedAt:       &verifiedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
+	pendingAddress := "pending@example.com"
 	if _, err := db.Instance.Insert(&models.UserEmail{
 		UserID:           user.ID,
 		Address:          "pending@example.com",
-		AddressCanonical: "pending@example.com",
+		AddressCanonical: &pendingAddress,
 	}); err != nil {
 		t.Fatal(err)
 	}

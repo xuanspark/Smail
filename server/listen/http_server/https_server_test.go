@@ -47,10 +47,10 @@ func TestCSRFRejectsCrossOriginCookieRequest(t *testing.T) {
 	oldInit := config.IsInit
 	oldSession := session.Instance
 	defer func() {
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		session.Instance = oldSession
 	}()
-	config.IsInit = false
+	config.SetInitState(false)
 	session.Instance = scs.New()
 	session.Instance.Cookie.Name = "smail_session"
 
@@ -81,10 +81,10 @@ func TestCSRFAllowsSameOriginCookieRequest(t *testing.T) {
 	oldInit := config.IsInit
 	oldSession := session.Instance
 	defer func() {
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		session.Instance = oldSession
 	}()
-	config.IsInit = false
+	config.SetInitState(false)
 	session.Instance = scs.New()
 	session.Instance.Cookie.Name = "smail_session"
 

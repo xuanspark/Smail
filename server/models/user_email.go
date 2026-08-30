@@ -7,7 +7,7 @@ type UserEmail struct {
 	UserID           int        `xorm:"user_id int not null index('idx_eid') index('idx_user_email_user_primary')"`
 	EmailID          int        `xorm:"email_id not null index('idx_eid') index"`
 	Address          string     `xorm:"address varchar(254) null" json:"address,omitempty"`
-	AddressCanonical string     `xorm:"address_canonical varchar(254) null unique" json:"-"`
+	AddressCanonical *string    `xorm:"address_canonical varchar(254) null unique" json:"-"`
 	IsPrimary        int8       `xorm:"is_primary tinyint(1) notnull default(0)" json:"is_primary"`
 	VerifiedAt       *time.Time `xorm:"verified_at datetime null" json:"verified_at,omitempty"`
 	CreatedAt        time.Time  `xorm:"created_at datetime created" json:"created_at"`

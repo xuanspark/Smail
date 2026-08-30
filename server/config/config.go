@@ -12,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 var IsInit bool
+var legacyInitState atomic.Bool
 var DevelopmentMode bool
 
 type Config struct {
@@ -197,7 +199,7 @@ func Init() error {
 		Instance.Domains = []string{Instance.Domain}
 	}
 
-	IsInit = Instance.IsSetupReady()
+	SetInitState(Instance.IsSetupReady())
 	PublishConfigSnapshot(Instance)
 
 	// 设置日志格式为json格式
@@ -236,6 +238,15 @@ func Init() error {
 // IsInit 仅保留用于兼容旧配置和旧测试，不再作为新业务读路径。
 func (c *Config) IsSetupReady() bool {
 	return c != nil && c.SetupState == SetupStateReady
+}
+
+func SetInitState(value bool) {
+	legacyInitState.Store(value)
+	IsInit = value
+}
+
+func legacyInitReady() bool {
+	return legacyInitState.Load()
 }
 
 func ReadPrivateKey() (*ecdsa.PrivateKey, bool, error) {

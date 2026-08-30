@@ -21,9 +21,9 @@ func withSetupSecurity(t *testing.T, token string) *setupSecurity {
 	if err := os.Unsetenv("SMAIL_SETUP_ALLOWED_CIDRS"); err != nil {
 		t.Fatal(err)
 	}
-	config.IsInit = false
+	config.SetInitState(false)
 	t.Cleanup(func() {
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		_ = os.Setenv("SMAIL_SETUP_TOKEN", oldToken)
 		_ = os.Setenv("SMAIL_SETUP_ALLOWED_CIDRS", oldCIDRs)
 	})
@@ -65,7 +65,7 @@ func TestSetupSecurityAcceptsTokenOnce(t *testing.T) {
 	calls := 0
 	handler := security.authorize(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		config.IsInit = true
+		config.SetInitState(true)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -77,7 +77,7 @@ func TestSetupSecurityAcceptsTokenOnce(t *testing.T) {
 		t.Fatalf("first request failed: code=%d calls=%d", recorder.Code, calls)
 	}
 
-	config.IsInit = false
+	config.SetInitState(false)
 	request = setupRequest(http.MethodPost)
 	request.Header.Set("X-Setup-Token", token)
 	recorder = httptest.NewRecorder()
@@ -100,7 +100,7 @@ func TestSetupSecuritySerializesConcurrentTokenRequests(t *testing.T) {
 		callsMu.Unlock()
 		close(started)
 		<-continueRequest
-		config.IsInit = true
+		config.SetInitState(true)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -243,7 +243,7 @@ func TestSetupAPIRoutesBecomeInvalidAfterSetupCompletes(t *testing.T) {
 	calls := 0
 	registerSetupAPIRoutes(mux, security, setupOnlyPost(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		config.IsInit = true
+		config.SetInitState(true)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
@@ -256,7 +256,7 @@ func TestSetupAPIRoutesBecomeInvalidAfterSetupCompletes(t *testing.T) {
 		t.Fatalf("first setup returned code=%d calls=%d", recorder.Code, calls)
 	}
 
-	config.IsInit = false
+	config.SetInitState(false)
 	for _, endpoint := range []string{"/api/setup", "/api/v1/setup"} {
 		request = httptest.NewRequest(http.MethodPost, endpoint, nil)
 		request.RemoteAddr = "127.0.0.1:12345"
@@ -280,9 +280,9 @@ func TestSetupSecurityBootstrapCookieForAllowedRemote(t *testing.T) {
 	if err := os.Setenv("SMAIL_SETUP_ALLOWED_CIDRS", "192.168.2.0/24"); err != nil {
 		t.Fatal(err)
 	}
-	config.IsInit = false
+	config.SetInitState(false)
 	t.Cleanup(func() {
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		_ = os.Setenv("SMAIL_SETUP_TOKEN", oldToken)
 		_ = os.Setenv("SMAIL_SETUP_ALLOWED_CIDRS", oldCIDRs)
 	})

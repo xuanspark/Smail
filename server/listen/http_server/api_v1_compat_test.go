@@ -99,8 +99,8 @@ func TestV1RouteDoesNotReceiveLegacyDeprecationHeaders(t *testing.T) {
 
 func TestV1LoginUsesSameRequestOriginGuard(t *testing.T) {
 	oldInit := config.IsInit
-	t.Cleanup(func() { config.IsInit = oldInit })
-	config.IsInit = false
+	t.Cleanup(func() { config.SetInitState(oldInit) })
+	config.SetInitState(false)
 
 	handler := contextIterceptor(controllers.Login)
 	request := httptest.NewRequest(http.MethodPost, "http://mail.example.com/api/v1/login", nil)

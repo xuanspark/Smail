@@ -18,7 +18,7 @@ func Finish() error {
 		return errors.Wrap(err)
 	}
 	if cfg.IsSetupReady() {
-		config.IsInit = true
+		config.SetInitState(true)
 		return nil
 	}
 	cfg.SetupState = config.SetupStateReady
@@ -28,7 +28,7 @@ func Finish() error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
-	config.IsInit = true
+	config.SetInitState(true)
 	// 初始化完成
 	select {
 	case signal.InitChan <- true:

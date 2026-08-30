@@ -25,12 +25,12 @@ func TestModifyPasswordRouteRejectsUnauthenticatedRequest(t *testing.T) {
 	oldSession := session.Instance
 	t.Cleanup(func() {
 		config.Instance = oldConfig
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		session.Instance = oldSession
 	})
 
 	config.Instance = &config.Config{}
-	config.IsInit = true
+	config.SetInitState(true)
 	session.Instance = scs.New()
 
 	mux := http.NewServeMux()
@@ -66,7 +66,7 @@ func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 			_ = db.Instance.Close()
 		}
 		config.Instance = oldConfig
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		db.Instance = oldDB
 		session.Instance = oldSession
 	})
@@ -75,7 +75,7 @@ func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 		DbType: config.DBTypeSQLite,
 		DbDSN:  filepath.Join(testRoot, "super-admin-password.db"),
 	}
-	config.IsInit = true
+	config.SetInitState(true)
 	if err := db.Init(""); err != nil {
 		t.Fatal(err)
 	}

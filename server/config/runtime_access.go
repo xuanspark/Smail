@@ -16,7 +16,7 @@ func IsSetupReady() bool {
 	if value != nil && value.SetupState.Valid() {
 		return value.SetupState == SetupStateReady
 	}
-	return IsInit
+	return legacyInitReady()
 }
 
 // PublishConfigSnapshot 发布一份深拷贝，供运行时只读访问。

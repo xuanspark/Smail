@@ -29,13 +29,13 @@ func TestContextInterceptorValidatesCurrentUserState(t *testing.T) {
 			_ = db.Instance.Close()
 		}
 		config.Instance = oldConfig
-		config.IsInit = oldInit
+		config.SetInitState(oldInit)
 		db.Instance = oldDB
 		session.Instance = oldSession
 	})
 
 	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "session-validation.db")}
-	config.IsInit = true
+	config.SetInitState(true)
 	if err := db.Init(""); err != nil {
 		t.Fatal(err)
 	}
