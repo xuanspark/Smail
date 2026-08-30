@@ -44,6 +44,7 @@ jobs:
           echo "ADMINFILENAME=smail-admin_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
+          echo "TELEGRAMFILENAME=pmail_telegram_push_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
           echo "ZIPNAME=${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
       - name: Rename Windows File
         if: matrix.goos == 'windows'
@@ -52,6 +53,7 @@ jobs:
           echo "ADMINFILENAME=smail-admin_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
+          echo "TELEGRAMFILENAME=pmail_telegram_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
       - name: FE Build
         run: cd fe && yarn install --frozen-lockfile && yarn build
       - name: BE Build
@@ -59,10 +61,15 @@ jobs:
           cd server
           cp -rf ../fe/dist listen/http_server
           BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-          go build -ldflags "$BUILD_FLAGS" -o ${{ env.FILENAME }} .
+          go build -ldflags "$BUILD_FLAGS" -o ${{ env.FILENAME }} ./cmd/smail
           go build -ldflags "$BUILD_FLAGS" -o ${{ env.ADMINFILENAME }} ./cmd/smail-admin
           go build -ldflags "-s -w" -o ${{ env.WCFILENAME }} hooks/wechat_push/wechat_push.go
           go build -ldflags "-s -w" -o ${{ env.SPAMBLOCKFILENAME }} hooks/spam_block/spam_block.go
+          cd ../plugins/pmail_telegram_push
+          npm ci
+          npm run build-only
+          go build -ldflags "-s -w" -o ../../server/${{ env.TELEGRAMFILENAME }} .
+          cd ../../server
           cat > release.json <<EOF
           {
             "version": "${{ env.VERSION }}",
@@ -79,6 +86,7 @@ jobs:
           mkdir plugins
           mv ${{ env.WCFILENAME }} plugins/
           mv ${{ env.SPAMBLOCKFILENAME }} plugins/
+          mv ${{ env.TELEGRAMFILENAME }} plugins/
           zip -r ${{ env.ZIPNAME }}.zip ${{ env.FILENAME }} ${{ env.ADMINFILENAME }} plugins release.json README.md
           ls
       - name: Upload files to Artifacts

@@ -44,7 +44,7 @@ func newPublicSecurityFixture(t *testing.T) (*recovery.Service, *webauthnservice
 			t.Fatal(err)
 		}
 	}
-	passwordHash, err := auth.HashPassword("FixturePassword@123")
+	passwordHash, err := auth.HashPassword("FixtureP12")
 	if err != nil {
 		t.Fatal(err)
 	}

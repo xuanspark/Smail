@@ -92,7 +92,7 @@ export function usePage() {
       return
     }
 
-    http.post("/api/setup", {
+    http.post("/api/v1/setup", {
       "action": "set",
       "step": "password",
       "account": adminSettings.account,
@@ -110,7 +110,7 @@ export function usePage() {
   }
   
   const getPassword = () => {
-    http.post("/api/setup", {"action": "get", "step": "password"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "get", "step": "password"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -126,7 +126,7 @@ export function usePage() {
   }
   
   const getDbConfig = () => {
-    http.post("/api/setup", {"action": "get", "step": "database"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "get", "step": "database"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -143,7 +143,7 @@ export function usePage() {
   }
   
   const getDomainConfig = () => {
-    http.post("/api/setup", {"action": "get", "step": "domain"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "get", "step": "domain"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -196,7 +196,7 @@ export function usePage() {
       "db_name": dbSettings.name
     }
 
-    http.post("/api/setup", payload).then((res) => {
+    http.post("/api/v1/setup", payload).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg || lang.db_init_failed)
         return
@@ -229,7 +229,7 @@ export function usePage() {
   }
   
   const getDNSConfig = () => {
-    http.post("/api/setup", {"action": "get", "step": "dns"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "get", "step": "dns"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -270,7 +270,7 @@ export function usePage() {
   }
   
   const getSSLConfig = () => {
-    http.post("/api/setup", {"action": "get", "step": "ssl"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "get", "step": "ssl"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -295,7 +295,7 @@ export function usePage() {
     }
   
   
-    http.post("/api/setup", {
+    http.post("/api/v1/setup", {
       "action": "set",
       "step": "ssl",
       "ssl_type": sslType,
@@ -318,7 +318,7 @@ export function usePage() {
   }
   
   const checkStatus = () => {
-    http.post("/api/setup", {"action": "get", "step": "ssl"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "get", "step": "ssl"}).then((res) => {
       if (res.errorNo === 0 && res.data.ready) {
         if (sslSettings.type === "1") {
           window.location.href = "http://" + domainSettings.web_domain;
@@ -334,7 +334,7 @@ export function usePage() {
   }
   
   const setDomainConfig = () => {
-    http.post("/api/setup", {
+    http.post("/api/v1/setup", {
       "action": "set",
       "step": "domain",
       "web_domain": domainSettings.web_domain,
@@ -351,7 +351,7 @@ export function usePage() {
   }
   
   const getSSLDNSParams = () => {
-    http.post("/api/setup", {"action": "getParams", "step": "ssl"}).then((res) => {
+    http.post("/api/v1/setup", {"action": "getParams", "step": "ssl"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {

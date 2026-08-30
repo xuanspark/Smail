@@ -3,11 +3,11 @@
 package adminreset
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"os/exec"
-	"strings"
+
+	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
 func ReadProtectedPassword() (string, error) {
@@ -36,9 +36,27 @@ func askPassword(prompt string) (string, error) {
 	if err != nil {
 		return "", errors.New("受保护密码代理不可用")
 	}
-	output = bytes.TrimSpace(output)
-	if len(output) == 0 || len(output) > 256 {
+	output = stripPasswordLineEnding(output)
+	value := string(output)
+	defer clearBytes(output)
+	if password.ValidateUserPassword(value) != nil {
 		return "", errors.New("密码长度无效")
 	}
-	return strings.TrimSpace(string(output)), nil
+	return value, nil
+}
+
+func stripPasswordLineEnding(value []byte) []byte {
+	if len(value) > 0 && value[len(value)-1] == '\n' {
+		value = value[:len(value)-1]
+	}
+	if len(value) > 0 && value[len(value)-1] == '\r' {
+		value = value[:len(value)-1]
+	}
+	return value
+}
+
+func clearBytes(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
 }

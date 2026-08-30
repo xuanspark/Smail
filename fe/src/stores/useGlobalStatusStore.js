@@ -34,7 +34,7 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
 
             this.authLoading = true;
             try {
-                const response = await http.post("/api/user/info", {});
+                const response = await http.post("/api/v1/user/info", {});
                 if (response.errorNo === 0 && response.data) {
                     this.setUser(response.data, false);
                     this.authChecked = true;

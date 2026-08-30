@@ -34,7 +34,7 @@ const (
 	maxSessions = 1024
 )
 
-// Config 闁诲氦顫夐惌顔剧不?WebAuthn 婵炴挻纰嶇换鍡欑矉閸℃稒鍎?RP 闂佸憡鐟ラ崐褰掑汲閻旂厧妞介悘鐐舵濞堝爼鏌熺拠鈥虫灈闁伙附鍨块弻锕傚Ψ瑜庣粣妤冩喐閻楀牊纾搁柍?
+// Config 保存 WebAuthn 信赖方和凭据加密存储配置。
 type Config struct {
 	RPID          string
 	RPDisplayName string
@@ -42,7 +42,7 @@ type Config struct {
 	VaultRoot     string
 }
 
-// Service 闁荤姵鍔楅崰鏇㈡儗?WebAuthn 濠电偛顦崝宀勫船娴犲违濞达絿鍎ら銏㈡喐閻楀牊纾搁柍褜鍏涚粈渚€宕甸悢鐓庣妞ゆ梻鍘ч～锝夋倵闂堟稒顥滈柣掳鍔戝畷鎺楀Ω閵夛箑顏梺閫涘嫎閸婃繈寮ㄩ姀銈呂?
+// Service 管理 WebAuthn 注册、登录和凭据生命周期。
 type Service struct {
 	engine *xorm.Engine
 	vault  string
@@ -69,7 +69,7 @@ const (
 	discoverableLoginCeremony
 )
 
-// NewService 闂佸憡甯楃粙鎴犵磽?WebAuthn 闂佸搫鐗嗙粔瀛樻叏閻旂厧违闁稿本绋戦鐘绘煙鐎涙◤顏堝箯?SessionData 闂佸憡鐟禍娆戞崲濮樻墎鍋撳☉娅亜锕㈤鍛氦婵炴垶鍩冮弻銈夋煕閹邦剚鍣归柣掳鍔戞俊?
+// NewService 创建 WebAuthn 服务并校验必要配置。
 func NewService(engine *xorm.Engine, cfg Config) (*Service, error) {
 	if engine == nil || strings.TrimSpace(cfg.RPID) == "" || strings.TrimSpace(cfg.RPDisplayName) == "" || len(cfg.RPOrigins) == 0 || strings.TrimSpace(cfg.VaultRoot) == "" {
 		return nil, ErrUnavailable
@@ -86,7 +86,7 @@ func NewService(engine *xorm.Engine, cfg Config) (*Service, error) {
 	return &Service{engine: engine, vault: cfg.VaultRoot, authn: authn, sessions: make(map[string]ceremony), now: time.Now}, nil
 }
 
-// BeginRegistration 閻庢鍠掗崑鎾斥攽椤旂⒈鍎愰柡浣哄仱瀹曟浠﹂崜褋鍋婄紓浣割儏椤戝懘鎳熼悢鍛婁氦闁哄倹瀵х粈鈧繛鎴炴尭缁夊綊鍩€椤掆偓缁绘垵危閹达附鍎嶉柛鏇ㄥ亜閺佸爼鎮楀☉娅偐妲愰幍顔藉珰?ID闂?
+// BeginRegistration 开始指定用户的 WebAuthn 注册流程。
 func (s *Service) BeginRegistration(userID int) (*protocol.CredentialCreation, string, error) {
 	user, err := s.loadUser(userID)
 	if err != nil {
@@ -107,7 +107,7 @@ func (s *Service) BeginRegistration(userID int) (*protocol.CredentialCreation, s
 	return creation, sessionID, nil
 }
 
-// FinishRegistration 闂佸搫绋勭换婵嬫偘濞嗗緷纭呯疀濮樺吋缍岄梺闈╃祷閸斿矂骞栭柨瀣劅闁哄倽鍎荤€氭瑥菐閸ャ劎绠撻柣掳鍔戝畷婵嬫偐閼碱剚顫氶梺鍛婂焾閸樿棄鐣垫笟鈧俊?
+// FinishRegistration 完成指定用户的 WebAuthn 注册流程。
 func (s *Service) FinishRegistration(userID int, sessionID string, request *http.Request, displayName string) (*models.WebAuthnCredential, error) {
 	item, err := s.takeSession(sessionID, registrationCeremony, userID)
 	if err != nil {
@@ -163,7 +163,7 @@ func (s *Service) FinishRegistration(userID int, sessionID string, request *http
 	return record, nil
 }
 
-// BeginLogin 閻庢鍠掗崑鎾斥攽椤旂⒈鍎忛柛鎴節閹矂濡疯閺嗗繘鏌熼幘顕呮婵?WebAuthn 闂佽皫鍡╁殭缂傚秴绉撮湁濞达綀銆€閺屻倝鏌?
+// BeginLogin 开始指定用户的 WebAuthn 登录流程。
 func (s *Service) BeginLogin(userID int) (*protocol.CredentialAssertion, string, error) {
 	user, err := s.loadUser(userID)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *Service) BeginLogin(userID int) (*protocol.CredentialAssertion, string,
 	return assertion, sessionID, nil
 }
 
-// FinishLogin 闂佸搫绋勭换婵嬫偘濞嗘挸妫樻い鎾閺嬪懘鏌曢崱鏇犲妽婵炴彃娼″顒勫箥椤曞懎濮伴梺鍛婅壘缁夌兘顢橀幖浣告瀬闁哄鍎荤€氭瑩姊洪幓鎺斝㈤柛鐔告崌瀹曟繈鎮╅懠顒侇潥闂佸憡鍩堥崢钘夌暤娓氣偓婵?
+// FinishLogin 完成指定用户的 WebAuthn 登录流程。
 func (s *Service) FinishLogin(userID int, sessionID string, request *http.Request) (*models.WebAuthnCredential, error) {
 	item, err := s.takeSession(sessionID, loginCeremony, userID)
 	if err != nil {
@@ -291,7 +291,7 @@ func (s *Service) FinishDiscoverableLogin(sessionID string, request *http.Reques
 	return &user, record, nil
 }
 
-// ListCredentials 闁哄鏅滈弻銊ッ洪弽顓熷殗閺夊牄鍔嶅▍娑㈡煕閹搭厼骞楃€规挷鑳跺Σ鎰板閻樼數鈹涢梺鎸庣☉婵傛梻绮径瀣氦闁哄倹瀵х粈鈧梺绋挎禋閸撶喖骞愬鍫濈闁哄诞鍐炬奖闁诲酣娼уΛ娆忣焽濡ゅ懎妫樻繛鍡楃М閸?
+// ListCredentials 列出指定用户的非敏感 WebAuthn 凭据摘要。
 func (s *Service) ListCredentials(userID int) ([]models.WebAuthnCredential, error) {
 	if s == nil || s.engine == nil || userID <= 0 {
 		return nil, ErrInvalidRequest
@@ -306,7 +306,7 @@ func (s *Service) ListCredentials(userID int) ([]models.WebAuthnCredential, erro
 	return records, nil
 }
 
-// RenameCredential 闂佸憡鐟禍婊堝储閹寸姵濯肩紒瀣仢濞堝爼鏌熺拠鈥虫灍濠⒀冪Ф娴狅箓鎮欓崹顐ｆ闂佸湱顥愬〒褰掑箞閵娾晛缁╅柣鐔哄閸婂磭绱掓径搴＄劷闁?
+// RenameCredential 修改指定用户凭据的显示名称。
 func (s *Service) RenameCredential(userID, credentialID int, displayName string) error {
 	if userID <= 0 || credentialID <= 0 || strings.TrimSpace(displayName) == "" || len([]byte(displayName)) > 128 {
 		return ErrInvalidRequest
@@ -319,7 +319,7 @@ func (s *Service) RenameCredential(userID, credentialID int, displayName string)
 	return nil
 }
 
-// RevokeCredential 闂侀€涘嫎閸婃繈寮ㄩ姀锝冧汗闁规儳鍟块·鍛存煟椤剙濡介柛鈺傜洴閹啴宕熼鍡╀紘婵＄偑鍊楅幊鎾诲吹閻旂厧绠叉い鏇炴缁€澶愭煙娣囧崬鈧繈寮ㄩ姀锛勨枖鐎广儱鎳庣拋鏌ユ⒑椤愩垺顥撻柍?
+// RevokeCredential 撤销指定用户的一项 WebAuthn 凭据。
 func (s *Service) RevokeCredential(userID, credentialID int) error {
 	if userID <= 0 || credentialID <= 0 {
 		return ErrInvalidRequest
@@ -333,7 +333,7 @@ func (s *Service) RevokeCredential(userID, credentialID int) error {
 	return nil
 }
 
-// RevokeAllCredentials 闂侀€涘嫎閸婃繈寮ㄩ姀銈嗗仺闁靛绠戦悡鏇㈡煟閵娿儱顏╅柛娆忕箻閺屽牓濡搁敂鐣岀暢闂?WebAuthn 闂佸憡鍩堥崢钘夌暤娓氣偓婵?
+// RevokeAllCredentials 撤销指定用户的全部 WebAuthn 凭据。
 func (s *Service) RevokeAllCredentials(userID int) error {
 	if userID <= 0 {
 		return ErrInvalidRequest

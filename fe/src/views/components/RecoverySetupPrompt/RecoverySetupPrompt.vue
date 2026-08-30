@@ -85,7 +85,7 @@ const generateRecoveryCodes = async () => {
   }
   loading.value = true
   try {
-    const response = await http.post("/api/security/credentials/recovery-codes/generate", { count: 10 })
+    const response = await http.post("/api/v1/security/credentials/recovery-codes/generate", { count: 10 })
     if (response.errorNo !== 0 || !Array.isArray(response.data?.codes)) {
       throw new Error(response.errorMsg || "离线恢复码生成失败")
     }

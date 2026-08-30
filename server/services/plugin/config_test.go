@@ -74,6 +74,58 @@ func TestConfigServiceEncryptsTelegramUserSettingsAndRejectsTampering(t *testing
 		t.Fatalf("tampered user setting error = %v", err)
 	}
 }
+func TestConfigServiceAllowsEmptyTelegramChatIDToDisablePush(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	user := insertPluginTestUser(t, engine, "disabled-push", access.RoleUser)
+
+	status, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{}, 0)
+	if err != nil {
+		t.Fatalf("empty chat ID update failed: %v", err)
+	}
+	if status.Settings.ChatID != "" || status.Version != 1 {
+		t.Fatalf("unexpected empty chat ID status: %+v", status)
+	}
+	entries, err := service.ListTelegramUserSettings()
+	if err != nil || len(entries) != 1 || entries[0].Settings.ChatID != "" {
+		t.Fatalf("stored empty chat ID settings = %+v, err=%v", entries, err)
+	}
+}
+
+func TestConfigServiceRejectsTrailingTelegramSettingsJSON(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	user := insertPluginTestUser(t, engine, "trailing-json", access.RoleUser)
+	if _, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: "123"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	record := models.PluginUserSetting{}
+	found, err := engine.Where("plugin_id = ? AND user_id = ?", telegramPluginID, user.ID).Get(&record)
+	if err != nil || !found {
+		t.Fatalf("load setting record: found=%v err=%v", found, err)
+	}
+	plaintext, err := service.vault.Decrypt(credential.CurrentVersion, record.SettingsCiphertext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badPlaintext := plaintext + " {}"
+	ciphertext, err := service.vault.Encrypt(badPlaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := service.vault.Fingerprint(badPlaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.ID(record.ID).Cols("settings_ciphertext", "settings_hash").Update(&models.PluginUserSetting{
+		SettingsCiphertext: ciphertext,
+		SettingsHash:       fingerprint,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.GetOwnTelegramSettings(user.ID); !errors.Is(err, ErrPluginStoreUnavailable) {
+		t.Fatalf("trailing JSON was accepted: %v", err)
+	}
+}
+
 func TestConfigServiceEnforcesUserSettingRolesAndVersions(t *testing.T) {
 	service, engine := newPluginConfigService(t)
 	super := insertPluginTestUser(t, engine, "root", access.RoleSuperAdmin)

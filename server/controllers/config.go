@@ -247,7 +247,11 @@ func ConfigAuditQuery(ctx *appcontext.Context, w http.ResponseWriter, req *http.
 		writeConfigAccessError(w, err)
 		return
 	}
-	query := parseAuditQuery(req)
+	query, err := parseAuditQuery(req)
+	if err != nil {
+		writeConfigError(w, err)
+		return
+	}
 	items, err := manager.AuditQuery(req.Context(), query)
 	if err != nil {
 		writeConfigError(w, err)
@@ -273,11 +277,26 @@ func ExportConfigAudit(ctx *appcontext.Context, w http.ResponseWriter, req *http
 		writeConfigError(w, err)
 		return
 	}
-	query := parseAuditQuery(req)
+	query, err := parseAuditQuery(req)
+	if err != nil {
+		writeConfigError(w, err)
+		return
+	}
 	query.Limit = input.Limit
+	if err := config.ValidateConfigAuditQuery(query); err != nil {
+		writeConfigError(w, err)
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(input.Format))
+	if format == "" {
+		format = "json"
+	}
+	if format != "json" && format != "csv" {
+		writeConfigError(w, config.ErrInvalidAuditFormat)
+		return
+	}
 	var data []byte
-	var err error
-	if strings.EqualFold(input.Format, "csv") {
+	if format == "csv" {
 		data, err = manager.ExportAuditCSV(req.Context(), query)
 	} else {
 		data, err = manager.ExportAuditJSON(req.Context(), query)
@@ -287,7 +306,7 @@ func ExportConfigAudit(ctx *appcontext.Context, w http.ResponseWriter, req *http
 		return
 	}
 	contentType := "application/json; charset=utf-8"
-	if strings.EqualFold(input.Format, "csv") {
+	if format == "csv" {
 		contentType = "text/csv; charset=utf-8"
 	}
 	w.Header().Set("Content-Type", contentType)
@@ -348,17 +367,48 @@ func configActor(ctx *appcontext.Context, req *http.Request) config.AuditActor {
 	return actor
 }
 
-func parseAuditQuery(req *http.Request) config.ConfigAuditQuery {
+func parseAuditQuery(req *http.Request) (config.ConfigAuditQuery, error) {
 	query := req.URL.Query()
-	result := config.ConfigAuditQuery{ActorID: strings.TrimSpace(query.Get("actorId")), Operation: config.ConfigOperation(strings.TrimSpace(query.Get("operation"))), Section: config.Section(strings.TrimSpace(query.Get("section")))}
-	result.Limit, _ = strconv.Atoi(query.Get("limit"))
-	if value, err := time.Parse(time.RFC3339, query.Get("from")); err == nil {
+	for key, values := range query {
+		if len(values) != 1 {
+			return config.ConfigAuditQuery{}, config.ErrInvalidAuditQuery
+		}
+		switch key {
+		case "actorId", "operation", "section", "limit", "from", "to":
+		default:
+			return config.ConfigAuditQuery{}, config.ErrInvalidAuditQuery
+		}
+	}
+	result := config.ConfigAuditQuery{
+		ActorID:   strings.TrimSpace(query.Get("actorId")),
+		Operation: config.ConfigOperation(strings.TrimSpace(query.Get("operation"))),
+		Section:   config.Section(strings.TrimSpace(query.Get("section"))),
+	}
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			return config.ConfigAuditQuery{}, config.ErrInvalidAuditQuery
+		}
+		result.Limit = limit
+	}
+	if rawFrom := strings.TrimSpace(query.Get("from")); rawFrom != "" {
+		value, err := time.Parse(time.RFC3339, rawFrom)
+		if err != nil {
+			return config.ConfigAuditQuery{}, config.ErrInvalidAuditQuery
+		}
 		result.From = value
 	}
-	if value, err := time.Parse(time.RFC3339, query.Get("to")); err == nil {
+	if rawTo := strings.TrimSpace(query.Get("to")); rawTo != "" {
+		value, err := time.Parse(time.RFC3339, rawTo)
+		if err != nil {
+			return config.ConfigAuditQuery{}, config.ErrInvalidAuditQuery
+		}
 		result.To = value
 	}
-	return result
+	if err := config.ValidateConfigAuditQuery(result); err != nil {
+		return config.ConfigAuditQuery{}, err
+	}
+	return result, nil
 }
 
 func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (any, error) {
@@ -407,11 +457,18 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 	case config.SectionPlugins:
 		plugins := make(map[string]any, len(runtime.Plugins.Plugins))
 		for id, item := range runtime.Plugins.Plugins {
+			settings := any(nil)
+			if len(item.Settings) > 0 {
+				var value any
+				if err := config.ParseStrict(item.Settings, &value); err == nil {
+					settings = value
+				}
+			}
 			plugins[id] = map[string]any{
 				"enabled":      item.Enabled,
 				"executable":   item.Executable,
 				"permissions":  item.Permissions,
-				"settings":     nil,
+				"settings":     settings,
 				"secretStatus": publicSecret(item.Secret),
 			}
 		}
@@ -419,24 +476,4 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 	default:
 		return nil, errors.New("invalid configuration section")
 	}
-}
-
-func writeConfigAccessError(w http.ResponseWriter, err error) { writeConfigError(w, err) }
-func writeConfigError(w http.ResponseWriter, err error) {
-	status := response.NoAccessPrivileges
-	message := "无权访问或请求不满足安全条件"
-	var data any = ""
-	var denial *access.Denial
-	if errors.As(err, &denial) {
-		data = map[string]string{"code": string(denial.Code)}
-	}
-	if errors.Is(err, config.ErrManagerStorage) {
-		status = response.ServerError
-		message = "配置服务不可用"
-	}
-	if errors.Is(err, config.ErrGenerationConflict) {
-		status = response.ParamsError
-		message = "配置已发生变化，请刷新后重试"
-	}
-	response.NewErrorResponse(status, message, data).FPrint(w)
 }

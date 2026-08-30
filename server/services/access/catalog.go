@@ -26,7 +26,21 @@ var managementEndpoints = []Endpoint{
 	{Method: "GET", Path: "/api/v1/config/:section", Capability: CapabilityConfigRead},
 	{Method: "PUT", Path: "/api/v1/config/:section", Capability: CapabilityConfigWriteGlobal},
 	{Method: "GET", Path: "/api/v1/audits/config", Capability: CapabilityAuditRead},
+	{Method: "GET", Path: "/api/v1/audits/config/:id", Capability: CapabilityAuditRead},
 	{Method: "POST", Path: "/api/v1/audits/config", Capability: CapabilityAuditExport},
+	{Method: "POST", Path: "/api/v1/audits/config/export", Capability: CapabilityAuditExport},
+	{Method: "POST", Path: "/api/v1/settings/modify_password", Capability: CapabilityPasswordChangeOwn},
+	{Method: "POST", Path: "/api/v1/system/restart", Capability: CapabilityServiceRestart},
+	{Method: "POST", Path: "/api/v1/system/restart/preview", Capability: CapabilityServiceRestart},
+	{Method: "POST", Path: "/api/v1/database/migrations/preview", Capability: CapabilityDatabaseMigrate},
+	{Method: "POST", Path: "/api/v1/database/migrations", Capability: CapabilityDatabaseMigrate},
+	{Method: "GET", Path: "/api/v1/database/migrations/:id", Capability: CapabilityDatabaseMigrate},
+	{Method: "POST", Path: "/api/v1/user/create", Capability: CapabilityUserManage},
+	{Method: "POST", Path: "/api/v1/user/edit", Capability: CapabilityUserManage},
+	{Method: "POST", Path: "/api/v1/user/info", Capability: CapabilityUserRead},
+	{Method: "POST", Path: "/api/v1/user/list", Capability: CapabilityUserRead},
+	{Method: "GET", Path: "/api/v1/plugin/list", Capability: CapabilityPluginRead},
+	{Method: "*", Path: "/api/v1/plugin/settings/", Capability: CapabilityPluginWriteOwn},
 }
 
 func ManagementEndpoints() []Endpoint {

@@ -33,7 +33,7 @@ export function usePage() {
     activeGroup.value = newVal;
   });
   
-  http.get("/api/group").then((res) => {
+  http.get("/api/v1/group").then((res) => {
     if (res.data) {
       // Attempting to flatten the tree for a simpler premium menu or keep it, el-tree is less beautiful.
       // For now we assume res.data is an array of items. If it's a tree, we flatten it.

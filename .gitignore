@@ -24,3 +24,4 @@ server/.codex-smail-*
 server/config/credential.key
 server/smail.exe
 server/smail-admin.exe
+.codex-smail-*

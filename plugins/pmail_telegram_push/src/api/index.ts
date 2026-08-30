@@ -10,3 +10,8 @@ export function get<T>(url: string, params?: object): Promise<ApiResponse<T>> {
 export function post<T>(url: string, data?: object): Promise<ApiResponse<T>> {
   return service.post(url, data)
 }
+
+// 通用 PUT 请求
+export function put<T>(url: string, data?: object): Promise<ApiResponse<T>> {
+  return service.put(url, data)
+}

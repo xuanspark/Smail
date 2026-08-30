@@ -9,6 +9,7 @@ import (
 const DefaultOperationalCleanupInterval = time.Hour
 
 type OperationalCleanupRunner struct {
+	mu         sync.Mutex
 	store      *EventStore
 	rateLimits *PersistentRateLimiter
 	interval   time.Duration
@@ -31,18 +32,23 @@ func (r *OperationalCleanupRunner) Start() {
 		return
 	}
 	r.once.Do(func() {
+		r.mu.Lock()
 		r.stop = make(chan struct{})
 		r.done = make(chan struct{})
+		stop, done := r.stop, r.done
+		interval := r.interval
+		r.mu.Unlock()
+
 		go func() {
-			defer close(r.done)
+			defer close(done)
 			r.runOnce()
-			ticker := time.NewTicker(r.interval)
+			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
 				select {
 				case <-ticker.C:
 					r.runOnce()
-				case <-r.stop:
+				case <-stop:
 					return
 				}
 			}
@@ -51,13 +57,20 @@ func (r *OperationalCleanupRunner) Start() {
 }
 
 func (r *OperationalCleanupRunner) Stop() {
-	if r == nil || r.stop == nil {
+	if r == nil {
 		return
 	}
-	close(r.stop)
-	<-r.done
-	r.stop = nil
-	r.done = nil
+	r.mu.Lock()
+	stop, done := r.stop, r.done
+	if stop == nil {
+		r.mu.Unlock()
+		return
+	}
+	r.stop, r.done = nil, nil
+	r.mu.Unlock()
+
+	close(stop)
+	<-done
 }
 
 func (r *OperationalCleanupRunner) runOnce() {

@@ -25,15 +25,15 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response: AxiosResponse) => {
     const res = response.data
-    // code 0 表示成功
-    // 其他 code 表示失败
-    if (res.code === 0) {
+    // errorNo 为 0 表示成功，其他值由主程序统一返回中文错误。
+    if (res.errorNo === 0) {
       return res
     }
-    return Promise.reject(res.message || '请求失败')
+    return Promise.reject(new Error(res.errorMsg || '请求失败'))
   },
   (error) => {
-    return Promise.reject(error)
+    const message = error?.response?.data?.errorMsg || error?.message || '请求失败'
+    return Promise.reject(new Error(message))
   },
 )
 

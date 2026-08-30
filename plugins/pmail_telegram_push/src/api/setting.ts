@@ -1,13 +1,19 @@
-import { get, post } from '@/api'
-import type { Setting, ApiResponse } from '@/types'
-import { getSettingResource, updateSettingResource } from '@/api/resource'
+import { get, put } from '@/api'
+import type { ApiResponse, Setting, UserSettingsStatus } from '@/types'
+import { userSettingsResource } from '@/api/resource'
 
-// 获取插件配置
-export function getSetting(): Promise<ApiResponse<Setting>> {
-  return get(getSettingResource)
+// 获取当前用户的插件配置
+export function getSetting(): Promise<ApiResponse<UserSettingsStatus>> {
+  return get<UserSettingsStatus>(userSettingsResource)
 }
 
-// 更新插件配置
-export function updateSetting(setting: Setting): Promise<ApiResponse<void>> {
-  return post(updateSettingResource, setting)
+// 更新当前用户的插件配置
+export function updateSetting(
+  setting: Setting,
+  version: number,
+): Promise<ApiResponse<UserSettingsStatus>> {
+  return put<UserSettingsStatus>(userSettingsResource, {
+    settings: setting,
+    version,
+  })
 }

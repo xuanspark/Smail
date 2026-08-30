@@ -61,10 +61,10 @@ func TestWebAuthnRecoveryIssuesOneTimeTicketAndRevokesCredentials(t *testing.T) 
 	if err != nil || ticketID == "" || verifier.finishCalls != 1 {
 		t.Fatalf("verify webauthn recovery: ticket=%q calls=%d err=%v", ticketID, verifier.finishCalls, err)
 	}
-	if err := service.Complete(ticketID, "WebAuthnPassword@123"); err != nil {
+	if err := service.Complete(ticketID, "WebAuthnP12"); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Complete(ticketID, "ReplayPassword@123"); !errors.Is(err, ErrRecoveryExpired) {
+	if err := service.Complete(ticketID, "ReplayP123"); !errors.Is(err, ErrRecoveryExpired) {
 		t.Fatalf("replayed ticket error = %v", err)
 	}
 
@@ -93,7 +93,7 @@ func TestWebAuthnRecoveryTicketExpiresAndSuperAdminIsDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.now = func() time.Time { return time.Now().Add(authorizationTTL + time.Second) }
-	if err := service.Complete(ticketID, "ExpiredPassword@123"); !errors.Is(err, ErrRecoveryExpired) {
+	if err := service.Complete(ticketID, "ExpireP123"); !errors.Is(err, ErrRecoveryExpired) {
 		t.Fatalf("expired ticket error = %v", err)
 	}
 

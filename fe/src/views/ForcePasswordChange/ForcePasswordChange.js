@@ -6,6 +6,8 @@ import { useRouter } from "vue-router"
 
 import { http } from "@/utils/axios"
 
+import { isValidPasswordLength } from "@/utils/password"
+
 import { useGlobalStatusStore } from "@/stores/useGlobalStatusStore"
 
 export function usePage() {
@@ -27,14 +29,14 @@ export function usePage() {
       ElMessage.warning("两次输入的新密码不一致")
       return
     }
-    if (new TextEncoder().encode(form.newPassword).length < 8) {
-      ElMessage.warning("新密码长度至少为 8 个字节")
+    if (!isValidPasswordLength(form.newPassword)) {
+      ElMessage.warning("新密码长度必须为 8 到 12 个字节")
       return
     }
 
     loading.value = true
     try {
-      const response = await http.post("/api/settings/modify_password", {
+      const response = await http.post("/api/v1/settings/modify_password", {
         current_password: form.currentPassword,
         password: form.newPassword
       })
@@ -54,7 +56,7 @@ export function usePage() {
 
   const logout = async () => {
     try {
-      await http.post("/api/logout", {})
+      await http.post("/api/v1/logout", {})
     } finally {
       globalStatus.clear()
       await router.replace({ name: "login" })

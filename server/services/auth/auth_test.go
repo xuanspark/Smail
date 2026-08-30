@@ -25,10 +25,10 @@ func TestAuthenticateUsesArgon2idOnly(t *testing.T) {
 	})
 
 	user := models.User{Account: "test-user", Name: "测试用户", IsAdmin: 1}
-	if err := SetPassword(&user, "correct-password"); err != nil {
+	if err := SetPassword(&user, "CorrectP12"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(user.Password, "$argon2id$") || !password.Verify(user.Password, "correct-password") {
+	if !strings.HasPrefix(user.Password, "$argon2id$") || !password.Verify(user.Password, "CorrectP12") {
 		t.Fatal("测试密码哈希格式或校验失败")
 	}
 	if _, err := db.Instance.Insert(&user); err != nil {
@@ -42,10 +42,10 @@ func TestAuthenticateUsesArgon2idOnly(t *testing.T) {
 	if loaded.ID == 0 || !strings.HasPrefix(loaded.Password, "$argon2id$") {
 		t.Fatalf("测试用户未正确写入")
 	}
-	if _, err := Authenticate("test-user", "correct-password"); err != nil {
+	if _, err := Authenticate("test-user", "CorrectP12"); err != nil {
 		t.Fatalf("新密码认证失败: %v", err)
 	}
-	if _, err := Authenticate("test-user", "wrong-password"); err == nil {
+	if _, err := Authenticate("test-user", "WrongPass12"); err == nil {
 		t.Fatal("错误密码不应认证成功")
 	}
 	if _, err := Authenticate("test-user", ""); err == nil {

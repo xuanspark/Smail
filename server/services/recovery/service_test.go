@@ -28,7 +28,7 @@ func newRecoveryFixture(t *testing.T) (*Service, *verification.Service, *xorm.En
 			t.Fatal(err)
 		}
 	}
-	password, err := auth.HashPassword("OldPassword@123")
+	password, err := auth.HashPassword("OldPass123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,10 +85,10 @@ func TestRecoveryRejectsCrossUserVerificationAndConsumesTicketOnce(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := recoveryService.Complete(ticketID, "NewPassword@123"); err != nil {
+	if err := recoveryService.Complete(ticketID, "NewPass123"); err != nil {
 		t.Fatal(err)
 	}
-	if err := recoveryService.Complete(ticketID, "AnotherPassword@123"); !errors.Is(err, ErrRecoveryExpired) {
+	if err := recoveryService.Complete(ticketID, "NextPass123"); !errors.Is(err, ErrRecoveryExpired) {
 		t.Fatalf("replayed recovery ticket error = %v", err)
 	}
 	var sessions []models.Sessions
@@ -118,7 +118,7 @@ func TestRecoveryTicketConcurrentConsumptionHasOneWinner(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results <- recoveryService.Complete(ticketID, "ConcurrentPassword@123")
+			results <- recoveryService.Complete(ticketID, "RacePass123")
 		}()
 	}
 	wg.Wait()
@@ -145,7 +145,7 @@ func TestRecoveryDeniesSuperAdministrator(t *testing.T) {
 		deliveries++
 		return nil
 	}
-	password, err := auth.HashPassword("SuperPassword@123")
+	password, err := auth.HashPassword("SuperPass12")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestRecoveryRevokesExistingStrongRecoveryCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Complete(ticketID, "RecoveredPassword@123"); err != nil {
+	if err := service.Complete(ticketID, "RecoverP123"); err != nil {
 		t.Fatal(err)
 	}
 	if configured, err := service.credentials.HasValidRecoveryCode(user.ID); err != nil || configured {
@@ -379,7 +379,7 @@ func TestRecoveryTicketRejectsChangedSessionVersion(t *testing.T) {
 	if _, err := engine.ID(user.ID).Cols("session_version").Update(&models.User{SessionVersion: user.SessionVersion + 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Complete(ticketID, "ChangedVersion@123"); !errors.Is(err, ErrRecoveryDenied) {
+	if err := service.Complete(ticketID, "VersionP123"); !errors.Is(err, ErrRecoveryDenied) {
 		t.Fatalf("版本变化后的票据错误 = %v", err)
 	}
 }
@@ -406,10 +406,10 @@ func TestRecoveryBindsChallengeAndTicketToBrowserContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.CompleteWithContext(ticketID, "ContextPassword@123", "browser-b"); !errors.Is(err, ErrRecoveryDenied) {
+	if err := service.CompleteWithContext(ticketID, "ContextP123", "browser-b"); !errors.Is(err, ErrRecoveryDenied) {
 		t.Fatalf("different browser ticket result = %v", err)
 	}
-	if err := service.CompleteWithContext(ticketID, "ContextPassword@123", "browser-a"); err != nil {
+	if err := service.CompleteWithContext(ticketID, "ContextP123", "browser-a"); err != nil {
 		t.Fatalf("matching browser ticket result = %v", err)
 	}
 }

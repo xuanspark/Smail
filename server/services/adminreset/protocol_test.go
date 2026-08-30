@@ -39,6 +39,32 @@ func TestSessionGuardRejectsExpiredNonce(t *testing.T) {
 	}
 }
 
+func TestSessionGuardRejectsNewSessionsWhenCapacityIsFull(t *testing.T) {
+	guard := NewSessionGuardWithCapacity(time.Minute, 2)
+	if _, err := guard.Issue(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.Issue(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.Issue(); !errors.Is(err, ErrSessionCapacity) {
+		t.Fatalf("capacity error = %v", err)
+	}
+}
+
+func TestSessionGuardPrunesExpiredSessionsBeforeCapacityCheck(t *testing.T) {
+	guard := NewSessionGuardWithCapacity(time.Second, 1)
+	now := time.Unix(100, 0)
+	guard.now = func() time.Time { return now }
+	if _, err := guard.Issue(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Second)
+	if _, err := guard.Issue(); err != nil {
+		t.Fatalf("expired session blocked a new session: %v", err)
+	}
+}
+
 func TestProtocolRejectsUnknownFieldsInvalidVersionAndTrailingData(t *testing.T) {
 	cases := []string{
 		`{"version":1,"nonce":"n","new_password":"Password123","extra":true}`,
@@ -48,6 +74,30 @@ func TestProtocolRejectsUnknownFieldsInvalidVersionAndTrailingData(t *testing.T)
 	for _, input := range cases {
 		if _, err := DecodeRequest(strings.NewReader(input)); err == nil {
 			t.Fatalf("invalid request was accepted: %s", input)
+		}
+	}
+}
+
+func TestProtocolEnforcesUnifiedPasswordLength(t *testing.T) {
+	valid := []string{
+		`{"version":1,"nonce":"n","new_password":"12345678"}`,
+		`{"version":1,"nonce":"n","new_password":"123456789012"}`,
+		`{"version":1,"nonce":"n","new_password":"\u5bc6\u7801aa"}`,
+	}
+	for _, input := range valid {
+		if _, err := DecodeRequest(strings.NewReader(input)); err != nil {
+			t.Fatalf("valid password request was rejected: %v", err)
+		}
+	}
+
+	invalid := []string{
+		`{"version":1,"nonce":"n","new_password":"1234567"}`,
+		`{"version":1,"nonce":"n","new_password":"1234567890123"}`,
+		`{"version":1,"nonce":"n","new_password":"\u5bc6\u7801\u5bc6\u7801a"}`,
+	}
+	for _, input := range invalid {
+		if _, err := DecodeRequest(strings.NewReader(input)); !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("invalid password request returned %v", err)
 		}
 	}
 }

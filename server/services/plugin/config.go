@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -49,7 +50,17 @@ type SecretStatus struct {
 
 // TelegramUserSettings 是 Telegram 插件唯一允许由用户维护的设置。
 type TelegramUserSettings struct {
-	ChatID string `json:"chatId"`
+	ChatID             string `json:"chatId"`
+	ShowContent        bool   `json:"showContent"`
+	SpoilerContent     bool   `json:"spoilerContent"`
+	SendAttachments    bool   `json:"sendAttachments"`
+	DisableLinkPreview bool   `json:"disableLinkPreview"`
+}
+
+// TelegramUserSettingsEntry 用于在插件启动或配置更新后同步用户设置。
+type TelegramUserSettingsEntry struct {
+	UserID   int
+	Settings TelegramUserSettings
 }
 
 // UserSettingsStatus 返回用户本人可见的设置与乐观锁版本。
@@ -298,6 +309,38 @@ func (s *ConfigService) GetOwnTelegramSettings(actorUserID int) (UserSettingsSta
 		return UserSettingsStatus{}, ErrPluginStoreUnavailable
 	}
 	return s.getTelegramSettings(actorUserID)
+}
+
+// ListTelegramUserSettings 返回已配置的 Telegram 用户设置，不返回任何密钥。
+func (s *ConfigService) ListTelegramUserSettings() ([]TelegramUserSettingsEntry, error) {
+	if s == nil || s.engine == nil || s.vault == nil {
+		return nil, ErrPluginStoreUnavailable
+	}
+	var records []models.PluginUserSetting
+	if err := s.engine.Where("plugin_id = ? AND enabled = ?", telegramPluginID, true).Find(&records); err != nil {
+		return nil, fmt.Errorf("load Telegram user settings: %w", err)
+	}
+	entries := make([]TelegramUserSettingsEntry, 0, len(records))
+	for _, record := range records {
+		if record.SchemaVersion != userSettingsSchemaVersion {
+			return nil, ErrPluginStoreUnavailable
+		}
+		plaintext, err := s.vault.Decrypt(credential.CurrentVersion, record.SettingsCiphertext)
+		if err != nil {
+			return nil, ErrPluginStoreUnavailable
+		}
+		fingerprint, err := s.vault.Fingerprint(plaintext)
+		if err != nil || fingerprint != record.SettingsHash {
+			return nil, ErrPluginStoreUnavailable
+		}
+		settings, err := decodeTelegramSettings(plaintext)
+		if err != nil {
+			return nil, ErrPluginStoreUnavailable
+		}
+		entries = append(entries, TelegramUserSettingsEntry{UserID: record.UserID, Settings: settings})
+	}
+	sort.Slice(entries, func(left, right int) bool { return entries[left].UserID < entries[right].UserID })
+	return entries, nil
 }
 
 // UpdateOwnTelegramSettings 的 actorUserID 必须来自已验证 Session，调用方不得传入目标用户 ID。
@@ -680,8 +723,13 @@ func validateSecretField(pluginID, fieldName string) error {
 	return ErrUnknownPluginField
 }
 
+func ValidateTelegramUserSettings(settings TelegramUserSettings) error {
+	_, err := encodeTelegramSettings(settings)
+	return err
+}
 func encodeTelegramSettings(settings TelegramUserSettings) (string, error) {
-	if !telegramChatIDPattern.MatchString(strings.TrimSpace(settings.ChatID)) || settings.ChatID != strings.TrimSpace(settings.ChatID) {
+	settings.ChatID = strings.TrimSpace(settings.ChatID)
+	if settings.ChatID != "" && !telegramChatIDPattern.MatchString(settings.ChatID) {
 		return "", ErrInvalidTelegramChatID
 	}
 	encoded, err := json.Marshal(settings)
@@ -698,7 +746,7 @@ func decodeTelegramSettings(raw string) (TelegramUserSettings, error) {
 	if err := decoder.Decode(&settings); err != nil {
 		return TelegramUserSettings{}, err
 	}
-	if decoder.More() {
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return TelegramUserSettings{}, ErrInvalidTelegramChatID
 	}
 	_, err := encodeTelegramSettings(settings)

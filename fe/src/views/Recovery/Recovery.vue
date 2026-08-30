@@ -1,12 +1,12 @@
-﻿<template>
+<template>
   <AuthLayout
     brand-caption="超级管理员密码重置"
     intro-title="重置超级管理员密码"
-    intro-description="此页面仅用于系统中唯一的超级管理员，不适用于管理员或普通用户。"
+    intro-description="超级管理员密码不支持通过网页恢复，只能由部署端本机安全通道完成。"
   >
     <template #intro-extra>
       <el-alert
-        title="正式重置必须由部署端 smail-admin 本机安全通道授权。"
+        title="为避免远程接管风险，网页端不会收集或验证超级管理员重置凭据。"
         type="warning"
         :closable="false"
         show-icon
@@ -14,123 +14,44 @@
       />
     </template>
 
-    <section class="recovery-content">
+    <section class="recovery-content" aria-labelledby="recovery-title">
       <div class="security-notice">
-        <strong>安全密钥不需要输入</strong>
-        <span>
-          点击验证按钮后，按照浏览器提示触碰硬件安全密钥，或使用系统安全凭据完成验证。
-        </span>
-      </div>
-
-      <div class="method-switcher">
-        <div class="method-copy">
-          <span class="method-label">当前验证方式</span>
-          <strong>
-            {{ recovery.method === 'webauthn' ? 'WebAuthn 安全密钥' : '外部邮箱验证码' }}
-          </strong>
+        <span class="notice-icon" aria-hidden="true">!</span>
+        <div>
+          <h2 id="recovery-title">请使用本机部署端工具</h2>
+          <p>
+            超级管理员重置必须在部署服务器本机发起，并由部署管理员进行交互式确认。
+            普通登录页、忘记密码页和其他 Web API 均不能开启或完成该流程。
+          </p>
         </div>
-        <el-button
-          plain
-          type="primary"
-          class="switch-button secondary-action-btn"
-          :disabled="loading"
-          @click="switchRecoveryMethod"
-        >
-          切换验证方式
-        </el-button>
       </div>
 
-      <div
-        v-if="recovery.method === 'webauthn'"
-        class="verification-panel"
-      >
-        <h2>使用安全密钥验证</h2>
-        <p>支持 USB、NFC、蓝牙安全密钥以及当前设备的系统凭据。</p>
-        <el-button
-          type="primary"
-          class="recovery-action-btn"
-          :loading="loading"
-          :disabled="!securityKeySupported"
-          @click="verifySecurityKey"
-        >
-          {{ securityKeySupported ? '验证安全密钥' : '当前环境不支持安全密钥' }}
-        </el-button>
-        <span v-if="verificationState" class="verification-state">
-          {{ verificationState }}
-        </span>
+      <div class="steps-card">
+        <h3>操作步骤</h3>
+        <ol>
+          <li>登录部署服务器本机终端，确认当前服务版本和运行状态。</li>
+          <li>通过受保护的本机管理通道启动 <code>smail-admin</code>。</li>
+          <li>按终端提示完成身份确认和新密码输入，密码不会回显或写入日志。</li>
+          <li>重置成功后，使用新密码重新登录，并重新配置需要的安全凭据。</li>
+        </ol>
       </div>
 
-      <div v-else class="verification-panel">
-        <h2>使用外部邮箱验证码</h2>
-        <p>验证码只发送到已经验证的超级管理员安全邮箱。</p>
-        <el-form label-position="top">
-          <el-form-item label="外部安全邮箱">
-            <el-input
-              v-model="recovery.email"
-              type="email"
-              autocomplete="email"
-              placeholder="请输入外部安全邮箱"
-            />
-          </el-form-item>
-          <div class="email-verification-row">
-            <el-input
-              v-model="recovery.code"
-              inputmode="numeric"
-              maxlength="12"
-              autocomplete="one-time-code"
-              placeholder="请输入邮箱验证码"
-            />
-            <el-button
-              type="primary"
-              class="recovery-action-btn"
-              :loading="loading"
-              @click="requestRecoveryCode"
-            >
-              发送验证码
-            </el-button>
-          </div>
-          <span v-if="verificationState" class="verification-state">
-            {{ verificationState }}
-          </span>
-        </el-form>
-      </div>
-
-      <el-form
-        class="password-form"
-        label-position="top"
-        @submit.prevent="completeRecovery"
-      >
-        <el-form-item label="新密码">
-          <el-input
-            v-model="recovery.newPassword"
-            type="password"
-            show-password
-            autocomplete="new-password"
-          />
-        </el-form-item>
-        <el-form-item label="确认新密码">
-          <el-input
-            v-model="recovery.confirmPassword"
-            type="password"
-            show-password
-            autocomplete="new-password"
-          />
-        </el-form-item>
-        <div class="actions">
-          <el-button
-            type="primary"
-            class="recovery-action-btn"
-            :loading="loading"
-            :disabled="!verified"
-            native-type="submit"
-          >
-            验证并重置密码
-          </el-button>
+      <div class="channel-card">
+        <div class="channel-heading">
+          <span>专用安全通道</span>
+          <strong>smail-admin</strong>
         </div>
-      </el-form>
+        <p>
+          该工具只通过本机 IPC 与 Smail 主服务通信，不读取数据库密码，不监听网络端口，
+          也不能执行任意命令或访问任意文件。
+        </p>
+        <div class="channel-hint">
+          <span>Linux：Unix Domain Socket</span>
+          <span>Windows：Named Pipe</span>
+        </div>
+      </div>
 
       <el-button
-        link
         type="primary"
         class="back-button"
         @click="goLogin"
@@ -145,18 +66,7 @@
 import AuthLayout from '@/views/components/AuthLayout/AuthLayout.vue'
 import { usePage } from './Recovery.js'
 
-const {
-  recovery,
-  switchRecoveryMethod,
-  loading,
-  securityKeySupported,
-  verifySecurityKey,
-  verificationState,
-  requestRecoveryCode,
-  completeRecovery,
-  verified,
-  goLogin
-} = usePage()
+const { goLogin } = usePage()
 </script>
 
 <style scoped src="./Recovery.css"></style>

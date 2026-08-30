@@ -96,13 +96,14 @@ func HttpsStop() {
 func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			setLegacyAPIHeaders(w, r)
 			if w.Header().Get("Content-Type") == "" {
 				w.Header().Set("Content-Type", "application/json")
 			}
 			w.Header().Set("Cache-Control", "no-store")
 			r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
 
-			if r.URL.Path == "/api/login" && !loginRequestAllowed(r) {
+			if normalizedAPIPath(r.URL.Path) == "/api/login" && !loginRequestAllowed(r) {
 				response.NewErrorResponse(response.ParamsError, "\u8bf7\u6c42\u6765\u6e90\u6821\u9a8c\u5931\u8d25", "").FPrint(w)
 				return
 			}
@@ -160,7 +161,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 					response.NewErrorResponse(response.NoAccessPrivileges, "请先修改临时密码", "PASSWORD_CHANGE_REQUIRED").FPrint(w)
 					return
 				}
-			} else if r.URL.Path != "/api/setup" {
+			} else if normalizedAPIPath(r.URL.Path) != "/api/setup" {
 				response.NewErrorResponse(response.NeedSetup, "", "").FPrint(w)
 				return
 			}
@@ -170,7 +171,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 }
 
 func mustChangePasswordAllowedPath(path string) bool {
-	switch path {
+	switch normalizedAPIPath(path) {
 	case "/api/settings/modify_password", "/api/logout", "/api/user/info":
 		return true
 	default:
@@ -179,7 +180,7 @@ func mustChangePasswordAllowedPath(path string) bool {
 }
 
 func publicSecurityPath(path string) bool {
-	switch path {
+	switch normalizedAPIPath(path) {
 	case "/api/ping", "/api/login", "/api/security/login/verify", "/api/security/recovery/begin", "/api/security/recovery/verify", "/api/security/recovery/complete", "/api/security/recovery/webauthn/begin", "/api/security/recovery/webauthn/verify", "/api/security/webauthn/login/begin", "/api/security/webauthn/login/finish":
 		return true
 	default:
@@ -190,6 +191,7 @@ func credentialsQuestionHandler() http.HandlerFunc {
 	get := contextIterceptor(controllers.GetSecurityQuestion)
 	post := limitBody(16<<10, contextIterceptor(controllers.SetSecurityQuestion))
 	return func(w http.ResponseWriter, r *http.Request) {
+		setLegacyAPIHeaders(w, r)
 		switch r.Method {
 		case http.MethodGet:
 			get.ServeHTTP(w, r)
@@ -204,6 +206,7 @@ func credentialsQuestionHandler() http.HandlerFunc {
 
 func onlyMethod(method string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setLegacyAPIHeaders(w, r)
 		if r.Method != method {
 			w.Header().Set("Allow", method)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -222,10 +225,11 @@ func limitBody(maxBytes int64, next http.HandlerFunc) http.HandlerFunc {
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setLegacyAPIHeaders(w, r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		if strings.HasPrefix(r.URL.Path, "/api/plugin/settings/") {
+		if strings.HasPrefix(normalizedAPIPath(r.URL.Path), "/api/plugin/settings/") {
 			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 			w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'self'; form-action 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'")
 		} else if strings.HasPrefix(r.URL.Path, "/attachments/") {

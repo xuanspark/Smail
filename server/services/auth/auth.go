@@ -114,7 +114,7 @@ func Authenticate(account, plain string) (*models.User, error) {
 
 // HashPassword 统一生成新密码哈希。
 func HashPassword(plain string) (string, error) {
-	return password.Hash(plain)
+	return password.HashUserPassword(plain)
 }
 
 // SetPassword 为用户设置新密码。

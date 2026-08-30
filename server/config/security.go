@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ const (
 )
 
 type ConfigAuditEvent struct {
+	ID                 string          `json:"id"`
 	Operation          ConfigOperation `json:"operation"`
 	Section            Section         `json:"section,omitempty"`
 	ActorID            string          `json:"actorId"`
@@ -37,7 +39,6 @@ type ConfigAuditEvent struct {
 	Result             string          `json:"result"`
 	CreatedAt          time.Time       `json:"createdAt"`
 }
-
 type ConfigAuditWriter interface {
 	WriteConfigAudit(context.Context, ConfigAuditEvent) error
 }
@@ -64,11 +65,62 @@ func (w *MemoryAuditWriter) WriteConfigAudit(_ context.Context, event ConfigAudi
 	if w == nil {
 		return ErrAuditWrite
 	}
+	var err error
+	event, err = normalizeAuditEvent(event)
+	if err != nil {
+		return err
+	}
 	event.ChangedFields = append([]string(nil), event.ChangedFields...)
 	w.mu.Lock()
 	w.events = append(w.events, event)
 	w.mu.Unlock()
 	return nil
+}
+func (w *MemoryAuditWriter) Query(ctx context.Context, query ConfigAuditQuery) ([]ConfigAuditEvent, error) {
+	if err := auditContextError(ctx); err != nil {
+		return nil, err
+	}
+	if err := ValidateConfigAuditQuery(query); err != nil {
+		return nil, err
+	}
+	if w == nil {
+		return nil, ErrAuditQueryUnavailable
+	}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	result := make([]ConfigAuditEvent, 0, minAuditLimit(limit, len(w.events)))
+	for _, event := range w.events {
+		if !auditEventMatches(event, query) {
+			continue
+		}
+		copyEvent := event
+		copyEvent.ChangedFields = append([]string(nil), event.ChangedFields...)
+		result = append(result, copyEvent)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (w *MemoryAuditWriter) ExportJSON(ctx context.Context, query ConfigAuditQuery) ([]byte, error) {
+	events, err := w.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(events)
+}
+
+func (w *MemoryAuditWriter) ExportCSV(ctx context.Context, query ConfigAuditQuery) ([]byte, error) {
+	events, err := w.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return exportAuditCSV(events)
 }
 
 func (w *MemoryAuditWriter) Events() []ConfigAuditEvent {

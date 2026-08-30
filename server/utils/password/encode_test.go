@@ -1,6 +1,7 @@
 package password
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -16,13 +17,32 @@ func TestHashAndVerify(t *testing.T) {
 }
 
 func TestHashRejectsInvalidLengths(t *testing.T) {
-	for _, plain := range []string{"short", strings.Repeat("a", maxPasswordSize+1)} {
+	for _, plain := range []string{"short", strings.Repeat("a", maxSecretSize+1)} {
 		if _, err := Hash(plain); err == nil {
-			t.Fatalf("invalid password length was accepted: %d", len([]byte(plain)))
+			t.Fatalf("invalid secret length was accepted: %d", len([]byte(plain)))
 		}
 	}
-	if Verify(mustHash(t, "StrongPass123"), strings.Repeat("a", maxPasswordSize+1)) {
+	if Verify(mustHash(t, "StrongPass123"), strings.Repeat("a", maxSecretSize+1)) {
 		t.Fatal("oversized verification input was accepted")
+	}
+}
+
+func TestUserPasswordLengthBoundaries(t *testing.T) {
+	for _, plain := range []string{"12345678", "123456789012", "密码aa"} {
+		if err := ValidateUserPassword(plain); err != nil {
+			t.Fatalf("valid password length %d was rejected: %v", len([]byte(plain)), err)
+		}
+		if _, err := HashUserPassword(plain); err != nil {
+			t.Fatalf("valid user password was not hashed: %v", err)
+		}
+	}
+	for _, plain := range []string{"1234567", "1234567890123", "密码密码密码"} {
+		if err := ValidateUserPassword(plain); !errors.Is(err, ErrInvalidLength) {
+			t.Fatalf("invalid password length %d returned %v", len([]byte(plain)), err)
+		}
+		if _, err := HashUserPassword(plain); !errors.Is(err, ErrInvalidLength) {
+			t.Fatalf("invalid user password length %d returned %v", len([]byte(plain)), err)
+		}
 	}
 }
 

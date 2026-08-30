@@ -29,6 +29,9 @@ func NewPmailTelegramPushHook() *PmailTelegramPushHook {
 var _ framework.EmailHook = (*PmailTelegramPushHook)(nil)
 var _ framework.CapabilityProvider = (*PmailTelegramPushHook)(nil)
 var _ framework.ConfigurableHook = (*PmailTelegramPushHook)(nil)
+var _ framework.UserSettingsConfigurer = (*PmailTelegramPushHook)(nil)
+var _ framework.BotInfoProvider = (*PmailTelegramPushHook)(nil)
+var _ framework.TestMessageProvider = (*PmailTelegramPushHook)(nil)
 
 func (h *PmailTelegramPushHook) Capabilities() framework.Capabilities {
 	return framework.Capabilities{

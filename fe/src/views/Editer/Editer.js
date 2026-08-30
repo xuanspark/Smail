@@ -169,7 +169,7 @@ export function usePage() {
   
         let text = editorRef.value.getText()
   
-        http.post("/api/email/send", {
+        http.post("/api/v1/email/send", {
           from: {name: ruleForm.nickName, email: ruleForm.sender + "@" + ruleForm.pick域名},
           to: objectTos,
           cc: objectCcs,

@@ -63,8 +63,11 @@ func TestSettingsHtmlSeparatesStaticAndSaveRequests(t *testing.T) {
 
 	postRecorder := httptest.NewRecorder()
 	SettingsHtml(&context.Context{IsAdmin: true}, postRecorder, httptest.NewRequest(http.MethodPost, "/api/plugin/settings/PluginTest/save", strings.NewReader(`{"url":"https://model.example.com"}`)))
-	if hook.resource != "PluginTest/save" || hook.body == "" || !strings.HasPrefix(postRecorder.Header().Get("Content-Type"), "text/plain") {
-		t.Fatalf("plugin save request was not isolated: resource=%s body=%s type=%s", hook.resource, hook.body, postRecorder.Header().Get("Content-Type"))
+	if postRecorder.Code != http.StatusGone {
+		t.Fatalf("legacy plugin save status = %d, want %d", postRecorder.Code, http.StatusGone)
+	}
+	if hook.resource != "PluginTest/index.html" || hook.body != "" {
+		t.Fatalf("stopped plugin save request reached the plugin: resource=%s body=%s", hook.resource, hook.body)
 	}
 }
 

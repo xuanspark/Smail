@@ -1,4 +1,4 @@
-﻿import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import { ElMessageBox, ElNotification } from 'element-plus'
 
@@ -39,7 +39,7 @@ export function usePage() {
     if (!supported) return
     credentialsLoading.value = true
     try {
-      const res = await http.get('/api/security/webauthn/credentials')
+      const res = await http.get('/api/v1/security/webauthn/credentials')
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '加载安全密钥失败')
       credentials.value = Array.isArray(res.data) ? res.data : []
     } catch (error) {
@@ -53,11 +53,11 @@ export function usePage() {
     securityLoading.value = true
     try {
       const requests = [
-        http.get('/api/security/credentials/question'),
-        http.get('/api/security/external-email/list'),
+        http.get('/api/v1/security/credentials/question'),
+        http.get('/api/v1/security/external-email/list'),
       ]
       if (!isSuperAdmin.value) {
-        requests.push(http.get('/api/security/credentials/recovery-codes'))
+        requests.push(http.get('/api/v1/security/credentials/recovery-codes'))
       }
       const [question, external, recovery] = await Promise.all(requests)
       if (question.errorNo === 0 && question.data) {
@@ -82,10 +82,10 @@ export function usePage() {
         confirmButtonText: '确定', cancelButtonText: '取消', inputPlaceholder: '例如：工作电脑',
         inputValidator: value => String(value || '').trim().length > 0 || '请输入密钥名称',
       })
-      const begin = await http.post('/api/security/webauthn/registration/begin', {})
+      const begin = await http.post('/api/v1/security/webauthn/registration/begin', {})
       if (begin.errorNo !== 0) throw new Error(begin.errorMsg || '无法开始安全密钥注册')
       const credential = await navigator.credentials.create({ publicKey: normalizeCreationOptions(begin.data.options) })
-      const finish = await http.post('/api/security/webauthn/registration/finish', {
+      const finish = await http.post('/api/v1/security/webauthn/registration/finish', {
         session_id: begin.data.session_id,
         display_name: String(prompt.value).trim(),
         credential: serializeCredential(credential),
@@ -106,7 +106,7 @@ export function usePage() {
         confirmButtonText: '确定', cancelButtonText: '取消', inputValue: item.display_name,
         inputValidator: value => String(value || '').trim().length > 0 || '请输入密钥名称',
       })
-      const res = await http.post('/api/security/webauthn/credentials/rename', { id: item.id, display_name: String(prompt.value).trim() })
+      const res = await http.post('/api/v1/security/webauthn/credentials/rename', { id: item.id, display_name: String(prompt.value).trim() })
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '密钥重命名失败')
       notify('密钥重命名成功', 'success')
       await loadCredentials()
@@ -120,7 +120,7 @@ export function usePage() {
       await ElMessageBox.confirm(`确定要撤销密钥“${item.display_name}”吗？撤销后将不能用于登录`, '撤销安全密钥', {
         confirmButtonText: '确定撤销', cancelButtonText: '取消', type: 'warning',
       })
-      const res = await http.post('/api/security/webauthn/credentials/revoke', { id: item.id })
+      const res = await http.post('/api/v1/security/webauthn/credentials/revoke', { id: item.id })
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '撤销安全密钥失败')
       notify('安全密钥已撤销', 'success')
       await loadCredentials()
@@ -134,7 +134,7 @@ export function usePage() {
       notify('请填写密保问题和答案')
       return
     }
-    const res = await http.post('/api/security/credentials/question', questionForm)
+    const res = await http.post('/api/v1/security/credentials/question', questionForm)
     if (res.errorNo !== 0) {
       notify(res.errorMsg || '密保问题设置失败')
       return
@@ -148,7 +148,7 @@ export function usePage() {
   const generateRecoveryCodes = async () => {
     try {
       await ElMessageBox.confirm('生成新恢复码会撤销当前仍有效的恢复码，请确认已准备好安全保存。', '生成离线恢复码', { type: 'warning' })
-      const res = await http.post('/api/security/credentials/recovery-codes/generate', { count: 10 })
+      const res = await http.post('/api/v1/security/credentials/recovery-codes/generate', { count: 10 })
       if (res.errorNo !== 0 || !Array.isArray(res.data?.codes)) throw new Error(res.errorMsg || '离线恢复码生成失败')
       generatedCodes.value = res.data.codes
       recoveryConfigured.value = true
@@ -161,7 +161,7 @@ export function usePage() {
   const revokeRecoveryCodes = async () => {
     try {
       await ElMessageBox.confirm('撤销后现有离线恢复码将立即失效，是否继续？', '撤销离线恢复码', { type: 'warning' })
-      const res = await http.post('/api/security/credentials/recovery-codes/revoke', {})
+      const res = await http.post('/api/v1/security/credentials/recovery-codes/revoke', {})
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '撤销恢复码失败')
       recoveryConfigured.value = false
       generatedCodes.value = []
@@ -178,7 +178,7 @@ export function usePage() {
     }
     externalLoading.value = true
     try {
-      const res = await http.post('/api/security/external-email/bind', { email: bindForm.email.trim(), type: bindForm.type })
+      const res = await http.post('/api/v1/security/external-email/bind', { email: bindForm.email.trim(), type: bindForm.type })
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '外部邮箱绑定失败')
       bindForm.challengeId = res.data.challenge_id
       bindForm.bindingId = res.data.id
@@ -186,7 +186,7 @@ export function usePage() {
         confirmButtonText: '验证', cancelButtonText: '取消', inputPlaceholder: '请输入验证码',
       })
       bindForm.code = String(prompt.value).trim()
-      const verified = await http.post('/api/security/external-email/verify', {
+      const verified = await http.post('/api/v1/security/external-email/verify', {
         id: bindForm.challengeId, binding_id: bindForm.bindingId, email: bindForm.email.trim(), code: bindForm.code,
       })
       if (verified.errorNo !== 0) throw new Error(verified.errorMsg || '外部邮箱验证失败')
@@ -205,7 +205,7 @@ export function usePage() {
   const disableExternalEmail = async item => {
     try {
       await ElMessageBox.confirm(`确定停用 ${item.email} 吗？停用后不能用于登录验证和恢复。`, '停用外部邮箱', { type: 'warning' })
-      const res = await http.post('/api/security/external-email/disable', { id: item.id })
+      const res = await http.post('/api/v1/security/external-email/disable', { id: item.id })
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '外部邮箱停用失败')
       await loadSecurityData()
       notify('外部邮箱已停用', 'success')
@@ -215,7 +215,7 @@ export function usePage() {
   }
 
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-'
-  const logout = () => http.post('/api/logout', {}).then(() => location.reload())
+  const logout = () => http.post('/api/v1/logout', {}).then(() => location.reload())
 
   const submit = async () => {
     if (!ruleForm.current_pwd || !ruleForm.new_pwd) return
@@ -223,7 +223,7 @@ export function usePage() {
       notify(lang.err_pwd_diff)
       return
     }
-    const res = await http.post('/api/settings/modify_password', { current_password: ruleForm.current_pwd, password: ruleForm.new_pwd })
+    const res = await http.post('/api/v1/settings/modify_password', { current_password: ruleForm.current_pwd, password: ruleForm.new_pwd })
     notify(res.errorNo === 0 ? '密码修改成功' : res.errorMsg, res.errorNo === 0 ? 'success' : 'error')
     if (res.errorNo === 0) Object.assign(ruleForm, { current_pwd: '', new_pwd: '', new_pwd2: '' })
   }

@@ -194,6 +194,11 @@ func TestSecurityHeadersRespectPluginFrameBoundary(t *testing.T) {
 		t.Fatalf("plugin settings CSP is unsafe: %s", got)
 	}
 
+	v1PluginRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(v1PluginRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/plugin/settings/SpamBlock/index.html", nil))
+	if v1PluginRecorder.Header().Get("X-Frame-Options") != "SAMEORIGIN" || !contains(v1PluginRecorder.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'") {
+		t.Fatalf("V1 plugin settings frame boundary is unsafe: headers=%v", v1PluginRecorder.Header())
+	}
 	pageRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(pageRecorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if pageRecorder.Header().Get("X-Frame-Options") != "DENY" || !contains(pageRecorder.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {

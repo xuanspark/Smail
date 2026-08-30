@@ -1,92 +1,97 @@
 import Mock from 'mockjs'
-import type { ApiResponse, BotInfo, Setting } from '@/types'
+import type { ApiResponse, BotInfo, Setting, TestMessageResult, UserSettingsStatus } from '@/types'
 import {
+  botInfoResource,
   pluginSettingsResource,
-  getBotInfoResource,
-  getSettingResource,
-  updateSettingResource,
   testMessageResource,
+  userSettingsResource,
 } from '@/api/resource'
 
-// 模拟 Telegram 机器人信息
+// 模拟 Telegram 机器人信息。
 const Random = Mock.Random
 
-// 模拟超时时长
 Mock.setup({
   timeout: '500-1000',
 })
 
-// 模拟获取 Telegram 机器人信息
+let settingVersion = 1
+const defaultSetting: Setting = {
+  chatId: Random.string('number', 9),
+  showContent: true,
+  spoilerContent: true,
+  sendAttachments: true,
+  disableLinkPreview: true,
+}
+
+const getStatus = (): UserSettingsStatus => ({
+  pluginId: 'telegram_push',
+  settings: { ...defaultSetting },
+  version: settingVersion,
+})
+
+// 模拟获取 Telegram 机器人信息。
 export const getBotInfoMock = Mock.mock(
-  `${pluginSettingsResource}/${getBotInfoResource}`,
+  `${pluginSettingsResource}/${botInfoResource}`,
   'get',
-  () => {
-    const botInfo: ApiResponse<BotInfo> = {
-      code: 0,
-      message: '获取 Telegram 机器人信息成功',
-      data: {
-        username: Random.string('lower', 10),
-        bot_link: Random.string('lower', 10),
-      },
-    }
-    // console.log('getBotInfo mock response', botInfo)
-    return botInfo
-  },
+  (): ApiResponse<BotInfo> => ({
+    errorNo: 0,
+    errorMsg: '',
+    data: {
+      username: Random.string('lower', 10),
+      botLink: 'https://t.me/example_bot',
+    },
+  }),
 )
 
-// 模拟获取设置信息
+// 模拟获取当前用户设置。
 export const getSettingMock = Mock.mock(
-  `${pluginSettingsResource}/${getSettingResource}`,
+  `${pluginSettingsResource}/${userSettingsResource}`,
   'get',
-  () => {
-    const setting: ApiResponse<Setting> = {
-      code: 0,
-      message: '获取设置信息成功',
-      data: {
-        chat_id: Random.string('number', 9),
-        show_content: Random.boolean(),
-        spoiler_content: Random.boolean(),
-        send_attachments: Random.boolean(),
-        disable_link_preview: Random.boolean(),
-      },
-    }
-    // console.log('getSetting mock response', setting)
-    return setting
-  },
+  (): ApiResponse<UserSettingsStatus> => ({
+    errorNo: 0,
+    errorMsg: '',
+    data: getStatus(),
+  }),
 )
 
-// 模拟更新设置信息
+// 模拟更新当前用户设置。
 export const updateSettingMock = Mock.mock(
-  `${pluginSettingsResource}/${updateSettingResource}`,
-  'post',
-  (_) => {
-    // console.log('updateSetting options', options)
-    const code = Random.integer(0, -1) // 0 表示成功，其他值表示失败
-    const message = code === 0 ? '更新设置信息成功' : '更新设置信息失败'
-    const setting: ApiResponse<Setting> = {
-      code,
-      message,
+  `${pluginSettingsResource}/${userSettingsResource}`,
+  'put',
+  (options: { body: string }): ApiResponse<UserSettingsStatus> => {
+    const request = JSON.parse(options.body) as { settings: Setting; version: number }
+    if (request.version !== settingVersion) {
+      return {
+        errorNo: 100,
+        errorMsg: '配置已被其他操作更新，请刷新后重试',
+        data: getStatus(),
+      }
     }
-    // console.log('updateSetting mock response', setting)
-    return setting
+    defaultSetting.chatId = request.settings.chatId
+    defaultSetting.showContent = request.settings.showContent
+    defaultSetting.spoilerContent = request.settings.spoilerContent
+    defaultSetting.sendAttachments = request.settings.sendAttachments
+    defaultSetting.disableLinkPreview = request.settings.disableLinkPreview
+    settingVersion += 1
+    return {
+      errorNo: 0,
+      errorMsg: '',
+      data: getStatus(),
+    }
   },
 )
 
-// 模拟测试消息
+// 模拟测试消息。
 export const testMessageMock = Mock.mock(
   `${pluginSettingsResource}/${testMessageResource}`,
   'post',
-  (_) => {
-    // console.log('testMessage options', options)
-    const code = Random.integer(0, -1) // 0 表示成功，其他值表示失败
-    const message = code === 0 ? '测试消息成功' : '测试消息失败'
-    const setting: ApiResponse<void> = {
-      code,
-      message,
-    }
-    // console.log('testMessage mock response', setting)
-    return setting
-  },
+  (): ApiResponse<TestMessageResult> => ({
+    errorNo: 0,
+    errorMsg: '',
+    data: {
+      message: '测试消息已发送',
+    },
+  }),
 )
 
 export default { getBotInfoMock, getSettingMock, updateSettingMock, testMessageMock }

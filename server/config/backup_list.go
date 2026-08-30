@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // ListBackups 枚举合法备份的代次和时间，不返回内部路径。
@@ -28,7 +29,10 @@ func (s *TransactionStore) ListBackups() ([]ConfigBackupInfo, error) {
 	}
 	result := make([]ConfigBackupInfo, 0, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
 			return nil, ErrTransactionInvalid
 		}
 		runtime, manifest, loadErr := loadConfigBackup(filepath.Join(backupsDirectory, entry.Name()), s.validation)

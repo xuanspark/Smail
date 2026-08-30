@@ -50,7 +50,7 @@ func TestModifyPasswordRequiresCurrentPassword(t *testing.T) {
 	}
 
 	user := models.User{Account: "password-change-user", Name: "密码修改用户"}
-	if err := auth.SetPassword(&user, "CorrectPass123"); err != nil {
+	if err := auth.SetPassword(&user, "CorrectP12"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Instance.Insert(&user); err != nil {
@@ -77,11 +77,11 @@ func TestModifyPasswordRequiresCurrentPassword(t *testing.T) {
 	if _, err := db.Instance.ID(user.ID).Get(&unchanged); err != nil {
 		t.Fatal(err)
 	}
-	if unchanged.Password != originalHash || !password.Verify(unchanged.Password, "CorrectPass123") {
+	if unchanged.Password != originalHash || !password.Verify(unchanged.Password, "CorrectP12") {
 		t.Fatal("password was changed after current password verification failed")
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"CorrectPass123","password":"NewPass123"}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"CorrectP12","password":"NewPass123"}`))
 	loadedContext, err := session.Instance.Load(request.Context(), "")
 	if err != nil {
 		t.Fatal(err)

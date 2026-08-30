@@ -343,6 +343,12 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
 		return nil, err
 	}
+	if err := ValidateRuntimeSecrets(m.vault, current); err != nil {
+		return nil, err
+	}
+	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
+		return nil, err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
 		return nil, err
 	}
@@ -405,7 +411,11 @@ func (m *ConfigManager) PreviewRollback(ctx context.Context, generation uint64, 
 	if pending || generation >= currentGeneration {
 		return nil, ErrGenerationConflict
 	}
-	if _, err := m.transactions.LoadBackup(generation); err != nil {
+	backup, err := m.transactions.LoadBackup(generation)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateRuntimeSecrets(m.vault, backup); err != nil {
 		return nil, err
 	}
 	return &RollbackPreview{
@@ -436,7 +446,11 @@ func (m *ConfigManager) IssueRollbackTicket(ctx context.Context, generation uint
 	if pending || generation >= currentGeneration {
 		return "", ErrGenerationConflict
 	}
-	if _, err := m.transactions.LoadBackup(generation); err != nil {
+	backup, err := m.transactions.LoadBackup(generation)
+	if err != nil {
+		return "", err
+	}
+	if err := ValidateRuntimeSecrets(m.vault, backup); err != nil {
 		return "", err
 	}
 	token, err := newRollbackTicketID()
@@ -499,6 +513,9 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 	}
 	candidate, err := m.transactions.LoadBackup(generation)
 	if err != nil {
+		return nil, err
+	}
+	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
 		return nil, err
 	}
 	setCandidateGeneration(&candidate, current.Generation+1)

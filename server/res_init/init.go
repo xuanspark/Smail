@@ -23,6 +23,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	pluginservice "git.pcux.cn/xuans/Smail/services/plugin"
 	"git.pcux.cn/xuans/Smail/services/recovery"
+	"git.pcux.cn/xuans/Smail/services/restart"
 	"git.pcux.cn/xuans/Smail/services/setup/ssl"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
@@ -194,6 +195,7 @@ func Init(serverVersion string) error {
 		startService(serviceErrors, "IMAP TLS", imap_server.StarTLS)
 
 		log.Info("管理员重置通道已启动")
+		restart.SetCurrent(restart.NewSignalTrigger(signal.RestartChan))
 
 		select {
 		case err := <-serviceErrors:
@@ -224,6 +226,7 @@ func startService(serviceErrors chan<- error, name string, service func() error)
 }
 
 func stopServices() {
+	restart.SetCurrent(nil)
 	stopConfigManager()
 	stopAdminResetControl()
 	stopVerificationRuntime()
@@ -413,7 +416,7 @@ func stopAdminResetControl() {
 	}
 	if adminResetControl != nil {
 		if err := adminResetControl.Close(); err != nil {
-			log.WithError(err).Warn("闁稿繑濞婂Λ瀵告惥閸涱垶鐛撶紒鐙呯磿閹﹪宕ㄥΟ缁樻嫳闁哄牊妞介崳鍝ョ磾椤曗偓閳ь剚宀告禍鐐緞鏉堫偉袝")
+			log.WithError(err).Warn("关闭管理员重置通道失败")
 		}
 		adminResetControl = nil
 		adminResetServeErrors = nil

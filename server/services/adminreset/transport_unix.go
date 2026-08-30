@@ -120,7 +120,7 @@ func (s *UnixServer) handle(conn net.Conn, handler ResetHandler, guard *SessionG
 	defer conn.SetDeadline(time.Time{})
 	nonce, err := guard.Issue()
 	if err != nil {
-		_ = EncodeResponse(conn, Response{Code: "CHANNEL_UNAVAILABLE", Message: "\u91cd\u7f6e\u901a\u9053\u4e0d\u53ef\u7528"})
+		_ = EncodeResponse(conn, Response{Code: "CHANNEL_UNAVAILABLE", Message: "重置通道不可用"})
 		return
 	}
 	defer guard.Discard(nonce)
@@ -133,7 +133,7 @@ func (s *UnixServer) handle(conn net.Conn, handler ResetHandler, guard *SessionG
 		return
 	}
 	if request.Nonce != nonce {
-		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "\u91cd\u7f6e\u8bf7\u6c42\u65e0\u6548"})
+		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "重置请求无效"})
 		return
 	}
 	if err := guard.Consume(request.Nonce); err != nil {

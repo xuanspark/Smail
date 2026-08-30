@@ -29,7 +29,7 @@ export function usePage() {
   const title = ref(lang.editUser)
   
   const reflushList = function () {
-    http.post('/api/user/list', {"current_page": currentPage.value, "page_size": 10}).then(res => {
+    http.post('/api/v1/user/list', {"current_page": currentPage.value, "page_size": 10}).then(res => {
       userList.length = 0
       totalPage.value = res.data.total_page
       if (res.data["list"]) {
@@ -69,7 +69,7 @@ export function usePage() {
         newData["password"] = editUserInfo.password
       }
   
-      http.post('/api/user/edit', newData).then(res => {
+      http.post('/api/v1/user/edit', newData).then(res => {
         ElNotification({
           title: res.errorNo === 0 ? lang.succ : lang.fail,
           message: res.errorNo === 0 ? "" : res.data,
@@ -88,7 +88,7 @@ export function usePage() {
         "password": editUserInfo.password
       }
   
-      http.post('/api/user/create', newData).then(res => {
+      http.post('/api/v1/user/create', newData).then(res => {
         ElNotification({
           title: res.errorNo === 0 ? lang.succ : lang.fail,
           message: res.errorNo === 0 ? "" : res.data,

@@ -66,7 +66,7 @@ func (s *WindowsServer) Serve(ctx context.Context, handler ResetHandler, guard *
 func handleWindowsConnection(conn net.Conn, handler ResetHandler, guard *SessionGuard) {
 	defer conn.Close()
 	if err := authorizeWindowsConnection(conn); err != nil {
-		_ = EncodeResponse(conn, Response{Code: "UNAUTHORIZED", Message: "\u672c\u673a\u8c03\u7528\u8005\u8eab\u4efd\u4e0d\u53d7\u4fe1\u4efb"})
+		_ = EncodeResponse(conn, Response{Code: "UNAUTHORIZED", Message: "本机调用者身份不受信任"})
 		return
 	}
 	handleResetConnection(conn, conn.SetDeadline, handler, guard)

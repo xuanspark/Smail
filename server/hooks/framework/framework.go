@@ -52,6 +52,10 @@ type SettingsHtmlRequest struct {
 	URL         string
 	RequestData string
 }
+type UserSettingsRequest struct {
+	UserID   int             `json:"userId"`
+	Settings json.RawMessage `json:"settings"`
+}
 
 // 插件能力宣告
 type Capabilities struct {
@@ -86,6 +90,26 @@ type ConfigurableHook interface {
 	ValidateConfig(json.RawMessage) error
 	Configure(json.RawMessage) error
 	Health() error
+}
+
+// UserSettingsConfigurer 接收主程序下发的已授权用户设置。
+type UserSettingsConfigurer interface {
+	ConfigureUserSettings(userID int, settings json.RawMessage) error
+}
+
+// BotInfoProvider 提供不包含密钥的机器人公开信息。
+type BotInfoProvider interface {
+	GetBotInfo() (BotInfo, error)
+}
+
+// TestMessageProvider 仅负责发送主程序已校验的测试消息。
+type TestMessageProvider interface {
+	TestMessage(json.RawMessage) error
+}
+
+type BotInfo struct {
+	Username string `json:"username"`
+	BotLink  string `json:"botLink"`
 }
 
 type Plugin struct {
@@ -321,6 +345,56 @@ func (p *Plugin) Run() error {
 		})
 	}
 
+	if configurable, ok := p.hook.(UserSettingsConfigurer); ok {
+		mux.HandleFunc("/UserSettings", func(w http.ResponseWriter, request *http.Request) {
+			var payload UserSettingsRequest
+			if !decodePluginRequest(w, request, &payload) {
+				return
+			}
+			if payload.UserID <= 0 || len(payload.Settings) == 0 || int64(len(payload.Settings)) > maxPluginRPCBytes {
+				http.Error(w, "用户设置请求无效", http.StatusBadRequest)
+				return
+			}
+			if err := configurable.ConfigureUserSettings(payload.UserID, payload.Settings); err != nil {
+				http.Error(w, "用户设置下发失败", http.StatusBadRequest)
+				return
+			}
+			_ = writePluginResponse(w, "application/json", []byte(`{"status":"ok"}`))
+		})
+	}
+	if provider, ok := p.hook.(BotInfoProvider); ok {
+		mux.HandleFunc("/BotInfo", func(w http.ResponseWriter, request *http.Request) {
+			if request.Method != http.MethodPost {
+				w.Header().Set("Allow", http.MethodPost)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			info, err := provider.GetBotInfo()
+			if err != nil {
+				http.Error(w, "获取机器人信息失败", http.StatusServiceUnavailable)
+				return
+			}
+			body, err := json.Marshal(info)
+			if err != nil {
+				http.Error(w, "机器人信息无效", http.StatusInternalServerError)
+				return
+			}
+			_ = writePluginResponse(w, "application/json", body)
+		})
+	}
+	if provider, ok := p.hook.(TestMessageProvider); ok {
+		mux.HandleFunc("/TestMessage", func(w http.ResponseWriter, request *http.Request) {
+			var payload json.RawMessage
+			if !decodePluginRequest(w, request, &payload) {
+				return
+			}
+			if err := provider.TestMessage(payload); err != nil {
+				http.Error(w, "发送测试消息失败", http.StatusBadRequest)
+				return
+			}
+			_ = writePluginResponse(w, "application/json", []byte(`{"status":"ok"}`))
+		})
+	}
 	server := http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,

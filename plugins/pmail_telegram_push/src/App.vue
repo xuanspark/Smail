@@ -3,64 +3,64 @@
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
-          <span>Telegram 推送设置</span>
-          <div style="float: right">
-            <el-badge :value="saved ? 1 : ''" class="item">
-              <el-button
-                type="primary"
-                :disabled="!botInfo?.bot_link"
-                @click="contactBot"
-                style="float: right"
-                id="contact_bot_button"
-              >
-                <TelegramIcon class="icon" />
-                联系机器人
-              </el-button>
-            </el-badge>
+          <div>
+            <div class="card-title">Telegram 推送设置</div>
+            <div class="card-description">为当前账户配置独立的 Telegram 邮件通知。</div>
           </div>
+          <el-badge :value="saved ? 1 : ''" class="item">
+            <el-button
+              id="contact_bot_button"
+              type="primary"
+              :disabled="!botInfo.botLink"
+              @click="contactBot"
+            >
+              <TelegramIcon class="icon" />
+              联系机器人
+            </el-button>
+          </el-badge>
         </div>
       </template>
 
       <el-form
+        v-loading="loading"
         :model="formData"
         :rules="rules"
         label-width="180px"
         label-position="left"
-        v-loading="loading"
       >
-        <el-form-item label="Telegram 聊天 ID" prop="chat_id">
+        <el-form-item label="Telegram 聊天 ID" prop="chatId">
           <el-input
-            v-model="formData.chat_id"
-            placeholder="请输入 Telegram 聊天 ID，留空则禁用推送"
             id="chat_id"
+            v-model="formData.chatId"
+            placeholder="请输入 Telegram 聊天 ID，留空则禁用推送"
           />
         </el-form-item>
 
         <el-form-item label="显示邮件内容">
           <el-switch
-            v-model="formData.show_content"
-            :disabled="formData.chat_id.trim().length === 0"
+            v-model="formData.showContent"
+            :disabled="formData.chatId.trim().length === 0"
           />
         </el-form-item>
 
         <el-form-item label="邮件内容防剧透">
           <el-switch
-            v-model="formData.spoiler_content"
-            :disabled="formData.chat_id.trim().length === 0"
+            v-model="formData.spoilerContent"
+            :disabled="formData.chatId.trim().length === 0"
           />
         </el-form-item>
 
         <el-form-item label="发送附件">
           <el-switch
-            v-model="formData.send_attachments"
-            :disabled="formData.chat_id.trim().length === 0"
+            v-model="formData.sendAttachments"
+            :disabled="formData.chatId.trim().length === 0"
           />
         </el-form-item>
 
         <el-form-item label="禁用链接预览">
           <el-switch
-            v-model="formData.disable_link_preview"
-            :disabled="formData.chat_id.trim().length === 0"
+            v-model="formData.disableLinkPreview"
+            :disabled="formData.chatId.trim().length === 0"
           />
         </el-form-item>
       </el-form>
@@ -68,27 +68,21 @@
       <el-form-item>
         <div class="form-item-buttons">
           <el-button
-            type="success"
-            :disabled="loading || formData.chat_id.trim().length === 0"
-            style="margin: 0 auto"
-            @click="postTestMessage"
             id="test_message_button"
+            type="success"
+            :disabled="loading || formData.chatId.trim().length === 0"
+            @click="postTestMessage"
           >
             <LinkIcon class="icon" />
             测试消息
           </el-button>
-          <el-button
-            type="primary"
-            @click="confirmSubmit"
-            :disabled="loading"
-            style="margin: 0 auto"
-            id="save_button"
-          >
+          <el-button id="save_button" type="primary" :disabled="loading" @click="confirmSubmit">
             <SaveIcon class="icon" />
             保存设置
           </el-button>
         </div>
       </el-form-item>
+
       <el-tour v-model="tourOpen" @finish="finishTour" @close="finishTour">
         <el-tour-step
           target="#chat_id"
@@ -119,8 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import resizeIframeHeight from '@/utils/resize'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SaveIcon from '@/assets/icons/save-line.svg'
 import TelegramIcon from '@/assets/icons/telegram.svg'
@@ -128,51 +121,24 @@ import LinkIcon from '@/assets/icons/link.svg'
 import type { BotInfo, Setting } from '@/types'
 import { getBotInfo, testMessage } from '@/api/bot'
 import { getSetting, updateSetting } from '@/api/setting'
+import resizeIframeHeight from '@/utils/resize'
 
 const saved = ref(false)
 const loading = ref(false)
+const version = ref(0)
 const botInfo = ref<BotInfo>({
   username: '',
-  bot_link: '',
+  botLink: '',
 })
-
-// 获取机器人信息
-const fetchBotInfo = () => {
-  loading.value = true
-  getBotInfo()
-    .then((response) => {
-      if (response.data) {
-        botInfo.value = response.data
-      }
-    })
-    .catch((error) => {
-      ElMessage.error('获取机器人信息失败')
-      console.error(error)
-    })
-    .finally(() => {
-      loading.value = false
-    })
-}
-
-// 联系机器人
-const contactBot = () => {
-  if (!botInfo.value?.bot_link) {
-    ElMessage.error('机器人链接为空')
-    return
-  }
-  saved.value = false
-  window.open(botInfo.value.bot_link, '_blank')
-}
-
 const formData = ref<Setting>({
-  chat_id: '',
-  show_content: true,
-  spoiler_content: true,
-  send_attachments: true,
-  disable_link_preview: true,
+  chatId: '',
+  showContent: true,
+  spoilerContent: true,
+  sendAttachments: true,
+  disableLinkPreview: true,
 })
 const rules = {
-  chat_id: [
+  chatId: [
     {
       required: false,
       message: '请输入聊天 ID，留空则禁用推送',
@@ -181,80 +147,97 @@ const rules = {
     },
   ],
 }
-// 获取插件配置
-const fetchSetting = () => {
+
+// 获取机器人公开信息。
+const fetchBotInfo = async () => {
   loading.value = true
-  getSetting()
-    .then((response) => {
-      if (response.data) {
-        formData.value = response.data
-      }
-    })
-    .catch((error) => {
-      ElMessage.error('获取设置信息失败')
-      console.error(error)
-    })
-    .finally(() => {
-      loading.value = false
-    })
+  try {
+    const response = await getBotInfo()
+    botInfo.value = response.data
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '获取机器人信息失败'
+    ElMessage.error(message)
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
 }
 
-// 保存插件配置
-const saveSetting = () => {
-  loading.value = true
-  updateSetting(formData.value || {})
-    .then(() => {
-      saved.value = true
-      ElMessage.success('设置已保存')
-    })
-    .catch((error) => {
-      ElMessage.error('保存设置失败')
-      console.error(error)
-    })
-    .finally(() => {
-      loading.value = false
-    })
+// 联系机器人时不向新页面传递窗口控制权。
+const contactBot = () => {
+  if (!botInfo.value.botLink) {
+    ElMessage.error('机器人链接为空')
+    return
+  }
+  saved.value = false
+  window.open(botInfo.value.botLink, '_blank', 'noopener,noreferrer')
 }
 
-// 确认保存设置
+// 获取当前登录用户的插件设置和版本。
+const fetchSetting = async () => {
+  loading.value = true
+  try {
+    const response = await getSetting()
+    formData.value = response.data.settings
+    version.value = response.data.version
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '获取设置信息失败'
+    ElMessage.error(message)
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 使用乐观锁版本保存当前用户设置。
+const saveSetting = async () => {
+  loading.value = true
+  try {
+    const response = await updateSetting(formData.value, version.value)
+    formData.value = response.data.settings
+    version.value = response.data.version
+    saved.value = true
+    ElMessage.success('设置已保存')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '保存设置失败'
+    ElMessage.error(message)
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 确认保存设置。
 const confirmSubmit = () => {
   ElMessageBox.confirm('确认保存设置吗？', '保存设置', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',
-  }).then(() => {
-    saveSetting()
-  })
+  }).then(saveSetting)
 }
 
-const postTestMessage = () => {
-  loading.value = true
-  if (!formData.value.chat_id) {
+// 测试消息只使用当前表单，不写入数据库。
+const postTestMessage = async () => {
+  if (!formData.value.chatId.trim()) {
     ElMessage.error('请输入聊天 ID')
     return
   }
-  testMessage(formData.value)
-    .then((response) => {
-      if (response.code === 0) {
-        ElMessage.success(response.message)
-        saved.value = true
-      } else {
-        ElMessage.error(response.message)
-      }
-    })
-    .catch((error) => {
-      ElMessage.error('测试消息失败')
-      console.error(error)
-    })
-    .finally(() => {
-      loading.value = false
-    })
+  loading.value = true
+  try {
+    const response = await testMessage(formData.value)
+    ElMessage.success(response.data.message)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '测试消息失败'
+    ElMessage.error(message)
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
 }
 
 const tourOpen = ref(false)
 const finishTour = () => {
   localStorage.setItem('hasShownTour', 'true')
-  console.log('引导流程已完成')
 }
 
 onMounted(() => {
@@ -263,8 +246,8 @@ onMounted(() => {
     tourOpen.value = true
   }
   resizeIframeHeight()
-  fetchBotInfo()
-  fetchSetting()
+  void fetchBotInfo()
+  void fetchSetting()
 })
 </script>
 
@@ -280,24 +263,38 @@ onMounted(() => {
 }
 
 .card-header {
-  font-size: 18px;
-  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.card-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.card-description {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 
 .icon {
-  margin-right: 5px;
   width: 20px;
   height: 20px;
+  margin-right: 5px;
   vertical-align: middle;
   color: white;
 }
 
 .form-item-buttons {
-  margin-top: 20px;
-  margin: 0 auto;
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   gap: 20px;
+  width: 100%;
+  margin-top: 20px;
 }
 </style>

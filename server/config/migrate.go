@@ -29,6 +29,8 @@ var (
 	ErrMigrationTargetExists = errors.New("partitioned configuration files already exist")
 )
 
+const legacyMigrationSourceCopy = "config.json.legacy"
+
 type LegacyMigrationPlan struct {
 	SourceDigest     string
 	TargetGeneration uint64
@@ -178,6 +180,9 @@ func MigrateLegacyConfig(root string, options RuntimeValidationOptions) (LegacyM
 	if err != nil {
 		return LegacyMigrationResult{}, err
 	}
+	if err := preserveLegacyMigrationSource(directory, legacyData); err != nil {
+		return LegacyMigrationResult{}, err
+	}
 	files, err := marshalRuntimeFilesWithPluginSecrets(runtime, true)
 	if err != nil {
 		return LegacyMigrationResult{}, err
@@ -324,8 +329,24 @@ func equivalentLegacyMigrationSection(section Section, expected, existing []byte
 			}
 		}
 		return reflect.DeepEqual(expectedConfig.Meta, existingConfig.Meta), nil
-	case SectionEmail, SectionSSL:
-		return false, nil
+	case SectionEmail:
+		var expectedConfig, existingConfig EmailSectionConfig
+		if err := ParseStrict(expected, &expectedConfig); err != nil {
+			return false, err
+		}
+		if err := ParseStrict(existing, &existingConfig); err != nil {
+			return false, err
+		}
+		return reflect.DeepEqual(expectedConfig, existingConfig), nil
+	case SectionSSL:
+		var expectedConfig, existingConfig SSLSectionConfig
+		if err := ParseStrict(expected, &expectedConfig); err != nil {
+			return false, err
+		}
+		if err := ParseStrict(existing, &existingConfig); err != nil {
+			return false, err
+		}
+		return reflect.DeepEqual(expectedConfig, existingConfig), nil
 	default:
 		return false, ErrInvalidSection
 	}
@@ -845,4 +866,18 @@ func writeLegacyMigrationBackup(directory string, data []byte, now time.Time) (s
 		return "", err
 	}
 	return path, nil
+}
+
+func preserveLegacyMigrationSource(directory string, data []byte) error {
+	existing, err := readManagerConfigFile(directory, legacyMigrationSourceCopy)
+	if err == nil {
+		if bytes.Equal(existing, data) {
+			return nil
+		}
+		return ErrMigrationTargetExists
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+	return atomicfile.Write(filepath.Join(directory, legacyMigrationSourceCopy), data, 0600)
 }

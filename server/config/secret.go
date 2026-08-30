@@ -143,6 +143,27 @@ func OpenStoredSecret(vault *credential.Vault, stored StoredSecret) (string, err
 	return plaintext, nil
 }
 
+// ValidateRuntimeSecrets 验证运行时配置中的持久化 Secret 可以由当前密钥解密。
+func ValidateRuntimeSecrets(vault *credential.Vault, runtime RuntimeConfig) error {
+	for _, stored := range []StoredSecret{runtime.Root.Database.Password, runtime.SMTP.Relay.Password} {
+		if !stored.Configured() {
+			continue
+		}
+		if _, err := OpenStoredSecret(vault, stored); err != nil {
+			return err
+		}
+	}
+	for _, plugin := range runtime.Plugins.Plugins {
+		if !plugin.Secret.Configured() {
+			continue
+		}
+		if _, err := OpenStoredSecret(vault, plugin.Secret); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ValidateStoredSecret(stored StoredSecret, required bool) error {
 	if !stored.Configured() {
 		if stored.Ciphertext != "" || stored.Version != 0 || !stored.UpdatedAt.IsZero() || required {

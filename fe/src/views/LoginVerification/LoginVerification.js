@@ -69,7 +69,7 @@ export function usePage() {
     loading.value = true
     errorMessage.value = ""
     try {
-      const response = await http.post("/api/security/login/verify", {
+      const response = await http.post("/api/v1/security/login/verify", {
         id: pending.value.challengeId,
         account: pending.value.account,
         code: code.value.trim()
@@ -96,7 +96,7 @@ export function usePage() {
     resending.value = true
     errorMessage.value = ""
     try {
-      const response = await http.post("/api/security/login/resend", {
+      const response = await http.post("/api/v1/security/login/resend", {
         id: pending.value.challengeId,
         account: pending.value.account
       })
@@ -126,7 +126,7 @@ export function usePage() {
     webAuthnLoading.value = true
     errorMessage.value = ""
     try {
-      const begin = await http.post("/api/security/webauthn/login/begin", {
+      const begin = await http.post("/api/v1/security/webauthn/login/begin", {
         challenge_id: pending.value.challengeId,
         account: pending.value.account
       })
@@ -136,7 +136,7 @@ export function usePage() {
       const credential = await navigator.credentials.get({
         publicKey: normalizeRequestOptions(begin.data.options)
       })
-      const finish = await http.post("/api/security/webauthn/login/finish", {
+      const finish = await http.post("/api/v1/security/webauthn/login/finish", {
         challenge_id: pending.value.challengeId,
         account: pending.value.account,
         session_id: begin.data.session_id,

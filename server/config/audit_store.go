@@ -3,7 +3,10 @@ package config
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +27,7 @@ var (
 )
 
 type ConfigAuditQuery struct {
+	ID        string
 	From      time.Time
 	To        time.Time
 	ActorID   string
@@ -119,10 +123,15 @@ func (w *FileAuditWriter) Query(ctx context.Context, query ConfigAuditQuery) ([]
 	result := make([]ConfigAuditEvent, 0, minAuditLimit(limit, 32))
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 4096), 256*1024)
+	lineNumber := 0
 	for scanner.Scan() {
+		lineNumber++
 		var event ConfigAuditEvent
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
 			return nil, ErrAuditStorageUnavailable
+		}
+		if event.ID == "" {
+			event.ID = legacyAuditEventID(scanner.Bytes(), lineNumber)
 		}
 		if err := validateAuditEvent(event); err != nil {
 			return nil, ErrAuditStorageUnavailable
@@ -156,12 +165,12 @@ func (w *FileAuditWriter) ExportCSV(ctx context.Context, query ConfigAuditQuery)
 	}
 	var builder strings.Builder
 	writer := csv.NewWriter(&builder)
-	if err := writer.Write([]string{"operation", "section", "actor_id", "actor_role", "from_generation", "to_generation", "target_generation", "changed_fields", "confirmation_method", "result", "created_at"}); err != nil {
+	if err := writer.Write([]string{"id", "operation", "section", "actor_id", "actor_role", "from_generation", "to_generation", "target_generation", "changed_fields", "confirmation_method", "result", "created_at"}); err != nil {
 		return nil, err
 	}
 	for _, event := range events {
 		if err := writer.Write([]string{
-			string(event.Operation), string(event.Section), event.ActorID, event.ActorRole,
+			event.ID, string(event.Operation), string(event.Section), event.ActorID, event.ActorRole,
 			fmt.Sprintf("%d", event.FromGeneration), fmt.Sprintf("%d", event.ToGeneration),
 			fmt.Sprintf("%d", event.TargetGeneration), strings.Join(event.ChangedFields, ","),
 			event.ConfirmationMethod, event.Result, event.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -203,16 +212,28 @@ func (w *FileAuditWriter) Cleanup(ctx context.Context, now time.Time) (int, erro
 	deleted := 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 4096), 256*1024)
+	lineNumber := 0
 	for scanner.Scan() {
+		lineNumber++
 		var event ConfigAuditEvent
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil || validateAuditEvent(event) != nil {
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			return deleted, ErrAuditStorageUnavailable
+		}
+		if event.ID == "" {
+			event.ID = legacyAuditEventID(scanner.Bytes(), lineNumber)
+		}
+		if err := validateAuditEvent(event); err != nil {
 			return deleted, ErrAuditStorageUnavailable
 		}
 		if event.CreatedAt.Before(cutoff) {
 			deleted++
 			continue
 		}
-		kept = append(kept, append([]byte(nil), scanner.Bytes()...))
+		data, marshalErr := json.Marshal(event)
+		if marshalErr != nil {
+			return deleted, ErrAuditStorageUnavailable
+		}
+		kept = append(kept, data)
 	}
 	if err := scanner.Err(); err != nil {
 		return deleted, ErrAuditStorageUnavailable
@@ -250,21 +271,42 @@ func ensureAuditFile(path string) error {
 }
 
 func normalizeAuditEvent(event ConfigAuditEvent) (ConfigAuditEvent, error) {
-	if err := validateAuditEvent(event); err != nil {
-		return ConfigAuditEvent{}, err
+	if event.ID == "" {
+		id, err := newAuditEventID()
+		if err != nil {
+			return ConfigAuditEvent{}, err
+		}
+		event.ID = id
 	}
 	event.ActorID = strings.TrimSpace(event.ActorID)
 	event.ActorRole = strings.TrimSpace(event.ActorRole)
 	event.ConfirmationMethod = strings.ToLower(strings.TrimSpace(event.ConfirmationMethod))
 	event.ChangedFields = append([]string(nil), event.ChangedFields...)
+	if err := validateAuditEvent(event); err != nil {
+		return ConfigAuditEvent{}, err
+	}
 	return event, nil
 }
 
+func newAuditEventID() (string, error) {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		return "", ErrAuditEventInvalid
+	}
+	return "audit-" + hex.EncodeToString(value), nil
+}
+
+func legacyAuditEventID(raw []byte, lineNumber int) string {
+	hash := sha256.New()
+	hash.Write(raw)
+	hash.Write([]byte(fmt.Sprintf(":%d", lineNumber)))
+	return "legacy-" + hex.EncodeToString(hash.Sum(nil))
+}
 func validateAuditEvent(event ConfigAuditEvent) error {
 	if event.Operation != ConfigOperationUpdate && event.Operation != ConfigOperationRollback && event.Operation != ConfigOperationMigration {
 		return ErrAuditEventInvalid
 	}
-	if strings.TrimSpace(event.ActorID) == "" || strings.TrimSpace(event.ActorRole) == "" || event.FromGeneration == 0 || event.ToGeneration == 0 || event.CreatedAt.IsZero() {
+	if !validAuditEventID(event.ID) || strings.TrimSpace(event.ActorID) == "" || strings.TrimSpace(event.ActorRole) == "" || event.FromGeneration == 0 || event.ToGeneration == 0 || event.CreatedAt.IsZero() {
 		return ErrAuditEventInvalid
 	}
 	if event.Result != "success" && event.Result != "failure" {
@@ -282,6 +324,9 @@ func validateAuditEvent(event ConfigAuditEvent) error {
 }
 
 func auditEventMatches(event ConfigAuditEvent, query ConfigAuditQuery) bool {
+	if query.ID != "" && event.ID != query.ID {
+		return false
+	}
 	if !query.From.IsZero() && event.CreatedAt.Before(query.From) {
 		return false
 	}
@@ -300,6 +345,24 @@ func auditEventMatches(event ConfigAuditEvent, query ConfigAuditQuery) bool {
 	return true
 }
 
+func validAuditEventID(value string) bool {
+	if len(value) != 38 && len(value) != 71 {
+		return false
+	}
+	if strings.HasPrefix(value, "audit-") {
+		value = strings.TrimPrefix(value, "audit-")
+	} else if strings.HasPrefix(value, "legacy-") {
+		value = strings.TrimPrefix(value, "legacy-")
+	} else {
+		return false
+	}
+	for _, character := range value {
+		if !(character >= '0' && character <= '9') && !(character >= 'a' && character <= 'f') {
+			return false
+		}
+	}
+	return true
+}
 func auditContextError(ctx context.Context) error {
 	if ctx == nil {
 		return nil

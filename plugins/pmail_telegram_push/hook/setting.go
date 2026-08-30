@@ -4,9 +4,11 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
+	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"github.com/go-telegram/bot/models"
 	"github.com/ydzydzydz/pmail_telegram_push/logger"
 	telegrammodel "github.com/ydzydzydz/pmail_telegram_push/model"
@@ -91,13 +93,44 @@ func (h *PmailTelegramPushHook) updateSetting(userID int, requestData string) st
 	return SuccessResponse("更新 Telegram 推送设置成功", nil).Json()
 }
 
-type BotInfo struct {
-	Username string `json:"username"`
-	BotLink  string `json:"bot_link"`
+func NewBotInfo(username string) framework.BotInfo {
+	return framework.BotInfo{Username: username, BotLink: fmt.Sprintf("https://t.me/%s", username)}
 }
 
-func NewBotInfo(username string) BotInfo {
-	return BotInfo{Username: username, BotLink: fmt.Sprintf("https://t.me/%s", username)}
+func (h *PmailTelegramPushHook) GetBotInfo() (framework.BotInfo, error) {
+	if h.bot == nil {
+		return framework.BotInfo{}, errors.New("Telegram Bot 尚未配置")
+	}
+	me, err := h.bot.GetMe(context.Background())
+	if err != nil {
+		return framework.BotInfo{}, errors.New("获取 Telegram Bot 信息失败")
+	}
+	return NewBotInfo(me.Username), nil
+}
+
+func (h *PmailTelegramPushHook) TestMessage(data json.RawMessage) error {
+	if h.bot == nil {
+		return errors.New("Telegram Bot 尚未配置")
+	}
+	payload, err := decodeTelegramUserSettings(data)
+	if err != nil {
+		return err
+	}
+	setting := payload.setting()
+	if setting.ChatID == "" {
+		return errors.New("Telegram 聊天 ID 不能为空")
+	}
+	telegramSetting := &telegrammodel.TelegramPushSetting{
+		ChatID:             setting.ChatID,
+		ShowContent:        setting.ShowContent,
+		SpoilerContent:     setting.SpoilerContent,
+		SendAttachments:    setting.SendAttachments,
+		DisableLinkPreview: setting.DisableLinkPreview,
+	}
+	if _, err := h.sendTestMessage(telegramSetting); err != nil {
+		return errors.New("发送测试消息失败")
+	}
+	return nil
 }
 
 func (h *PmailTelegramPushHook) getBotInfo() string {

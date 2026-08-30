@@ -21,6 +21,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	"git.pcux.cn/xuans/Smail/utils/validation"
 	"github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
@@ -182,8 +183,8 @@ func SetAdminPassword(ctx *context.Context, account, pwd string) error {
 }
 
 func validateAdminPassword(pwd string) error {
-	passwordSize := len([]byte(pwd))
-	if passwordSize < 8 || passwordSize > 12 {
+	if err := password.ValidateUserPassword(pwd); err != nil {
+
 		return databaseError("管理员密码长度必须为 8 到 12 个字节", nil)
 	}
 	return nil

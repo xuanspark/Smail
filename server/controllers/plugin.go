@@ -67,6 +67,11 @@ func SettingsHtml(ctx *context.Context, w http.ResponseWriter, req *http.Request
 		w.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	} else {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte("旧版插件配置保存接口已停用，请使用新版插件配置接口"))
+		return
 	}
 	req.Body = http.MaxBytesReader(w, req.Body, 64<<10)
 	requestData, err := io.ReadAll(req.Body)
@@ -84,12 +89,7 @@ func SettingsHtml(ctx *context.Context, w http.ResponseWriter, req *http.Request
 		response.NewErrorResponse(response.ServerError, "", "").FPrint(w)
 		return
 	}
-	if req.Method == http.MethodPost && content == "success" {
-		if err := hooks.PersistPluginConfig(pluginName, string(requestData)); err != nil {
-			response.NewErrorResponse(response.ServerError, "", "").FPrint(w)
-			return
-		}
-	}
+
 	if req.Method == http.MethodGet {
 		if strings.HasSuffix(resourcePath, ".js") {
 			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")

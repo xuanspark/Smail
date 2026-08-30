@@ -324,7 +324,8 @@ func secureManagerConfigDirectory(root string) (string, error) {
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", ErrManagerStorage
 	}
-	// 鐩綍鏉冮檺 0700 鏄厤缃枃浠剁殑鏈€灏忔潈闄愯姹傦紱G302 灏嗙洰褰曡鍒や负鏂囦欢銆?	// #nosec G302
+	// 目录权限 0700 是配置目录的最低要求；G302 将目录误判为文件。
+	// #nosec G302
 	if err := os.Chmod(directory, 0700); err != nil {
 		return "", err
 	}
@@ -344,7 +345,8 @@ func secureBackupDirectory(root string) (string, error) {
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", ErrManagerStorage
 	}
-	// 澶囦唤鐩綍鍙厑璁告湇鍔¤处鎴疯闂紱G302 灏嗙洰褰曡鍒や负鏂囦欢銆?	// #nosec G302
+	// 备份目录只允许服务账户访问；G302 将目录误判为文件。
+	// #nosec G302
 	if err := os.Chmod(directory, 0700); err != nil {
 		return "", err
 	}

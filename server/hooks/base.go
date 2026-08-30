@@ -44,6 +44,10 @@ func SetPluginConfigService(service *pluginservice.ConfigService) {
 	pluginConfigService = service
 }
 
+func PluginConfigService() *pluginservice.ConfigService {
+	return pluginConfigService
+}
+
 const (
 	maxPluginRPCBytes                  int64 = 8 << 20
 	maxPluginSettingsPageResponseBytes       = 1 << 20
@@ -175,6 +179,31 @@ func (h *HookSender) ValidateConfig(payload framework.PluginRuntimeConfig) error
 
 func (h *HookSender) Configure(payload framework.PluginRuntimeConfig) error {
 	_, err := h.call("Configure", payload)
+	return err
+}
+
+func (h *HookSender) ConfigureUserSettings(userID int, settings json.RawMessage) error {
+	_, err := h.call("UserSettings", framework.UserSettingsRequest{
+		UserID:   userID,
+		Settings: append(json.RawMessage(nil), settings...),
+	})
+	return err
+}
+
+func (h *HookSender) GetBotInfo() (framework.BotInfo, error) {
+	body, err := h.call("BotInfo", struct{}{})
+	if err != nil {
+		return framework.BotInfo{}, err
+	}
+	var info framework.BotInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return framework.BotInfo{}, err
+	}
+	return info, nil
+}
+
+func (h *HookSender) TestMessage(settings json.RawMessage) error {
+	_, err := h.call("TestMessage", append(json.RawMessage(nil), settings...))
 	return err
 }
 
@@ -351,6 +380,7 @@ func Init(serverVersion string) {
 				continue
 			}
 		}
+		syncTelegramUserSettings(logicalID, hook)
 		if healthErr := hook.Health(); healthErr != nil {
 			log.Warnf("[%s] Plugin health check failed", logicalID)
 			_ = process.Kill()
@@ -367,6 +397,53 @@ func Init(serverVersion string) {
 	}
 }
 
+func SyncTelegramUserSettings(userID int, settings pluginservice.TelegramUserSettings) error {
+	if userID <= 0 {
+		return errors.New("invalid user ID")
+	}
+	hook, ok := GetHook("TelegramPush")
+	if !ok {
+		hook, ok = GetHook("telegram_push")
+	}
+	if !ok {
+		return errors.New("telegram plugin is unavailable")
+	}
+	configurer, ok := hook.(framework.UserSettingsConfigurer)
+	if !ok {
+		return errors.New("telegram plugin does not support user settings")
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	return configurer.ConfigureUserSettings(userID, payload)
+}
+func syncTelegramUserSettings(logicalID string, hook *HookSender) {
+	if logicalID != "telegram_push" || hook == nil || pluginConfigService == nil {
+		return
+	}
+	entries, err := pluginConfigService.ListTelegramUserSettings()
+	if err != nil {
+		log.WithError(err).Warnf("[%s] Telegram user settings sync load failed", logicalID)
+		return
+	}
+	for _, entry := range entries {
+		if syncErr := syncTelegramUserSetting(hook, entry.UserID, entry.Settings); syncErr != nil {
+			log.WithError(syncErr).Warnf("[%s] Telegram user settings sync failed for user %d", logicalID, entry.UserID)
+		}
+	}
+}
+
+func syncTelegramUserSetting(hook *HookSender, userID int, settings pluginservice.TelegramUserSettings) error {
+	if hook == nil || userID <= 0 {
+		return errors.New("invalid plugin user settings target")
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	return hook.ConfigureUserSettings(userID, payload)
+}
 func pluginInstanceForStartup(logicalID string) (config.PluginInstance, uint64, bool) {
 	manager := config.CurrentManager()
 	if manager == nil {

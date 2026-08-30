@@ -29,20 +29,20 @@ func TestAuthenticateUsesUniformCredentialErrors(t *testing.T) {
 	}
 
 	active := models.User{Account: "active-user", Name: "active"}
-	if err := SetPassword(&active, "correct-password"); err != nil {
+	if err := SetPassword(&active, "CorrectP12"); err != nil {
 		t.Fatal(err)
 	}
 	disabled := models.User{Account: "disabled-user", Name: "disabled", Disabled: 1}
-	if err := SetPassword(&disabled, "correct-password"); err != nil {
+	if err := SetPassword(&disabled, "CorrectP12"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Instance.Insert(&active, &disabled); err != nil {
 		t.Fatal(err)
 	}
 
-	_, wrongErr := Authenticate("active-user", "wrong-password")
-	_, missingErr := Authenticate("missing-user", "wrong-password")
-	_, disabledErr := Authenticate("disabled-user", "wrong-password")
+	_, wrongErr := Authenticate("active-user", "WrongPass12")
+	_, missingErr := Authenticate("missing-user", "WrongPass12")
+	_, disabledErr := Authenticate("disabled-user", "WrongPass12")
 	if wrongErr == nil || missingErr == nil || disabledErr == nil {
 		t.Fatal("credential failure unexpectedly authenticated")
 	}

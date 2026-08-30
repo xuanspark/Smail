@@ -47,14 +47,14 @@ export function usePage() {
   const totalPage = ref(0)
   
   const updateList = function () {
-    http.post("/api/email/list", {tag: tag, page_size: 15}).then(res => {
+    http.post("/api/v1/email/list", {tag: tag, page_size: 15}).then(res => {
       data.value = res.data.list || []
       totalPage.value = res.data.total_page || 0
     })
   }
   
   const updateGroupList = function () {
-    http.post("/api/group/list").then(res => {
+    http.post("/api/v1/group/list").then(res => {
       groupList.value = res.data || []
     })
   }
@@ -100,7 +100,7 @@ export function usePage() {
       return;
     }
     let ids = rows.map(e => e.id);
-    http.post("/api/email/read", {"ids": ids}).then(res => {
+    http.post("/api/v1/email/read", {"ids": ids}).then(res => {
       if (res.errorNo === 0) {
         updateList()
         ElMessage.success('Marked as read');
@@ -121,7 +121,7 @@ export function usePage() {
     ElMessageBox.confirm(lang.move_email_confirm, '警告', {
       confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
     }).then(() => {
-      http.post("/api/email/move", {"group_id": group_id, "group_name": group_name, "ids": ids}).then(res => {
+      http.post("/api/v1/email/move", {"group_id": group_id, "group_name": group_name, "ids": ids}).then(res => {
         if (res.errorNo === 0) {
           updateList()
           ElMessage.success('移动完成')
@@ -144,7 +144,7 @@ export function usePage() {
     ElMessageBox.confirm(lang.del_email_confirm, '警告', {
       confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
     }).then(() => {
-      http.post("/api/email/del", {"ids": ids, "forcedDel": groupTag.status === 3}).then(res => {
+      http.post("/api/v1/email/del", {"ids": ids, "forcedDel": groupTag.status === 3}).then(res => {
         if (res.errorNo === 0) {
           updateList()
           ElMessage.success('删除成功')
@@ -160,7 +160,7 @@ export function usePage() {
   }
   
   const pageChange = function (p) {
-    http.post("/api/email/list", {tag: tag, page_size: 15, current_page: p}).then(res => {
+    http.post("/api/v1/email/list", {tag: tag, page_size: 15, current_page: p}).then(res => {
       data.value = res.data.list || []
     })
   }

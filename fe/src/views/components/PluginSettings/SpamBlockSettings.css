@@ -1,0 +1,104 @@
+.spam-block-settings {
+  min-height: 400px;
+  padding: 24px;
+  color: var(--pm-text-primary);
+  background: var(--pm-bg-secondary);
+}
+
+.plugin-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.plugin-heading h4 {
+  margin: 6px 0 8px;
+  font-size: 20px;
+}
+
+.plugin-heading p,
+.spam-help {
+  margin: 0;
+  color: var(--pm-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.plugin-eyebrow {
+  color: var(--pm-primary-color);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.spam-alert {
+  margin-top: 16px;
+}
+
+.spam-form {
+  max-width: 760px;
+  margin-top: 24px;
+}
+
+.spam-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.spam-form-grid :deep(.el-input-number) {
+  width: 100%;
+}
+
+.spam-help {
+  margin-top: -4px;
+}
+
+.spam-confirmation {
+  margin-top: 20px;
+}
+
+.spam-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.spam-result {
+  display: grid;
+  gap: 7px;
+  margin-top: 20px;
+  padding: 14px;
+  border-radius: var(--pm-radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.spam-result.is-success {
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.spam-result.is-error {
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.spam-result ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+@media (max-width: 640px) {
+  .spam-block-settings {
+    padding: 16px;
+  }
+
+  .spam-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

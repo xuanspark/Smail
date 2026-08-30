@@ -135,3 +135,41 @@ func TestSecretJSONOutputIsRedacted(t *testing.T) {
 		t.Fatal("secret status exposed ciphertext")
 	}
 }
+
+func TestValidateRuntimeSecretsChecksPluginSecrets(t *testing.T) {
+	root := t.TempDir()
+	vault, err := credential.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pluginSecret, err := ApplySecretChange(vault, StoredSecret{}, SecretChange{
+		Operation: SecretReplace,
+		Value:     &SecretInput{Plaintext: "plugin-secret"},
+	}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := validRuntimeConfig()
+	plugin := runtime.Plugins.Plugins["telegram_push"]
+	plugin.Secret = pluginSecret
+	runtime.Plugins.Plugins["telegram_push"] = plugin
+	if err := ValidateRuntimeSecrets(vault, runtime); err != nil {
+		t.Fatalf("valid plugin secret was rejected: %v", err)
+	}
+
+	tampered := runtime
+	tamperedPlugin := tampered.Plugins.Plugins["telegram_push"]
+	last := len(tamperedPlugin.Secret.Ciphertext) - 1
+	if last < 0 {
+		t.Fatal("plugin secret ciphertext is empty")
+	}
+	replacement := byte('A')
+	if tamperedPlugin.Secret.Ciphertext[last] == replacement {
+		replacement = 'B'
+	}
+	tamperedPlugin.Secret.Ciphertext = tamperedPlugin.Secret.Ciphertext[:last] + string(replacement)
+	tampered.Plugins.Plugins["telegram_push"] = tamperedPlugin
+	if err := ValidateRuntimeSecrets(vault, tampered); !errors.Is(err, ErrSecretUnavailable) {
+		t.Fatalf("tampered plugin secret error = %v, want ErrSecretUnavailable", err)
+	}
+}

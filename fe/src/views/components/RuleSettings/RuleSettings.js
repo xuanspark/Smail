@@ -29,7 +29,7 @@ export function usePage() {
   }
   
   const init = function () {
-    http.post("/api/rule/get").then((res) => {
+    http.post("/api/v1/rule/get").then((res) => {
       data.value = res.data || []
     })
   }
@@ -41,7 +41,7 @@ export function usePage() {
   })
   
   const reflushGroupInfos = function () {
-    http.get('/api/group/list').then(res => {
+    http.get('/api/v1/group/list').then(res => {
       if (res.data != null) {
         groupData.list = res.data
         for (let i = 0; i < groupData.list.length; i++) {
@@ -63,7 +63,7 @@ export function usePage() {
   })
   
   const delRule = function (id) {
-    http.post("/api/rule/del", {"id": id}).then((res) => {
+    http.post("/api/v1/rule/del", {"id": id}).then((res) => {
       ElNotification({
         title: res.errorNo === 0 ? lang.succ : lang.fail,
         message: res.data,
@@ -92,9 +92,9 @@ export function usePage() {
   }
   
   const submitRule = function () {
-    let api = "/api/rule/add"
+    let api = "/api/v1/rule/add"
     if (addRuleForm.id > 0) {
-      api = "/api/rule/update"
+      api = "/api/v1/rule/update"
     }
   
     addRuleForm.sort = parseInt(addRuleForm.sort)

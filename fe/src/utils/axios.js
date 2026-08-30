@@ -27,6 +27,21 @@ http.interceptors.request.use((config) => {
     Promise.reject(error));
 
 //响应拦截器
+function attachApiErrorDetails(error) {
+    const payload = error?.response?.data
+    const details = payload?.data
+
+    if (payload && typeof payload === 'object') {
+        error.apiErrorCode = typeof details?.code === 'string' ? details.code : ''
+        error.apiRequestId = typeof details?.requestId === 'string' ? details.requestId : ''
+        error.apiErrorFields = details?.fields && typeof details.fields === 'object' ? details.fields : {}
+        if (typeof payload.errorMsg === 'string' && payload.errorMsg.trim()) {
+            error.message = payload.errorMsg
+        }
+    }
+
+    return error
+}
 http.interceptors.response.use(async (response) => {
     //响应成功
     if (response.data.errorNo === 403) {
@@ -95,9 +110,13 @@ http.interceptors.response.use(async (response) => {
                 // eslint-disable-next-line no-unused-vars
                 message = '请求失败';
         }
-        return Promise.reject(error);
+        const enrichedError = attachApiErrorDetails(error)
+        if (message && !enrichedError.response?.data?.errorMsg) {
+            enrichedError.message = message
+        }
+        return Promise.reject(enrichedError)
     }
-    return Promise.reject(error);
+    return Promise.reject(attachApiErrorDetails(error));
 });
 
 export {http};

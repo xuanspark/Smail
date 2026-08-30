@@ -4,6 +4,8 @@ import { ElMessage } from 'element-plus'
 
 import { http } from '@/utils/axios'
 
+import { isValidPasswordLength } from '@/utils/password'
+
 export function usePage() {
   const loading = ref(false)
   
@@ -61,7 +63,7 @@ export function usePage() {
     verificationState.value = ''
     sendingCode.value = true
     try {
-      const result = await http.post('/api/security/recovery/begin', {
+      const result = await http.post('/api/v1/security/recovery/begin', {
         identifier: recovery.identifier,
         email: recovery.email
       })
@@ -84,9 +86,8 @@ export function usePage() {
       ElMessage.warning('两次输入的新密码不一致')
       return false
     }
-    const passwordLength = new TextEncoder().encode(recovery.newPassword).length
-    if (passwordLength < 8 || passwordLength > 256) {
-      ElMessage.warning('新密码长度必须为 8-256 个字节')
+    if (!isValidPasswordLength(recovery.newPassword)) {
+      ElMessage.warning('新密码长度必须为 8 到 12 个字节')
       return false
     }
     return true
@@ -128,7 +129,7 @@ export function usePage() {
           answer: recovery.answer,
           recovery_code: recovery.recoveryCode
         }
-    const result = await http.post('/api/security/recovery/verify', payload)
+    const result = await http.post('/api/v1/security/recovery/verify', payload)
     if (result.errorNo !== 0 || !result.data?.ticket) throw new Error('验证失败')
     verificationTicket.value = result.data.ticket
     return result.data.ticket
@@ -141,7 +142,7 @@ export function usePage() {
     verificationState.value = ''
     try {
       const ticket = await verifyRecovery()
-      const result = await http.post('/api/security/recovery/complete', {
+      const result = await http.post('/api/v1/security/recovery/complete', {
         ticket,
         new_password: recovery.newPassword
       })

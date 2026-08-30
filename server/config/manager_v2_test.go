@@ -264,6 +264,91 @@ func TestConfigBackupRejectsTamperedPartition(t *testing.T) {
 	}
 }
 
+func TestConfigManagerRejectsUndecryptableRollbackBackup(t *testing.T) {
+	root := t.TempDir()
+	current := validMySQLRuntimeConfig(t, root)
+	writeRuntimeFixture(t, root, current)
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedEmail := manager.Snapshot().Email
+	updatedEmail.Policy.MaxMessageBytes = 8 << 20
+	payload, err := json.Marshal(updatedEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Apply(context.Background(), updated.Generation); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("backup entries = %v, err = %v", entries, err)
+	}
+	backupDirectory := filepath.Join(root, "config", "backups-v2", entries[0].Name())
+	rootPath := filepath.Join(backupDirectory, "files", "config.json")
+	rootData, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backupRoot RootConfig
+	if err := ParseStrict(rootData, &backupRoot); err != nil {
+		t.Fatal(err)
+	}
+	foreignRoot := t.TempDir()
+	foreignVault, err := credential.NewVault(foreignRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignCiphertext, err := foreignVault.Encrypt("foreign-database-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupRoot.Database.Password.Ciphertext = foreignCiphertext
+	rootData, err = json.Marshal(backupRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootPath, rootData, 0600); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(backupDirectory, "backup.json")
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest ConfigBackupManifest
+	if err := ParseStrict(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Files["config.json"] = SectionDigest(rootData)
+	manifestData, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, manifestData, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	actor := authorizedConfigActor()
+	if _, err := manager.PreviewRollback(context.Background(), 1, actor); !errors.Is(err, ErrSecretUnavailable) {
+		t.Fatalf("undecryptable backup preview error = %v, want secret unavailable", err)
+	}
+	if _, err := manager.RollbackAuthorized(context.Background(), 1, actor, StepUpConfirmation{Confirmed: true, Method: "webauthn"}); !errors.Is(err, ErrSecretUnavailable) {
+		t.Fatalf("undecryptable backup rollback error = %v, want secret unavailable", err)
+	}
+	if manager.Snapshot().Generation != 2 {
+		t.Fatalf("failed rollback changed active generation to %d", manager.Snapshot().Generation)
+	}
+}
 func TestConfigBackupRetentionKeepsFourRecentBackups(t *testing.T) {
 	root := t.TempDir()
 	runtime := validRuntimeConfig()
@@ -782,6 +867,139 @@ func TestConfigBackupScheduleUsesSevenDayInterval(t *testing.T) {
 	}
 }
 
+func TestConfigBackupScheduleCreatesSameGenerationBackupWhenDue(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	store := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	firstAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	firstPath, created, err := store.CreateBackupIfDue(runtime, firstAt)
+	if err != nil || !created || firstPath == "" {
+		t.Fatalf("first backup path=%q created=%v err=%v", firstPath, created, err)
+	}
+	secondPath, created, err := store.CreateBackupIfDue(runtime, firstAt.Add(configBackupInterval))
+	if err != nil || !created || secondPath == "" || secondPath == firstPath {
+		t.Fatalf("due backup path=%q created=%v err=%v, want a new backup", secondPath, created, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("same generation backup count=%d, want 2", len(entries))
+	}
+}
+
+func TestConfigBackupListingAndLoadingIgnoreTemporaryDirectories(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	store := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	if _, err := store.CreateBackup(runtime); err != nil {
+		t.Fatal(err)
+	}
+	backupDirectory := filepath.Join(root, "config", "backups-v2")
+	if err := os.Mkdir(filepath.Join(backupDirectory, ".interrupted.tmp"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.ListBackups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Generation != runtime.Generation {
+		t.Fatalf("backup list = %+v, want generation %d", items, runtime.Generation)
+	}
+	loaded, err := store.LoadBackup(runtime.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Generation != runtime.Generation {
+		t.Fatalf("loaded generation=%d, want %d", loaded.Generation, runtime.Generation)
+	}
+}
+
+func TestConfigBackupCleanupKeepsOnlyExpiredValidBackup(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	store := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	createdAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := store.createBackupAt(runtime, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	backupDirectory := filepath.Join(root, "config", "backups-v2")
+	if err := cleanupConfigBackups(backupDirectory, createdAt.Add(configBackupMaxAge+time.Nanosecond), store.validation); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(backupDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("backup count=%d, want the only valid backup retained", len(entries))
+	}
+}
+func TestConfigBackupRetentionHonorsThirtyDayBoundary(t *testing.T) {
+	root := t.TempDir()
+	store := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	first := validRuntimeConfig()
+	if _, err := store.createBackupAt(first, base); err != nil {
+		t.Fatal(err)
+	}
+	second := cloneRuntimeConfig(first)
+	setCandidateGeneration(&second, 2)
+	if _, err := store.createBackupAt(second, base.Add(configBackupMaxAge)); err != nil {
+		t.Fatal(err)
+	}
+	backupDirectory := filepath.Join(root, "config", "backups-v2")
+	entries, err := os.ReadDir(backupDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("backup count at exact age=%d, want 2", len(entries))
+	}
+	third := cloneRuntimeConfig(second)
+	setCandidateGeneration(&third, 3)
+	if _, err := store.createBackupAt(third, base.Add(configBackupMaxAge+time.Nanosecond)); err != nil {
+		t.Fatal(err)
+	}
+	entries, err = os.ReadDir(backupDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("backup count after expiration=%d, want 2", len(entries))
+	}
+	if _, err := store.LoadBackup(1); !errors.Is(err, ErrNoBackup) {
+		t.Fatalf("expired generation load error=%v, want no backup", err)
+	}
+	if _, err := store.LoadBackup(2); err != nil {
+		t.Fatalf("boundary generation was removed: %v", err)
+	}
+}
+
+func TestConfigBackupFailureDoesNotDeleteExistingValidBackup(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	store := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	if _, err := store.CreateBackup(runtime); err != nil {
+		t.Fatal(err)
+	}
+	invalid := cloneRuntimeConfig(runtime)
+	invalid.Generation = 0
+	if _, err := store.CreateBackup(invalid); err == nil {
+		t.Fatal("invalid backup unexpectedly succeeded")
+	}
+	if _, err := store.LoadBackup(runtime.Generation); err != nil {
+		t.Fatalf("existing valid backup was removed after failure: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("backup count after failed creation=%d, want 1", len(entries))
+	}
+}
 func TestConfigManagerStatusReportsPendingRestartServices(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())

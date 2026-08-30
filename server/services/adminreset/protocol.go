@@ -12,12 +12,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
 const (
-	ProtocolVersion       = 1
-	maxControlMessageSize = 16 << 10
-	controlRequestTimeout = 15 * time.Second
+	ProtocolVersion        = 1
+	maxControlMessageSize  = 16 << 10
+	controlRequestTimeout  = 15 * time.Second
+	defaultSessionCapacity = 128
 )
 
 var (
@@ -26,6 +29,7 @@ var (
 	ErrReplay           = errors.New("reset request replayed")
 	ErrExpiredSession   = errors.New("reset session expired")
 	ErrUnsupported      = errors.New("local reset channel is unsupported")
+	ErrSessionCapacity  = errors.New("reset session capacity exceeded")
 )
 
 type Request struct {
@@ -44,17 +48,31 @@ type Response struct {
 type ResetHandler func(newPassword string) error
 
 type SessionGuard struct {
-	mu      sync.Mutex
-	pending map[string]time.Time
-	ttl     time.Duration
-	now     func() time.Time
+	mu       sync.Mutex
+	pending  map[string]time.Time
+	ttl      time.Duration
+	capacity int
+	now      func() time.Time
 }
 
 func NewSessionGuard(ttl time.Duration) *SessionGuard {
+	return NewSessionGuardWithCapacity(ttl, defaultSessionCapacity)
+}
+
+// NewSessionGuardWithCapacity 创建带有并发会话上限的短时会话守卫。
+func NewSessionGuardWithCapacity(ttl time.Duration, capacity int) *SessionGuard {
 	if ttl <= 0 {
 		ttl = 2 * time.Minute
 	}
-	return &SessionGuard{pending: make(map[string]time.Time), ttl: ttl, now: time.Now}
+	if capacity <= 0 {
+		capacity = defaultSessionCapacity
+	}
+	return &SessionGuard{
+		pending:  make(map[string]time.Time, capacity),
+		ttl:      ttl,
+		capacity: capacity,
+		now:      time.Now,
+	}
 }
 
 func (g *SessionGuard) Issue() (string, error) {
@@ -65,6 +83,9 @@ func (g *SessionGuard) Issue() (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.pruneLocked(now)
+	if len(g.pending) >= g.capacity {
+		return "", ErrSessionCapacity
+	}
 	for attempt := 0; attempt < 3; attempt++ {
 		nonce, err := NewNonce()
 		if err != nil {
@@ -133,7 +154,7 @@ func DecodeRequest(r io.Reader) (Request, error) {
 	if err := decodeControlJSON(data, &request); err != nil {
 		return Request{}, ErrInvalidRequest
 	}
-	if request.Version != ProtocolVersion || strings.TrimSpace(request.Nonce) == "" || len([]byte(request.NewPassword)) < 8 || len([]byte(request.NewPassword)) > 256 {
+	if request.Version != ProtocolVersion || strings.TrimSpace(request.Nonce) == "" || password.ValidateUserPassword(request.NewPassword) != nil {
 		return Request{}, ErrInvalidRequest
 	}
 	return request, nil
@@ -196,7 +217,7 @@ func handleResetConnection(conn io.ReadWriter, setDeadline func(time.Time) error
 	}
 	nonce, err := guard.Issue()
 	if err != nil {
-		_ = EncodeResponse(conn, Response{Code: "CHANNEL_UNAVAILABLE", Message: "\u91cd\u7f6e\u901a\u9053\u4e0d\u53ef\u7528"})
+		_ = EncodeResponse(conn, Response{Code: "CHANNEL_UNAVAILABLE", Message: "重置通道不可用"})
 		return
 	}
 	defer guard.Discard(nonce)
@@ -205,20 +226,20 @@ func handleResetConnection(conn io.ReadWriter, setDeadline func(time.Time) error
 	}
 	request, err := DecodeRequest(conn)
 	if err != nil || request.Nonce != nonce {
-		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "\u91cd\u7f6e\u8bf7\u6c42\u65e0\u6548"})
+		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "重置请求无效"})
 		return
 	}
 	if err := guard.Consume(request.Nonce); err != nil {
-		_ = EncodeResponse(conn, Response{Code: "REPLAY_OR_EXPIRED", Message: "\u91cd\u7f6e\u4f1a\u8bdd\u5df2\u5931\u6548\u6216\u5df2\u4f7f\u7528"})
+		_ = EncodeResponse(conn, Response{Code: "REPLAY_OR_EXPIRED", Message: "重置会话已失效或已使用"})
 		return
 	}
 	password := request.NewPassword
 	defer clearPassword(&password)
 	if err := handler(password); err != nil {
-		_ = EncodeResponse(conn, Response{Code: "RESET_FAILED", Message: "\u8d85\u7ea7\u7ba1\u7406\u5458\u5bc6\u7801\u91cd\u7f6e\u5931\u8d25"})
+		_ = EncodeResponse(conn, Response{Code: "RESET_FAILED", Message: "超级管理员密码重置失败"})
 		return
 	}
-	_ = EncodeResponse(conn, Response{OK: true, Message: "\u8d85\u7ea7\u7ba1\u7406\u5458\u5bc6\u7801\u5df2\u91cd\u7f6e"})
+	_ = EncodeResponse(conn, Response{OK: true, Message: "超级管理员密码已重置"})
 }
 
 func clearPassword(password *string) {

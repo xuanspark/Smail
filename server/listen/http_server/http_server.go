@@ -95,6 +95,12 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/plugin/list", onlyMethod(http.MethodGet, contextIterceptor(controllers.GetPluginList)))
 	mux.HandleFunc("/api/v1/config/", limitBody(4<<20, contextIterceptor(configRoute)))
 	mux.HandleFunc("/api/v1/audits/config", limitBody(1<<20, contextIterceptor(configAuditRoute)))
+	mux.HandleFunc("/api/v1/audits/config/", limitBody(1<<20, contextIterceptor(configAuditSubRoute)))
+	mux.HandleFunc("/api/v1/database/migrations/preview", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.PreviewDatabaseMigration))))
+	mux.HandleFunc("/api/v1/database/migrations", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.ExecuteDatabaseMigration))))
+	mux.HandleFunc("/api/v1/database/migrations/", contextIterceptor(databaseMigrationSubRoute))
+	mux.HandleFunc("/api/v1/ping", controllers.Ping)
+	registerV1Routes(mux)
 	return nil
 }
 
@@ -132,6 +138,7 @@ func isReservedResetPath(path string) bool {
 }
 
 func configRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
+	controllers.EnsureConfigRequestID(w, r)
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	switch {
 	case path == "/api/v1/config/status":
@@ -191,6 +198,7 @@ func configSectionRoute(path, operation string) bool {
 	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "config" && parts[4] == operation
 }
 func configAuditRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
+	controllers.EnsureConfigRequestID(w, r)
 	switch r.Method {
 	case http.MethodGet:
 		controllers.ConfigAuditQuery(ctx, w, r)
@@ -199,6 +207,31 @@ func configAuditRoute(ctx *context.Context, w http.ResponseWriter, r *http.Reque
 	default:
 		allowRouteMethod(w, r, http.MethodGet, http.MethodPost)
 	}
+}
+
+func configAuditSubRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
+	controllers.EnsureConfigRequestID(w, r)
+	path := strings.TrimSuffix(r.URL.Path, "/")
+	switch path {
+	case "/api/v1/audits/config/export":
+		if !allowRouteMethod(w, r, http.MethodPost) {
+			return
+		}
+		controllers.ExportConfigAuditFormal(ctx, w, r)
+	default:
+		if !allowRouteMethod(w, r, http.MethodGet) {
+			return
+		}
+		controllers.GetConfigAuditDetail(ctx, w, r)
+	}
+}
+
+func databaseMigrationSubRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
+	controllers.EnsureConfigRequestID(w, r)
+	if !allowRouteMethod(w, r, http.MethodGet) {
+		return
+	}
+	controllers.GetDatabaseMigration(ctx, w, r)
 }
 
 func allowRouteMethod(w http.ResponseWriter, r *http.Request, allowed ...string) bool {

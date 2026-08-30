@@ -594,7 +594,7 @@ func (s *TransactionStore) CreateBackupIfDue(runtime RuntimeConfig, now time.Tim
 	if err != nil {
 		return "", false, err
 	}
-	if found && (latest.Generation == runtime.Generation || now.Before(latest.CreatedAt.Add(configBackupInterval))) {
+	if found && now.Before(latest.CreatedAt.Add(configBackupInterval)) {
 		return filepath.Join(s.root, "config", "backups-v2", latest.ID), false, nil
 	}
 	path, err := s.createBackupAt(runtime, now)
@@ -728,10 +728,10 @@ func (s *TransactionStore) LoadBackup(generation uint64) (RuntimeConfig, error) 
 	var selectedAt time.Time
 	found := false
 	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
 		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
-			if strings.HasPrefix(entry.Name(), ".") {
-				continue
-			}
 			return RuntimeConfig{}, ErrTransactionInvalid
 		}
 		if !transactionIDPattern.MatchString(entry.Name()) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,4 +84,26 @@ func TestCleanupStateInsertQueryUsesPostgresPlaceholders(t *testing.T) {
 	if strings.Contains(query, "VALUES (, ") {
 		t.Fatalf("postgres cleanup query contains empty placeholders: %q", query)
 	}
+}
+
+func TestOperationalCleanupRunnerStopIsIdempotentAndConcurrentSafe(t *testing.T) {
+	engine := newCleanupEngine(t)
+	defer engine.Close()
+	store, err := NewEventStore(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := NewOperationalCleanupRunner(store)
+	runner.Start()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runner.Stop()
+		}()
+	}
+	wg.Wait()
+	runner.Stop()
 }

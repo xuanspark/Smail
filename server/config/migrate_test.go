@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -63,6 +64,13 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 	if !bytes.Equal(backup, original) {
 		t.Fatal("legacy backup does not match the original configuration")
 	}
+	legacyCopy, err := os.ReadFile(filepath.Join(root, "config", legacyMigrationSourceCopy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacyCopy, original) {
+		t.Fatal("legacy source copy does not match the original configuration")
+	}
 	loader := NewConfigLoader(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
 	runtime, err := loader.Load()
 	if err != nil {
@@ -70,6 +78,16 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 	}
 	if runtime.Root.Database.LocalRef != "smail.db" || runtime.Plugins.Plugins["wechat_push"].Secret.Ciphertext == "" {
 		t.Fatalf("unexpected migrated runtime: %+v", runtime)
+	}
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if manager.Snapshot().Generation != result.Generation {
+		t.Fatalf("manager generation = %d, want %d", manager.Snapshot().Generation, result.Generation)
 	}
 	for _, name := range []string{"config.json", "smtp.json", "email.json", "ssl.json", "plugins.json"} {
 		data, readErr := os.ReadFile(filepath.Join(root, "config", name))
@@ -79,6 +97,62 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 		if bytes.Contains(data, []byte("wechat-secret")) {
 			t.Fatalf("plaintext credential leaked to %s", name)
 		}
+	}
+}
+
+func TestMigrateLegacyConfigResumesAfterNonSecretPartitionWrite(t *testing.T) {
+	root := t.TempDir()
+	original := writeLegacyMigrationFixture(t, root, map[string]any{
+		"dbDSN":             "smail.db",
+		"dbType":            "sqlite",
+		"domain":            "mail.example.com",
+		"domains":           []string{"mail.example.com"},
+		"webDomain":         "mail.example.com",
+		"sslType":           "1",
+		"SSLPrivateKeyPath": "./config/ssl/private.key",
+		"SSLPublicKeyPath":  "./config/ssl/public.crt",
+		"isInit":            true,
+		"httpsEnabled":      1,
+		"httpPort":          80,
+		"httpsPort":         443,
+	})
+	var legacy legacyMigrationConfig
+	if err := json.Unmarshal(original, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	runtime, manualFields, err := legacyRuntimeConfig(root, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manualFields) != 0 {
+		t.Fatalf("unexpected manual fields: %+v", manualFields)
+	}
+	files, err := marshalRuntimeFilesWithPluginSecrets(runtime, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(root, "config")
+	for _, section := range []Section{SectionEmail, SectionSSL} {
+		name, ok := FixedSectionFile(section)
+		if !ok {
+			t.Fatalf("missing fixed file for section %q", section)
+		}
+		if err := os.WriteFile(filepath.Join(directory, name), files[name], 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}); err != nil {
+		t.Fatal(err)
+	}
+	legacyCopy, err := os.ReadFile(filepath.Join(directory, legacyMigrationSourceCopy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacyCopy, original) {
+		t.Fatal("resumed migration did not preserve the legacy source")
 	}
 }
 
@@ -177,6 +251,123 @@ func TestMigrateLegacyConfigReencryptsExistingLegacyCredential(t *testing.T) {
 	}
 }
 
+func TestMigrateLegacyConfigRejectsCorruptedLegacyCredential(t *testing.T) {
+	root := t.TempDir()
+	original := writeLegacyMigrationFixture(t, root, map[string]any{
+		"dbDSN":        "smail.db",
+		"dbType":       "sqlite",
+		"domain":       "mail.example.com",
+		"domains":      []string{"mail.example.com"},
+		"webDomain":    "mail.example.com",
+		"sslType":      "0",
+		"isInit":       true,
+		"httpsEnabled": 1,
+		"httpPort":     80,
+		"httpsPort":    443,
+		"tgBotToken":   "enc:v1:not-a-valid-ciphertext",
+	})
+
+	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); !errors.Is(err, ErrMigrationUnsafeValue) {
+		t.Fatalf("error = %v", err)
+	}
+	current, err := os.ReadFile(filepath.Join(root, "config", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(current, original) {
+		t.Fatal("corrupted credential migration overwrote the legacy configuration")
+	}
+	for _, name := range []string{"smtp.json", "email.json", "ssl.json", "plugins.json"} {
+		if _, err := os.Stat(filepath.Join(root, "config", name)); !os.IsNotExist(err) {
+			t.Fatalf("corrupted credential migration created %s", name)
+		}
+	}
+}
+
+func TestMigrateLegacyConfigRejectsConflictingPreservedSource(t *testing.T) {
+	root := t.TempDir()
+	original := writeLegacyMigrationFixture(t, root, map[string]any{
+		"dbDSN":        "smail.db",
+		"dbType":       "sqlite",
+		"domain":       "mail.example.com",
+		"domains":      []string{"mail.example.com"},
+		"webDomain":    "mail.example.com",
+		"sslType":      "0",
+		"isInit":       true,
+		"httpsEnabled": 1,
+		"httpPort":     80,
+		"httpsPort":    443,
+	})
+	legacyCopyPath := filepath.Join(root, "config", legacyMigrationSourceCopy)
+	conflictingCopy := []byte(`{"dbDSN":"different.db","dbType":"sqlite"}`)
+	if err := os.WriteFile(legacyCopyPath, conflictingCopy, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); !errors.Is(err, ErrMigrationTargetExists) {
+		t.Fatalf("error = %v", err)
+	}
+	current, err := os.ReadFile(filepath.Join(root, "config", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(current, original) {
+		t.Fatal("conflicting preserved source changed the legacy configuration")
+	}
+	storedCopy, err := os.ReadFile(legacyCopyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(storedCopy, conflictingCopy) {
+		t.Fatal("conflicting preserved source was overwritten")
+	}
+}
+
+func TestMigrateLegacyConfigRejectsRepeatedMigrationAfterSuccess(t *testing.T) {
+	root := t.TempDir()
+	original := writeLegacyMigrationFixture(t, root, map[string]any{
+		"dbDSN":        "smail.db",
+		"dbType":       "sqlite",
+		"domain":       "mail.example.com",
+		"domains":      []string{"mail.example.com"},
+		"webDomain":    "mail.example.com",
+		"sslType":      "0",
+		"isInit":       true,
+		"httpsEnabled": 1,
+		"httpPort":     80,
+		"httpsPort":    443,
+	})
+
+	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); err != nil {
+		t.Fatal(err)
+	}
+	rootPath := filepath.Join(root, "config", "config.json")
+	migrated, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(migrated, original) {
+		t.Fatal("successful migration did not replace the legacy root")
+	}
+
+	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); !errors.Is(err, ErrMigrationNotRequired) {
+		t.Fatalf("repeated migration error = %v", err)
+	}
+	after, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, migrated) {
+		t.Fatal("repeated migration changed the partitioned root")
+	}
+	legacyCopy, err := os.ReadFile(filepath.Join(root, "config", legacyMigrationSourceCopy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacyCopy, original) {
+		t.Fatal("repeated migration changed the preserved legacy source")
+	}
+}
 func TestMigrateLegacyConfigResumesWithEquivalentExistingSecretSection(t *testing.T) {
 	root := t.TempDir()
 	legacy := map[string]any{

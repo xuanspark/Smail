@@ -31,7 +31,7 @@ func SetupStart() error {
 		return fmt.Errorf("load embedded setup frontend: %w", err)
 	}
 	mux.Handle("/", setupSecurity.bootstrap(http.FileServer(http.FS(fe))))
-	mux.HandleFunc("/api/setup", setupSecurity.authorize(setupOnlyPost(contextIterceptor(controllers.Setup))))
+	registerSetupAPIRoutes(mux, setupSecurity, setupOnlyPost(contextIterceptor(controllers.Setup)))
 	// 挑战请求类似这样 /.well-known/acme-challenge/QPyMAyaWw9s5JvV1oruyqWHG7OqkHMJEHPoUz2046KM
 	mux.HandleFunc("/.well-known/", controllers.AcmeChallenge)
 
@@ -78,6 +78,17 @@ func SetupStart() error {
 		return fmt.Errorf("serve setup HTTP: %w", err)
 	}
 	return nil
+}
+
+// registerSetupAPIRoutes 为旧初始化入口和 V1 初始化入口安装完全相同的安全链路。
+// 两个入口只承担兼容关系，不允许因为路径版本不同而出现授权差异。
+func registerSetupAPIRoutes(mux *http.ServeMux, security *setupSecurity, next http.HandlerFunc) {
+	if mux == nil || security == nil || next == nil {
+		return
+	}
+	authorized := security.authorize(next)
+	mux.HandleFunc("/api/setup", authorized)
+	mux.HandleFunc("/api/v1/setup", authorized)
 }
 
 func setupOnlyPost(next http.HandlerFunc) http.HandlerFunc {

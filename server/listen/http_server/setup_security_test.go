@@ -134,7 +134,96 @@ func TestSetupSecurityBootstrapCookie(t *testing.T) {
 		t.Fatalf("bootstrap returned %d", recorder.Code)
 	}
 	cookies := recorder.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != setupCookieName || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Path != "/api/setup" {
+	if len(cookies) != 1 || cookies[0].Name != setupCookieName || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteStrictMode || cookies[0].Path != "/api/" {
 		t.Fatalf("unsafe setup cookie: %+v", cookies)
+	}
+}
+
+func TestSetupAPIRoutesUseEquivalentAuthorization(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	for _, endpoint := range []string{"/api/setup", "/api/v1/setup"} {
+		t.Run(endpoint, func(t *testing.T) {
+			security := withSetupSecurity(t, token)
+			mux := http.NewServeMux()
+			calls := 0
+			registerSetupAPIRoutes(mux, security, setupOnlyPost(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			request := httptest.NewRequest(http.MethodPost, endpoint, nil)
+			request.RemoteAddr = "127.0.0.1:12345"
+			recorder := httptest.NewRecorder()
+			mux.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden || calls != 0 {
+				t.Fatalf("missing token returned code=%d calls=%d", recorder.Code, calls)
+			}
+
+			request = httptest.NewRequest(http.MethodPost, endpoint, nil)
+			request.RemoteAddr = "127.0.0.1:12345"
+			request.Header.Set("X-Setup-Token", token)
+			recorder = httptest.NewRecorder()
+			mux.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusNoContent || calls != 1 {
+				t.Fatalf("valid token returned code=%d calls=%d", recorder.Code, calls)
+			}
+		})
+	}
+}
+
+func TestSetupAPIRoutesRequirePostAndToken(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	for _, endpoint := range []string{"/api/setup", "/api/v1/setup"} {
+		t.Run(endpoint, func(t *testing.T) {
+			security := withSetupSecurity(t, token)
+			mux := http.NewServeMux()
+			calls := 0
+			registerSetupAPIRoutes(mux, security, setupOnlyPost(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			request := httptest.NewRequest(http.MethodGet, endpoint, nil)
+			request.RemoteAddr = "127.0.0.1:12345"
+			request.Header.Set("X-Setup-Token", token)
+			recorder := httptest.NewRecorder()
+			mux.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusMethodNotAllowed || recorder.Header().Get("Allow") != http.MethodPost || calls != 0 {
+				t.Fatalf("GET returned code=%d allow=%q calls=%d", recorder.Code, recorder.Header().Get("Allow"), calls)
+			}
+		})
+	}
+}
+
+func TestSetupAPIRoutesBecomeInvalidAfterSetupCompletes(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	security := withSetupSecurity(t, token)
+	mux := http.NewServeMux()
+	calls := 0
+	registerSetupAPIRoutes(mux, security, setupOnlyPost(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		config.IsInit = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	request := httptest.NewRequest(http.MethodPost, "/api/setup", nil)
+	request.RemoteAddr = "127.0.0.1:12345"
+	request.Header.Set("X-Setup-Token", token)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNoContent || calls != 1 {
+		t.Fatalf("first setup returned code=%d calls=%d", recorder.Code, calls)
+	}
+
+	config.IsInit = false
+	for _, endpoint := range []string{"/api/setup", "/api/v1/setup"} {
+		request = httptest.NewRequest(http.MethodPost, endpoint, nil)
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("X-Setup-Token", token)
+		recorder = httptest.NewRecorder()
+		mux.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden || calls != 1 {
+			t.Fatalf("replayed setup %s returned code=%d calls=%d", endpoint, recorder.Code, calls)
+		}
 	}
 }

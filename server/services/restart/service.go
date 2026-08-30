@@ -15,6 +15,27 @@ type Trigger interface {
 	Request(context.Context) error
 }
 
+// Preview 描述固定的 Smail 重启目标，但不执行重启动作。
+type Preview struct {
+	Target           string   `json:"target"`
+	Action           string   `json:"action"`
+	ActiveGeneration uint64   `json:"activeGeneration"`
+	PendingServices  []string `json:"pendingServices,omitempty"`
+	ServiceManager   string   `json:"serviceManager"`
+	TriggerAvailable bool     `json:"triggerAvailable"`
+}
+
+func BuildPreview(activeGeneration uint64, pendingServices []string, triggerAvailable bool) Preview {
+	return Preview{
+		Target:           "smail",
+		Action:           "restart",
+		ActiveGeneration: activeGeneration,
+		PendingServices:  append([]string(nil), pendingServices...),
+		ServiceManager:   "固定服务管理器",
+		TriggerAvailable: triggerAvailable,
+	}
+}
+
 type SignalTrigger struct {
 	channel chan<- bool
 }

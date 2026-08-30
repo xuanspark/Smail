@@ -113,7 +113,7 @@ func (s *setupSecurity) bootstrap(next http.Handler) http.Handler {
 		}
 		if setupRemoteIP(r).IsLoopback() {
 			http.SetCookie(w, &http.Cookie{
-				Name: setupCookieName, Value: s.token, Path: "/api/setup",
+				Name: setupCookieName, Value: s.token, Path: "/api/",
 				HttpOnly: true, Secure: false, SameSite: http.SameSiteStrictMode,
 			})
 		}

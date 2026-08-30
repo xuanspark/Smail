@@ -37,7 +37,7 @@ func TestModifyPasswordRouteRejectsUnauthenticatedRequest(t *testing.T) {
 	if err := router(mux); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"CurrentPass123","password":"NewPass123"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"CurrentP12","password":"NewPass123"}`))
 	loaded, err := session.Instance.Load(request.Context(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 	}
 
 	superAdmin := models.User{Account: "super-admin", Name: "root", IsAdmin: 1, SessionVersion: 1}
-	if err := auth.SetPassword(&superAdmin, "CurrentPass123"); err != nil {
+	if err := auth.SetPassword(&superAdmin, "CurrentP12"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Instance.Insert(&superAdmin); err != nil {
@@ -96,7 +96,7 @@ func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 	if err := router(mux); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"CurrentPass123","password":"NewPass123"}`)).WithContext(currentSession)
+	request := httptest.NewRequest(http.MethodPost, "/api/settings/modify_password", strings.NewReader(`{"current_password":"CurrentP12","password":"NewPass123"}`)).WithContext(currentSession)
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, request)
 
@@ -113,7 +113,7 @@ func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !found || !password.Verify(unchanged.Password, "CurrentPass123") {
+	if !found || !password.Verify(unchanged.Password, "CurrentP12") {
 		t.Fatal("super admin password changed through the web route")
 	}
 	if password.Verify(unchanged.Password, "NewPass123") {

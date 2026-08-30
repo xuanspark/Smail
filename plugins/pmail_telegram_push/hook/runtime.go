@@ -54,6 +54,46 @@ type telegramSetting struct {
 	DisableLinkPreview bool   `json:"disable_link_preview"`
 }
 
+type telegramUserSettingsPayload struct {
+	ChatID             string `json:"chatId"`
+	ShowContent        bool   `json:"showContent"`
+	SpoilerContent     bool   `json:"spoilerContent"`
+	SendAttachments    bool   `json:"sendAttachments"`
+	DisableLinkPreview bool   `json:"disableLinkPreview"`
+}
+
+func (p telegramUserSettingsPayload) setting() telegramSetting {
+	return telegramSetting{
+		ChatID:             strings.TrimSpace(p.ChatID),
+		ShowContent:        p.ShowContent,
+		SpoilerContent:     p.SpoilerContent,
+		SendAttachments:    p.SendAttachments,
+		DisableLinkPreview: p.DisableLinkPreview,
+	}
+}
+
+func decodeTelegramUserSettings(data json.RawMessage) (telegramUserSettingsPayload, error) {
+	var payload telegramUserSettingsPayload
+	if err := decodeSingleJSON(data, &payload); err != nil {
+		return telegramUserSettingsPayload{}, err
+	}
+	setting := payload.setting()
+	if setting.ChatID != "" && !chatIDPattern.MatchString(setting.ChatID) {
+		return telegramUserSettingsPayload{}, errors.New("Telegram 聊天 ID 格式不正确")
+	}
+	return payload, nil
+}
+
+func (h *PmailTelegramPushHook) ConfigureUserSettings(userID int, settings json.RawMessage) error {
+	if userID <= 0 {
+		return errors.New("用户 ID 无效")
+	}
+	payload, err := decodeTelegramUserSettings(settings)
+	if err != nil {
+		return err
+	}
+	return h.settings.update(userID, payload.setting())
+}
 func newSettingStore() *settingStore {
 	return &settingStore{settings: make(map[int]telegramSetting)}
 }

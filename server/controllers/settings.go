@@ -76,7 +76,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 	}
 	if err := auth.SetPassword(&user, retData.Password); err != nil {
 		if errors.Is(err, password.ErrInvalidLength) {
-			response.NewErrorResponse(response.ParamsError, "\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8-256 \u5b57\u8282", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, "\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8-12 \u5b57\u8282", "").FPrint(w)
 			return
 		}
 		log.WithContext(ctx).WithError(err).Error("password hash failed")

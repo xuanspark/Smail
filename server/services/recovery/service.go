@@ -284,7 +284,7 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if s == nil || s.engine == nil || s.credentials == nil || strings.TrimSpace(ticketID) == "" {
 		return ErrInvalidRequest
 	}
-	if len([]byte(newPassword)) < 8 || len([]byte(newPassword)) > 256 {
+	if password.ValidateUserPassword(newPassword) != nil {
 		return ErrInvalidNewPassword
 	}
 	s.mu.Lock()

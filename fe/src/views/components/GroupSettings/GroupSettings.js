@@ -11,13 +11,13 @@ import { Folder, Delete, Plus } from "@element-plus/icons-vue";
 export function usePage() {
   const data = reactive([]);
   
-  http.get("/api/group").then((res) => {
+  http.get("/api/v1/group").then((res) => {
     data.push(...res.data);
   });
   
   const del = function (node, dataObj) {
     if (dataObj.id !== -1) {
-      http.post("/api/group/del", { id: dataObj.id }).then((res) => {
+      http.post("/api/v1/group/del", { id: dataObj.id }).then((res) => {
         if (res.errorNo !== 0) {
           ElMessage({ message: res.errorMsg, type: "error" });
         } else {
@@ -64,12 +64,12 @@ export function usePage() {
   
   const onInputBlur = function (item) {
     if (item.label !== "") {
-      http.post("/api/group/add", { name: item.label, parent_id: item.parent_id })
+      http.post("/api/v1/group/add", { name: item.label, parent_id: item.parent_id })
         .then((res) => {
           if (res.errorNo !== 0) {
             ElMessage({ message: res.errorMsg, type: "error" });
           } else {
-            http.get("/api/group").then((res) => {
+            http.get("/api/v1/group").then((res) => {
               data.splice(0, data.length);
               data.push(...res.data);
             });

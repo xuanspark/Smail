@@ -31,7 +31,7 @@ export function usePage() {
   
   const showCC = ref(false)
   
-  http.post("/api/email/detail", {id: parseInt(route.params.id)}).then(res => {
+  http.post("/api/v1/email/detail", {id: parseInt(route.params.id)}).then(res => {
     detailData.value = res.data || {}
     detailData.value.attachments = res.data.attachments || [];
     
@@ -88,7 +88,7 @@ export function usePage() {
       cancelButtonText: '取消',
       type: 'warning',
     }).then(() => {
-      http.post("/api/email/del", {ids: [id], forcedDel}).then(res => {
+      http.post("/api/v1/email/del", {ids: [id], forcedDel}).then(res => {
         if (res.errorNo === 0) {
           ElMessage.success('删除成功');
           router.push({name: 'list'});
