@@ -19,7 +19,7 @@ func TestResetSuperAdminOnlyRevokesTargetSessionsAndCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	for _, table := range []any{&models.User{}, &models.Sessions{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}} {
+	for _, table := range []any{&models.User{}, &models.Sessions{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}, &models.ProtocolCredential{}} {
 		if err := engine.Sync2(table); err != nil {
 			t.Fatal(err)
 		}
@@ -42,6 +42,8 @@ func TestResetSuperAdminOnlyRevokesTargetSessionsAndCredentials(t *testing.T) {
 		&models.SecurityQuestion{UserID: ordinaryUser.ID, Question: "问题", AnswerHash: "hash", Version: 1},
 		&models.RecoveryCode{UserID: superAdmin.ID, CodeHash: "hash", CodeVersion: 1},
 		&models.RecoveryCode{UserID: ordinaryUser.ID, CodeHash: "hash", CodeVersion: 1},
+		&models.ProtocolCredential{UserID: superAdmin.ID, Protocol: "smtp", Enabled: true, CodeHash: "hash", CodeVersion: 1},
+		&models.ProtocolCredential{UserID: ordinaryUser.ID, Protocol: "smtp", Enabled: true, CodeHash: "hash", CodeVersion: 1},
 		&models.WebAuthnCredential{UserID: superAdmin.ID, CredentialID: "super-key", CredentialData: "encrypted", DisplayName: "管理密钥", CreatedAt: time.Now()},
 		&models.WebAuthnCredential{UserID: ordinaryUser.ID, CredentialID: "user-key", CredentialData: "encrypted", DisplayName: "用户密钥", CreatedAt: time.Now()},
 	); err != nil {
@@ -86,6 +88,9 @@ func TestResetSuperAdminOnlyRevokesTargetSessionsAndCredentials(t *testing.T) {
 	if count, err := engine.Where("user_id = ? AND revoked_at IS NULL", superAdmin.ID).Count(&models.WebAuthnCredential{}); err != nil || count != 0 {
 		t.Fatalf("super administrator active WebAuthn count = %d, err = %v", count, err)
 	}
+	if count, err := engine.Where("user_id = ? AND revoked_at IS NULL", superAdmin.ID).Count(&models.ProtocolCredential{}); err != nil || count != 0 {
+		t.Fatalf("super administrator active protocol credential count = %d, err = %v", count, err)
+	}
 	if count, err := engine.Where("user_id = ?", ordinaryUser.ID).Count(&models.SecurityQuestion{}); err != nil || count != 1 {
 		t.Fatalf("ordinary user security question count = %d, err = %v", count, err)
 	}
@@ -94,6 +99,9 @@ func TestResetSuperAdminOnlyRevokesTargetSessionsAndCredentials(t *testing.T) {
 	}
 	if count, err := engine.Where("user_id = ? AND revoked_at IS NULL", ordinaryUser.ID).Count(&models.WebAuthnCredential{}); err != nil || count != 1 {
 		t.Fatalf("ordinary user active WebAuthn count = %d, err = %v", count, err)
+	}
+	if count, err := engine.Where("user_id = ? AND revoked_at IS NULL", ordinaryUser.ID).Count(&models.ProtocolCredential{}); err != nil || count != 1 {
+		t.Fatalf("ordinary user active protocol credential count = %d, err = %v", count, err)
 	}
 }
 
