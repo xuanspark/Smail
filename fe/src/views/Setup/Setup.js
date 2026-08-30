@@ -1,6 +1,6 @@
 import './Setup.js'
 
-import {computed, reactive, ref} from 'vue'
+import {computed, onUnmounted, reactive, ref} from 'vue'
 
 import {ElMessage} from 'element-plus'
 
@@ -379,6 +379,8 @@ export function usePage() {
   const buildFinalURL = (sslData) => buildSetupFinalURL(sslData, domainSettings.web_domain)
 
   let statusTimer = null
+  let dnsParamsTimer = null
+  let setupViewUnmounted = false
   let statusCheckRunning = false
   let statusCheckStartedAt = 0
   const statusCheckTimeout = 10 * 60 * 1000
@@ -391,6 +393,19 @@ export function usePage() {
     statusCheckRunning = false
     statusCheckStartedAt = 0
   }
+
+  const stopDNSParamsPolling = () => {
+    if (dnsParamsTimer !== null) {
+      window.clearTimeout(dnsParamsTimer)
+      dnsParamsTimer = null
+    }
+  }
+
+  onUnmounted(() => {
+    setupViewUnmounted = true
+    stopStatusCheck()
+    stopDNSParamsPolling()
+  })
 
   const navigateToFormalService = (sslData) => {
     stopStatusCheck()
@@ -473,11 +488,18 @@ export function usePage() {
     return setupRequest({"action": "getParams", "step": "ssl"}).then((res) => {
       assertSetupSuccess(res)
       sslSettings.paramsList = Array.isArray(res.data) ? res.data : []
-      if (dnsChecking.value && sslSettings.paramsList.length === 0) {
-        setTimeout(getSSLDNSParams, 1000)
+      if (!setupViewUnmounted && dnsChecking.value && sslSettings.paramsList.length === 0) {
+        stopDNSParamsPolling()
+        dnsParamsTimer = window.setTimeout(() => {
+          dnsParamsTimer = null
+          getSSLDNSParams()
+        }, 1000)
+      } else if (sslSettings.paramsList.length > 0 || !dnsChecking.value) {
+        stopDNSParamsPolling()
       }
       return res
     }).catch((error) => {
+      stopDNSParamsPolling()
       showSetupError(error)
       return null
     })
