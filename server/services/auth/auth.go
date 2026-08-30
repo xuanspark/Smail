@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/mail"
 	"path/filepath"
 	"strings"
 
@@ -23,66 +22,19 @@ func NormalizeAccount(account string) string {
 	return strings.TrimSpace(account)
 }
 
-// AuthenticateIdentifier 支持账号和受信主域名邮箱两种登录标识，最终统一到同一账号密码校验。
+// AuthenticateIdentifier 支持账号和已验证邮箱两种登录标识，最终统一到同一账号密码校验。
 func AuthenticateIdentifier(identifier, plain string) (*models.User, error) {
-	account, err := NormalizeIdentifier(identifier)
+	identity, err := ResolveIdentifier(identifier)
 	if err != nil {
 		if plain != "" {
 			password.VerifyDummy(plain)
 		}
 		return nil, errors.New("invalid credentials")
 	}
-	return Authenticate(account, plain)
-}
-
-// NormalizeIdentifier 将完整邮箱解析为本地账号，并拒绝未配置的域名。
-func NormalizeIdentifier(identifier string) (string, error) {
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" || strings.ContainsAny(identifier, "\r\n") {
-		return "", errors.New("invalid identifier")
+	if identity.Kind == IdentifierEmail {
+		return authenticateUserByID(identity.UserID, plain)
 	}
-	if !strings.Contains(identifier, "@") {
-		return validation.NormalizeAccount(identifier)
-	}
-	identifier = strings.ToLower(identifier)
-	parsed, err := mail.ParseAddress(identifier)
-	if err != nil || parsed.Address != identifier {
-		return "", errors.New("invalid identifier")
-	}
-	parts := strings.Split(identifier, "@")
-	if len(parts) != 2 || parts[0] == "" || !isConfiguredLoginDomain(parts[1]) {
-		return "", errors.New("invalid identifier")
-	}
-	return validation.NormalizeAccount(parts[0])
-}
-
-func isConfiguredLoginDomain(domain string) bool {
-	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
-	if manager := config.CurrentManager(); manager != nil {
-		runtime := manager.Snapshot()
-		if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(runtime.Root.Domains.Primary)), ".") == domain {
-			return true
-		}
-		for _, item := range runtime.Root.Domains.Accepted {
-			if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(item)), ".") == domain {
-				return true
-			}
-		}
-		return false
-	}
-	current := config.CurrentConfig()
-	if current == nil {
-		return false
-	}
-	if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(current.Domain)), ".") == domain {
-		return true
-	}
-	for _, item := range current.Domains {
-		if strings.TrimSuffix(strings.ToLower(strings.TrimSpace(item)), ".") == domain {
-			return true
-		}
-	}
-	return false
+	return Authenticate(identity.Account, plain)
 }
 
 func Authenticate(account, plain string) (*models.User, error) {
@@ -93,6 +45,25 @@ func Authenticate(account, plain string) (*models.User, error) {
 	}
 	var user models.User
 	has, err := db.Instance.Where("account = ? and disabled = 0", account).Get(&user)
+	return authenticateLoadedUser(&user, has, err, plain)
+}
+
+func authenticateUserByID(userID int, plain string) (*models.User, error) {
+	if userID <= 0 {
+		if plain != "" {
+			password.VerifyDummy(plain)
+		}
+		return nil, errors.New("invalid credentials")
+	}
+	if plain == "" || len([]byte(plain)) > 256 {
+		return nil, errors.New("invalid credentials")
+	}
+	var user models.User
+	has, err := db.Instance.ID(userID).Where("disabled = 0").Get(&user)
+	return authenticateLoadedUser(&user, has, err, plain)
+}
+
+func authenticateLoadedUser(user *models.User, has bool, err error, plain string) (*models.User, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			password.VerifyDummy(plain)
@@ -107,7 +78,7 @@ func Authenticate(account, plain string) (*models.User, error) {
 	if !password.Verify(user.Password, plain) {
 		return nil, errors.New("invalid credentials")
 	}
-	return &user, nil
+	return user, nil
 }
 
 // HashPassword 统一生成新密码哈希。

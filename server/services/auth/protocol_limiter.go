@@ -43,8 +43,8 @@ var (
 
 func AuthenticateProtocol(protocol string, remoteAddress string, account string, plain string) (*models.User, error) {
 	normalizedAccount := strings.ToLower(strings.TrimSpace(account))
-	if resolvedAccount, err := NormalizeIdentifier(account); err == nil {
-		normalizedAccount = resolvedAccount
+	if normalizedIdentifier, err := NormalizeIdentifierKey(account); err == nil {
+		normalizedAccount = normalizedIdentifier
 	}
 	normalizedRemote := protocolRemoteHost(remoteAddress)
 	pairKey := hashedProtocolLoginKey("pair", protocol, normalizedRemote, normalizedAccount)

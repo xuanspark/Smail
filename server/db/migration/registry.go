@@ -13,5 +13,6 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(9, "create_totp_authenticator", totpAuthenticatorStatements()),
 		DefineCustom(10, "expand_user_lifecycle_security", "expand_user_lifecycle_security_v1", applyUserLifecycleSchema),
 		DefineForDialects(11, "create_plugin_configuration_tables", pluginSettingsStatements()),
+		DefineCustom(12, "expand_user_email_login_addresses", "expand_user_email_login_addresses_v1", applyUserEmailAddressSchema),
 	}
 }

@@ -26,19 +26,20 @@ func TestInitAppliesSchemaMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := migration.Runner{DB: Instance.DB().DB, Dialect: migration.DialectSQLite, Migrations: migration.DefaultMigrations()}
+	wantVersion := int64(len(migration.DefaultMigrations()))
 	version, err := runner.CurrentVersion(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 11 {
-		t.Fatalf("schema version = %d, want 11", version)
+	if version != wantVersion {
+		t.Fatalf("schema version = %d, want %d", version, wantVersion)
 	}
 	var count int
 	if _, err = Instance.SQL("SELECT count(*) FROM schema_migration").Get(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 11 {
-		t.Fatalf("schema migration rows = %d, want 11", count)
+	if count != int(wantVersion) {
+		t.Fatalf("schema migration rows = %d, want %d", count, wantVersion)
 	}
 }
 

@@ -41,12 +41,13 @@ func runIntegrationSuite(t *testing.T, dialect Dialect, factory integrationDatab
 		db, cleanup := factory(t)
 		defer cleanup()
 		runner := Runner{DB: db, Dialect: dialect, Migrations: DefaultMigrations(), LockWait: 10 * time.Second}
+		wantVersion := int64(len(DefaultMigrations()))
 		first := runIntegrationMigrations(t, runner)
-		if first.CurrentVersion != 10 || len(first.Applied) != 10 {
+		if first.CurrentVersion != wantVersion || len(first.Applied) != int(wantVersion) {
 			t.Fatalf("first report = %+v", first)
 		}
 		second := runIntegrationMigrations(t, runner)
-		if second.CurrentVersion != 10 || len(second.Applied) != 0 {
+		if second.CurrentVersion != wantVersion || len(second.Applied) != 0 {
 			t.Fatalf("second report = %+v", second)
 		}
 	})
@@ -83,10 +84,11 @@ func runIntegrationSuite(t *testing.T, dialect Dialect, factory integrationDatab
 		for report := range reports {
 			applied += len(report.Applied)
 		}
-		if applied != 10 {
-			t.Fatalf("applied migration count = %d, want 10", applied)
+		wantVersion := len(DefaultMigrations())
+		if applied != wantVersion {
+			t.Fatalf("applied migration count = %d, want %d", applied, wantVersion)
 		}
-		assertIntegrationCount(t, db, "schema_migration", 10)
+		assertIntegrationCount(t, db, "schema_migration", wantVersion)
 	})
 
 	t.Run("failed_migration_recovery", func(t *testing.T) {

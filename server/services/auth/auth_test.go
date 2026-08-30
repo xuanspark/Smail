@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
@@ -34,7 +35,6 @@ func TestAuthenticateUsesArgon2idOnly(t *testing.T) {
 	if _, err := db.Instance.Insert(&user); err != nil {
 		t.Fatal(err)
 	}
-
 	var loaded models.User
 	if _, err := db.Instance.Where("account = ?", "test-user").Get(&loaded); err != nil {
 		t.Fatal(err)
@@ -132,6 +132,15 @@ func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T
 		t.Fatal(err)
 	}
 	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+	verifiedAt := time.Now().UTC()
+	if _, err := db.Instance.Insert(&models.UserEmail{
+		UserID:           user.ID,
+		Address:          "alice@example.com",
+		AddressCanonical: "alice@example.com",
+		VerifiedAt:       &verifiedAt,
+	}); err != nil {
 		t.Fatal(err)
 	}
 
