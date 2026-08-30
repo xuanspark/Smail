@@ -6,6 +6,8 @@ import {router} from "@/router";
 const http = axios.create({
     baseURL: import.meta.env.VITE_APP_URL, //接口统一域名
     timeout: 60000,
+    // 初始化授权和登录会话都依赖服务端 Cookie；开发代理或反向代理跨源时也必须携带 Cookie。
+    withCredentials: true,
     xsrfCookieName: 'smail_csrf',
     xsrfHeaderName: 'X-CSRF-Token',
     withXSRFToken: true, //设置超时

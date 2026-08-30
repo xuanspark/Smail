@@ -204,4 +204,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// 初始化接口必须始终返回统一 JSON，避免未知步骤被当成空响应，
+	// 进而让前端误判请求已完成并进入错误页面。
+	response.NewErrorResponse(response.ParamsError, "不支持的初始化操作", "").FPrint(w)
 }
