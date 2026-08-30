@@ -40,9 +40,40 @@ func AcmeChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 type sslResponse struct {
-	Port  int    `json:"port"`
-	Type  string `json:"type"`
-	Ready bool   `json:"ready"`
+	Port         int    `json:"port"`
+	HTTPPort     int    `json:"httpPort"`
+	HTTPSPort    int    `json:"httpsPort"`
+	TLSMode      string `json:"tlsMode"`
+	HTTPSEnabled bool   `json:"httpsEnabled"`
+	WebDomain    string `json:"webDomain"`
+	Type         string `json:"type"`
+	Ready        bool   `json:"ready"`
+}
+
+func buildSetupSSLResponse(sslType string, cfg *config.Config, httpConfig config.HTTPConfig, webDomain string, ready bool) sslResponse {
+	httpPort := httpConfig.Port
+	if httpPort <= 0 && cfg != nil {
+		httpPort = cfg.GetSetupPort()
+	}
+	httpsPort := httpConfig.HTTPSPort
+	if httpsPort <= 0 {
+		httpsPort = 443
+	}
+	return sslResponse{
+		Port:         httpPort,
+		HTTPPort:     httpPort,
+		HTTPSPort:    httpsPort,
+		TLSMode:      httpConfig.TLSMode,
+		HTTPSEnabled: httpConfig.HTTPSEnabled,
+		WebDomain:    webDomain,
+		Type:         sslType,
+		Ready:        ready,
+	}
+}
+
+func currentSetupSSLResponse(sslType string) sslResponse {
+	cfg := config.CurrentConfig()
+	return buildSetupSSLResponse(sslType, cfg, config.CurrentHTTPConfig(), config.CurrentWebDomain(), config.IsSetupReady())
 }
 
 func writeSetupError(ctx *context.Context, w http.ResponseWriter, err error) {
@@ -163,12 +194,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			writeSetupError(ctx, w, err)
 			return
 		}
-		res := sslResponse{
-			Type:  sslType,
-			Port:  config.CurrentConfig().GetSetupPort(),
-			Ready: config.IsSetupReady(),
-		}
-		response.NewSuccessResponse(res).FPrint(w)
+		response.NewSuccessResponse(currentSetupSSLResponse(sslType)).FPrint(w)
 		return
 	}
 

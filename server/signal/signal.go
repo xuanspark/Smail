@@ -1,7 +1,7 @@
 package signal
 
 // InitChan 控制初始化流程结束
-var InitChan = make(chan bool)
+var InitChan = make(chan bool, 1)
 
 // RestartChan 控制程序重启
 var RestartChan = make(chan bool)

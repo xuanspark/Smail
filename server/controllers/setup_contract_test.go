@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.pcux.cn/xuans/Smail/config"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
 
@@ -30,5 +31,44 @@ func TestSetupReturnsJSONForUnsupportedOperation(t *testing.T) {
 	}
 	if payload.ErrorNo != 100 || payload.ErrorMsg != "不支持的初始化操作" {
 		t.Fatalf("unexpected setup response: %+v", payload)
+	}
+}
+
+func TestBuildSetupSSLResponseUsesConfiguredProxyPorts(t *testing.T) {
+	cfg := &config.Config{HttpPort: 9001}
+	response := buildSetupSSLResponse(
+		config.SSLTypeUser,
+		cfg,
+		config.HTTPConfig{
+			Port:         9001,
+			HTTPSPort:    9002,
+			TLSMode:      config.HTTPSTLSModeProxy,
+			HTTPSEnabled: false,
+		},
+		"xuans.com",
+		true,
+	)
+
+	if response.HTTPPort != 9001 || response.HTTPSPort != 9002 {
+		t.Fatalf("unexpected configured ports: http=%d https=%d", response.HTTPPort, response.HTTPSPort)
+	}
+	if response.TLSMode != config.HTTPSTLSModeProxy || response.HTTPSEnabled {
+		t.Fatalf("unexpected proxy settings: mode=%q enabled=%v", response.TLSMode, response.HTTPSEnabled)
+	}
+	if response.WebDomain != "xuans.com" || !response.Ready {
+		t.Fatalf("unexpected setup response identity: domain=%q ready=%v", response.WebDomain, response.Ready)
+	}
+}
+
+func TestBuildSetupSSLResponseDefaultsHTTPSPort(t *testing.T) {
+	response := buildSetupSSLResponse(
+		config.SSLTypeAutoHTTP,
+		&config.Config{HttpPort: 9001},
+		config.HTTPConfig{Port: 9001},
+		"mail.example.com",
+		false,
+	)
+	if response.HTTPPort != 9001 || response.HTTPSPort != 443 {
+		t.Fatalf("unexpected default ports: http=%d https=%d", response.HTTPPort, response.HTTPSPort)
 	}
 }

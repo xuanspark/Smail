@@ -19,6 +19,27 @@ const setupRequest = (payload) => http.post("/api/v1/setup", payload).then((resp
   return response
 })
 
+const getSetupErrorMessage = (error, fallback = lang.setup_failed) => {
+  const message = typeof error?.message === "string" ? error.message.trim() : ""
+  if (message && message !== "Network Error" && !/^timeout of \d+ms exceeded$/i.test(message)) {
+    return message
+  }
+  return fallback
+}
+
+const showSetupError = (error, fallback = lang.setup_failed) => {
+  const message = getSetupErrorMessage(error, fallback)
+  ElMessage.error(message)
+  return message
+}
+
+const assertSetupSuccess = (response, fallback = lang.setup_failed) => {
+  if (response.errorNo !== 0) {
+    throw new Error(response.errorMsg || fallback)
+  }
+  return response
+}
+
 export function usePage() {
   const waitDesc = ref(lang.wait_desc);
   
@@ -79,7 +100,7 @@ export function usePage() {
   ))
   
   const port = ref(80)
-  
+`r`n  const sslRuntime = ref({})`r`n  
   const addDomain = () => {
     domainSettings.multi_domain.push([])
   }
@@ -109,28 +130,22 @@ export function usePage() {
       return
     }
 
-    setupRequest( {
+    setupRequest({
       "action": "set",
       "step": "password",
       "account": adminSettings.account,
       "password": adminSettings.password
     }).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg || lang.setup_failed)
-      } else {
-        active.value++;
-        getDomainConfig();
-      }
-    }).catch(() => {
-      ElMessage.error(lang.setup_failed)
+      assertSetupSuccess(res)
+      active.value++
+      return getDomainConfig()
+    }).catch((error) => {
+      showSetupError(error)
     })
   }
   
-  const getPassword = () => setupRequest( {"action": "get", "step": "password"}).then((res) => {
-    if (res.errorNo !== 0) {
-      throw new Error(res.errorMsg || lang.db_init_failed)
-    }
-
+  const getPassword = () => setupRequest({"action": "get", "step": "password"}).then((res) => {
+    assertSetupSuccess(res, lang.db_init_failed)
     adminSettings.hadSeted = res.data != ""
     if (adminSettings.hadSeted) {
       adminSettings.account = res.data
@@ -140,10 +155,8 @@ export function usePage() {
   })
 
   const getDbConfig = () => {
-    return setupRequest( {"action": "get", "step": "database"}).then((res) => {
-      if (res.errorNo !== 0) {
-        throw new Error(res.errorMsg || lang.db_request_failed)
-      }
+    return setupRequest({"action": "get", "step": "database"}).then((res) => {
+      assertSetupSuccess(res, lang.db_request_failed)
       dbSettings.type = res.data.db_type;
       dbSettings.mode = res.data.db_mode || "dsn";
       dbSettings.dsn = res.data.db_dsn || "";
@@ -159,14 +172,15 @@ export function usePage() {
   }
   
   const getDomainConfig = () => {
-    setupRequest( {"action": "get", "step": "domain"}).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        domainSettings.web_domain = res.data.web_domain;
-        domainSettings.smtp_domain = res.data.smtp_domain;
-        domainSettings.multi_domain = res.data.domains;
-      }
+    return setupRequest({"action": "get", "step": "domain"}).then((res) => {
+      assertSetupSuccess(res)
+      domainSettings.web_domain = res.data.web_domain;
+      domainSettings.smtp_domain = res.data.smtp_domain;
+      domainSettings.multi_domain = res.data.domains;
+      return res
+    }).catch((error) => {
+      showSetupError(error)
+      return null
     })
   }
   
@@ -221,12 +235,8 @@ export function usePage() {
       "db_name": dbSettings.name
     }
 
-    return setupRequest( payload).then((res) => {
-      if (res.errorNo !== 0) {
-        databaseError.value = res.errorMsg || lang.db_init_failed
-        ElMessage.error(databaseError.value)
-        return
-      }
+    return setupRequest(payload).then((res) => {
+      assertSetupSuccess(res, lang.db_init_failed)
       return getPassword().then(() => {
         ElMessage.success(lang.db_init_success)
         active.value++
@@ -261,12 +271,13 @@ export function usePage() {
   }
   
   const getDNSConfig = () => {
-    setupRequest( {"action": "get", "step": "dns"}).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        dnsInfos.value = res.data
-      }
+    return setupRequest({"action": "get", "step": "dns"}).then((res) => {
+      assertSetupSuccess(res)
+      dnsInfos.value = res.data
+      return res
+    }).catch((error) => {
+      showSetupError(error)
+      return null
     })
   }
 
@@ -306,19 +317,18 @@ export function usePage() {
   }
   
   const getSSLConfig = () => {
-    setupRequest( {"action": "get", "step": "ssl"}).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        sslSettings.type = res.data.type
-        if (sslSettings.type === "2") {
-          sslSettings.type = "0"
-          sslSettings.challenge = "dns"
-        }
-  
-  
-        port.value = res.data.port
+    return setupRequest({"action": "get", "step": "ssl"}).then((res) => {
+      assertSetupSuccess(res)
+      sslSettings.type = res.data.type
+      if (sslSettings.type === "2") {
+        sslSettings.type = "0"
+        sslSettings.challenge = "dns"
       }
+      sslRuntime.value = res.data`r`n      port.value = res.data.port || res.data.httpPort || 80
+      return res
+    }).catch((error) => {
+      showSetupError(error)
+      return null
     })
   }
   
@@ -331,36 +341,63 @@ export function usePage() {
     }
   
   
-    setupRequest( {
+    setupRequest({
       "action": "set",
       "step": "ssl",
       "ssl_type": sslType,
       "key_path": sslSettings.key_path,
       "crt_path": sslSettings.crt_path
     }).then((res) => {
-      if (res.errorNo !== 0) {
-        fullscreenLoading.value = false;
-        ElMessage.error(res.errorMsg)
-      } else {
-        if (sslType === "2") {
-          fullscreenLoading.value = false;
-          dnsChecking.value = true;
-          getSSLDNSParams();
-          return
-        }
-        checkStatus();
+      assertSetupSuccess(res)
+      if (sslType === "2") {
+        fullscreenLoading.value = false
+        dnsChecking.value = true
+        getSSLDNSParams()
+        return
       }
+      if (sslType === "1") {`r`n        window.location.href = buildFinalURL(sslRuntime.value)`r`n        return`r`n      }`r`n      checkStatus()
+    }).catch((error) => {
+      fullscreenLoading.value = false
+      showSetupError(error)
     })
+  }
+
+  const buildFinalURL = (sslData) => {
+    const scheme = "https:"
+    const configuredDomain = String(domainSettings.web_domain || "").trim()
+    if (!configuredDomain) {
+      return window.location.href
+    }
+
+    let target
+    try {
+      target = new URL(`${scheme}//${configuredDomain}`)
+    } catch (error) {
+      return window.location.href
+    }
+
+    const currentHost = window.location.hostname.toLowerCase()
+    const targetHost = target.hostname.toLowerCase()
+    const currentPort = window.location.port
+    const isSameHost = currentHost === targetHost
+    const targetPort = sslSettings.type === "1" ? sslData?.httpPort : sslData?.httpsPort
+    const proxyMode = sslData?.tlsMode === "proxy"
+    if (isSameHost && currentPort && !proxyMode) {
+      target.port = targetPort > 0 ? String(targetPort) : currentPort
+    } else if (targetPort > 0 && ((scheme === "http:" && targetPort !== 80) || (scheme === "https:" && targetPort !== 443))) {
+      target.port = String(targetPort)
+    }
+
+    target.pathname = window.location.pathname
+    target.search = window.location.search
+    target.hash = window.location.hash
+    return target.toString()
   }
   
   const checkStatus = () => {
-    setupRequest( {"action": "get", "step": "ssl"}).then((res) => {
+    setupRequest({"action": "get", "step": "ssl"}).then((res) => {
       if (res.errorNo === 0 && res.data.ready) {
-        if (sslSettings.type === "1") {
-          window.location.href = "http://" + domainSettings.web_domain;
-        } else {
-          window.location.href = "https://" + domainSettings.web_domain;
-        }
+        window.location.href = buildFinalURL(res.data)
         return
       }
       setTimeout(checkStatus, 1000)
@@ -370,32 +407,32 @@ export function usePage() {
   }
   
   const setDomainConfig = () => {
-    setupRequest( {
+    setupRequest({
       "action": "set",
       "step": "domain",
       "web_domain": domainSettings.web_domain,
       "smtp_domain": domainSettings.smtp_domain,
       "multi_domain": domainSettings.multi_domain.join(",")
     }).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        active.value++;
-        getDNSConfig();
-      }
+      assertSetupSuccess(res)
+      active.value++
+      return getDNSConfig()
+    }).catch((error) => {
+      showSetupError(error)
     })
   }
   
   const getSSLDNSParams = () => {
-    setupRequest( {"action": "getParams", "step": "ssl"}).then((res) => {
-      if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        sslSettings.paramsList = Array.isArray(res.data) ? res.data : []
-        if (dnsChecking.value && sslSettings.paramsList.length === 0) {
-          setTimeout(getSSLDNSParams, 1000)
-        }
+    return setupRequest({"action": "getParams", "step": "ssl"}).then((res) => {
+      assertSetupSuccess(res)
+      sslSettings.paramsList = Array.isArray(res.data) ? res.data : []
+      if (dnsChecking.value && sslSettings.paramsList.length === 0) {
+        setTimeout(getSSLDNSParams, 1000)
       }
+      return res
+    }).catch((error) => {
+      showSetupError(error)
+      return null
     })
   }
   
@@ -415,8 +452,11 @@ export function usePage() {
         setDomainConfig();
         break;
       case 4:
-        getSSLConfig();
-        active.value++
+        getSSLConfig().then((response) => {
+          if (response) {
+            active.value++
+          }
+        })
         break
       case 5:
         if (dnsChecking.value) {
