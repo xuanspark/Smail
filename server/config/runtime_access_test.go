@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"git.pcux.cn/xuans/Smail/utils/credential"
+)
 
 type runtimeAccessSnapshotStore struct {
 	runtime RuntimeConfig
@@ -121,5 +126,108 @@ func TestCurrentMailPortsUsesDefaultsForUnavailableSnapshot(t *testing.T) {
 
 	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, IMAP: 143, POP3: 110}) {
 		t.Fatalf("mail ports = %+v, want defaults for unavailable snapshot", got)
+	}
+}
+
+func TestCurrentSMTPRuntimeSettingsReadsPartitionSnapshot(t *testing.T) {
+	previousManager := CurrentManager()
+	defer SetRuntimeManager(previousManager)
+
+	runtime := validRuntimeConfig()
+	runtime.SMTP.Relay = SMTPConfig{
+		RelayHost:           "smtp.example.com",
+		RelayPort:           587,
+		Security:            "starttls",
+		From:                "no-reply@example.com",
+		FromDomain:          "example.com",
+		VerificationEnabled: true,
+		LoginPolicy:         "all",
+	}
+	runtime.Email.Policy.ExternalRecoveryEnabled = true
+	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
+
+	got, err := CurrentSMTPRuntimeSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Relay.RelayHost != "smtp.example.com" || got.Relay.RelayPort != 587 || got.Relay.From != "no-reply@example.com" {
+		t.Fatalf("SMTP relay settings = %+v, want partition snapshot", got)
+	}
+	if !got.VerificationEnabled || !got.ExternalRecoveryEnabled {
+		t.Fatalf("SMTP security flags = %+v, want enabled", got)
+	}
+}
+
+func TestCurrentSMTPRuntimeSettingsOpensPartitionPassword(t *testing.T) {
+	previousManager := CurrentManager()
+	previousRoot := ROOT_PATH
+	defer func() {
+		SetRuntimeManager(previousManager)
+		ROOT_PATH = previousRoot
+	}()
+
+	ROOT_PATH = t.TempDir()
+	vault, err := credential.NewVault(ROOT_PATH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := vault.Encrypt("relay-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := validRuntimeConfig()
+	runtime.SMTP.Relay = SMTPConfig{
+		RelayHost:           "smtp.example.com",
+		RelayPort:           465,
+		Username:            "relay-user",
+		Password:            StoredSecret{Ciphertext: ciphertext, Version: vault.Version(), UpdatedAt: time.Now().UTC()},
+		Security:            "tls",
+		From:                "no-reply@example.com",
+		FromDomain:          "example.com",
+		VerificationEnabled: true,
+		LoginPolicy:         "all",
+	}
+	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
+
+	got, err := CurrentSMTPRuntimeSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "relay-password" {
+		t.Fatalf("SMTP relay password = %q, want decrypted password", got.Password)
+	}
+}
+
+func TestCurrentSMTPRuntimeSettingsFallsBackToLegacyConfig(t *testing.T) {
+	previousManager := CurrentManager()
+	previousInstance := Instance
+	defer func() {
+		SetRuntimeManager(previousManager)
+		Instance = previousInstance
+		PublishConfigSnapshot(previousInstance)
+	}()
+	SetRuntimeManager(nil)
+
+	Instance = &Config{
+		Domain:                  "example.com",
+		SMTPHost:                "smtp.example.com",
+		SMTPPort:                587,
+		SMTPUsername:            "relay-user",
+		SMTPPassword:            "relay-password",
+		SMTPSecurity:            "starttls",
+		SMTPFrom:                "no-reply@example.com",
+		SMTPFromDomain:          "example.com",
+		VerificationEnabled:     true,
+		ExternalRecoveryEnabled: true,
+		LoginPolicy:             "all",
+	}
+	PublishConfigSnapshot(Instance)
+
+	got, err := CurrentSMTPRuntimeSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Password != "relay-password" || got.Relay.Username != "relay-user" || got.Relay.From != "no-reply@example.com" {
+		t.Fatalf("legacy SMTP settings = %+v, password=%q", got.Relay, got.Password)
 	}
 }

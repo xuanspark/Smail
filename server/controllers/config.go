@@ -443,6 +443,7 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 				"relayPort":           runtime.SMTP.Relay.RelayPort,
 				"username":            runtime.SMTP.Relay.Username,
 				"security":            runtime.SMTP.Relay.Security,
+				"from":                runtime.SMTP.Relay.From,
 				"fromDomain":          runtime.SMTP.Relay.FromDomain,
 				"verificationEnabled": runtime.SMTP.Relay.VerificationEnabled,
 				"loginPolicy":         runtime.SMTP.Relay.LoginPolicy,

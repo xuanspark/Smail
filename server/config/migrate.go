@@ -684,6 +684,7 @@ func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrati
 		RelayPort:           legacy.SMTPPort,
 		Username:            legacy.SMTPUsername,
 		Security:            legacy.SMTPSecurity,
+		From:                legacy.SMTPFrom,
 		FromDomain:          legacy.SMTPFromDomain,
 		VerificationEnabled: legacy.VerificationEnabled,
 		LoginPolicy:         legacyLoginPolicy(legacy),

@@ -87,6 +87,7 @@ type SMTPConfig struct {
 	Username            string       `json:"username"`
 	Password            StoredSecret `json:"password,omitempty"`
 	Security            string       `json:"security"`
+	From                string       `json:"from"`
 	FromDomain          string       `json:"fromDomain"`
 	VerificationEnabled bool         `json:"verificationEnabled"`
 	LoginPolicy         string       `json:"loginPolicy"`

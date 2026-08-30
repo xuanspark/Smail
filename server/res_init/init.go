@@ -283,17 +283,12 @@ func startVerificationRuntime() error {
 		runtime.Stop()
 		return fmt.Errorf("start external email repository: %w", err)
 	}
-	cfg := config.CurrentConfig()
-	if cfg == nil {
+	smtpSettings, err := config.CurrentSMTPRuntimeSettings()
+	if err != nil {
 		runtime.Stop()
-		return fmt.Errorf("runtime configuration is unavailable")
+		return err
 	}
-	externalRecoveryEnabled := cfg.ExternalRecoveryEnabled
-	if manager := config.CurrentManager(); manager != nil {
-		runtimeConfig := manager.Snapshot()
-		externalRecoveryEnabled = runtimeConfig.Email.Policy.ExternalRecoveryEnabled
-	}
-	if !cfg.VerificationEnabled && !externalRecoveryEnabled {
+	if !smtpSettings.VerificationEnabled && !smtpSettings.ExternalRecoveryEnabled {
 		recover, recoverErr := recovery.NewService(db.Instance, nil, external, credential)
 		if recoverErr != nil {
 			runtime.Stop()
@@ -306,19 +301,19 @@ func startVerificationRuntime() error {
 		log.Info("邮箱验证码服务已禁用")
 		return nil
 	}
-	security, err := smtpSecurityMode(cfg.SMTPSecurity)
+	security, err := smtpSecurityMode(smtpSettings.Relay.Security)
 	if err != nil {
 		runtime.Stop()
 		return err
 	}
 	delivery, err := verification.NewSMTPDelivery(verification.SMTPSettings{
-		Host:       cfg.SMTPHost,
-		Port:       cfg.SMTPPort,
-		Username:   cfg.SMTPUsername,
-		Password:   cfg.SMTPPassword,
+		Host:       smtpSettings.Relay.RelayHost,
+		Port:       smtpSettings.Relay.RelayPort,
+		Username:   smtpSettings.Relay.Username,
+		Password:   smtpSettings.Password,
 		Security:   security,
-		From:       cfg.SMTPFrom,
-		FromDomain: cfg.SMTPFromDomain,
+		From:       smtpSettings.Relay.From,
+		FromDomain: smtpSettings.Relay.FromDomain,
 	})
 	if err != nil {
 		runtime.Stop()

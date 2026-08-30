@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
+
+	"git.pcux.cn/xuans/Smail/utils/credential"
 )
 
 // publishedConfig 是旧配置模型的只读兼容快照。
@@ -122,6 +125,56 @@ type MailPorts struct {
 	SMTP int
 	IMAP int
 	POP3 int
+}
+
+type SMTPRuntimeSettings struct {
+	Relay                   SMTPConfig
+	Password                string
+	VerificationEnabled     bool
+	ExternalRecoveryEnabled bool
+}
+
+func CurrentSMTPRuntimeSettings() (SMTPRuntimeSettings, error) {
+	settings := SMTPRuntimeSettings{}
+	if manager := CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.Generation != 0 {
+			settings.Relay = runtime.SMTP.Relay
+			settings.ExternalRecoveryEnabled = runtime.Email.Policy.ExternalRecoveryEnabled
+			if settings.Relay.Username != "" {
+				vault, err := credential.NewVault(ROOT_PATH)
+				if err != nil {
+					return SMTPRuntimeSettings{}, fmt.Errorf("create SMTP credential vault: %w", err)
+				}
+				password, err := OpenStoredSecret(vault, settings.Relay.Password)
+				if err != nil {
+					return SMTPRuntimeSettings{}, fmt.Errorf("open SMTP relay password: %w", err)
+				}
+				settings.Password = password
+			}
+			settings.VerificationEnabled = settings.Relay.VerificationEnabled
+			return settings, nil
+		}
+	}
+
+	cfg := CurrentConfig()
+	if cfg == nil {
+		return SMTPRuntimeSettings{}, fmt.Errorf("runtime configuration is unavailable")
+	}
+	settings.Relay = SMTPConfig{
+		RelayHost:           cfg.SMTPHost,
+		RelayPort:           cfg.SMTPPort,
+		Username:            cfg.SMTPUsername,
+		Security:            cfg.SMTPSecurity,
+		From:                cfg.SMTPFrom,
+		FromDomain:          cfg.SMTPFromDomain,
+		VerificationEnabled: cfg.VerificationEnabled,
+		LoginPolicy:         cfg.LoginPolicy,
+	}
+	settings.Password = cfg.SMTPPassword
+	settings.VerificationEnabled = cfg.VerificationEnabled
+	settings.ExternalRecoveryEnabled = cfg.ExternalRecoveryEnabled
+	return settings, nil
 }
 
 func CurrentMailPorts() MailPorts {

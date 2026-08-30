@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"net"
+	"net/mail"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -102,6 +103,12 @@ func validateSMTP(smtp SMTPConfig) error {
 	if !validLoginVerificationPolicy(smtp.LoginPolicy) {
 		return ErrInvalidSMTP
 	}
+	if smtp.From != "" {
+		parsedFrom, err := mail.ParseAddress(smtp.From)
+		if err != nil || parsedFrom.Address != smtp.From || strings.ContainsAny(smtp.From, "\r\n") {
+			return ErrInvalidSMTP
+		}
+	}
 	if !smtp.VerificationEnabled {
 		if smtp.RelayHost != "" && !validSMTPHost(smtp.RelayHost) {
 			return ErrInvalidSMTP
@@ -136,7 +143,7 @@ func validateSMTP(smtp SMTPConfig) error {
 		}
 		return nil
 	}
-	if !validSMTPHost(smtp.RelayHost) || !validPort(smtp.RelayPort) || !validCanonicalDomain(smtp.FromDomain) {
+	if !validSMTPHost(smtp.RelayHost) || !validPort(smtp.RelayPort) || !validCanonicalDomain(smtp.FromDomain) || smtp.From == "" {
 		return ErrInvalidSMTP
 	}
 	if strings.TrimSpace(smtp.Username) != smtp.Username {
