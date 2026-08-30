@@ -52,6 +52,45 @@ func validMySQLRuntimeConfig(t *testing.T, root string) RuntimeConfig {
 	}
 	return runtime
 }
+
+type cancelAfterFirstContext struct {
+	done  chan struct{}
+	calls int
+}
+
+func newCancelAfterFirstContext() *cancelAfterFirstContext {
+	return &cancelAfterFirstContext{done: make(chan struct{})}
+}
+
+func (c *cancelAfterFirstContext) Deadline() (time.Time, bool) {
+	return time.Time{}, false
+}
+
+func (c *cancelAfterFirstContext) Done() <-chan struct{} {
+	c.calls++
+	if c.calls > 1 {
+		select {
+		case <-c.done:
+		default:
+			close(c.done)
+		}
+	}
+	return c.done
+}
+
+func (c *cancelAfterFirstContext) Err() error {
+	select {
+	case <-c.done:
+		return context.Canceled
+	default:
+		return nil
+	}
+}
+
+func (c *cancelAfterFirstContext) Value(any) any {
+	return nil
+}
+
 func authorizedConfigActor() AuditActor {
 	return AuditActor{UserID: "1", Role: "super_admin", SessionID: "test-session", RecentAuth: true, RecoveryCodeConfigured: true}
 }
@@ -185,6 +224,26 @@ func TestConfigManagerLoadRejectsUnavailableRuntimeSecretsWithoutChangingSnapsho
 	loaded := manager.Snapshot()
 	if loaded.Root.Database.Password.Ciphertext == foreignCiphertext {
 		t.Fatal("rejected load changed the active snapshot")
+	}
+}
+
+func TestConfigManagerLoadHonorsCancellationAfterReadingConfiguration(t *testing.T) {
+	root := t.TempDir()
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := manager.Snapshot()
+	ctx := newCancelAfterFirstContext()
+
+	if err := manager.Load(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("load error = %v, want context canceled", err)
+	}
+	loaded := manager.Snapshot()
+	if loaded.Generation != current.Generation {
+		t.Fatalf("canceled load changed active generation: got %d, want %d", loaded.Generation, current.Generation)
 	}
 }
 

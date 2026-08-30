@@ -207,7 +207,13 @@ func (m *ConfigManager) Load(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
 	if err := ValidateRuntimeSecrets(m.vault, runtime); err != nil {
+		return err
+	}
+	if err := contextError(ctx); err != nil {
 		return err
 	}
 	if err := m.snapshots.Publish(runtime); err != nil {
