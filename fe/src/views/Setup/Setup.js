@@ -133,19 +133,21 @@ export function usePage() {
   })
 
   const getDbConfig = () => {
-    http.post("/api/v1/setup", {"action": "get", "step": "database"}).then((res) => {
+    return http.post("/api/v1/setup", {"action": "get", "step": "database"}).then((res) => {
       if (res.errorNo !== 0) {
-        ElMessage.error(res.errorMsg)
-      } else {
-        dbSettings.type = res.data.db_type;
-        dbSettings.mode = res.data.db_mode || "dsn";
-        dbSettings.dsn = res.data.db_dsn || "";
-        dbSettings.user = res.data.db_user || "";
-        dbSettings.host = res.data.db_host || "127.0.0.1";
-        dbSettings.port = res.data.db_port || (dbSettings.type === "postgres" ? "5432" : "3306");
-        dbSettings.password = "";
-        dbSettings.name = res.data.db_name || "smail";
+        throw new Error(res.errorMsg || lang.db_request_failed)
       }
+      dbSettings.type = res.data.db_type;
+      dbSettings.mode = res.data.db_mode || "dsn";
+      dbSettings.dsn = res.data.db_dsn || "";
+      dbSettings.user = res.data.db_user || "";
+      dbSettings.host = res.data.db_host || "127.0.0.1";
+      dbSettings.port = res.data.db_port || (dbSettings.type === "postgres" ? "5432" : "3306");
+      dbSettings.password = "";
+      dbSettings.name = res.data.db_name || "smail";
+    }).catch((error) => {
+      databaseError.value = getDatabaseErrorMessage(error)
+      ElMessage.error(databaseError.value)
     })
   }
   
@@ -212,13 +214,13 @@ export function usePage() {
       "db_name": dbSettings.name
     }
 
-    http.post("/api/v1/setup", payload).then((res) => {
+    return http.post("/api/v1/setup", payload).then((res) => {
       if (res.errorNo !== 0) {
         databaseError.value = res.errorMsg || lang.db_init_failed
         ElMessage.error(databaseError.value)
         return
       }
-      getPassword().then(() => {
+      return getPassword().then(() => {
         ElMessage.success(lang.db_init_success)
         active.value++
       }).catch((error) => {

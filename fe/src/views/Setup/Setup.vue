@@ -26,7 +26,7 @@
         <el-form label-width="120px">
           <el-form-item :label="lang.type">
             <el-select :placeholder="lang.db_select_ph" v-model="dbSettings.type"
-                       @change="handleDbTypeChange">
+                       :disabled="databaseLoading" @change="handleDbTypeChange">
               <el-option label="MySQL" value="mysql"/>
               <el-option label="SQLite3" value="sqlite"/>
               <el-option label="PostgreSQL" value="postgres"/>
