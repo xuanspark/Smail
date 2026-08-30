@@ -61,7 +61,7 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 		address = "[\u672a\u68c0\u6d4b\u5230\u516c\u7f51 IPv4]"
 	}
 
-	items := make([]*DNSItem, 0, 10)
+	items := make([]*DNSItem, 0, 13)
 	appendARecord := func(host string) {
 		for _, item := range items {
 			if item.Type == "A" && item.Host == host {
@@ -70,6 +70,20 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 		}
 		items = append(items, &DNSItem{
 			Type:  "A",
+			Host:  host,
+			Value: address,
+			TTL:   dnsRecordTTL,
+			Tips:  ipTips,
+		})
+	}
+	appendAAAARecord := func(host, address string) {
+		for _, item := range items {
+			if item.Type == "AAAA" && item.Host == host {
+				return
+			}
+		}
+		items = append(items, &DNSItem{
+			Type:  "AAAA",
 			Host:  host,
 			Value: address,
 			TTL:   dnsRecordTTL,
@@ -105,13 +119,10 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 	appendARecord("@")
 
 	if ipv6Address := buildSPFAddressMechanism(ipv6); strings.HasPrefix(ipv6Address, "ip6:") {
-		items = append(items, &DNSItem{
-			Type:  "AAAA",
-			Host:  "@",
-			Value: strings.TrimPrefix(ipv6Address, "ip6:"),
-			TTL:   dnsRecordTTL,
-			Tips:  ipTips,
-		})
+		address := strings.TrimPrefix(ipv6Address, "ip6:")
+		for _, host := range []string{"@", "smtp", "imap", "pop"} {
+			appendAAAARecord(host, address)
+		}
 	}
 
 	items = append(items,
