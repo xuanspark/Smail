@@ -116,7 +116,10 @@ func Current() *Service {
 	return current.value
 }
 
-func (s *Service) Preview(_ context.Context, source config.DatabaseConfig, currentGeneration uint64, targetName string) (Record, string, error) {
+func (s *Service) Preview(ctx context.Context, source config.DatabaseConfig, currentGeneration uint64, targetName string) (Record, string, error) {
+	if err := contextError(ctx); err != nil {
+		return Record{}, "", err
+	}
 	if s == nil || currentGeneration == 0 {
 		return Record{}, "", ErrInvalidRequest
 	}
@@ -138,6 +141,9 @@ func (s *Service) Preview(_ context.Context, source config.DatabaseConfig, curre
 	token, err := randomID("preview-")
 	if err != nil {
 		return Record{}, "", ErrInvalidRequest
+	}
+	if err := contextError(ctx); err != nil {
+		return Record{}, "", err
 	}
 	now := s.currentTime()
 	item := &record{Record: Record{ID: id, Status: StatusPreviewed, Source: plan.Source, Target: plan.Target, CurrentGeneration: currentGeneration, CreatedAt: now, UpdatedAt: now}, tokenHash: sha256.Sum256([]byte(token)), expiresAt: now.Add(previewLifetime), sourceConfig: plan.sourceConfig, targetConfig: plan.targetConfig}

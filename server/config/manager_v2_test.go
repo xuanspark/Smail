@@ -139,6 +139,55 @@ func TestConfigLoaderRejectsMissingPartitionAndGenerationMismatch(t *testing.T) 
 	}
 }
 
+func TestConfigManagerRejectsUnavailableRuntimeSecretsAtStartup(t *testing.T) {
+	root := t.TempDir()
+	runtime := validMySQLRuntimeConfig(t, root)
+	otherVault, err := credential.NewVault(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignCiphertext, err := otherVault.Encrypt("foreign-database-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.Root.Database.Password.Ciphertext = foreignCiphertext
+	writeRuntimeFixture(t, root, runtime)
+
+	_, err = NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if !errors.Is(err, ErrSecretUnavailable) {
+		t.Fatalf("manager construction error = %v, want unavailable secret", err)
+	}
+}
+
+func TestConfigManagerLoadRejectsUnavailableRuntimeSecretsWithoutChangingSnapshot(t *testing.T) {
+	root := t.TempDir()
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	writeRuntimeFixture(t, root, validMySQLRuntimeConfig(t, root))
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := manager.Snapshot()
+	otherVault, err := credential.NewVault(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignCiphertext, err := otherVault.Encrypt("foreign-database-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.Root.Database.Password.Ciphertext = foreignCiphertext
+	writeRuntimeFixture(t, root, current)
+
+	if err := manager.Load(context.Background()); !errors.Is(err, ErrSecretUnavailable) {
+		t.Fatalf("load error = %v, want unavailable secret", err)
+	}
+	loaded := manager.Snapshot()
+	if loaded.Root.Database.Password.Ciphertext == foreignCiphertext {
+		t.Fatal("rejected load changed the active snapshot")
+	}
+}
+
 func TestConfigManagerApplyPreflightsSnapshotBeforePersisting(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())

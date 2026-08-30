@@ -173,6 +173,9 @@ func newConfigManager(root string, options ConfigLoaderOptions, security ConfigS
 	if err != nil {
 		return nil, err
 	}
+	if err := ValidateRuntimeSecrets(vault, runtime); err != nil {
+		return nil, err
+	}
 	snapshots, err := NewSnapshotStore(runtime, options.Validation)
 	if err != nil {
 		return nil, err
@@ -202,6 +205,9 @@ func (m *ConfigManager) Load(ctx context.Context) error {
 	defer m.writeMu.Unlock()
 	runtime, err := m.loader.Load()
 	if err != nil {
+		return err
+	}
+	if err := ValidateRuntimeSecrets(m.vault, runtime); err != nil {
 		return err
 	}
 	if err := m.snapshots.Publish(runtime); err != nil {

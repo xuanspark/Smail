@@ -81,6 +81,21 @@ func TestPreviewRejectsUnsafeTargetName(t *testing.T) {
 	}
 }
 
+func TestPreviewHonorsCanceledContextWithoutCreatingRecord(t *testing.T) {
+	service := NewService(testRunner{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, _, err := service.Preview(ctx, testDatabase(t), 1, "smail_next"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled preview returned %v, want context canceled", err)
+	}
+	service.mu.RLock()
+	defer service.mu.RUnlock()
+	if len(service.records) != 0 {
+		t.Fatalf("canceled preview created %d records", len(service.records))
+	}
+}
+
 func TestFailedExecutionKeepsSafeState(t *testing.T) {
 	service := NewService(nil)
 	record, token, err := service.Preview(context.Background(), testDatabase(t), 1, "smail_next")
