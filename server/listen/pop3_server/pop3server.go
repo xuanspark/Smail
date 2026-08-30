@@ -18,6 +18,10 @@ func StartWithTls() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
+	domains := config.CurrentMailDomains()
+	if domains.Primary == "" {
+		return fmt.Errorf("mail domain is not configured")
+	}
 	crt, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load POP3 TLS certificate: %w", err)
@@ -26,7 +30,7 @@ func StartWithTls() error {
 	tlsConfig.Certificates = []tls.Certificate{crt}
 	tlsConfig.Time = time.Now
 	tlsConfig.Rand = rand.Reader
-	instanceTls = gopop.NewPop3Server(995, "pop."+cfg.Domain, true, tlsConfig, action{})
+	instanceTls = gopop.NewPop3Server(995, "pop."+domains.Primary, true, tlsConfig, action{})
 	instanceTls.ConnectAliveTime = 5 * time.Minute
 
 	log.Infof("POP3 With TLS Server Start On Port :995")
@@ -43,6 +47,10 @@ func Start() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
+	domains := config.CurrentMailDomains()
+	if domains.Primary == "" {
+		return fmt.Errorf("mail domain is not configured")
+	}
 	crt, err := config.LoadRuntimeTLSCertificate(cfg)
 	if err != nil {
 		return fmt.Errorf("load POP3 certificate: %w", err)
@@ -52,7 +60,7 @@ func Start() error {
 	tlsConfig.Time = time.Now
 	tlsConfig.Rand = rand.Reader
 	port := config.CurrentMailPorts().POP3
-	instance = gopop.NewPop3Server(port, "pop."+cfg.Domain, false, tlsConfig, action{})
+	instance = gopop.NewPop3Server(port, "pop."+domains.Primary, false, tlsConfig, action{})
 	instance.ConnectAliveTime = 5 * time.Minute
 	log.Infof("POP3 Server Start On Port :%d", port)
 

@@ -127,6 +127,40 @@ type MailPorts struct {
 	POP3 int
 }
 
+type MailDomains struct {
+	Primary  string
+	Accepted []string
+}
+
+func CurrentMailDomains() MailDomains {
+	manager := CurrentManager()
+	if manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.Generation != 0 {
+			return MailDomains{
+				Primary:  runtime.Root.Domains.Primary,
+				Accepted: append([]string(nil), runtime.Root.Domains.Accepted...),
+			}
+		}
+	}
+
+	cfg := CurrentConfig()
+	if cfg == nil {
+		return MailDomains{}
+	}
+	domains := MailDomains{
+		Primary:  cfg.Domain,
+		Accepted: append([]string(nil), cfg.Domains...),
+	}
+	if domains.Primary == "" && len(domains.Accepted) > 0 {
+		domains.Primary = domains.Accepted[0]
+	}
+	if len(domains.Accepted) == 0 && domains.Primary != "" {
+		domains.Accepted = []string{domains.Primary}
+	}
+	return domains
+}
+
 type SMTPRuntimeSettings struct {
 	Relay                   SMTPConfig
 	Password                string

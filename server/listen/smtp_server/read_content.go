@@ -123,8 +123,8 @@ func (s *Session) Data(r io.Reader) error {
 		SPFStatus = spfCheck(s.RemoteAddress.String(), email.Sender, email.Sender.EmailAddress)
 
 		_, formDomain := email.From.GetDomainAccount()
-		cfg := config.CurrentConfig()
-		spoofed := cfg != nil && array.InArray(formDomain, cfg.Domains) && SPFStatus == false
+		domains := config.CurrentMailDomains()
+		spoofed := array.InArray(formDomain, domains.Accepted) && SPFStatus == false
 		if spoofed {
 			dkimStatus = false
 		}
@@ -227,17 +227,17 @@ func validateOutgoingEmail(email *parsemail.Email) error {
 }
 
 func authorizedSubmissionEmail(email *parsemail.Email, envelopeFrom string, ctx *context.Context) bool {
-	cfg := config.CurrentConfig()
-	if email == nil || email.From == nil || email.Sender == nil || ctx == nil || cfg == nil {
+	domains := config.CurrentMailDomains()
+	if email == nil || email.From == nil || email.Sender == nil || ctx == nil || len(domains.Accepted) == 0 {
 		return false
 	}
-	if !validation.IsAuthorizedSender(email.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+	if !validation.IsAuthorizedSender(email.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
 		return false
 	}
-	if !validation.IsAuthorizedSender(email.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, cfg.Domains) {
+	if !validation.IsAuthorizedSender(email.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
 		return false
 	}
-	return envelopeFrom == "" || validation.IsAuthorizedSender(envelopeFrom, ctx.UserAccount, ctx.IsAdmin, cfg.Domains)
+	return envelopeFrom == "" || validation.IsAuthorizedSender(envelopeFrom, ctx.UserAccount, ctx.IsAdmin, domains.Accepted)
 }
 
 func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserID int, emailType int, reallyTo []string, SPFStatus, dkimStatus bool) ([]*models.User, *models.Email, error) {
@@ -259,11 +259,11 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 
 	msgID := email.MsgID
 	if msgID == "" {
-		cfg := config.CurrentConfig()
-		if cfg == nil || cfg.Domain == "" {
+		domains := config.CurrentMailDomains()
+		if domains.Primary == "" {
 			return nil, nil, fmt.Errorf("runtime configuration is unavailable")
 		}
-		msgID, err = parsemail.GenerateMsgID(cfg.Domain)
+		msgID, err = parsemail.GenerateMsgID(domains.Primary)
 		if err != nil {
 			return users, nil, fmt.Errorf("generate message ID: %w", err)
 		}

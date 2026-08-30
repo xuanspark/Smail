@@ -26,12 +26,16 @@ func StartWithTLSNew() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
+	domains := config.CurrentMailDomains()
+	if domains.Primary == "" {
+		return fmt.Errorf("mail domain is not configured")
+	}
 	be := &Backend{}
 
 	instanceTlsNew = smtp.NewServer(be)
 
 	instanceTlsNew.Addr = ":587"
-	instanceTlsNew.Domain = cfg.Domain
+	instanceTlsNew.Domain = domains.Primary
 	instanceTlsNew.ReadTimeout = 10 * time.Second
 	instanceTlsNew.WriteTimeout = 10 * time.Second
 	instanceTlsNew.MaxMessageBytes = maxSMTPMessageBytes
@@ -59,12 +63,16 @@ func StartWithTLS() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
+	domains := config.CurrentMailDomains()
+	if domains.Primary == "" {
+		return fmt.Errorf("mail domain is not configured")
+	}
 	be := &Backend{}
 
 	instanceTls = smtp.NewServer(be)
 
 	instanceTls.Addr = ":465"
-	instanceTls.Domain = cfg.Domain
+	instanceTls.Domain = domains.Primary
 	instanceTls.ReadTimeout = 10 * time.Second
 	instanceTls.WriteTimeout = 10 * time.Second
 	instanceTls.MaxMessageBytes = maxSMTPMessageBytes
@@ -91,12 +99,16 @@ func Start() error {
 	if cfg == nil {
 		return fmt.Errorf("runtime configuration is unavailable")
 	}
+	domains := config.CurrentMailDomains()
+	if domains.Primary == "" {
+		return fmt.Errorf("mail domain is not configured")
+	}
 	be := &Backend{}
 
 	instance = smtp.NewServer(be)
 
 	instance.Addr = fmt.Sprintf(":%d", config.CurrentMailPorts().SMTP)
-	instance.Domain = cfg.Domain
+	instance.Domain = domains.Primary
 	instance.ReadTimeout = 10 * time.Second
 	instance.WriteTimeout = 10 * time.Second
 	instance.MaxMessageBytes = maxSMTPMessageBytes

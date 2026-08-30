@@ -100,8 +100,8 @@ func (p *Dkim) Sign(msgData string) ([]byte, error) {
 	if p == nil || p.privateKey == nil {
 		return nil, fmt.Errorf("DKIM signer is not initialized")
 	}
-	cfg := config.CurrentConfig()
-	if cfg == nil || strings.TrimSpace(cfg.Domain) == "" {
+	domains := config.CurrentMailDomains()
+	if strings.TrimSpace(domains.Primary) == "" {
 		return nil, fmt.Errorf("DKIM domain is not configured")
 	}
 
@@ -109,7 +109,7 @@ func (p *Dkim) Sign(msgData string) ([]byte, error) {
 	r := strings.NewReader(msgData)
 
 	options := &dkim.SignOptions{
-		Domain:   cfg.Domain,
+		Domain:   domains.Primary,
 		Selector: "default",
 		Signer:   p.privateKey,
 	}

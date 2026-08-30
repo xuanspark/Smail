@@ -221,8 +221,8 @@ func NewClient(conn net.Conn, host, fromDomain string) (*Client, error) {
 
 	if fromDomain != "" {
 		localName = fromDomain
-	} else if cfg := config.CurrentConfig(); cfg != nil && cfg.Domain != "" {
-		localName = cfg.Domain
+	} else if domains := config.CurrentMailDomains(); domains.Primary != "" {
+		localName = domains.Primary
 	}
 
 	c := &Client{Text: text, conn: conn, serverName: host, localName: localName}

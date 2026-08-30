@@ -129,6 +129,47 @@ func TestCurrentMailPortsUsesDefaultsForUnavailableSnapshot(t *testing.T) {
 	}
 }
 
+func TestCurrentMailDomainsReadsPartitionSnapshot(t *testing.T) {
+	previousManager := CurrentManager()
+	defer SetRuntimeManager(previousManager)
+
+	runtime := validRuntimeConfig()
+	runtime.Root.Domains = DomainConfig{
+		Primary:  "partition.example.com",
+		Accepted: []string{"partition.example.com", "alias.example.com"},
+	}
+	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
+
+	got := CurrentMailDomains()
+	if got.Primary != "partition.example.com" || len(got.Accepted) != 2 || got.Accepted[1] != "alias.example.com" {
+		t.Fatalf("mail domains = %+v, want partition snapshot", got)
+	}
+
+	got.Accepted[0] = "changed.example.com"
+	if runtime.Root.Domains.Accepted[0] != "partition.example.com" {
+		t.Fatal("mail domain snapshot leaked mutable accepted domains")
+	}
+}
+
+func TestCurrentMailDomainsFallsBackToLegacyConfig(t *testing.T) {
+	previousManager := CurrentManager()
+	previousInstance := Instance
+	defer func() {
+		SetRuntimeManager(previousManager)
+		Instance = previousInstance
+		PublishConfigSnapshot(previousInstance)
+	}()
+	SetRuntimeManager(nil)
+
+	Instance = &Config{Domain: "legacy.example.com"}
+	PublishConfigSnapshot(Instance)
+
+	got := CurrentMailDomains()
+	if got.Primary != "legacy.example.com" || len(got.Accepted) != 1 || got.Accepted[0] != got.Primary {
+		t.Fatalf("legacy mail domains = %+v, want normalized fallback", got)
+	}
+}
+
 func TestCurrentSMTPRuntimeSettingsReadsPartitionSnapshot(t *testing.T) {
 	previousManager := CurrentManager()
 	defer SetRuntimeManager(previousManager)

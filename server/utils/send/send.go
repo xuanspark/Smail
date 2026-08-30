@@ -51,23 +51,23 @@ func Forward(ctx *context.Context, e *parsemail.Email, forwardAddress string, us
 
 	log.WithContext(ctx).Debug("forward message prepared")
 
-	cfg := config.CurrentConfig()
-	if cfg == nil || len(cfg.Domains) == 0 {
+	domains := config.CurrentMailDomains()
+	if len(domains.Accepted) == 0 {
 		return errors.New("runtime configuration is unavailable")
 	}
-	from := user.Account + "@" + cfg.Domains[0]
-	return forwardData(ctx, cfg.Domains[0], b, forwardAddress, from)
+	from := user.Account + "@" + domains.Primary
+	return forwardData(ctx, domains.Primary, b, forwardAddress, from)
 }
 
 func ForwardRaw(ctx *context.Context, e *parsemail.Email, rawEmailData []byte, forwardAddress string, user *models.User) error {
 	log.WithContext(ctx).Debugf("开始原始邮件转发")
 
-	cfg := config.CurrentConfig()
-	if cfg == nil || len(cfg.Domains) == 0 {
+	domains := config.CurrentMailDomains()
+	if len(domains.Accepted) == 0 {
 		return errors.New("runtime configuration is unavailable")
 	}
-	from := user.Account + "@" + cfg.Domains[0]
-	return forwardData(ctx, cfg.Domains[0], rawEmailData, forwardAddress, from)
+	from := user.Account + "@" + domains.Primary
+	return forwardData(ctx, domains.Primary, rawEmailData, forwardAddress, from)
 }
 
 func forwardData(ctx *context.Context, fromDomain string, data []byte, forwardAddress string, from string) error {
