@@ -21,6 +21,7 @@ func SetDomainSettings(smtpDomain, webDomain, multiDomains string) error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	markSetupInProgress(configData)
 
 	smtpDomain, err = validation.NormalizeDomain(smtpDomain)
 	if err != nil {

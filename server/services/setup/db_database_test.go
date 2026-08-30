@@ -10,9 +10,36 @@ import (
 	"testing"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
 )
+
+func TestMarkSetupInProgressClearsLegacyInitializationFlag(t *testing.T) {
+	cfg := &config.Config{IsInit: true}
+
+	markSetupInProgress(cfg)
+
+	if cfg.IsInit {
+		t.Fatal("legacy initialization flag must be cleared during setup")
+	}
+	if cfg.SetupState != config.SetupStateBootstrap {
+		t.Fatalf("setup state = %q, want %q", cfg.SetupState, config.SetupStateBootstrap)
+	}
+}
+
+func TestMarkSetupInProgressPreservesExplicitSetupState(t *testing.T) {
+	cfg := &config.Config{IsInit: true, SetupState: config.SetupStateNew}
+
+	markSetupInProgress(cfg)
+
+	if cfg.IsInit {
+		t.Fatal("legacy initialization flag must be cleared during setup")
+	}
+	if cfg.SetupState != config.SetupStateNew {
+		t.Fatalf("setup state = %q, want %q", cfg.SetupState, config.SetupStateNew)
+	}
+}
 
 type fakeSetupDB struct {
 	pingErrors  []error

@@ -252,6 +252,7 @@ func SetDatabaseSettingsWithOptions(ctx *context.Context, settings DatabaseSetti
 
 	previousConfig := *configData
 	candidateConfig := *configData
+	markSetupInProgress(&candidateConfig)
 	candidateConfig.DbType = dbType
 	candidateConfig.DbDSN = dbDSN
 	if err = config.WriteConfig(&candidateConfig); err != nil {
@@ -267,6 +268,16 @@ func SetDatabaseSettingsWithOptions(ctx *context.Context, settings DatabaseSetti
 		return errors.Wrap(err)
 	}
 	return nil
+}
+
+func markSetupInProgress(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	cfg.IsInit = false
+	if !cfg.SetupState.Valid() {
+		cfg.SetupState = config.SetupStateBootstrap
+	}
 }
 
 func closeDatabaseInstance() {
