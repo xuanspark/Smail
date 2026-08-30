@@ -203,3 +203,78 @@ PMail 原版的协议登录流程与 Smail 不兼容，不能直接作为 Smail 
 [go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
 
 
+
+## 第三方协议验证方法
+
+完成用户邮箱验证、协议开关和授权码生成后，可以在测试环境使用真实邮件客户端或命令行验证。以下命令中的 `alice@example.com`、服务器地址和授权码均为示例，请替换为实际值；授权码不要写入 Git、脚本仓库或公共日志。
+
+### SMTP 验证
+
+推荐使用 `swaks`，它可以同时验证 TLS、认证和投递流程。
+
+```bash
+# SMTP 465：连接即建立 SSL/TLS
+swaks --server smtp.example.com --port 465 --tls-on-connect \
+  --auth PLAIN \
+  --auth-user 'alice@example.com' \
+  --auth-password 'SMTP授权码' \
+  --from 'alice@example.com' \
+  --to '收件人@example.net'
+
+# SMTP 587：先建立普通连接，再执行 STARTTLS
+swaks --server smtp.example.com --port 587 --tls \
+  --auth PLAIN \
+  --auth-user 'alice@example.com' \
+  --auth-password 'SMTP授权码' \
+  --from 'alice@example.com' \
+  --to '收件人@example.net'
+```
+
+认证成功后，服务端应接受认证并继续处理 `MAIL FROM`、`RCPT TO` 和邮件正文；如果 587 端口在 STARTTLS 前返回认证成功，说明服务端配置不符合安全要求。
+
+### IMAP 验证
+
+使用支持 IMAPS 的 `curl` 验证 993 端口：
+
+```bash
+curl --fail --silent --show-error \
+  --url 'imaps://imap.example.com/INBOX' \
+  --user 'alice@example.com:IMAP授权码'
+```
+
+能够建立 TLS 连接并返回收件箱信息，说明 IMAP 登录成功。将用户名改为 `alice`、密码改为网页登录密码，或先关闭 IMAP 开关后重新执行，均应认证失败。
+
+### POP3 验证
+
+使用支持 POP3S 的 `curl` 验证 995 端口：
+
+```bash
+curl --fail --silent --show-error \
+  --url 'pop3s://pop.example.com/' \
+  --user 'alice@example.com:POP3授权码' \
+  --list-only
+```
+
+能够建立 TLS 连接并返回邮件列表，说明 POP3 登录成功。普通 POP3 端口必须先完成 STLS，不能在明文连接阶段直接提交密码。
+
+### 验证结果判定
+
+| 测试项 | 预期结果 |
+| --- | --- |
+| 已开启协议 + 对应授权码 + 完整邮箱地址 | 登录成功 |
+| 协议未开启 | 登录失败 |
+| 已开启但尚未生成授权码 | 登录失败 |
+| 授权码已撤销或重新生成 | 旧授权码登录失败，新授权码登录成功 |
+| 使用网页登录密码 | 登录失败 |
+| 使用短账号名（例如 `alice`） | 登录失败 |
+| 使用未验证或未绑定邮箱地址 | 登录失败 |
+| SMTP 587 在 STARTTLS 前认证 | 服务端拒绝认证 |
+| POP3 未完成 TLS 或 STLS 就认证 | 服务端拒绝认证 |
+
+### 当前自动化验证范围
+
+项目自动化测试已经覆盖统一协议认证服务、控制器接口、SMTP 会话认证、POP3 会话认证、IMAP 原始 `LOGIN`、完整邮箱地址、协议开关、授权码撤销、重新生成和网页登录密码拒绝。自动化测试不能替代生产环境中的 DNS、证书、防火墙、Nginx、真实邮件客户端和实际投递验收，因此部署后仍需按上面的命令执行一次真实验证。
+
+### PMail 原版无法登录的结论
+
+PMail 原版不能作为当前 Smail 的第三方协议登录测试客户端。它的旧登录流程会截断包含 `@` 的登录名，没有 Smail 的协议开关和授权码模型，并且按网页登录密码校验；Smail 则要求“完整邮箱地址 + 对应协议授权码”。因此，把 Smail 的授权码填入 PMail 原版后登录失败属于兼容性限制，不应通过接受短账号名或网页登录密码来规避。
