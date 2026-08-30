@@ -69,3 +69,20 @@ func TestConfigManagerSwitchDatabaseRequiresAuthorizedActor(t *testing.T) {
 		t.Fatalf("missing actor error = %v, want authorization required", err)
 	}
 }
+
+func TestConfigManagerSwitchDatabaseHonorsCancellationBeforePersistence(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := manager.Snapshot().Root.Database
+	target.LocalRef = "next.db"
+	if err := manager.SwitchDatabase(newCancelAfterFirstContext(), 1, target, authorizedConfigActor()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled database switch error = %v, want context canceled", err)
+	}
+	if manager.Snapshot().Generation != 1 || manager.Snapshot().Root.Database.LocalRef != "smail.db" {
+		t.Fatalf("canceled database switch changed snapshot: %+v", manager.Snapshot())
+	}
+}

@@ -301,8 +301,14 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 	if err := m.authorize(ctx, req.Actor, ConfigOperationUpdate, req.Section); err != nil {
 		return nil, err
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	candidate, err := applySectionPayload(current, req.Section, req.Payload, req.SecretChanges, m.vault)
 	if err != nil {
+		return nil, err
+	}
+	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
 	setCandidateGeneration(&candidate, current.Generation+1)
@@ -313,6 +319,9 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 		return nil, ErrStepUpRequired
 	}
 	if err := m.confirm(ctx, req.Actor, req.Confirmation, ConfigOperationUpdate, req.Section); err != nil {
+		return nil, err
+	}
+	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
@@ -352,6 +361,9 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	}
 	m.mu.RUnlock()
 	candidate := pending.Candidate
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	if actor.UserID != "" && (pending.Actor.UserID != actor.UserID || pending.Actor.SessionID != actor.SessionID) {
 		return nil, ErrAuthorizationRequired
 	}
@@ -370,7 +382,13 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	if err := m.snapshots.Validate(candidate); err != nil {
 		return nil, err
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := m.transactions.Commit(current, candidate); err != nil {
@@ -436,6 +454,9 @@ func (m *ConfigManager) PreviewRollback(ctx context.Context, generation uint64, 
 	if err != nil {
 		return nil, err
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	if err := ValidateRuntimeSecrets(m.vault, backup); err != nil {
 		return nil, err
 	}
@@ -469,6 +490,9 @@ func (m *ConfigManager) IssueRollbackTicket(ctx context.Context, generation uint
 	}
 	backup, err := m.transactions.LoadBackup(generation)
 	if err != nil {
+		return "", err
+	}
+	if err := contextError(ctx); err != nil {
 		return "", err
 	}
 	if err := ValidateRuntimeSecrets(m.vault, backup); err != nil {
@@ -523,6 +547,9 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 			return nil, err
 		}
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
 	m.mu.RLock()
@@ -536,6 +563,9 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 	if err != nil {
 		return nil, err
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
 		return nil, err
 	}
@@ -547,7 +577,13 @@ func (m *ConfigManager) rollback(ctx context.Context, generation uint64, actor A
 	if err := m.snapshots.Validate(candidate); err != nil {
 		return nil, err
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := m.transactions.Commit(current, candidate); err != nil {
@@ -826,6 +862,9 @@ func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer
 
 	values := make([]LegacyPluginSecret, 0, len(current.Plugins.Plugins))
 	for logicalID, instance := range current.Plugins.Plugins {
+		if err := contextError(ctx); err != nil {
+			return false, err
+		}
 		if !storedSecretHasMaterial(instance.Secret) {
 			continue
 		}
@@ -845,6 +884,9 @@ func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer
 	if err := importer(ctx, values); err != nil {
 		return false, err
 	}
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
 
 	candidate := cloneRuntimeConfig(current)
 	for logicalID, instance := range candidate.Plugins.Plugins {
@@ -858,7 +900,13 @@ func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer
 	if err := m.snapshots.Validate(candidate); err != nil {
 		return false, err
 	}
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+		return false, err
+	}
+	if err := contextError(ctx); err != nil {
 		return false, err
 	}
 	if err := m.transactions.Commit(current, candidate); err != nil {

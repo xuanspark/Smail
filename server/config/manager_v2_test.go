@@ -247,6 +247,60 @@ func TestConfigManagerLoadHonorsCancellationAfterReadingConfiguration(t *testing
 	}
 }
 
+func TestConfigManagerUpdateHonorsCancellationBeforeCreatingPendingState(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(manager.Snapshot().Email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Update(newCancelAfterFirstContext(), UpdateRequest{
+		Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled update error = %v, want context canceled", err)
+	}
+	status := manager.Status()
+	if len(status.PendingRestart) != 0 {
+		t.Fatalf("canceled update left pending restart state: %+v", status.PendingRestart)
+	}
+	if manager.Snapshot().Generation != 1 {
+		t.Fatalf("canceled update changed active generation: %d", manager.Snapshot().Generation)
+	}
+}
+
+func TestConfigManagerApplyHonorsCancellationBeforePersistence(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(manager.Snapshot().Email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Apply(newCancelAfterFirstContext(), updated.Generation); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled apply error = %v, want context canceled", err)
+	}
+	if manager.Snapshot().Generation != 1 {
+		t.Fatalf("canceled apply changed active generation: %d", manager.Snapshot().Generation)
+	}
+	status := manager.Status()
+	if len(status.PendingRestart) != 1 || status.PendingRestart[0] != ServiceEmail {
+		t.Fatalf("canceled apply lost pending state: %+v", status.PendingRestart)
+	}
+}
+
 func TestConfigManagerApplyPreflightsSnapshotBeforePersisting(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())
@@ -844,6 +898,38 @@ func TestConfigManagerRetainsLegacySecretWhenImportFails(t *testing.T) {
 	}
 	if !containsAny(string(pluginData), "ciphertext", "\"secret\"") {
 		t.Fatal("failed import removed compatibility secret from plugins.json")
+	}
+}
+
+func TestConfigManagerLegacySecretMigrationHonorsCancellationAfterImport(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	vault, err := credential.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ApplySecretChange(vault, StoredSecret{}, SecretChange{Operation: SecretReplace, Value: &SecretInput{Plaintext: "legacy-token"}}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugin := runtime.Plugins.Plugins["telegram_push"]
+	plugin.Secret = stored
+	runtime.Plugins.Plugins["telegram_push"] = plugin
+	writeRuntimeFixture(t, root, runtime)
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if migrated, err := manager.MigrateLegacyPluginSecrets(ctx, func(context.Context, []LegacyPluginSecret) error {
+		cancel()
+		return nil
+	}); !errors.Is(err, context.Canceled) || migrated {
+		t.Fatalf("canceled legacy migration = %v, %v", migrated, err)
+	}
+	if manager.Snapshot().Generation != 1 || !manager.Snapshot().Plugins.Plugins["telegram_push"].Secret.Configured() {
+		t.Fatal("canceled legacy migration altered the active configuration")
 	}
 }
 

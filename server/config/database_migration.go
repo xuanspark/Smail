@@ -24,6 +24,9 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if err := m.authorize(ctx, actor, ConfigOperationMigration, SectionRoot); err != nil {
 		return err
 	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
 
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
@@ -62,7 +65,13 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if err := m.snapshots.Validate(candidate); err != nil {
 		return err
 	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
 	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+		return err
+	}
+	if err := contextError(ctx); err != nil {
 		return err
 	}
 	if err := m.transactions.Commit(current, candidate); err != nil {
