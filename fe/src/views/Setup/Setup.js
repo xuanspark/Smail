@@ -12,6 +12,13 @@ import {Plus} from '@element-plus/icons-vue'
 
 import {http} from "@/utils/axios";
 
+const setupRequest = (payload) => http.post("/api/v1/setup", payload).then((response) => {
+  if (!response || typeof response.errorNo !== "number") {
+    throw new Error(lang.setup_failed)
+  }
+  return response
+})
+
 export function usePage() {
   const waitDesc = ref(lang.wait_desc);
   
@@ -102,7 +109,7 @@ export function usePage() {
       return
     }
 
-    http.post("/api/v1/setup", {
+    setupRequest( {
       "action": "set",
       "step": "password",
       "account": adminSettings.account,
@@ -119,7 +126,7 @@ export function usePage() {
     })
   }
   
-  const getPassword = () => http.post("/api/v1/setup", {"action": "get", "step": "password"}).then((res) => {
+  const getPassword = () => setupRequest( {"action": "get", "step": "password"}).then((res) => {
     if (res.errorNo !== 0) {
       throw new Error(res.errorMsg || lang.db_init_failed)
     }
@@ -133,7 +140,7 @@ export function usePage() {
   })
 
   const getDbConfig = () => {
-    return http.post("/api/v1/setup", {"action": "get", "step": "database"}).then((res) => {
+    return setupRequest( {"action": "get", "step": "database"}).then((res) => {
       if (res.errorNo !== 0) {
         throw new Error(res.errorMsg || lang.db_request_failed)
       }
@@ -152,7 +159,7 @@ export function usePage() {
   }
   
   const getDomainConfig = () => {
-    http.post("/api/v1/setup", {"action": "get", "step": "domain"}).then((res) => {
+    setupRequest( {"action": "get", "step": "domain"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -214,7 +221,7 @@ export function usePage() {
       "db_name": dbSettings.name
     }
 
-    return http.post("/api/v1/setup", payload).then((res) => {
+    return setupRequest( payload).then((res) => {
       if (res.errorNo !== 0) {
         databaseError.value = res.errorMsg || lang.db_init_failed
         ElMessage.error(databaseError.value)
@@ -254,7 +261,7 @@ export function usePage() {
   }
   
   const getDNSConfig = () => {
-    http.post("/api/v1/setup", {"action": "get", "step": "dns"}).then((res) => {
+    setupRequest( {"action": "get", "step": "dns"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -299,7 +306,7 @@ export function usePage() {
   }
   
   const getSSLConfig = () => {
-    http.post("/api/v1/setup", {"action": "get", "step": "ssl"}).then((res) => {
+    setupRequest( {"action": "get", "step": "ssl"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
@@ -324,7 +331,7 @@ export function usePage() {
     }
   
   
-    http.post("/api/v1/setup", {
+    setupRequest( {
       "action": "set",
       "step": "ssl",
       "ssl_type": sslType,
@@ -347,7 +354,7 @@ export function usePage() {
   }
   
   const checkStatus = () => {
-    http.post("/api/v1/setup", {"action": "get", "step": "ssl"}).then((res) => {
+    setupRequest( {"action": "get", "step": "ssl"}).then((res) => {
       if (res.errorNo === 0 && res.data.ready) {
         if (sslSettings.type === "1") {
           window.location.href = "http://" + domainSettings.web_domain;
@@ -363,7 +370,7 @@ export function usePage() {
   }
   
   const setDomainConfig = () => {
-    http.post("/api/v1/setup", {
+    setupRequest( {
       "action": "set",
       "step": "domain",
       "web_domain": domainSettings.web_domain,
@@ -380,7 +387,7 @@ export function usePage() {
   }
   
   const getSSLDNSParams = () => {
-    http.post("/api/v1/setup", {"action": "getParams", "step": "ssl"}).then((res) => {
+    setupRequest( {"action": "getParams", "step": "ssl"}).then((res) => {
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
       } else {
