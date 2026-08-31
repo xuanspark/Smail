@@ -13,6 +13,7 @@ type UserEmail struct {
 	CreatedAt        time.Time  `xorm:"created_at datetime created" json:"created_at"`
 	UpdatedAt        time.Time  `xorm:"updated_at datetime updated" json:"updated_at"`
 	IsRead           int8       `xorm:"is_read tinyint(1) comment('是否已读')" json:"is_read"`
+	IsDeleted        int8       `xorm:"is_deleted tinyint(1) notnull default(0)" json:"-"`
 	GroupId          int        `xorm:"group_id int notnull default(0) comment('分组id')'" json:"group_id"`
 	Status           int8       `xorm:"status tinyint(4) notnull default(0) comment('0未发送或收件，1已发送，2发送失败，3删除 4草稿 5广告')" json:"status"` // 0未发送或收件，1已发送，2发送失败 3删除 4草稿箱(Drafts)  5骚扰邮件(Junk)
 	Created          time.Time  `xorm:"create datetime created index('idx_create_time')"`

@@ -331,11 +331,14 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 			writer.WriteRFC822Size(cast.ToInt64(len(emailContent)))
 		}
 		if options.Flags {
+			flags := make([]imap.Flag, 0, 2)
 			if email.IsRead == 1 {
-				writer.WriteFlags([]imap.Flag{imap.FlagSeen})
-			} else {
-				writer.WriteFlags([]imap.Flag{})
+				flags = append(flags, imap.FlagSeen)
 			}
+			if email.IsDeleted == 1 {
+				flags = append(flags, imap.FlagDeleted)
+			}
+			writer.WriteFlags(flags)
 		}
 		if options.InternalDate {
 			writer.WriteInternalDate(email.CreateTime)

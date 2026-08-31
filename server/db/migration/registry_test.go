@@ -40,7 +40,7 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 	if !exists {
 		t.Fatal("column webauthn_credential.discoverable was not created")
 	}
-	for _, column := range []string{"address", "address_canonical", "is_primary", "verified_at", "created_at", "updated_at"} {
+	for _, column := range []string{"address", "address_canonical", "is_primary", "verified_at", "created_at", "updated_at", "is_deleted"} {
 		exists, err := columnExists(context.Background(), db, DialectSQLite, "user_email", column)
 		if err != nil {
 			t.Fatal(err)
@@ -102,7 +102,7 @@ func TestUserEmailLoginAddressMigrationUpgradesLegacyTableAndIsIdempotent(t *tes
 	if _, err := runner.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	for _, column := range []string{"address", "address_canonical", "is_primary", "verified_at", "created_at", "updated_at"} {
+	for _, column := range []string{"address", "address_canonical", "is_primary", "verified_at", "created_at", "updated_at", "is_deleted"} {
 		exists, err := columnExists(context.Background(), db, DialectSQLite, "user_email", column)
 		if err != nil {
 			t.Fatal(err)
@@ -141,6 +141,13 @@ func TestUserEmailLoginAddressMigrationRejectsDuplicateCanonicalAddresses(t *tes
 	}
 	if sqliteIndexExists(t, db, "uq_user_email_address_canonical") {
 		t.Fatal("unique index was created despite duplicate canonical addresses")
+	}
+}
+
+func TestIMAPDeletedFlagMigrationRejectsUnexpectedDialect(t *testing.T) {
+	err := applyIMAPDeletedFlagSchema(context.Background(), nil, Dialect("unsupported"))
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("unexpected dialect error = %v", err)
 	}
 }
 

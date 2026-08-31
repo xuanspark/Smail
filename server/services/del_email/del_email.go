@@ -6,7 +6,6 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"log/slog"
 	"xorm.io/xorm"
@@ -80,14 +79,14 @@ func DelByUID(ctx *context.Context, ids []int) error {
 	}
 	for _, id := range ids {
 		var ue models.UserEmail
-		found, err := session.Table("user_email").Where(Eq{"id": id, "user_id": ctx.UserID}).Get(&ue)
+		found, err := session.Table("user_email").Where(Eq{"id": id, "user_id": ctx.UserID, "is_deleted": 1}).Get(&ue)
 		if err != nil {
 			rollbackDeleteSession(session)
 			return err
 		}
 		if !found || ue.ID == 0 {
-			log.WithContext(ctx).Warn("no user email found")
-			continue
+			rollbackDeleteSession(session)
+			return fmt.Errorf("email relation %d is missing or not marked deleted", id)
 		}
 		emailId := ue.EmailID
 

@@ -15,5 +15,6 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(11, "create_plugin_configuration_tables", pluginSettingsStatements()),
 		DefineCustom(12, "expand_user_email_login_addresses", "expand_user_email_login_addresses_v1", applyUserEmailAddressSchema),
 		DefineForDialects(13, "create_protocol_credentials", protocolCredentialStatements()),
+		DefineCustom(14, "expand_imap_deleted_flag", "expand_imap_deleted_flag_v1", applyIMAPDeletedFlagSchema),
 	}
 }

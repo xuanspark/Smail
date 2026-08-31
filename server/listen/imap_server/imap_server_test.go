@@ -12,6 +12,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -619,12 +620,39 @@ func TestStore(t *testing.T) {
 	assertReadState(t, relation.ID, userID, 0)
 
 	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
+		Op:    imap.StoreFlagsAdd,
+		Flags: []imap.Flag{imap.FlagDeleted},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("add \\Deleted: %v", err)
+	}
+	assertDeletedState(t, relation.ID, userID, 1)
+
+	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
+		Op:     imap.StoreFlagsDel,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagDeleted},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("delete \\Deleted: %v", err)
+	}
+	assertDeletedState(t, relation.ID, userID, 0)
+
+	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
+		Op:    imap.StoreFlagsSet,
+		Flags: []imap.Flag{imap.FlagSeen, imap.FlagDeleted},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("set supported flags: %v", err)
+	}
+	assertReadState(t, relation.ID, userID, 1)
+	assertDeletedState(t, relation.ID, userID, 1)
+
+	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
 		Op:    imap.StoreFlagsSet,
 		Flags: nil,
 	}, &imap.StoreOptions{}).Collect(); err != nil {
 		t.Fatalf("set empty flags: %v", err)
 	}
 	assertReadState(t, relation.ID, userID, 0)
+	assertDeletedState(t, relation.ID, userID, 0)
 }
 
 func uidSet(uid imap.UID) imap.UIDSet {
@@ -662,39 +690,152 @@ func TestExpunge(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	userID := clientLoginUserID(t)
 	var targets []models.UserEmail
 	if err := db.Instance.Table("user_email").
-		Where("user_id = ? AND email_id > 0", 1).
+		Where("user_id = ? AND status = ? AND group_id = 0 AND email_id > 0 AND is_deleted = 0", userID, 0).
 		OrderBy("id ASC").
 		Limit(2).
 		Find(&targets); err != nil {
 		t.Fatal(err)
 	}
-	if len(targets) == 0 {
-		t.Fatal("no email relations available for expunge")
+	if len(targets) < 2 {
+		t.Fatal("not enough INBOX relations available for expunge")
 	}
 
-	uids := make([]imap.UID, 0, len(targets))
-	for _, target := range targets {
-		uids = append(uids, imap.UID(target.ID))
+	if _, err := clientLogin.Store(uidSet(imap.UID(targets[0].ID)), &imap.StoreFlags{
+		Op:    imap.StoreFlagsAdd,
+		Flags: []imap.Flag{imap.FlagDeleted},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("mark message deleted: %v", err)
 	}
-	res, err := clientLogin.UIDExpunge(imap.UIDSetNum(uids...)).Collect()
+	assertDeletedState(t, targets[0].ID, userID, 1)
+	assertDeletedState(t, targets[1].ID, userID, 0)
+	expungeSequence := assertDeletedFetchFlags(t, imap.UID(targets[0].ID))
+
+	expunged, err := clientLogin.UIDExpunge(imap.UIDSetNum(imap.UID(targets[0].ID), imap.UID(targets[1].ID))).Collect()
 	if err != nil {
-		t.Errorf("%+v", err)
+		t.Fatalf("UID EXPUNGE: %v", err)
 	}
-	t.Logf("%+v", res)
-
-	for _, target := range targets {
-		var remaining models.UserEmail
-		found, err := db.Instance.ID(target.ID).Get(&remaining)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if found {
-			t.Errorf("email relation %d was not expunged", target.ID)
-		}
+	if len(expunged) != 1 || expunged[0] != expungeSequence {
+		t.Fatalf("UID EXPUNGE sequences = %v, want [%d]", expunged, expungeSequence)
 	}
 
+	var remaining models.UserEmail
+	found, err := db.Instance.ID(targets[0].ID).Get(&remaining)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Errorf("marked email relation %d was not expunged", targets[0].ID)
+	}
+	remaining = models.UserEmail{}
+	found, err = db.Instance.ID(targets[1].ID).Get(&remaining)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Errorf("unmarked email relation %d was expunged", targets[1].ID)
+	}
+
+	if _, err := clientLogin.Store(uidSet(imap.UID(targets[1].ID)), &imap.StoreFlags{
+		Op:    imap.StoreFlagsAdd,
+		Flags: []imap.Flag{imap.FlagDeleted},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("mark remaining message deleted: %v", err)
+	}
+	remainingSequence := assertDeletedFetchFlags(t, imap.UID(targets[1].ID))
+	expunged, err = clientLogin.Expunge().Collect()
+	if err != nil {
+		t.Fatalf("EXPUNGE: %v", err)
+	}
+	if len(expunged) != 1 || expunged[0] != remainingSequence {
+		t.Fatalf("EXPUNGE sequences = %v, want [%d]", expunged, remainingSequence)
+	}
+	remaining = models.UserEmail{}
+	found, err = db.Instance.ID(targets[1].ID).Get(&remaining)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Errorf("marked email relation %d was not expunged", targets[1].ID)
+	}
+}
+
+func TestExpandIMAPUIDSet(t *testing.T) {
+	tests := []struct {
+		name    string
+		set     imap.UIDSet
+		maxUID  int
+		want    []int
+		wantErr bool
+	}{
+		{name: "static", set: imap.UIDSet{{Start: 2, Stop: 4}}, want: []int{2, 3, 4}},
+		{name: "last", set: imap.UIDSet{{Start: 0, Stop: 0}}, maxUID: 8, want: []int{8}},
+		{name: "dynamic range", set: imap.UIDSet{{Start: 6, Stop: 0}}, maxUID: 8, want: []int{6, 7, 8}},
+		{name: "dynamic range beyond maximum", set: imap.UIDSet{{Start: 10, Stop: 0}}, maxUID: 8, want: []int{8}},
+		{name: "overlapping ranges", set: imap.UIDSet{{Start: 2, Stop: 4}, {Start: 3, Stop: 5}}, want: []int{2, 3, 4, 5}},
+		{name: "maximum UID", set: imap.UIDSet{{Start: imap.UID(^uint32(0)), Stop: imap.UID(^uint32(0))}}, want: []int{int(^uint32(0))}},
+		{name: "empty mailbox", set: imap.UIDSet{{Start: 0, Stop: 0}}, maxUID: 0, want: []int{}},
+		{name: "too large", set: imap.UIDSet{{Start: 1, Stop: maxIMAPExpungeUIDs + 1}}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := expandIMAPUIDSet(&tt.set, tt.maxUID)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expand UID set: %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("expanded UIDs = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func assertDeletedState(t *testing.T, relationID, userID int, expected int8) {
+	t.Helper()
+	var relation models.UserEmail
+	found, err := db.Instance.Where("id = ? AND user_id = ?", relationID, userID).Get(&relation)
+	if err != nil {
+		t.Fatalf("load relation deleted state: %v", err)
+	}
+	if !found || relation.IsDeleted != expected {
+		t.Fatalf("relation %d deleted state = %d, want %d", relationID, relation.IsDeleted, expected)
+	}
+}
+
+func assertDeletedFetchFlags(t *testing.T, uid imap.UID) uint32 {
+	t.Helper()
+	uidMessages, err := clientLogin.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{Flags: true, UID: true}).Collect()
+	if err != nil {
+		t.Fatalf("UID FETCH deleted flags: %v", err)
+	}
+	if len(uidMessages) != 1 || uidMessages[0].UID != uid || !hasIMAPFlag(uidMessages[0].Flags, imap.FlagDeleted) {
+		t.Fatalf("UID FETCH flags = %+v, want \\Deleted for UID %d", uidMessages, uid)
+	}
+	sequenceMessages, err := clientLogin.Fetch(imap.SeqSetNum(uidMessages[0].SeqNum), &imap.FetchOptions{Flags: true, UID: true}).Collect()
+	if err != nil {
+		t.Fatalf("sequence FETCH deleted flags: %v", err)
+	}
+	if len(sequenceMessages) != 1 || sequenceMessages[0].UID != uid || !hasIMAPFlag(sequenceMessages[0].Flags, imap.FlagDeleted) {
+		t.Fatalf("sequence FETCH flags = %+v, want \\Deleted for UID %d", sequenceMessages, uid)
+	}
+	return uidMessages[0].SeqNum
+}
+
+func hasIMAPFlag(flags []imap.Flag, expected imap.Flag) bool {
+	for _, flag := range flags {
+		if flag == expected {
+			return true
+		}
+	}
+	return false
 }
 func TestExamine(t *testing.T) {
 

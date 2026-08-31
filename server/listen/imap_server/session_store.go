@@ -6,7 +6,6 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
-	"git.pcux.cn/xuans/Smail/services/del_email"
 	"git.pcux.cn/xuans/Smail/services/list"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"github.com/emersion/go-imap/v2"
@@ -56,16 +55,24 @@ func (s *serverSession) Store(w *imapserver.FetchWriter, numSet imap.NumSet, fla
 	deletedRequested := array.InArray(imap.FlagDeleted, flags.Flags)
 	updateReadState := false
 	readState := false
+	updateDeletedState := false
+	deletedState := false
 	switch flags.Op {
 	case imap.StoreFlagsSet:
 		updateReadState = true
 		readState = seenRequested
+		updateDeletedState = true
+		deletedState = deletedRequested
 	case imap.StoreFlagsAdd:
 		updateReadState = seenRequested
 		readState = true
+		updateDeletedState = deletedRequested
+		deletedState = true
 	case imap.StoreFlagsDel:
 		updateReadState = seenRequested
 		readState = false
+		updateDeletedState = deletedRequested
+		deletedState = false
 	default:
 		return &imap.Error{Type: imap.StatusResponseTypeBad, Text: "Unsupported STORE operation"}
 	}
@@ -83,18 +90,16 @@ func (s *serverSession) Store(w *imapserver.FetchWriter, numSet imap.NumSet, fla
 		}
 	}
 
-	if deletedRequested && flags.Op == imap.StoreFlagsAdd {
+	if updateDeletedState {
 		for _, data := range emailList {
-			s.deleteUidList = append(s.deleteUidList, data.UeId)
-		}
-	}
-
-	if len(s.deleteUidList) > 0 {
-		err := del_email.DelByUID(s.ctx, s.deleteUidList)
-		s.deleteUidList = []int{}
-		if err != nil {
-			log.WithContext(s.ctx).WithError(err).Error("delete IMAP message failed")
-			return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
+			if err := updateDeletedByUID(s.ctx.UserID, data.UeId, deletedState); err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("update IMAP message deleted flag failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
+			}
+			data.IsDeleted = 0
+			if deletedState {
+				data.IsDeleted = 1
+			}
 		}
 	}
 
@@ -105,11 +110,14 @@ func (s *serverSession) Store(w *imapserver.FetchWriter, numSet imap.NumSet, fla
 				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
 			}
 			message := w.CreateMessage(sequence)
+			updatedFlags := make([]imap.Flag, 0, 2)
 			if data.IsRead == 1 {
-				message.WriteFlags([]imap.Flag{imap.FlagSeen})
-			} else {
-				message.WriteFlags(nil)
+				updatedFlags = append(updatedFlags, imap.FlagSeen)
 			}
+			if data.IsDeleted == 1 {
+				updatedFlags = append(updatedFlags, imap.FlagDeleted)
+			}
+			message.WriteFlags(updatedFlags)
 			if err := message.Close(); err != nil {
 				return err
 			}
@@ -131,6 +139,25 @@ func updateReadByUID(userID, relationID int, read bool) error {
 		Cols("is_read").Update(&models.UserEmail{IsRead: value})
 	if err != nil {
 		return fmt.Errorf("update mailbox relation read state: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("mailbox relation not found")
+	}
+	return nil
+}
+
+func updateDeletedByUID(userID, relationID int, deleted bool) error {
+	if userID <= 0 || relationID <= 0 {
+		return fmt.Errorf("invalid mailbox relation")
+	}
+	value := int8(0)
+	if deleted {
+		value = 1
+	}
+	affected, err := db.Instance.Where("id = ? and user_id = ?", relationID, userID).
+		Cols("is_deleted").Update(&models.UserEmail{IsDeleted: value})
+	if err != nil {
+		return fmt.Errorf("update mailbox relation deleted flag: %w", err)
 	}
 	if affected != 1 {
 		return fmt.Errorf("mailbox relation not found")

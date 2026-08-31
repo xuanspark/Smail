@@ -37,8 +37,8 @@ func (s *serverSession) Select(mailbox string, options *imap.SelectOptions) (*im
 	}
 
 	ret := &imap.SelectData{
-		Flags:          []imap.Flag{imap.FlagSeen},
-		PermanentFlags: []imap.Flag{imap.FlagSeen},
+		Flags:          []imap.Flag{imap.FlagSeen, imap.FlagDeleted},
+		PermanentFlags: []imap.Flag{imap.FlagSeen, imap.FlagDeleted},
 		NumMessages:    numMessages,
 		UIDNext:        uidNext,
 		UIDValidity:    uidValidity,

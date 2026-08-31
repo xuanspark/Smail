@@ -100,3 +100,54 @@ func TestForcedDeleteRemovesLastOwnedEmail(t *testing.T) {
 		t.Fatal("unreferenced owned email was not deleted")
 	}
 }
+
+func TestDelByUIDRequiresDeletedFlag(t *testing.T) {
+	initDeleteTestDB(t)
+	email := insertDeleteTestEmail(t)
+	relation := models.UserEmail{UserID: 1, EmailID: email.Id}
+	if _, err := db.Instance.Insert(&relation); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DelByUID(&context.Context{UserID: 1}, []int{relation.ID}); err == nil {
+		t.Fatal("unmarked relation was accepted for expunge")
+	}
+
+	found, err := db.Instance.ID(relation.ID).Get(&models.UserEmail{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("unmarked relation was deleted")
+	}
+}
+
+func TestDelByUIDRollsBackBatchWhenRelationIsNotMarked(t *testing.T) {
+	initDeleteTestDB(t)
+	firstEmail := insertDeleteTestEmail(t)
+	secondEmail := insertDeleteTestEmail(t)
+	firstRelation := models.UserEmail{UserID: 1, EmailID: firstEmail.Id, IsDeleted: 1}
+	if _, err := db.Instance.Insert(&firstRelation); err != nil {
+		t.Fatal(err)
+	}
+	secondRelation := models.UserEmail{UserID: 1, EmailID: secondEmail.Id}
+	if _, err := db.Instance.Insert(&secondRelation); err != nil {
+		t.Fatal(err)
+	}
+	relations := []models.UserEmail{firstRelation, secondRelation}
+
+	err := DelByUID(&context.Context{UserID: 1}, []int{relations[0].ID, relations[1].ID})
+	if err == nil {
+		t.Fatal("mixed marked and unmarked batch was accepted")
+	}
+
+	for _, relation := range relations {
+		found, loadErr := db.Instance.ID(relation.ID).Get(&models.UserEmail{})
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		if !found {
+			t.Fatalf("relation %d was not rolled back", relation.ID)
+		}
+	}
+}
