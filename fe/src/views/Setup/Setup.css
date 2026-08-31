@@ -1408,3 +1408,60 @@
     min-height: clamp(280px, calc(23vh + 100px), 330px);
   }
 }
+
+/* 数据库设置页增加内容高度，并拉开表单各区域之间的边界。 */
+@media (min-width: 761px) {
+  #main.setup-page.database-page .setup-form-panel {
+    min-height: 430px;
+    box-sizing: border-box;
+    gap: 22px;
+    padding: 22px 28px 26px;
+  }
+
+  #main.setup-page.database-page .setup-form-panel .desc {
+    margin-bottom: 0;
+  }
+
+  #main.setup-page.database-page .database-form {
+    width: min(100%, 840px);
+    max-width: 840px;
+    margin-inline: auto;
+  }
+
+  #main.setup-page.database-page .database-form > .el-form {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  #main.setup-page.database-page .database-form :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+
+  #main.setup-page.database-page .database-form :deep(.el-form-item__label) {
+    padding-bottom: 6px;
+    line-height: 1.45;
+  }
+
+  #main.setup-page.database-page .mysql-fields {
+    column-gap: 28px;
+    row-gap: 8px;
+    padding: 18px 22px 8px;
+  }
+
+  #main.setup-page.database-page .database-hint {
+    margin-bottom: 16px;
+    line-height: 1.65;
+  }
+
+  #main.setup-page.database-page .database-field-tip,
+  #main.setup-page.database-page .password-rule-tip {
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+
+  #main.setup-page.database-page .database-retry-tip {
+    margin: 2px 0 10px;
+    line-height: 1.6;
+  }
+}
