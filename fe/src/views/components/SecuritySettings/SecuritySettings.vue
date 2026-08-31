@@ -45,7 +45,6 @@
     </section>
 
     <el-divider class="settings-divider" />
-    <el-divider class="settings-divider" />
     <section class="security-section protocol-section">
       <div class="settings-header">
         <h3>第三方邮件客户端登录</h3>

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,21 +85,8 @@ func (e *SQLExecutor) Run(ctx context.Context, plan Plan, update func(Status) er
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if plan.sourceConfig.Type != plan.targetConfig.Type ||
-		(plan.sourceConfig.Type != config.DatabaseTypeMySQL && plan.sourceConfig.Type != config.DatabaseTypePostgreSQL) {
-		return ErrUnsupportedDatabase
-	}
-	if err := config.ValidateDatabaseConfig(plan.sourceConfig); err != nil {
-		return ErrSourceDatabase
-	}
-	if err := config.ValidateDatabaseConfig(plan.targetConfig); err != nil {
-		return ErrInvalidTargetName
-	}
-	if !validStructuredDatabaseName(plan.sourceConfig.Name) ||
-		!validStructuredDatabaseName(plan.targetConfig.Name) ||
-		plan.sourceConfig.Name == plan.targetConfig.Name ||
-		!sameStructuredConnection(plan.sourceConfig, plan.targetConfig) {
-		return ErrImmutableSetting
+	if err := validateSQLCopyRequest(plan.sourceConfig, plan.targetConfig); err != nil {
+		return err
 	}
 	if e.copier == nil {
 		return ErrSQLCopyUnavailable
@@ -185,6 +173,9 @@ func (c *SQLCopier) Copy(ctx context.Context, source, target config.DatabaseConf
 		ctx = context.Background()
 	}
 	if err := contextError(ctx); err != nil {
+		return err
+	}
+	if err := validateSQLCopyRequest(source, target); err != nil {
 		return err
 	}
 	adminDB, err := c.open(ctx, source, "")
@@ -295,7 +286,13 @@ func (c *SQLCopier) copyMySQL(ctx context.Context, sourceDB, adminDB *sql.DB, so
 			return fmt.Errorf("%w: mysql table %s row count changed during migration", ErrSQLDataVerification, tableName)
 		}
 	}
+	if err := verifyMySQLTableStructure(ctx, adminDB, sourceName, targetName, tableNames); err != nil {
+		return err
+	}
 	if err := c.copyMySQLForeignKeys(ctx, adminDB, sourceName, targetName, tableNames); err != nil {
+		return err
+	}
+	if err := verifyMySQLForeignKeys(ctx, adminDB, sourceName, targetName); err != nil {
 		return err
 	}
 	created = false
@@ -347,37 +344,9 @@ func (c *SQLCopier) copyMySQLForeignKeys(ctx context.Context, database *sql.DB, 
 	if len(tableNames) == 0 {
 		return nil
 	}
-	rows, err := database.QueryContext(ctx, "SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, rc.UPDATE_RULE, rc.DELETE_RULE FROM information_schema.KEY_COLUMN_USAGE kcu JOIN information_schema.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND tc.TABLE_NAME = kcu.TABLE_NAME AND tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.TABLE_NAME = kcu.TABLE_NAME WHERE tc.CONSTRAINT_SCHEMA = ? AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' AND kcu.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION", sourceName)
+	foreignKeys, err := listMySQLForeignKeys(ctx, database, sourceName)
 	if err != nil {
 		return fmt.Errorf("%w: inspect mysql foreign keys", ErrSQLConnectionUnavailable)
-	}
-	defer rows.Close()
-	foreignKeys := make([]mysqlForeignKey, 0)
-	indexes := make(map[string]int)
-	for rows.Next() {
-		if err := contextError(ctx); err != nil {
-			return err
-		}
-		var item mysqlForeignKey
-		var column, referencedColumn string
-		if err := rows.Scan(&item.tableName, &item.constraintName, &column, &item.referencedSchema, &item.referencedTable, &referencedColumn, &item.updateRule, &item.deleteRule); err != nil {
-			return fmt.Errorf("%w: read mysql foreign keys", ErrSQLConnectionUnavailable)
-		}
-		if !validMySQLReferenceRule(item.updateRule) || !validMySQLReferenceRule(item.deleteRule) {
-			return ErrSQLUnsupportedObject
-		}
-		key := item.tableName + "\x00" + item.constraintName
-		index, ok := indexes[key]
-		if !ok {
-			indexes[key] = len(foreignKeys)
-			foreignKeys = append(foreignKeys, item)
-			index = len(foreignKeys) - 1
-		}
-		foreignKeys[index].columns = append(foreignKeys[index].columns, column)
-		foreignKeys[index].referencedColumns = append(foreignKeys[index].referencedColumns, referencedColumn)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("%w: read mysql foreign keys", ErrSQLConnectionUnavailable)
 	}
 	for _, foreignKey := range foreignKeys {
 		if err := contextError(ctx); err != nil {
@@ -395,6 +364,91 @@ func (c *SQLCopier) copyMySQLForeignKeys(ctx context.Context, database *sql.DB, 
 		}
 	}
 	return nil
+}
+
+func verifyMySQLForeignKeys(ctx context.Context, database *sql.DB, sourceName, targetName string) error {
+	source, err := listMySQLForeignKeys(ctx, database, sourceName)
+	if err != nil {
+		return fmt.Errorf("%w: list mysql source foreign keys for verification", ErrSQLConnectionUnavailable)
+	}
+	target, err := listMySQLForeignKeys(ctx, database, targetName)
+	if err != nil {
+		return fmt.Errorf("%w: list mysql target foreign keys for verification", ErrSQLConnectionUnavailable)
+	}
+	if !sameMySQLForeignKeys(source, target, sourceName, targetName) {
+		return fmt.Errorf("%w: mysql foreign key structure changed during migration", ErrSQLDataVerification)
+	}
+	return nil
+}
+
+func listMySQLForeignKeys(ctx context.Context, database *sql.DB, schemaName string) ([]mysqlForeignKey, error) {
+	rows, err := database.QueryContext(ctx, "SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, rc.UPDATE_RULE, rc.DELETE_RULE FROM information_schema.KEY_COLUMN_USAGE kcu JOIN information_schema.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND tc.TABLE_NAME = kcu.TABLE_NAME AND tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.TABLE_NAME = kcu.TABLE_NAME WHERE tc.CONSTRAINT_SCHEMA = ? AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' AND kcu.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION", schemaName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	foreignKeys := make([]mysqlForeignKey, 0)
+	indexes := make(map[string]int)
+	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
+		var item mysqlForeignKey
+		var column, referencedColumn string
+		if err := rows.Scan(&item.tableName, &item.constraintName, &column, &item.referencedSchema, &item.referencedTable, &referencedColumn, &item.updateRule, &item.deleteRule); err != nil {
+			return nil, err
+		}
+		if !validMySQLReferenceRule(item.updateRule) || !validMySQLReferenceRule(item.deleteRule) {
+			return nil, ErrSQLUnsupportedObject
+		}
+		key := item.tableName + "\x00" + item.constraintName
+		index, ok := indexes[key]
+		if !ok {
+			indexes[key] = len(foreignKeys)
+			foreignKeys = append(foreignKeys, item)
+			index = len(foreignKeys) - 1
+		}
+		foreignKeys[index].columns = append(foreignKeys[index].columns, column)
+		foreignKeys[index].referencedColumns = append(foreignKeys[index].referencedColumns, referencedColumn)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return foreignKeys, nil
+}
+
+func sameMySQLForeignKeys(source, target []mysqlForeignKey, sourceName, targetName string) bool {
+	if len(source) != len(target) {
+		return false
+	}
+	sourceSignatures := make([]string, len(source))
+	for index, item := range source {
+		sourceSignatures[index] = mysqlForeignKeySignature(item, sourceName, targetName)
+	}
+	targetSignatures := make([]string, len(target))
+	for index, item := range target {
+		targetSignatures[index] = mysqlForeignKeySignature(item, sourceName, targetName)
+	}
+	sort.Strings(sourceSignatures)
+	sort.Strings(targetSignatures)
+	return sameStringSet(sourceSignatures, targetSignatures)
+}
+
+func mysqlForeignKeySignature(item mysqlForeignKey, sourceName, targetName string) string {
+	referencedSchema := item.referencedSchema
+	if referencedSchema == sourceName {
+		referencedSchema = targetName
+	}
+	return strings.Join([]string{
+		item.tableName,
+		item.constraintName,
+		strings.Join(item.columns, "\x00"),
+		referencedSchema,
+		item.referencedTable,
+		strings.Join(item.referencedColumns, "\x00"),
+		strings.ToUpper(strings.TrimSpace(item.updateRule)),
+		strings.ToUpper(strings.TrimSpace(item.deleteRule)),
+	}, "\x00")
 }
 
 func validMySQLReferenceRule(value string) bool {
@@ -478,10 +532,21 @@ func (c *SQLCopier) verifyPostgreSQLClone(ctx context.Context, source, target co
 	if err != nil {
 		return fmt.Errorf("%w: list postgresql target tables", ErrSQLConnectionUnavailable)
 	}
-	if len(tables) != len(targetTables) {
-		return fmt.Errorf("%w: postgresql table count changed during migration", ErrSQLDataVerification)
+	if !samePostgreSQLTables(tables, targetTables) {
+		return fmt.Errorf("%w: postgresql table structure changed during migration", ErrSQLDataVerification)
 	}
 	for _, table := range tables {
+		sourceColumns, err := listPostgreSQLColumns(ctx, sourceDB, table)
+		if err != nil {
+			return fmt.Errorf("%w: list postgresql source columns", ErrSQLConnectionUnavailable)
+		}
+		targetColumns, err := listPostgreSQLColumns(ctx, targetDB, table)
+		if err != nil {
+			return fmt.Errorf("%w: list postgresql target columns", ErrSQLConnectionUnavailable)
+		}
+		if !sameStringSet(sourceColumns, targetColumns) {
+			return fmt.Errorf("%w: postgresql table %s columns changed during migration", ErrSQLDataVerification, table.name)
+		}
 		sourceCount, err := countRows(ctx, sourceDB, quotePostgreSQLIdentifier(table.schema)+"."+quotePostgreSQLIdentifier(table.name))
 		if err != nil {
 			return fmt.Errorf("%w: count postgresql source rows", ErrSQLConnectionUnavailable)
@@ -495,6 +560,162 @@ func (c *SQLCopier) verifyPostgreSQLClone(ctx context.Context, source, target co
 		}
 	}
 	return nil
+}
+
+func validateSQLCopyRequest(source, target config.DatabaseConfig) error {
+	source = config.NormalizeDatabaseConfig(source)
+	target = config.NormalizeDatabaseConfig(target)
+	if source.Type != target.Type ||
+		(source.Type != config.DatabaseTypeMySQL && source.Type != config.DatabaseTypePostgreSQL) {
+		return ErrUnsupportedDatabase
+	}
+	if err := config.ValidateDatabaseConfig(source); err != nil {
+		return ErrSourceDatabase
+	}
+	if err := config.ValidateDatabaseConfig(target); err != nil {
+		return ErrInvalidTargetName
+	}
+	if !validStructuredDatabaseName(source.Name) {
+		return ErrSourceDatabase
+	}
+	if !validStructuredDatabaseName(target.Name) {
+		return ErrInvalidTargetName
+	}
+	if source.Name == target.Name ||
+		!sameStructuredConnection(source, target) {
+		return ErrImmutableSetting
+	}
+	return nil
+}
+
+func verifyMySQLTableStructure(ctx context.Context, database *sql.DB, sourceName, targetName string, tableNames []string) error {
+	sourceTables, err := listMySQLTables(ctx, database, sourceName)
+	if err != nil {
+		return fmt.Errorf("%w: list mysql source tables for verification", ErrSQLConnectionUnavailable)
+	}
+	targetTables, err := listMySQLTables(ctx, database, targetName)
+	if err != nil {
+		return fmt.Errorf("%w: list mysql target tables for verification", ErrSQLConnectionUnavailable)
+	}
+	if !sameStringSet(sourceTables, targetTables) || !sameStringSet(sourceTables, tableNames) {
+		return fmt.Errorf("%w: mysql table structure changed during migration", ErrSQLDataVerification)
+	}
+	for _, tableName := range sourceTables {
+		sourceColumns, err := listMySQLColumns(ctx, database, sourceName, tableName)
+		if err != nil {
+			return fmt.Errorf("%w: list mysql source columns", ErrSQLConnectionUnavailable)
+		}
+		targetColumns, err := listMySQLColumns(ctx, database, targetName, tableName)
+		if err != nil {
+			return fmt.Errorf("%w: list mysql target columns", ErrSQLConnectionUnavailable)
+		}
+		if !sameStringSet(sourceColumns, targetColumns) {
+			return fmt.Errorf("%w: mysql table %s columns changed during migration", ErrSQLDataVerification, tableName)
+		}
+	}
+	return nil
+}
+
+func listMySQLTables(ctx context.Context, database *sql.DB, databaseName string) ([]string, error) {
+	rows, err := database.QueryContext(ctx, "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME", databaseName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]string, 0)
+	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		result = append(result, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func listMySQLColumns(ctx context.Context, database *sql.DB, databaseName, tableName string) ([]string, error) {
+	rows, err := database.QueryContext(ctx, "SELECT ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COALESCE(COLUMN_DEFAULT, ''), EXTRA, COLUMN_KEY FROM information_schema.columns WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", databaseName, tableName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]string, 0)
+	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
+		var ordinal int
+		var name, columnType, nullable, defaultValue, extra, key string
+		if err := rows.Scan(&ordinal, &name, &columnType, &nullable, &defaultValue, &extra, &key); err != nil {
+			return nil, err
+		}
+		result = append(result, fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", ordinal, name, columnType, nullable, defaultValue, extra, key))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func listPostgreSQLColumns(ctx context.Context, database *sql.DB, table postgreSQLTable) ([]string, error) {
+	rows, err := database.QueryContext(ctx, "SELECT ordinal_position, column_name, data_type, udt_name, is_nullable, COALESCE(column_default, ''), COALESCE(character_maximum_length, -1), COALESCE(numeric_precision, -1), COALESCE(numeric_scale, -1) FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position", table.schema, table.name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]string, 0)
+	for rows.Next() {
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
+		var ordinal, characterLength, precision, scale int
+		var name, dataType, udtName, nullable, defaultValue string
+		if err := rows.Scan(&ordinal, &name, &dataType, &udtName, &nullable, &defaultValue, &characterLength, &precision, &scale); err != nil {
+			return nil, err
+		}
+		result = append(result, fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%d", ordinal, name, dataType, udtName, nullable, defaultValue, characterLength, precision, scale))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+func samePostgreSQLTables(source, target []postgreSQLTable) bool {
+	if len(source) != len(target) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(source))
+	for _, table := range source {
+		seen[table.schema+"\x00"+table.name] = struct{}{}
+	}
+	for _, table := range target {
+		if _, ok := seen[table.schema+"\x00"+table.name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStringSet(source, target []string) bool {
+	if len(source) != len(target) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(source))
+	for _, value := range source {
+		seen[value] = struct{}{}
+	}
+	for _, value := range target {
+		if _, ok := seen[value]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 type postgreSQLTable struct {

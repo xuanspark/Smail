@@ -44,7 +44,10 @@ func TestSQLCopierRejectsNilDatabaseWithoutPanicking(t *testing.T) {
 	copier := NewSQLCopier(func(context.Context, config.DatabaseConfig, string) (*sql.DB, error) {
 		return nil, nil
 	})
-	if err := copier.Copy(context.Background(), testDatabase(t), testDatabase(t)); !errors.Is(err, ErrSQLConnectionUnavailable) {
+	source := testDatabase(t)
+	target := source
+	target.Name = "smail_next"
+	if err := copier.Copy(context.Background(), source, target); !errors.Is(err, ErrSQLConnectionUnavailable) {
 		t.Fatalf("nil admin database error = %v, want connection unavailable", err)
 	}
 }
@@ -145,6 +148,78 @@ func TestStructuredDatabaseNameValidation(t *testing.T) {
 	}
 }
 
+func TestValidateSQLCopyRequestRejectsUnsafeOrCrossConnectionTargets(t *testing.T) {
+	source := testDatabase(t)
+	validTarget := source
+	validTarget.Name = "smail_next"
+	if err := validateSQLCopyRequest(source, validTarget); err != nil {
+		t.Fatalf("valid copy request rejected: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*config.DatabaseConfig, *config.DatabaseConfig)
+		want   error
+	}{
+		{
+			name: "same database",
+			mutate: func(_, target *config.DatabaseConfig) {
+				target.Name = "smail"
+			},
+			want: ErrImmutableSetting,
+		},
+		{
+			name: "unsafe target name",
+			mutate: func(_, target *config.DatabaseConfig) {
+				target.Name = "smail;drop"
+			},
+			want: ErrInvalidTargetName,
+		},
+		{
+			name: "different host",
+			mutate: func(_, target *config.DatabaseConfig) {
+				target.Host = "other.internal"
+			},
+			want: ErrImmutableSetting,
+		},
+		{
+			name: "unsupported type",
+			mutate: func(_, target *config.DatabaseConfig) {
+				target.Type = config.DatabaseTypeSQLite
+			},
+			want: ErrUnsupportedDatabase,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := validTarget
+			test.mutate(&source, &candidate)
+			if err := validateSQLCopyRequest(source, candidate); !errors.Is(err, test.want) {
+				t.Fatalf("validation error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestStructuredTableComparisonsRequireExactSets(t *testing.T) {
+	if !sameStringSet([]string{"users", "messages"}, []string{"messages", "users"}) {
+		t.Fatal("same string set rejected equal unordered values")
+	}
+	if sameStringSet([]string{"users"}, []string{"users", "messages"}) {
+		t.Fatal("same string set accepted different lengths")
+	}
+	if sameStringSet([]string{"users"}, []string{"accounts"}) {
+		t.Fatal("same string set accepted different values")
+	}
+
+	source := []postgreSQLTable{{schema: "public", name: "messages"}}
+	if !samePostgreSQLTables(source, []postgreSQLTable{{schema: "public", name: "messages"}}) {
+		t.Fatal("same postgres table set rejected equal values")
+	}
+	if samePostgreSQLTables(source, []postgreSQLTable{{schema: "archive", name: "messages"}}) {
+		t.Fatal("same postgres table set accepted different schemas")
+	}
+}
 func TestDatabaseExecutorRoutesByDatabaseType(t *testing.T) {
 	var sqliteCalled, structuredCalled bool
 	sqlite := runnerFunc(func(context.Context, Plan, func(Status) error) error {
@@ -341,5 +416,114 @@ func TestMySQLReferenceRulesAndIdentifiersAreRestrictedSafely(t *testing.T) {
 	}
 	if got := strings.Join(quoteMySQLIdentifiers([]string{"user", "tenant"}), ", "); got != "`user`, `tenant`" {
 		t.Fatalf("quoted mysql identifiers = %q", got)
+	}
+}
+
+func TestMySQLForeignKeyComparisonsNormalizeDatabaseReferences(t *testing.T) {
+	source := []mysqlForeignKey{
+		{
+			tableName:         "messages",
+			constraintName:    "fk_messages_user",
+			columns:           []string{"user_id"},
+			referencedSchema:  "smail",
+			referencedTable:   "users",
+			referencedColumns: []string{"id"},
+			updateRule:        "NO ACTION",
+			deleteRule:        "CASCADE",
+		},
+		{
+			tableName:         "user_aliases",
+			constraintName:    "fk_aliases_user",
+			columns:           []string{"user_id", "tenant_id"},
+			referencedSchema:  "directory",
+			referencedTable:   "users",
+			referencedColumns: []string{"id", "tenant_id"},
+			updateRule:        "RESTRICT",
+			deleteRule:        "SET NULL",
+		},
+	}
+	target := []mysqlForeignKey{
+		source[1],
+		{
+			tableName:         "messages",
+			constraintName:    "fk_messages_user",
+			columns:           []string{"user_id"},
+			referencedSchema:  "smail_next",
+			referencedTable:   "users",
+			referencedColumns: []string{"id"},
+			updateRule:        "no action",
+			deleteRule:        "cascade",
+		},
+	}
+	if !sameMySQLForeignKeys(source, target, "smail", "smail_next") {
+		t.Fatal("foreign key comparison rejected equivalent internal and external references")
+	}
+}
+
+func TestMySQLForeignKeyComparisonsRejectStructuralDifferences(t *testing.T) {
+	base := []mysqlForeignKey{{
+		tableName:         "messages",
+		constraintName:    "fk_messages_user",
+		columns:           []string{"user_id"},
+		referencedSchema:  "smail_next",
+		referencedTable:   "users",
+		referencedColumns: []string{"id"},
+		updateRule:        "NO ACTION",
+		deleteRule:        "CASCADE",
+	}}
+	tests := []struct {
+		name   string
+		mutate func(*mysqlForeignKey)
+	}{
+		{
+			name: "column order",
+			mutate: func(value *mysqlForeignKey) {
+				value.columns = []string{"tenant_id"}
+			},
+		},
+		{
+			name: "referenced table",
+			mutate: func(value *mysqlForeignKey) {
+				value.referencedTable = "accounts"
+			},
+		},
+		{
+			name: "update rule",
+			mutate: func(value *mysqlForeignKey) {
+				value.updateRule = "CASCADE"
+			},
+		},
+		{
+			name: "delete rule",
+			mutate: func(value *mysqlForeignKey) {
+				value.deleteRule = "RESTRICT"
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := base[0]
+			test.mutate(&candidate)
+			if sameMySQLForeignKeys(base, []mysqlForeignKey{candidate}, "smail", "smail_next") {
+				t.Fatalf("foreign key comparison accepted %s difference", test.name)
+			}
+		})
+	}
+
+	if sameMySQLForeignKeys(base, nil, "smail", "smail_next") {
+		t.Fatal("foreign key comparison accepted a missing foreign key")
+	}
+	extra := append(append([]mysqlForeignKey(nil), base...), mysqlForeignKey{
+		tableName:         "audit",
+		constraintName:    "fk_audit_user",
+		columns:           []string{"user_id"},
+		referencedSchema:  "smail_next",
+		referencedTable:   "users",
+		referencedColumns: []string{"id"},
+		updateRule:        "NO ACTION",
+		deleteRule:        "CASCADE",
+	})
+	if sameMySQLForeignKeys(base, extra, "smail", "smail_next") {
+		t.Fatal("foreign key comparison accepted an extra foreign key")
 	}
 }
