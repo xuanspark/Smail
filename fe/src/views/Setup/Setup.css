@@ -1346,3 +1346,49 @@
     max-width: none;
   }
 }
+/* 桌面端提高文字识别度，但不额外增加模块间距。 */
+@media (min-width: 761px) {
+  #main.setup-page #status :deep(.el-step__title) {
+    font-size: 14px;
+  }
+
+  #main.setup-page #status :deep(.el-step__icon) {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  #main.setup-page .desc h2 {
+    font-size: clamp(28px, 2.4vw, 36px);
+  }
+
+  #main.setup-page .desc > div {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  #main.setup-page :deep(.el-form-item__label) {
+    font-size: 13px;
+  }
+
+  #main.setup-page :deep(.el-input__inner),
+  #main.setup-page :deep(.el-select__selected-item) {
+    font-size: 14px;
+  }
+
+  #main.setup-page .database-hint,
+  #main.setup-page .database-field-tip,
+  #main.setup-page .database-retry-tip,
+  #main.setup-page .password-rule-tip,
+  #main.setup-page .ssl-storage-desc,
+  #main.setup-page .ssl-manual-desc,
+  #main.setup-page .ssl-dns-intro,
+  #main.setup-page .ssl-storage-path {
+    font-size: 12px;
+  }
+
+  #main.setup-page #previous,
+  #main.setup-page #next {
+    font-size: 14px;
+  }
+}
