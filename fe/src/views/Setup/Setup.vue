@@ -1,5 +1,9 @@
 <template>
-<div id="main" :class="{ 'dns-page': active === 4 }">
+<div id="main" :class="['setup-page', {
+  'database-page': active === 1,
+  'dns-page': active === 4,
+  'ssl-page': active === 5
+}]">
     <el-steps :active="active" align-center finish-status="success" id="status">
       <el-step :title="lang.welcome"/>
       <el-step :title="lang.setDatabase"/>
@@ -17,13 +21,13 @@
       </div>
     </div>
 
-    <div v-if="active === 1" class="ctn">
+    <div v-if="active === 1" class="ctn setup-form-panel">
       <div class="desc">
         <h2>{{ lang.select_db }}</h2>
         <div style="margin-top: 10px;">{{ lang.db_desc }}</div>
       </div>
       <div class="form database-form">
-        <el-form label-width="120px">
+        <el-form label-position="top">
           <el-form-item :label="lang.type">
             <el-select :placeholder="lang.db_select_ph" v-model="dbSettings.type"
                        :disabled="databaseLoading" @change="handleDbTypeChange">
@@ -55,20 +59,11 @@
                         autocomplete="username"></el-input>
             </el-form-item>
 
-            <div class="database-inline-fields">
-              <el-form-item :label="lang.db_host" class="database-host-field">
-                <el-input v-model="dbSettings.host" @input="clearDatabaseError"
-                          :disabled="databaseLoading"
-                          :placeholder="lang.db_host_ph"></el-input>
-              </el-form-item>
-
-              <el-form-item :label="lang.db_port" class="database-port-field">
-                <el-input v-model="dbSettings.port" @input="clearDatabaseError"
-                          :disabled="databaseLoading"
-                          :placeholder="lang.db_port_ph"
-                          inputmode="numeric"></el-input>
-              </el-form-item>
-            </div>
+            <el-form-item :label="lang.db_host">
+              <el-input v-model="dbSettings.host" @input="clearDatabaseError"
+                        :disabled="databaseLoading"
+                        :placeholder="lang.db_host_ph"></el-input>
+            </el-form-item>
 
             <el-form-item :label="lang.db_name">
               <el-input v-model="dbSettings.name" @input="clearDatabaseError"
@@ -104,7 +99,7 @@
         <h2>{{ lang.setAdminPassword }}</h2>
         <!-- <div style="margin-top: 10px;">{{ lang.domain_desc }}</div> -->
       </div>
-      <div class="form" style="width: 400px;">
+      <div class="form narrow-form">
         <el-form label-width="120px">
 
           <el-form-item :label="lang.admin_account">
@@ -142,7 +137,7 @@
         <h2>{{ lang.SetDomail }}</h2>
         <!-- <div style="margin-top: 10px;">{{ lang.domain_desc }}</div> -->
       </div>
-      <div class="form" style="width: 400px;">
+      <div class="form narrow-form">
         <el-form label-width="120px">
 
           <el-form-item :label="lang.smtp_domain">
@@ -251,13 +246,13 @@
       <span>{{ lang.autoSSLWarn }}</span>
     </div>
 
-    <div v-if="active === 5" class="ctn">
+    <div v-if="active === 5" class="ctn setup-form-panel">
       <div class="desc">
         <h2>{{ lang.setSSL }}</h2>
         <div style="margin-top: 10px;">{{ lang.setSSL }}</div>
       </div>
       <div class="form ssl-form">
-        <el-form label-width="140px">
+        <el-form label-position="top">
           <el-form-item :label="lang.type">
             <el-select class="ssl-type-select" :placeholder="lang.ssl_auto" v-model="sslSettings.type" :disabled="dnsChecking">
               <el-option :label="lang.ssl_auto" value="0"/>

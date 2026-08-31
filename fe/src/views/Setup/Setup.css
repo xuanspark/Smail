@@ -703,3 +703,342 @@
     opacity: 1;
   }
 }
+
+/* 初始化向导统一使用左对齐布局，并保证内容在低高度窗口中可以完整访问。 */
+.setup-page {
+  box-sizing: border-box;
+  min-height: 100%;
+  height: auto !important;
+  overflow-x: hidden;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.setup-page .ctn {
+  justify-content: flex-start;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.setup-page .desc {
+  flex: 0 0 clamp(240px, 28%, 360px);
+  padding-right: 0;
+  text-align: left;
+}
+
+.setup-page .desc h2 {
+  margin: 0;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.2;
+}
+
+.setup-page .form {
+  margin: 0;
+  text-align: left;
+}
+
+.setup-page :deep(.el-form-item__label) {
+  justify-content: flex-start;
+  padding: 0 0 8px;
+  color: var(--pm-text-primary);
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.setup-page :deep(.el-input__wrapper),
+.setup-page :deep(.el-select__wrapper) {
+  min-height: 46px;
+}
+
+.setup-page :deep(.el-input__inner),
+.setup-page :deep(.el-select__selected-item) {
+  font-size: 16px;
+}
+
+.setup-form-panel {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.setup-form-panel .desc {
+  flex: none;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.database-page .database-form {
+  flex: none;
+  width: min(100%, 960px);
+  min-width: 0;
+  max-width: 960px;
+}
+
+.database-page .database-form .el-form-item {
+  margin-bottom: 20px;
+}
+
+.database-page .mysql-fields {
+  padding: 20px 22px 4px;
+}
+
+.database-page .database-hint {
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.database-page .database-inline-fields {
+  display: block;
+}
+
+.database-page .database-retry-tip {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.database-page .database-field-tip,
+.database-page .password-rule-tip {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.narrow-form {
+  width: min(100%, 620px) !important;
+  min-width: 0;
+}
+
+.ssl-page .ssl-form {
+  flex: none;
+  width: min(100%, 1040px);
+  max-width: 1040px;
+}
+
+.ssl-page .ssl-storage-card {
+  margin-left: 0;
+  padding: 18px 20px;
+}
+
+.ssl-page .ssl-storage-title {
+  font-size: 16px;
+}
+
+.ssl-page .ssl-storage-desc,
+.ssl-page .ssl-manual-desc,
+.ssl-page .ssl-dns-intro,
+.ssl-page .ssl-storage-path {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.ssl-page .ssl-storage-path {
+  margin-top: 8px;
+}
+
+.ssl-page .ssl-port-warning {
+  flex-wrap: wrap;
+  min-height: 46px;
+  padding: 10px 18px;
+  white-space: normal;
+}
+
+.ssl-page .ssl-port-warning span {
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+#main.dns-page {
+  box-sizing: border-box;
+  gap: 14px;
+  padding: 18px 24px 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.dns-page #status {
+  flex: none;
+  padding: 12px 18px;
+}
+
+.dns-page .dns-panel {
+  flex: none;
+  min-height: auto;
+  gap: 16px;
+  padding: 22px 24px;
+  text-align: left;
+}
+
+.dns-page .dns-header {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 14px;
+}
+
+.dns-page .dns-heading {
+  flex: none;
+  width: 100%;
+}
+
+.dns-page .dns-eyebrow {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.dns-page .dns-heading h2 {
+  font-size: clamp(34px, 3.4vw, 48px);
+  line-height: 1.15;
+  text-align: left;
+}
+
+.dns-page .dns-description {
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.dns-page .dns-header-notes {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.dns-page .dns-header-note {
+  max-width: none;
+  min-height: 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.dns-page .dns-domain-list {
+  gap: 12px;
+}
+
+.dns-page .dns-domain-card {
+  width: 100%;
+}
+
+.dns-page .dns-domain-header {
+  align-items: center;
+  padding: 14px 18px;
+  text-align: left;
+}
+
+.dns-page .dns-domain-header h3 {
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.dns-page .dns-domain-header .dns-domain-suffix {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.dns-page .dns-domain-count {
+  min-height: 32px;
+  font-size: 14px;
+}
+
+.dns-page .dns-table {
+  table-layout: fixed;
+}
+
+.dns-page .dns-table :deep(.el-table__header-wrapper .cell) {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.dns-page .dns-table :deep(.el-table__cell) {
+  padding: 10px 0;
+  vertical-align: top;
+}
+
+.dns-page .dns-table :deep(.cell) {
+  min-height: 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  overflow: visible;
+}
+
+.dns-page .dns-host,
+.dns-page .dns-value {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.dns-page .dns-value-cell {
+  gap: 8px;
+  padding-right: 0;
+}
+
+.dns-page .dns-value-long {
+  padding: 7px 9px;
+}
+
+.dns-page .dns-copy-button {
+  position: static;
+  flex: none;
+  opacity: 1;
+  margin-top: 0;
+  font-size: 14px;
+}
+
+.dns-page .dns-ttl {
+  font-size: 14px;
+}
+
+.dns-page .setup-actions {
+  flex: none;
+  margin-top: 0;
+  padding: 0 2px 4px;
+}
+
+@media (max-width: 1080px) {
+  .dns-page .dns-header-notes {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 761px) {
+  #main.dns-page {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+
+  .dns-page .dns-panel {
+    gap: 10px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .dns-page .dns-header-notes {
+    gap: 8px;
+  }
+
+  .dns-page .dns-header-note {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .dns-page .dns-domain-header {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .dns-page .dns-table :deep(.el-table__cell) {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+}
