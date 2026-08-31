@@ -291,12 +291,12 @@
 
 
           <el-form-item :label="lang.ssl_key_path" v-if="sslSettings.type === '1'">
-            <el-input placeholder="./config/ssl/private.key" v-model="sslSettings.key_path"></el-input>
+            <el-input placeholder="/ssl/example.com/example.com.key" v-model="sslSettings.key_path"></el-input>
             <div class="ssl-manual-desc">{{ lang.ssl_manual_key_desc }}</div>
           </el-form-item>
 
           <el-form-item :label="lang.ssl_crt_path" v-if="sslSettings.type === '1'">
-            <el-input placeholder="./config/ssl/public.crt" v-model="sslSettings.crt_path"></el-input>
+            <el-input placeholder="/ssl/example.com/fullchain.pem" v-model="sslSettings.crt_path"></el-input>
             <div class="ssl-manual-desc">{{ lang.ssl_manual_crt_desc }}</div>
           </el-form-item>
         </el-form>

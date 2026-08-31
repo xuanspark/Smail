@@ -81,6 +81,9 @@ func writeSetupError(ctx *context.Context, w http.ResponseWriter, err error) {
 	log.WithContext(ctx).WithError(err).Errorf("setup request failed: %v", err)
 	message := setup.DatabaseSetupErrorMessage(err)
 	if message == "" {
+		message = ssl.UserCertificateErrorMessage(err)
+	}
+	if message == "" {
 		message = "\u521d\u59cb\u5316\u64cd\u4f5c\u5931\u8d25"
 	}
 	response.NewErrorResponse(response.ServerError, message, "").FPrint(w)

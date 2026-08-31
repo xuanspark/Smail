@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	stderrors "errors"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/services/setup"
 	"git.pcux.cn/xuans/Smail/signal"
@@ -17,6 +18,7 @@ import (
 	"github.com/spf13/cast"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +31,29 @@ type MyUser struct {
 	Email        string
 	Registration *registration.Resource
 	key          crypto.PrivateKey
+}
+
+var externalUserCertificateRoot = filepath.Join(string(os.PathSeparator), "ssl")
+
+type userCertificateError struct {
+	message string
+}
+
+func (e *userCertificateError) Error() string {
+	return e.message
+}
+
+func newUserCertificateError(message string) error {
+	return &userCertificateError{message: message}
+}
+
+// UserCertificateErrorMessage 只返回可以安全展示给初始化页面的证书错误。
+func UserCertificateErrorMessage(err error) string {
+	var certificateError *userCertificateError
+	if stderrors.As(err, &certificateError) {
+		return certificateError.message
+	}
+	return ""
 }
 
 func (u *MyUser) GetEmail() string {
@@ -72,9 +97,6 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		}
 	}
 	if cfg.SSLType == config.SSLTypeUser {
-		if isAbsoluteUserCertificatePath(priKey) || isAbsoluteUserCertificatePath(crtKey) {
-			return errors.New("用户证书路径必须使用受控相对路径")
-		}
 		privatePath, publicPath, err := validateUserCertificatePaths(priKey, crtKey)
 		if err != nil {
 			return err
@@ -132,10 +154,14 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 
 func isAbsoluteUserCertificatePath(value string) bool {
 	value = strings.TrimSpace(value)
-	if value == "" || filepath.IsAbs(value) || filepath.VolumeName(value) != "" {
+	if value == "" {
+		return false
+	}
+	if filepath.IsAbs(value) {
 		return true
 	}
-	return strings.HasPrefix(value, `\\`) || strings.HasPrefix(value, "//")
+	volume := filepath.VolumeName(value)
+	return volume != "" || strings.HasPrefix(value, `\\`) || strings.HasPrefix(value, "//")
 }
 
 func validateUserCertificatePaths(privatePath, publicPath string) (string, string, error) {
@@ -143,86 +169,123 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 	if err != nil {
 		return "", "", err
 	}
-	base := filepath.Join(rootPath, "config", "ssl")
-	baseRelative, err := filepath.Rel(rootPath, base)
+	managedRoot := filepath.Join(rootPath, "config", "ssl")
+	externalRoot, err := filepath.Abs(filepath.Clean(externalUserCertificateRoot))
 	if err != nil {
 		return "", "", err
 	}
-	workspaceRoot, err := os.OpenRoot(rootPath)
-	if err != nil {
-		return "", "", errors.Wrap(err)
-	}
-	defer workspaceRoot.Close()
-	baseInfo, err := workspaceRoot.Lstat(baseRelative)
-	if err != nil || baseInfo.Mode()&os.ModeSymlink != 0 || !baseInfo.IsDir() {
-		return "", "", errors.New("SSL directory is invalid")
-	}
-	sslRoot, err := workspaceRoot.OpenRoot(baseRelative)
-	if err != nil {
-		return "", "", errors.New("SSL directory is invalid")
-	}
-	defer sslRoot.Close()
 
-	resolve := func(value string) (string, string, []byte, error) {
+	resolve := func(value string) (string, []byte, error) {
 		if strings.TrimSpace(value) == "" {
-			return "", "", nil, errors.New("SSL path is required")
+			return "", nil, newUserCertificateError("请填写 SSL 证书和私钥路径")
 		}
-		path := value
-		if !filepath.IsAbs(path) {
+		path := strings.TrimSpace(value)
+		allowedRoots := []string{managedRoot}
+		if isAbsoluteUserCertificatePath(path) {
+			if filepath.VolumeName(path) != "" && !filepath.IsAbs(path) {
+				return "", nil, newUserCertificateError("SSL 路径必须是完整的绝对路径")
+			}
+			allowedRoots = append(allowedRoots, externalRoot)
+		} else {
 			path = filepath.Join(rootPath, path)
 		}
 		path, err = filepath.Abs(filepath.Clean(path))
 		if err != nil {
-			return "", "", nil, err
+			return "", nil, err
 		}
-		relativePath, err := filepath.Rel(base, path)
-		if err != nil || relativePath == "." || filepath.IsAbs(relativePath) || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(os.PathSeparator)) {
-			return "", "", nil, errors.New("SSL path must stay inside config/ssl")
+
+		var selectedRoot string
+		var relativePath string
+		for _, allowedRoot := range allowedRoots {
+			candidate, relativeErr := filepath.Rel(allowedRoot, path)
+			if relativeErr == nil && candidate != "." && !filepath.IsAbs(candidate) && candidate != ".." && !strings.HasPrefix(candidate, ".."+string(os.PathSeparator)) {
+				selectedRoot = allowedRoot
+				relativePath = candidate
+				break
+			}
 		}
+		if selectedRoot == "" {
+			return "", nil, newUserCertificateError("SSL 文件仅允许放在 ./config/ssl 或 /ssl/域名 目录中")
+		}
+		if filepath.Clean(selectedRoot) == filepath.Clean(externalRoot) {
+			parts := strings.Split(filepath.Clean(relativePath), string(os.PathSeparator))
+			if len(parts) < 2 || strings.TrimSpace(parts[0]) == "" {
+				return "", nil, newUserCertificateError("外部 SSL 文件必须放在 /ssl/域名 目录中")
+			}
+			selectedRoot = filepath.Join(externalRoot, parts[0])
+			relativePath = filepath.Join(parts[1:]...)
+		}
+
+		rootInfo, err := os.Lstat(selectedRoot)
+		if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+			return "", nil, newUserCertificateError("SSL 证书目录不存在或不可访问")
+		}
+		sslRoot, err := os.OpenRoot(selectedRoot)
+		if err != nil {
+			return "", nil, newUserCertificateError("SSL 证书目录不可访问")
+		}
+		defer sslRoot.Close()
+
+		currentPath := ""
+		for _, part := range strings.Split(filepath.Clean(relativePath), string(os.PathSeparator)) {
+			currentPath = filepath.Join(currentPath, part)
+			info, statErr := sslRoot.Lstat(currentPath)
+			if statErr != nil {
+				return "", nil, newUserCertificateError("SSL 文件不存在或无权读取")
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return "", nil, newUserCertificateError("SSL 路径不能包含符号链接")
+			}
+		}
+
 		info, err := sslRoot.Lstat(relativePath)
 		if err != nil {
-			return "", "", nil, errors.Wrap(err)
+			return "", nil, newUserCertificateError("SSL 文件不存在或无权读取")
 		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
-			return "", "", nil, errors.New("SSL file is invalid")
+		if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
+			return "", nil, newUserCertificateError("SSL 文件无效或大小超过限制")
 		}
 		content, err := sslRoot.ReadFile(relativePath)
 		if err != nil || len(content) == 0 || len(content) > 1<<20 {
-			return "", "", nil, errors.New("SSL file is invalid")
+			return "", nil, newUserCertificateError("SSL 文件读取失败或内容无效")
 		}
-		return filepath.Join(base, relativePath), relativePath, content, nil
+		return filepath.Join(selectedRoot, relativePath), content, nil
 	}
 
-	privatePath, privateRelative, privatePEM, err := resolve(privatePath)
+	privatePath, privatePEM, err := resolve(privatePath)
 	if err != nil {
 		return "", "", err
 	}
-	publicPath, _, publicPEM, err := resolve(publicPath)
+	publicPath, publicPEM, err := resolve(publicPath)
 	if err != nil {
 		return "", "", err
 	}
 	keyPair, err := tls.X509KeyPair(publicPEM, privatePEM)
 	if err != nil || len(keyPair.Certificate) == 0 {
-		return "", "", errors.New("certificate and private key do not match")
+		return "", "", newUserCertificateError("SSL 证书与私钥不匹配")
 	}
 	certificate, err := x509.ParseCertificate(keyPair.Certificate[0])
 	if err != nil || time.Now().Before(certificate.NotBefore) || !time.Now().Before(certificate.NotAfter) {
-		return "", "", errors.New("certificate is invalid")
+		return "", "", newUserCertificateError("SSL 证书无效、尚未生效或已经过期")
 	}
 	switch publicKey := certificate.PublicKey.(type) {
 	case *rsa.PublicKey:
 		if publicKey.N.BitLen() < 2048 {
-			return "", "", errors.New("certificate key is too weak")
+			return "", "", newUserCertificateError("SSL 证书密钥强度不能低于 2048 位")
 		}
 	case *ecdsa.PublicKey:
 		if publicKey.Curve == nil || publicKey.Curve.Params().BitSize < 256 {
-			return "", "", errors.New("certificate key is too weak")
+			return "", "", newUserCertificateError("SSL 证书密钥强度不能低于 256 位 ECDSA")
 		}
 	default:
-		return "", "", errors.New("certificate key type is unsupported")
+		return "", "", newUserCertificateError("不支持当前 SSL 证书密钥类型")
 	}
-	if err := sslRoot.Chmod(privateRelative, 0600); err != nil {
-		return "", "", errors.New("private key permissions are invalid")
+	privateInfo, err := os.Stat(privatePath)
+	if err != nil {
+		return "", "", newUserCertificateError("SSL 私钥不存在或无权读取")
+	}
+	if runtime.GOOS != "windows" && privateInfo.Mode().Perm()&0007 != 0 {
+		return "", "", newUserCertificateError("SSL 私钥不能允许其他用户读取或写入")
 	}
 	return privatePath, publicPath, nil
 }

@@ -64,8 +64,8 @@ func TestIsAbsoluteUserCertificatePathRejectsWindowsPaths(t *testing.T) {
 }
 
 func TestIsAbsoluteUserCertificatePathRejectsEmptyAndAcceptsRelative(t *testing.T) {
-	if !isAbsoluteUserCertificatePath("") {
-		t.Fatal("empty path must be rejected")
+	if isAbsoluteUserCertificatePath("") {
+		t.Fatal("empty path must not be treated as absolute")
 	}
 	if isAbsoluteUserCertificatePath(`config/ssl/upload/private.key`) {
 		t.Fatal("controlled relative path must not be treated as absolute")
@@ -100,13 +100,44 @@ func TestApplyManagedSSLReferenceDoesNotPersistLegacyPaths(t *testing.T) {
 
 func TestValidateUserCertificatePaths(t *testing.T) {
 	oldRoot := config.ROOT_PATH
+	oldExternalRoot := externalUserCertificateRoot
 	root := t.TempDir()
+	externalRoot := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
-	t.Cleanup(func() { config.ROOT_PATH = oldRoot })
+	externalUserCertificateRoot = externalRoot
+	t.Cleanup(func() {
+		config.ROOT_PATH = oldRoot
+		externalUserCertificateRoot = oldExternalRoot
+	})
 
 	keyPath, certPath := writeTestCertificate(t, root, 2048)
 	if _, _, err := validateUserCertificatePaths(keyPath, certPath); err != nil {
 		t.Fatalf("valid certificate was rejected: %v", err)
+	}
+	externalSourceRoot := t.TempDir()
+	externalKey, externalCert := writeTestCertificate(t, externalSourceRoot, 2048)
+	externalDirectory := filepath.Join(externalRoot, "example.com")
+	if err := os.MkdirAll(externalDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	externalKeyTarget := filepath.Join(externalDirectory, "private.key")
+	externalCertTarget := filepath.Join(externalDirectory, "public.crt")
+	keyPEM, err := os.ReadFile(externalKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM, err := os.ReadFile(externalCert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(externalKeyTarget, keyPEM, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(externalCertTarget, certPEM, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := validateUserCertificatePaths(externalKeyTarget, externalCertTarget); err != nil {
+		t.Fatalf("external /ssl certificate was rejected: %v", err)
 	}
 	weakKey, weakCert := writeTestCertificate(t, root, 1024)
 	if _, _, err := validateUserCertificatePaths(weakKey, weakCert); err == nil {
