@@ -36,6 +36,11 @@ export default defineConfig(({ mode }) => {
       "/attachments": {
         target: backendUrl,
         changeOrigin: false
+      },
+      "/__smail_setup_bootstrap": {
+        target: backendUrl,
+        changeOrigin: false,
+        rewrite: () => "/"
       }
     }
   }

@@ -53,7 +53,7 @@ function isSetupRequest(config) {
     } catch (error) {
         path = rawUrl
     }
-    return path === '/api/setup' || path === '/api/v1/setup'
+    return path === '/api/setup' || path === '/api/v1/setup' || path === '/__smail_setup_bootstrap'
 }
 
 http.interceptors.response.use(async (response) => {

@@ -59,6 +59,7 @@ const lang = {
     "err_admin_pwd_length": "管理员密码长度必须为 8 到 12 个字节",
     "admin_pwd_desc": "请输入 8 到 12 个字节的管理员密码",
     "setup_failed": "初始化操作失败，请查看终端日志",
+    "setup_service_unavailable": "初始化服务未启动，请先启动 Smail 后端服务",
     "setOther": "其他设置",
     "welcome": "欢迎",
     "next": "下一步",

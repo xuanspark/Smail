@@ -14,7 +14,27 @@ import {http} from "@/utils/axios";
 
 import {buildFinalURL as buildSetupFinalURL, probeService} from './SetupNavigation.js'
 
-const setupRequest = (payload) => http.post("/api/v1/setup", payload).then((response) => {
+let setupBootstrapPromise = null
+
+const ensureSetupSession = () => {
+  if (!import.meta.env.DEV) {
+    return Promise.resolve()
+  }
+
+  if (!setupBootstrapPromise) {
+    setupBootstrapPromise = http.get("/__smail_setup_bootstrap").catch((error) => {
+      setupBootstrapPromise = null
+      if (error?.response?.status === 500 || !error?.response) {
+        throw new Error(lang.setup_service_unavailable)
+      }
+      throw error
+    })
+  }
+
+  return setupBootstrapPromise
+}
+
+const setupRequest = (payload) => ensureSetupSession().then(() => http.post("/api/v1/setup", payload)).then((response) => {
   if (!response || typeof response.errorNo !== "number") {
     throw new Error(lang.setup_failed)
   }
