@@ -1401,3 +1401,10 @@
     align-items: center;
   }
 }
+
+/* 欢迎页增加展示高度，保持其他步骤的紧凑布局。 */
+@media (min-width: 761px) {
+  #main.setup-page:not(.dns-page) .ctn:not(.setup-form-panel) {
+    min-height: clamp(280px, calc(23vh + 100px), 330px);
+  }
+}
