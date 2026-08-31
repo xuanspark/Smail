@@ -1444,9 +1444,14 @@
   }
 
   #main.setup-page.database-page .mysql-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(140px, 0.42fr);
     column-gap: 28px;
     row-gap: 8px;
     padding: 18px 22px 8px;
+  }
+
+  #main.setup-page.database-page .database-password-field {
+    grid-column: 2 / 4;
   }
 
   #main.setup-page.database-page .database-hint {
@@ -1463,5 +1468,11 @@
   #main.setup-page.database-page .database-retry-tip {
     margin: 2px 0 10px;
     line-height: 1.6;
+  }
+}
+
+@media (max-width: 760px) {
+  .database-page .database-password-field {
+    grid-column: auto;
   }
 }

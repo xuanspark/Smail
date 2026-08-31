@@ -52,26 +52,37 @@
             </div>
 
 
-            <el-form-item :label="lang.db_user">
+            <el-form-item class="database-user-field" :label="lang.db_user">
               <el-input v-model="dbSettings.user" @input="clearDatabaseError"
                         :disabled="databaseLoading"
                         :placeholder="dbSettings.type === 'mysql' ? lang.db_user_ph : lang.pg_user_ph"
                         autocomplete="username"></el-input>
             </el-form-item>
 
-            <el-form-item :label="lang.db_host">
+            <el-form-item class="database-host-field" :label="lang.db_host">
               <el-input v-model="dbSettings.host" @input="clearDatabaseError"
                         :disabled="databaseLoading"
                         :placeholder="lang.db_host_ph"></el-input>
             </el-form-item>
 
-            <el-form-item :label="lang.db_name">
+            <el-form-item class="database-port-field" :label="lang.db_port">
+              <el-input v-model="dbSettings.port" @input="clearDatabaseError"
+                        :disabled="databaseLoading"
+                        type="number"
+                        min="1"
+                        max="65535"
+                        step="1"
+                        inputmode="numeric"
+                        :placeholder="lang.db_port_ph"></el-input>
+            </el-form-item>
+
+            <el-form-item class="database-name-field" :label="lang.db_name">
               <el-input v-model="dbSettings.name" @input="clearDatabaseError"
                         :disabled="databaseLoading"
                         :placeholder="lang.db_name_ph"></el-input>
             </el-form-item>
 
-            <el-form-item :label="lang.db_password">
+            <el-form-item class="database-password-field" :label="lang.db_password">
               <el-input v-model="dbSettings.password" @input="clearDatabaseError"
                         :disabled="databaseLoading"
                         type="password"
