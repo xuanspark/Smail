@@ -103,11 +103,11 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		}
 		privatePEM, err := os.ReadFile(privatePath)
 		if err != nil {
-			return errors.New("读取 SSL 私钥失败")
+			return newUserCertificateError("SSL 私钥无法读取，请确认文件路径和 smail 用户权限")
 		}
 		publicPEM, err := os.ReadFile(publicPath)
 		if err != nil {
-			return errors.New("读取 SSL 证书失败")
+			return newUserCertificateError("SSL 证书无法读取，请确认文件路径和 smail 用户权限")
 		}
 		reference, err := config.ImportManagedSSL(config.ManagedSSLModeUpload, privatePEM, publicPEM, nil, sslDomains(cfg))
 		if err != nil {
@@ -220,16 +220,12 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 		if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
 			return "", nil, newUserCertificateError("SSL 证书目录不存在或不可访问")
 		}
-		sslRoot, err := os.OpenRoot(selectedRoot)
-		if err != nil {
-			return "", nil, newUserCertificateError("SSL 证书目录不可访问")
-		}
-		defer sslRoot.Close()
 
-		currentPath := ""
+		candidatePath := filepath.Join(selectedRoot, relativePath)
+		currentPath := selectedRoot
 		for _, part := range strings.Split(filepath.Clean(relativePath), string(os.PathSeparator)) {
 			currentPath = filepath.Join(currentPath, part)
-			info, statErr := sslRoot.Lstat(currentPath)
+			info, statErr := os.Lstat(currentPath)
 			if statErr != nil {
 				return "", nil, newUserCertificateError("SSL 文件不存在或无权读取")
 			}
@@ -238,14 +234,14 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 			}
 		}
 
-		info, err := sslRoot.Lstat(relativePath)
+		info, err := os.Lstat(candidatePath)
 		if err != nil {
 			return "", nil, newUserCertificateError("SSL 文件不存在或无权读取")
 		}
 		if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
 			return "", nil, newUserCertificateError("SSL 文件无效或大小超过限制")
 		}
-		content, err := sslRoot.ReadFile(relativePath)
+		content, err := os.ReadFile(candidatePath)
 		if err != nil || len(content) == 0 || len(content) > 1<<20 {
 			return "", nil, newUserCertificateError("SSL 文件读取失败或内容无效")
 		}
