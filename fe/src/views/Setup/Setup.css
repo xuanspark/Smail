@@ -714,6 +714,20 @@
   text-align: left;
 }
 
+.setup-page:not(.dns-page) {
+  gap: 12px;
+  padding: 16px 24px 14px;
+}
+
+.setup-page:not(.dns-page) #status {
+  padding: 12px 18px;
+}
+
+.setup-page:not(.dns-page) .ctn {
+  padding: 18px 22px;
+  gap: 18px;
+}
+
 .setup-page .ctn {
   justify-content: flex-start;
   align-items: flex-start;
@@ -728,7 +742,7 @@
 
 .setup-page .desc h2 {
   margin: 0;
-  font-size: clamp(30px, 3vw, 42px);
+  font-size: clamp(28px, 2.4vw, 36px);
   line-height: 1.2;
 }
 
@@ -739,21 +753,21 @@
 
 .setup-page :deep(.el-form-item__label) {
   justify-content: flex-start;
-  padding: 0 0 8px;
+  padding: 0 0 5px;
   color: var(--pm-text-primary);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
   text-align: left;
 }
 
 .setup-page :deep(.el-input__wrapper),
 .setup-page :deep(.el-select__wrapper) {
-  min-height: 46px;
+  min-height: 40px;
 }
 
 .setup-page :deep(.el-input__inner),
 .setup-page :deep(.el-select__selected-item) {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .setup-form-panel {
@@ -770,23 +784,23 @@
 
 .database-page .database-form {
   flex: none;
-  width: min(100%, 960px);
+  width: min(100%, 900px);
   min-width: 0;
-  max-width: 960px;
+  max-width: 900px;
 }
 
 .database-page .database-form .el-form-item {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .database-page .mysql-fields {
-  padding: 20px 22px 4px;
+  padding: 14px 18px 2px;
 }
 
 .database-page .database-hint {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .database-page .database-inline-fields {
@@ -794,15 +808,15 @@
 }
 
 .database-page .database-retry-tip {
-  margin: 0 0 12px;
-  font-size: 14px;
-  line-height: 1.6;
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .database-page .database-field-tip,
 .database-page .password-rule-tip {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .narrow-form {
@@ -818,7 +832,7 @@
 
 .ssl-page .ssl-storage-card {
   margin-left: 0;
-  padding: 18px 20px;
+  padding: 14px 18px;
 }
 
 .ssl-page .ssl-storage-title {
@@ -829,8 +843,8 @@
 .ssl-page .ssl-manual-desc,
 .ssl-page .ssl-dns-intro,
 .ssl-page .ssl-storage-path {
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .ssl-page .ssl-storage-path {
@@ -839,16 +853,16 @@
 
 .ssl-page .ssl-port-warning {
   flex-wrap: wrap;
-  min-height: 46px;
-  padding: 10px 18px;
+  min-height: 40px;
+  padding: 8px 14px;
   white-space: normal;
 }
 
 .ssl-page .ssl-port-warning span {
   overflow: visible;
   text-overflow: clip;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 #main.dns-page {
