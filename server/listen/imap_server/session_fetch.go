@@ -91,16 +91,9 @@ func buildEnvelope(email *response.EmailResponseData, traEmail *parsemail.Email)
 		replyTo = from
 	}
 
-	// Message-ID: use the persisted value so IMAP clients see a stable ID on every sync.
-	var messageID string
-	if email.MsgID != "" {
-		messageID = fmt.Sprintf("<%s>", email.MsgID)
-	} else {
-		cfg := config.CurrentConfig()
-		if cfg == nil || cfg.Domain == "" {
-			return nil
-		}
-		messageID = fmt.Sprintf("<%d@%s>", email.Id, cfg.Domain)
+	messageID := messageIDForEmail(email)
+	if messageID == "" {
+		return nil
 	}
 
 	return &imap.Envelope{
@@ -115,6 +108,20 @@ func buildEnvelope(email *response.EmailResponseData, traEmail *parsemail.Email)
 		MessageID: messageID,
 		// InReplyTo 和 References 暂不支持
 	}
+}
+
+func messageIDForEmail(email *response.EmailResponseData) string {
+	if email == nil {
+		return ""
+	}
+	if strings.TrimSpace(email.MsgID) != "" {
+		return fmt.Sprintf("<%s>", strings.TrimSpace(email.MsgID))
+	}
+	cfg := config.CurrentConfig()
+	if cfg == nil || strings.TrimSpace(cfg.Domain) == "" || email.Id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("<%d@%s>", email.Id, strings.TrimSpace(cfg.Domain))
 }
 
 func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, options *imap.FetchOptions) error {
@@ -399,11 +406,11 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 							fmt.Fprintf(&b, "Bcc: %s\r\n", traEmail.BuildBcc2String())
 						}
 					case "message-id":
-						cfg := config.CurrentConfig()
-						if cfg == nil || cfg.Domain == "" {
+						messageID := messageIDForEmail(email)
+						if messageID == "" {
 							return nil
 						}
-						fmt.Fprintf(&b, "Message-ID: <%d@%s>\r\n", email.Id, cfg.Domain)
+						fmt.Fprintf(&b, "Message-ID: %s\r\n", messageID)
 					case "content-type":
 						args := strings.SplitN(string(emailContent), "\r\n", 3)
 						if len(args) >= 2 {

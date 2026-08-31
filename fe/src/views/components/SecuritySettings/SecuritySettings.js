@@ -82,11 +82,6 @@ export function usePage() {
 
   const protocolLabel = protocol => ({ imap: 'IMAP', pop3: 'POP3', smtp: 'SMTP' }[protocol] || protocol.toUpperCase())
 
-  const loadProtocolCredentials = async () => {
-    const res = await http.get('/api/v1/security/credentials/protocols')
-    if (res.errorNo !== 0) throw new Error(res.errorMsg || '读取第三方协议设置失败')
-    protocolCredentials.value = Array.isArray(res.data) ? res.data : []
-  }
 
   const setProtocolEnabled = async (item, enabled) => {
     const previous = item.enabled

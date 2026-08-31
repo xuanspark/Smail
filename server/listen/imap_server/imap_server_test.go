@@ -18,6 +18,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/utils/array"
@@ -398,7 +399,79 @@ func TestDelete(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
+	rawMessage := "From: sender@test.domain\r\n" +
+		"To: testCase@test.domain\r\n" +
+		"Subject: IMAP APPEND test\r\n" +
+		"Message-ID: <imap-append-test@test.domain>\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n" +
+		"\r\n" +
+		"Appended message body.\r\n"
 
+	appendCommand := clientLogin.Append("INBOX", int64(len(rawMessage)), &imap.AppendOptions{
+		Flags: []imap.Flag{imap.FlagSeen},
+	})
+	if _, err := appendCommand.Write([]byte(rawMessage)); err != nil {
+		t.Fatalf("write APPEND message: %v", err)
+	}
+	if err := appendCommand.Close(); err != nil {
+		t.Fatalf("close APPEND message: %v", err)
+	}
+	appendData, err := appendCommand.Wait()
+	if err != nil {
+		t.Fatalf("APPEND message: %v", err)
+	}
+	if appendData == nil || appendData.UID == 0 || appendData.UIDValidity != uint32(models.GroupNameToCode["INBOX"]) {
+		t.Fatalf("unexpected APPEND data: %#v", appendData)
+	}
+
+	var saved models.Email
+	found, err := db.Instance.Where("msg_id = ?", "imap-append-test@test.domain").Get(&saved)
+	if err != nil {
+		t.Fatalf("load appended email: %v", err)
+	}
+	if !found {
+		t.Fatal("appended email was not persisted")
+	}
+	if saved.Subject != "IMAP APPEND test" || saved.Text.String != "Appended message body.\n" {
+		t.Fatalf("unexpected appended email: %#v", saved)
+	}
+	if saved.Type != 0 || saved.Status != 0 {
+		t.Fatalf("unexpected appended email classification: type=%d status=%d", saved.Type, saved.Status)
+	}
+
+	var relation models.UserEmail
+	found, err = db.Instance.Where("email_id = ? and user_id = ?", saved.Id, clientLoginUserID(t)).Get(&relation)
+	if err != nil {
+		t.Fatalf("load appended mailbox relation: %v", err)
+	}
+	if !found || relation.ID != int(appendData.UID) || relation.IsRead != 1 || relation.Status != 0 {
+		t.Fatalf("unexpected appended mailbox relation: %#v", relation)
+	}
+
+	invalidMessage := "not an RFC 822 message"
+	invalidCommand := clientLogin.Append("INBOX", int64(len(invalidMessage)), nil)
+	if _, err := invalidCommand.Write([]byte(invalidMessage)); err != nil {
+		t.Fatalf("write invalid APPEND message: %v", err)
+	}
+	if err := invalidCommand.Close(); err != nil {
+		t.Fatalf("close invalid APPEND message: %v", err)
+	}
+	if _, err := invalidCommand.Wait(); err == nil {
+		t.Fatal("invalid APPEND message unexpectedly succeeded")
+	}
+}
+
+func clientLoginUserID(t *testing.T) int {
+	t.Helper()
+	var user models.User
+	found, err := db.Instance.Where("account = ?", "testCase").Get(&user)
+	if err != nil {
+		t.Fatalf("load test user: %v", err)
+	}
+	if !found || user.ID <= 0 {
+		t.Fatal("test user was not found")
+	}
+	return user.ID
 }
 func TestSelect(t *testing.T) {
 	res, err := clientUnLogin.Select("INBOX", &imap.SelectOptions{}).Wait()
@@ -512,18 +585,74 @@ func TestFetch(t *testing.T) {
 	}
 }
 func TestStore(t *testing.T) {
-	res, err := clientLogin.Store(
-		imap.UIDSetNum(1),
-		&imap.StoreFlags{
-			Op:    imap.StoreFlagsAdd,
-			Flags: []imap.Flag{"\\Seen"},
-		},
-		&imap.StoreOptions{}).Collect()
-	if err != nil {
-		t.Errorf("%+v", err)
+	if _, err := clientLogin.Select("INBOX", &imap.SelectOptions{}).Wait(); err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("%+v", res)
 
+	userID := clientLoginUserID(t)
+	var relation models.UserEmail
+	found, err := db.Instance.Where("user_id = ? AND status = ? AND group_id = 0", userID, 0).
+		OrderBy("id ASC").Get(&relation)
+	if err != nil {
+		t.Fatalf("load INBOX relation: %v", err)
+	}
+	if !found || relation.ID == 0 {
+		t.Fatal("no INBOX relation available for STORE")
+	}
+
+	uid := imap.UID(relation.ID)
+	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
+		Op:    imap.StoreFlagsAdd,
+		Flags: []imap.Flag{imap.FlagSeen},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("add \\Seen: %v", err)
+	}
+	assertReadState(t, relation.ID, userID, 1)
+
+	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
+		Op:     imap.StoreFlagsDel,
+		Silent: true,
+		Flags:  []imap.Flag{imap.FlagSeen},
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("delete \\Seen: %v", err)
+	}
+	assertReadState(t, relation.ID, userID, 0)
+
+	if _, err := clientLogin.Store(uidSet(uid), &imap.StoreFlags{
+		Op:    imap.StoreFlagsSet,
+		Flags: nil,
+	}, &imap.StoreOptions{}).Collect(); err != nil {
+		t.Fatalf("set empty flags: %v", err)
+	}
+	assertReadState(t, relation.ID, userID, 0)
+}
+
+func uidSet(uid imap.UID) imap.UIDSet {
+	return imap.UIDSetNum(uid)
+}
+
+func assertReadState(t *testing.T, relationID, userID int, expected int8) {
+	t.Helper()
+	var relation models.UserEmail
+	found, err := db.Instance.Where("id = ? AND user_id = ?", relationID, userID).Get(&relation)
+	if err != nil {
+		t.Fatalf("load relation read state: %v", err)
+	}
+	if !found || relation.IsRead != expected {
+		t.Fatalf("relation %d read state = %d, want %d", relationID, relation.IsRead, expected)
+	}
+}
+
+func TestMessageIDForEmail(t *testing.T) {
+	stored := &response.EmailResponseData{Email: models.Email{Id: 42, MsgID: "persisted@example.com"}}
+	if got := messageIDForEmail(stored); got != "<persisted@example.com>" {
+		t.Fatalf("stored Message-ID = %q", got)
+	}
+
+	fallback := &response.EmailResponseData{Email: models.Email{Id: 42}}
+	if got := messageIDForEmail(fallback); got != "<42@test.domain>" {
+		t.Fatalf("fallback Message-ID = %q", got)
+	}
 }
 func TestClose(t *testing.T) {
 
