@@ -1320,3 +1320,29 @@
     line-height: 1.35;
   }
 }
+
+/* 桌面端适度居中，并为欢迎页保留更舒适的展示高度。 */
+@media (min-width: 761px) {
+  #main.setup-page #status,
+  #main.setup-page .ctn,
+  #main.setup-page .setup-actions {
+    width: min(100%, 1280px);
+    margin-inline: auto;
+  }
+
+  #main.setup-page:not(.dns-page) .ctn:not(.setup-form-panel) {
+    min-height: clamp(180px, 23vh, 230px);
+    align-items: center;
+  }
+
+  #main.setup-page:not(.dns-page) .ctn:not(.setup-form-panel) .desc {
+    flex: 0 1 960px;
+    width: min(100%, 960px);
+    margin-inline: auto;
+  }
+
+  #main.setup-page:not(.dns-page) .setup-form-panel .desc {
+    flex: none;
+    max-width: none;
+  }
+}
