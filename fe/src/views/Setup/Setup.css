@@ -794,13 +794,22 @@
 }
 
 .database-page .mysql-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+  align-items: start;
   padding: 14px 18px 2px;
 }
 
 .database-page .database-hint {
+  grid-column: 1 / -1;
   margin-bottom: 12px;
   font-size: 14px;
   line-height: 1.55;
+}
+
+.database-page .mysql-fields .el-form-item {
+  min-width: 0;
 }
 
 .database-page .database-inline-fields {
@@ -1022,6 +1031,16 @@
 @media (max-width: 1080px) {
   .dns-page .dns-header-notes {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .database-page .mysql-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .database-page .database-hint {
+    grid-column: auto;
   }
 }
 
