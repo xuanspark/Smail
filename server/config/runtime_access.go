@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -55,21 +57,59 @@ func CurrentHTTPConfig() HTTPConfig {
 	if manager := CurrentManager(); manager != nil {
 		runtime := manager.Snapshot()
 		if runtime.Generation != 0 {
-			return cloneHTTPConfig(runtime.Root.HTTP)
+			return ResolveHTTPPortDefaults(runtime.Root.HTTP, RuntimeSetupPort())
 		}
 	}
 	cfg := CurrentConfig()
 	if cfg == nil {
-		return HTTPConfig{}
+		return ResolveHTTPPortDefaults(HTTPConfig{}, RuntimeSetupPort())
 	}
 	mode := strings.ToLower(strings.TrimSpace(cfg.TLSMode))
-	return HTTPConfig{
+	return ResolveHTTPPortDefaults(HTTPConfig{
 		Port:              cfg.HttpPort,
 		HTTPSPort:         cfg.HttpsPort,
 		HTTPSEnabled:      cfg.HttpsEnabled != 2,
 		TLSMode:           mode,
 		TrustedProxyCIDRs: append([]string(nil), cfg.TrustedProxyCIDRs...),
+	}, cfg.GetSetupPort())
+}
+
+func ResolveHTTPPortDefaults(value HTTPConfig, setupPort int) HTTPConfig {
+	result := cloneHTTPConfig(value)
+	result.TLSMode = strings.ToLower(strings.TrimSpace(result.TLSMode))
+	if result.Port == 0 {
+		result.Port = environmentPort("SMAIL_HTTP_PORT")
+		if result.Port == 0 && validServicePort(setupPort) {
+			result.Port = setupPort
+		}
+		if result.Port == 0 {
+			result.Port = 80
+		}
 	}
+	if result.TLSMode == HTTPSTLSModeProxy {
+		result.HTTPSPort = 0
+		result.HTTPSEnabled = false
+		return result
+	}
+	if result.HTTPSPort == 0 {
+		result.HTTPSPort = environmentPort("SMAIL_HTTPS_PORT")
+		if result.HTTPSPort == 0 {
+			result.HTTPSPort = 443
+		}
+	}
+	return result
+}
+
+func environmentPort(name string) int {
+	port, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
+	if err != nil || !validServicePort(port) {
+		return 0
+	}
+	return port
+}
+
+func validServicePort(port int) bool {
+	return port > 0 && port <= 65535
 }
 
 // CurrentWebDomain 返回当前进程实际使用的 Web 域名。

@@ -17,7 +17,13 @@ func Finish() error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	portsChanged := applyServicePorts(cfg)
 	if cfg.IsSetupReady() {
+		if portsChanged {
+			if err = config.WriteConfig(cfg); err != nil {
+				return errors.Wrap(err)
+			}
+		}
 		config.SetInitState(true)
 		return nil
 	}
@@ -36,4 +42,24 @@ func Finish() error {
 		// 初始化通知只需唤醒一次启动流程，避免重复完成请求阻塞响应。
 	}
 	return nil
+}
+
+func applyServicePorts(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	resolved := config.ResolveHTTPPortDefaults(config.HTTPConfig{
+		Port:         cfg.HttpPort,
+		HTTPSPort:    cfg.HttpsPort,
+		HTTPSEnabled: cfg.HttpsEnabled != 2,
+		TLSMode:      cfg.TLSMode,
+	}, cfg.GetSetupPort())
+	changed := cfg.HttpPort != resolved.Port || cfg.HttpsPort != resolved.HTTPSPort
+	cfg.HttpPort = resolved.Port
+	cfg.HttpsPort = resolved.HTTPSPort
+	if resolved.TLSMode == config.HTTPSTLSModeProxy && cfg.HttpsEnabled != 2 {
+		cfg.HttpsEnabled = 2
+		changed = true
+	}
+	return changed
 }

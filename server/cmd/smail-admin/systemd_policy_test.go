@@ -72,3 +72,30 @@ func TestInstallerDisablesAdminAutostart(t *testing.T) {
 		t.Fatal("installer does not clear legacy smail-admin enablement")
 	}
 }
+
+func TestSmailServiceUsesOnlyBindServiceCapability(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	unit, err := os.ReadFile(filepath.Join(root, "deploy", "systemd", "smail.service"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(unit)
+	for _, required := range []string{
+		"User=smail",
+		"Group=smail",
+		"EnvironmentFile=/etc/smail/smail.env",
+		"NoNewPrivileges=true",
+		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
+		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("smail unit is missing %q", required)
+		}
+	}
+	if strings.Contains(content, "User=root") {
+		t.Fatal("smail unit must not run as root")
+	}
+	if strings.Count(content, "CAP_NET_BIND_SERVICE") != 2 {
+		t.Fatal("smail unit grants unexpected Linux capabilities")
+	}
+}
