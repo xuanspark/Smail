@@ -1392,3 +1392,12 @@
     font-size: 14px;
   }
 }
+/* 桌面端为步骤导航增加垂直呼吸空间。 */
+@media (min-width: 761px) {
+  #main.setup-page #status {
+    min-height: 106px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+  }
+}
