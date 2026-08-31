@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db/migration"
 	"github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
 )
@@ -367,5 +368,29 @@ func TestPrepareSQLiteDatabaseCreatesParentDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(databasePath)); err != nil {
 		t.Fatalf("SQLite parent directory was not prepared: %v", err)
+	}
+}
+
+func TestDatabaseInitializationErrorReturnsMigrationGuidance(t *testing.T) {
+	for _, cause := range []error{migration.ErrChecksumMismatch, migration.ErrUnknownAppliedMigration} {
+		err := databaseInitializationError(cause)
+		message := DatabaseSetupErrorMessage(err)
+		if message != "数据库连接成功，但检测到历史迁移记录与当前版本不兼容，请先备份数据库后再执行兼容升级" {
+			t.Fatalf("message = %q", message)
+		}
+		if !stderrors.Is(err, cause) {
+			t.Fatalf("error does not preserve cause %v", cause)
+		}
+	}
+}
+
+func TestDatabaseInitializationErrorKeepsGenericErrorsInternal(t *testing.T) {
+	cause := stderrors.New("internal database detail")
+	err := databaseInitializationError(cause)
+	if message := DatabaseSetupErrorMessage(err); message != "" {
+		t.Fatalf("unexpected user-facing message = %q", message)
+	}
+	if !stderrors.Is(err, cause) {
+		t.Fatal("generic initialization error does not preserve its cause")
 	}
 }

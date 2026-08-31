@@ -2,7 +2,10 @@ package migration
 
 func DefaultMigrations() []Migration {
 	return []Migration{
-		DefineForDialects(1, "create_core_schema", coreSchemaStatements()),
+		WithCompatibleChecksums(
+			DefineForDialects(1, "create_core_schema", coreSchemaStatements()),
+			"57b378b273f243bae44e92cad161f297248e5226e96fbd7905815aa8604146bc",
+		),
 		DefineCustom(2, "expand_user_security", "expand_user_security_v1", applyUserSecuritySchema),
 		DefineForDialects(3, "create_security_email_tables", securityEmailStatements()),
 		DefineForDialects(4, "create_account_recovery_tables", credentialStatements()),

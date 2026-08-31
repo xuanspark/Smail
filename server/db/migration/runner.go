@@ -257,7 +257,7 @@ func verifyApplied(applied map[int64]Applied, migrations []Migration) error {
 		if !ok {
 			return fmt.Errorf("%w: version %d", ErrUnknownAppliedMigration, version)
 		}
-		if stored.Name != item.Name || stored.Checksum != item.Checksum() {
+		if stored.Name != item.Name || !item.AcceptsChecksum(stored.Checksum) {
 			return fmt.Errorf("%w: version %d", ErrChecksumMismatch, version)
 		}
 	}

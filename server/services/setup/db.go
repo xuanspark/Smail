@@ -16,6 +16,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/utils/array"
@@ -56,6 +57,13 @@ func (e *databaseSetupError) Unwrap() error {
 
 func databaseError(message string, cause error) error {
 	return &databaseSetupError{Message: message, Cause: cause}
+}
+
+func databaseInitializationError(err error) error {
+	if stderrors.Is(err, migration.ErrChecksumMismatch) || stderrors.Is(err, migration.ErrUnknownAppliedMigration) {
+		return databaseError("数据库连接成功，但检测到历史迁移记录与当前版本不兼容，请先备份数据库后再执行兼容升级", err)
+	}
+	return errors.Wrap(err)
 }
 
 func DatabaseSetupErrorMessage(err error) string {
@@ -265,7 +273,7 @@ func SetDatabaseSettingsWithOptions(ctx *context.Context, settings DatabaseSetti
 	closeDatabaseInstance()
 	if err = db.Init(""); err != nil {
 		restoreDatabaseConfig(&previousConfig)
-		return errors.Wrap(err)
+		return databaseInitializationError(err)
 	}
 	return nil
 }

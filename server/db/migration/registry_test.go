@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
@@ -196,5 +197,82 @@ func TestDefaultMigrationsAreContiguousAndDialectComplete(t *testing.T) {
 	}
 	if _, err := normalize(migrations); err != nil {
 		t.Fatalf("default migrations failed normalization: %v", err)
+	}
+}
+
+func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
+	expected := map[int64]string{
+		1:  "bb9bbf1ef17f1430900b8c5bed3539d01f72d49bdfedc2528dd3cf089b2a00d8",
+		2:  "b91524dc66ba86962372368ed7254e0c33eda6f76d487d6d3d291574cbf41345",
+		3:  "675251af1f5cd5d03f645c4b4ac15db2b488f8a3c9a972e836a136450da67c52",
+		4:  "30d34ff976ada3fec17173556f1b3a2798e03db6bce9fc93df6bd370f9044e7c",
+		5:  "678da8a46273d17e5f85a12c6c3ca8d254af25ccd3c48245b11d8f80e1dba2c3",
+		6:  "95b0ca429b6d237b1c905e8b5756363a242ead7fc0cf53783199d3e9ac317dc8",
+		7:  "ae1e63c75bf6bde508d8711689db2d5a36f6619885fb3b0a28c1f26b9710143d",
+		8:  "6c0697b86c9a57e5dc5b1a38bf18dc1893d850a62229c95134d931b6f4a9d59a",
+		9:  "b600b7bd4d7f0aa72ca12f261d2019bc419500b6fde099bba7c3ccf0448f5860",
+		10: "701167503d518151ee73ff2ba32f561194538cc46f630551b50b36a483c77c12",
+		11: "b7203bbb965b5e5760704ff495c58a8938e97c52ac068e2b0e7c522a2874b3ed",
+		12: "b746b89a15262ecedacf8725148d77be22caa57e4dfb60a209854ecdec98382b",
+		13: "c51604f27347d0a1b93acad1e33af53463fceb7b6573960f881f95f29c5628ed",
+		14: "531398c2b8fc83a65753fae08666946bb253ac3da6596829e71cc8ccc4ddf62f",
+	}
+	migrations := DefaultMigrations()
+	if len(migrations) != len(expected) {
+		t.Fatalf("migration count = %d, want %d", len(migrations), len(expected))
+	}
+	if got := migrations[0].CompatibleChecksums; len(got) != 1 || got[0] != "57b378b273f243bae44e92cad161f297248e5226e96fbd7905815aa8604146bc" {
+		t.Fatalf("migration 1 compatible checksums = %v", got)
+	}
+	for _, item := range migrations {
+		want, ok := expected[item.Version]
+		if !ok {
+			t.Fatalf("migration version %d is not registered", item.Version)
+		}
+		if got := item.Checksum(); got != want {
+			t.Fatalf("migration %d (%s) checksum = %s, want %s; create a new migration instead of changing an applied migration", item.Version, item.Name, got, want)
+		}
+	}
+}
+
+func TestDefaultMigrationsResumePublishedVersionOne(t *testing.T) {
+	migrations := DefaultMigrations()
+	published := migrations[0]
+	checksums := append([]string{published.Checksum()}, published.CompatibleChecksums...)
+	for _, checksum := range checksums {
+		checksum := checksum
+		t.Run(checksum[:8], func(t *testing.T) {
+			database := openSQLite(t)
+			for _, statement := range published.StatementsFor(DialectSQLite) {
+				if _, err := database.Exec(statement); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ddl, err := schemaTableDDL(DialectSQLite)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = database.Exec(ddl); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = database.Exec(
+				`INSERT INTO schema_migration(version, name, checksum, applied_at, execution_ms) VALUES(?, ?, ?, ?, ?)`,
+				published.Version,
+				published.Name,
+				checksum,
+				time.Now().UTC(),
+				0,
+			); err != nil {
+				t.Fatal(err)
+			}
+
+			report, err := (Runner{DB: database, Dialect: DialectSQLite, Migrations: migrations}).Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.CurrentVersion != int64(len(migrations)) || len(report.Applied) != len(migrations)-1 {
+				t.Fatalf("report = %+v", report)
+			}
+		})
 	}
 }

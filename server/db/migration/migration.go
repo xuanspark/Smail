@@ -10,12 +10,13 @@ import (
 )
 
 type Migration struct {
-	Version           int64
-	Name              string
-	Statements        []string
-	DialectStatements map[Dialect][]string
-	ChecksumSeed      string
-	Apply             func(context.Context, executor, Dialect) error
+	Version             int64
+	Name                string
+	Statements          []string
+	DialectStatements   map[Dialect][]string
+	ChecksumSeed        string
+	Apply               func(context.Context, executor, Dialect) error
+	CompatibleChecksums []string
 }
 
 func Define(version int64, name string, statements ...string) Migration {
@@ -45,6 +46,26 @@ func (m Migration) StatementsFor(dialect Dialect) []string {
 		return append([]string(nil), m.DialectStatements[dialect]...)
 	}
 	return append([]string(nil), m.Statements...)
+}
+
+func WithCompatibleChecksums(migration Migration, checksums ...string) Migration {
+	migration.CompatibleChecksums = make([]string, len(checksums))
+	for index, checksum := range checksums {
+		migration.CompatibleChecksums[index] = strings.TrimSpace(checksum)
+	}
+	return migration
+}
+
+func (m Migration) AcceptsChecksum(checksum string) bool {
+	if checksum == m.Checksum() {
+		return true
+	}
+	for _, compatible := range m.CompatibleChecksums {
+		if checksum == compatible {
+			return true
+		}
+	}
+	return false
 }
 
 func (m Migration) Checksum() string {
@@ -86,6 +107,18 @@ func normalize(migrations []Migration) ([]Migration, error) {
 		}
 		if item.Version <= 0 || item.Name == "" || !hasStatements(item) {
 			return nil, fmt.Errorf("invalid migration definition at index %d", i)
+		}
+		knownChecksums := map[string]struct{}{item.Checksum(): {}}
+		for _, checksum := range item.CompatibleChecksums {
+			checksum = strings.TrimSpace(checksum)
+			decoded, decodeErr := hex.DecodeString(checksum)
+			if decodeErr != nil || len(decoded) != sha256.Size {
+				return nil, fmt.Errorf("migration %d contains an invalid compatible checksum", item.Version)
+			}
+			if _, exists := knownChecksums[checksum]; exists {
+				return nil, fmt.Errorf("migration %d contains a duplicate compatible checksum", item.Version)
+			}
+			knownChecksums[checksum] = struct{}{}
 		}
 		for _, statement := range item.Statements {
 			if strings.TrimSpace(statement) == "" {

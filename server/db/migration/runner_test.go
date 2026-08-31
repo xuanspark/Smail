@@ -54,6 +54,44 @@ func TestSQLiteChecksumConflict(t *testing.T) {
 	}
 }
 
+func TestSQLiteCompatibleChecksumAccepted(t *testing.T) {
+	db := openSQLite(t)
+	migrations := testMigrations()
+	if _, err := (Runner{DB: db, Dialect: DialectSQLite, Migrations: migrations}).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	const compatibleChecksum = "1111111111111111111111111111111111111111111111111111111111111111"
+	if _, err := db.Exec("UPDATE schema_migration SET checksum = ? WHERE version = 1", compatibleChecksum); err != nil {
+		t.Fatal(err)
+	}
+	migrations[0] = WithCompatibleChecksums(migrations[0], compatibleChecksum)
+	report, err := (Runner{DB: db, Dialect: DialectSQLite, Migrations: migrations}).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.CurrentVersion != 2 || len(report.Applied) != 0 {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
+func TestSQLiteCompatibleChecksumStillRequiresMatchingName(t *testing.T) {
+	db := openSQLite(t)
+	migrations := testMigrations()
+	if _, err := (Runner{DB: db, Dialect: DialectSQLite, Migrations: migrations}).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	const compatibleChecksum = "2222222222222222222222222222222222222222222222222222222222222222"
+	if _, err := db.Exec("UPDATE schema_migration SET name = 'changed', checksum = ? WHERE version = 1", compatibleChecksum); err != nil {
+		t.Fatal(err)
+	}
+	migrations[0] = WithCompatibleChecksums(migrations[0], compatibleChecksum)
+	_, err := (Runner{DB: db, Dialect: DialectSQLite, Migrations: migrations}).Run(context.Background())
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("error = %v, want checksum mismatch", err)
+	}
+}
 func TestSQLiteFailedMigrationRollsBack(t *testing.T) {
 	db := openSQLite(t)
 	runner := Runner{
@@ -142,6 +180,18 @@ func TestNormalizeRejectsInvalidDefinitions(t *testing.T) {
 	}
 }
 
+func TestNormalizeRejectsInvalidCompatibleChecksums(t *testing.T) {
+	base := Define(1, "create_sample", "CREATE TABLE sample (id INTEGER PRIMARY KEY)")
+	migrations := [][]Migration{
+		{WithCompatibleChecksums(base, "invalid")},
+		{WithCompatibleChecksums(base, base.Checksum())},
+	}
+	for index, items := range migrations {
+		if _, err := normalize(items); err == nil {
+			t.Fatalf("case %d accepted", index)
+		}
+	}
+}
 func testMigrations() []Migration {
 	return []Migration{
 		Define(1, "create_sample", "CREATE TABLE sample (id INTEGER PRIMARY KEY, value TEXT NOT NULL)"),
