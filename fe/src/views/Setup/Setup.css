@@ -1481,28 +1481,36 @@
 @media (min-width: 1081px) {
   #main.setup-page.dns-page .dns-header {
     display: grid;
-    grid-template-columns: minmax(300px, 0.7fr) minmax(0, 2fr);
-    align-items: start;
+    grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+    align-items: stretch;
     column-gap: 24px;
   }
 
   #main.setup-page.dns-page .dns-heading {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     width: auto;
     min-width: 0;
   }
 
   #main.setup-page.dns-page .dns-header-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     width: calc(100% - 50px);
-    margin-inline: auto;
+    margin-left: 0;
+    margin-right: 0;
     min-width: 0;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
   }
 
   #main.setup-page.dns-page .dns-header-note {
-    padding: 14px 16px;
+    width: 100%;
+    max-width: none;
+    padding: 10px 16px;
     font-size: 15px;
     line-height: 1.55;
+    box-sizing: border-box;
   }
 }
 
