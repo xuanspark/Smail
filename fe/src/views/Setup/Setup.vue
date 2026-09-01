@@ -366,6 +366,7 @@ const {
   addDomain,
   Plus,
   dnsInfos,
+  hasDNSIPv6,
   sslSettings,
   port,
   dnsChecking,

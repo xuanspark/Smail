@@ -1476,3 +1476,41 @@
     grid-column: auto;
   }
 }
+
+/* 桌面端将 DNS 提示与标题并排展示，减少提示区域宽度并提高文字可读性。 */
+@media (min-width: 1081px) {
+  #main.setup-page.dns-page .dns-header {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.7fr) minmax(0, 2fr);
+    align-items: start;
+    column-gap: 24px;
+  }
+
+  #main.setup-page.dns-page .dns-heading {
+    width: auto;
+    min-width: 0;
+  }
+
+  #main.setup-page.dns-page .dns-header-notes {
+    width: calc(100% - 50px);
+    margin-inline: auto;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  #main.setup-page.dns-page .dns-header-note {
+    padding: 14px 16px;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+}
+
+/* 中等桌面宽度下保持标题和提示的清晰边界，避免三列提示被压缩。 */
+@media (min-width: 761px) and (max-width: 1080px) {
+  #main.setup-page.dns-page .dns-header-note {
+    padding: 12px 14px;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+}
