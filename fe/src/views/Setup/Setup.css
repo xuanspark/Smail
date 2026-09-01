@@ -1498,7 +1498,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: calc(100% - 50px);
+    width: calc(100% - 100px);
     margin-left: 0;
     margin-right: 0;
     min-width: 0;
