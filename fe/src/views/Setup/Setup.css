@@ -1517,9 +1517,9 @@
   #main.setup-page.dns-page .dns-header-note {
     width: 100%;
     max-width: none;
-    padding: 7px 12px;
+    padding: 5px 12px;
     font-size: 13px;
-    line-height: 1.45;
+    line-height: 1.4;
     box-sizing: border-box;
   }
 }
