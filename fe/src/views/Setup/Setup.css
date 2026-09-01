@@ -1507,7 +1507,7 @@
   #main.setup-page.dns-page .dns-header-notes {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     width: calc(100% - 100px);
     margin-left: 0;
     margin-right: 0;
@@ -1517,9 +1517,9 @@
   #main.setup-page.dns-page .dns-header-note {
     width: 100%;
     max-width: none;
-    padding: 10px 16px;
-    font-size: 15px;
-    line-height: 1.55;
+    padding: 7px 12px;
+    font-size: 13px;
+    line-height: 1.45;
     box-sizing: border-box;
   }
 }
