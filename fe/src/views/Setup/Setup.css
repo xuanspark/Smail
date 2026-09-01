@@ -1532,3 +1532,16 @@
     line-height: 1.55;
   }
 }
+
+/* 宽桌面端让 DNS 提示保持单行，避免信息区域被多行文字撑高。 */
+@media (min-width: 1280px) {
+  #main.setup-page.dns-page .dns-header-notes {
+    width: 100%;
+  }
+
+  #main.setup-page.dns-page .dns-header-note {
+    padding-left: 10px;
+    padding-right: 10px;
+    white-space: nowrap;
+  }
+}
