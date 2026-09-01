@@ -1540,8 +1540,28 @@
   }
 
   #main.setup-page.dns-page .dns-header-note {
+    padding-top: 4px;
+    padding-bottom: 4px;
     padding-left: 10px;
     padding-right: 10px;
     white-space: nowrap;
+  }
+
+  #main.setup-page.dns-page .dns-header-notes {
+    gap: 6px;
+  }
+
+  #main.setup-page.dns-page .dns-eyebrow {
+    margin-top: 3px !important;
+    margin-bottom: 2px;
+  }
+
+  #main.setup-page.dns-page .dns-description {
+    margin-top: 3px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(.el-table__cell) {
+    padding-top: 5.5px;
+    padding-bottom: 5.5px;
   }
 }
