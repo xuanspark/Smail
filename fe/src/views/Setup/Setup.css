@@ -1582,3 +1582,208 @@
     padding-bottom: 5.5px;
   }
 }
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  #main.setup-page.dns-page {
+    gap: 6px;
+    padding: 6px 12px 8px;
+  }
+
+  #main.setup-page.dns-page .dns-panel {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  #main.setup-page.dns-page .dns-header {
+    display: grid;
+    grid-template-columns: minmax(200px, 220px) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  #main.setup-page.dns-page .dns-heading {
+    width: auto;
+    padding-right: 0;
+    margin-bottom: 0;
+  }
+
+  #main.setup-page.dns-page .dns-header-notes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    width: auto;
+  }
+
+  #main.setup-page.dns-page .dns-header-note {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    padding: 5px 8px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  #main.setup-page.dns-page .dns-domain-list {
+    gap: 5px;
+  }
+
+  #main.setup-page.dns-page .dns-domain-header {
+    padding: 6px 10px;
+  }
+
+  #main.setup-page.dns-page .dns-domain-header h3 {
+    font-size: 20px;
+    line-height: 1.2;
+  }
+
+  #main.setup-page.dns-page .dns-domain-header .dns-domain-suffix {
+    margin-top: 1px;
+    font-size: 12px;
+  }
+
+  #main.setup-page.dns-page .dns-domain-count {
+    min-height: 24px;
+    font-size: 12px;
+  }
+
+  #main.setup-page.dns-page .dns-table {
+    table-layout: fixed;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(colgroup col:nth-child(1)) {
+    width: 150px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(colgroup col:nth-child(2)) {
+    width: 76px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(colgroup col:nth-child(4)) {
+    width: 96px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(.el-table__cell) {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(.cell),
+  #main.setup-page.dns-page .dns-host,
+  #main.setup-page.dns-page .dns-value,
+  #main.setup-page.dns-page .dns-ttl {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  #main.setup-page.dns-page .dns-type {
+    font-size: 11px;
+  }
+
+  #main.setup-page.dns-page .dns-value-cell {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: 4px;
+  }
+
+  #main.setup-page.dns-page .dns-value-long {
+    padding: 2px 4px;
+    word-break: break-all;
+  }
+
+  #main.setup-page.dns-page .dns-copy-button {
+    min-width: 44px;
+    width: 44px;
+    padding: 0;
+    font-size: 12px;
+  }
+
+  #main.setup-page.dns-page .setup-actions {
+    padding-bottom: 2px;
+  }
+}
+@media (min-width: 761px) and (max-width: 960px) {
+  #main.setup-page.dns-page {
+    gap: 5px;
+    padding: 4px 10px 6px;
+  }
+
+  #main.setup-page.dns-page .dns-panel {
+    gap: 5px;
+    padding: 6px 10px;
+  }
+
+  #main.setup-page.dns-page .dns-header {
+    grid-template-columns: minmax(180px, 190px) minmax(0, 1fr);
+    column-gap: 10px;
+  }
+
+  #main.setup-page.dns-page .dns-header-notes {
+    gap: 4px;
+  }
+
+  #main.setup-page.dns-page .dns-header-note {
+    padding: 4px 7px;
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  #main.setup-page.dns-page .dns-domain-list {
+    gap: 4px;
+  }
+
+  #main.setup-page.dns-page .dns-domain-header {
+    padding: 5px 8px;
+  }
+
+  #main.setup-page.dns-page .dns-domain-header h3 {
+    font-size: 19px;
+  }
+
+  #main.setup-page.dns-page .dns-domain-header .dns-domain-suffix,
+  #main.setup-page.dns-page .dns-domain-count {
+    font-size: 11px;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(colgroup col:nth-child(1)) {
+    width: 130px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(colgroup col:nth-child(2)) {
+    width: 64px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(colgroup col:nth-child(4)) {
+    width: 88px !important;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(.el-table__cell) {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+
+  #main.setup-page.dns-page .dns-table :deep(.cell),
+  #main.setup-page.dns-page .dns-host,
+  #main.setup-page.dns-page .dns-value,
+  #main.setup-page.dns-page .dns-ttl {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  #main.setup-page.dns-page .dns-type,
+  #main.setup-page.dns-page .dns-copy-button {
+    font-size: 11px;
+  }
+
+  #main.setup-page.dns-page .dns-value-cell {
+    grid-template-columns: minmax(0, 1fr) 40px;
+    gap: 3px;
+  }
+
+  #main.setup-page.dns-page .dns-value-long {
+    padding: 1px 3px;
+  }
+
+  #main.setup-page.dns-page .dns-copy-button {
+    min-width: 40px;
+    width: 40px;
+  }
+}
