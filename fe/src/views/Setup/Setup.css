@@ -1325,9 +1325,11 @@
 @media (min-width: 761px) {
   #main.setup-page #status,
   #main.setup-page .ctn,
+  #main.setup-page.dns-page .dns-panel,
   #main.setup-page .setup-actions {
     width: min(100%, 1280px);
     margin-inline: auto;
+    box-sizing: border-box;
   }
 
   #main.setup-page:not(.dns-page) .ctn:not(.setup-form-panel) {
