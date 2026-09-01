@@ -1272,17 +1272,17 @@
   }
 
   .dns-page .dns-domain-header h3 {
-    font-size: 16px;
+    font-size: 22px;
   }
 
   .dns-page .dns-domain-header .dns-domain-suffix {
     margin-top: 2px;
-    font-size: 11px;
+    font-size: 14px;
   }
 
   .dns-page .dns-domain-count {
     min-height: 28px;
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .dns-page .dns-table :deep(.el-table__cell) {
@@ -1293,12 +1293,20 @@
   .dns-page .dns-host,
   .dns-page .dns-value,
   .dns-page .dns-ttl {
-    font-size: 12px;
-    line-height: 1.35;
+    font-size: 15px;
+    line-height: 1.5;
   }
 
   .dns-page .dns-value-long {
     padding: 4px 6px;
+  }
+
+  .dns-page .dns-type {
+    font-size: 14px;
+  }
+
+  .dns-page .dns-copy-button {
+    font-size: 15px;
   }
 
   .ssl-dns-challenge {
