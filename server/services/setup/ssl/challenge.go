@@ -4,6 +4,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	log "github.com/sirupsen/logrus"
+	"strings"
 	"sync"
 	"time"
 )
@@ -66,7 +67,10 @@ func GetDnsChallengeInstance() *DNSChallenge {
 }
 
 func (h *DNSChallenge) Present(domain, token, keyAuth string) error {
-	info := dns01.GetChallengeInfo(domain, keyAuth)
+	challengeDomain := strings.TrimSpace(domain)
+	challengeDomain = strings.TrimSuffix(challengeDomain, ".")
+	challengeDomain = strings.TrimPrefix(challengeDomain, "*.")
+	info := dns01.GetChallengeInfo(challengeDomain, keyAuth)
 	log.Infof("SSL DNS challenge generated for domain=%s", domain)
 	h.mu.Lock()
 	h.authInfo[token] = &authInfo{

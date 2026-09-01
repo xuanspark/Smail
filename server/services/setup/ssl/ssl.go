@@ -290,7 +290,7 @@ func writeCertificateFiles(cfg *config.Config, privateKey, certificate, issuer [
 	if cfg == nil {
 		return errors.New("SSL 配置不能为空")
 	}
-	reference, err := config.ImportManagedSSL(config.ManagedSSLModeDefault, privateKey, certificate, issuer, sslDomains(cfg))
+	reference, err := config.ImportManagedSSL(config.ManagedSSLModeDefault, privateKey, certificate, issuer, wildcardCertificateDomains(cfg))
 	if err != nil {
 		return err
 	}
@@ -328,6 +328,21 @@ func sslDomains(cfg *config.Config) []string {
 	}
 	return domains
 }
+func wildcardCertificateDomains(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+
+	domain := strings.TrimSpace(cfg.Domain)
+	domain = strings.TrimSuffix(domain, ".")
+	domain = strings.TrimPrefix(domain, "*.")
+	if domain == "" {
+		return nil
+	}
+
+	return []string{"*." + domain}
+}
+
 func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 
 	myUser := MyUser{
@@ -372,12 +387,7 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 
 	myUser.Registration = reg
 
-	domains := []string{cfg.WebDomain}
-	for _, domain := range cfg.Domains {
-		domains = append(domains, "smtp."+domain)
-		domains = append(domains, "pop."+domain)
-		domains = append(domains, "imap."+domain)
-	}
+	domains := wildcardCertificateDomains(cfg)
 
 	request := certificate.ObtainRequest{
 		Domains: domains,
@@ -441,12 +451,7 @@ func generateCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config, newAc
 
 	myUser.Registration = reg
 
-	domains := []string{cfg.WebDomain}
-	for _, domain := range cfg.Domains {
-		domains = append(domains, "smtp."+domain)
-		domains = append(domains, "pop."+domain)
-		domains = append(domains, "imap."+domain)
-	}
+	domains := wildcardCertificateDomains(cfg)
 
 	request := certificate.ObtainRequest{
 		Domains: domains,
