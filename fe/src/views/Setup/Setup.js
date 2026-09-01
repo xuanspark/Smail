@@ -91,7 +91,7 @@ export function usePage() {
 
   const sslSettings = reactive({
     "type": "0",
-    "challenge": "http",
+    "challenge": "dns",
     "key_path": "./config/ssl/private.key",
     "crt_path": "./config/ssl/public.crt",
     "paramsList": [],
@@ -123,8 +123,7 @@ export function usePage() {
     records.some((record) => record.type === 'AAAA')
   ))
 
-  const port = ref(80)
-  const sslRuntime = ref({})
+ const sslRuntime = ref({})
 
   const addDomain = () => {
     domainSettings.multi_domain.push([])
@@ -355,9 +354,11 @@ export function usePage() {
         sslSettings.type = "0"
         sslSettings.challenge = "dns"
       }
+      if (sslSettings.type === "0") {
+        sslSettings.challenge = "dns"
+      }
       sslRuntime.value = res.data || {}
-      port.value = res.data?.port || res.data?.httpPort || 80
-      return res
+     return res
     }).catch((error) => {
       showSetupError(error)
       return null
@@ -368,7 +369,7 @@ export function usePage() {
     fullscreenLoading.value = true;
 
     let sslType = sslSettings.type;
-    if (sslType === "0" && sslSettings.challenge === "dns") {
+    if (sslType === "0") {
       sslType = "2"
     }
 
@@ -717,8 +718,7 @@ export function usePage() {
     dnsChallengeNotice,
     dnsInfos,
     hasDNSIPv6,
-    port,
-    addDomain,
+   addDomain,
     setPassword,
     getPassword,
     getDbConfig,

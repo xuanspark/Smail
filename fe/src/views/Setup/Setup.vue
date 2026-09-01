@@ -278,11 +278,6 @@
       <div class="desc">
         <div class="ssl-title-row">
           <h2>{{ lang.setSSL }}</h2>
-          <div v-if="sslSettings.type === '0' && sslSettings.challenge === 'http' && port !== 80"
-               class="ssl-port-warning" role="alert">
-            <strong>{{ lang.warning }}</strong>
-            <span>{{ lang.autoSSLWarn }}</span>
-          </div>
         </div>
         <div class="ssl-title-description">{{ lang.setSSL }}</div>
       </div>
@@ -298,9 +293,8 @@
 
           <el-form-item :label="lang.ssl_challenge_type" v-if="sslSettings.type === '0'">
             <div class="ssl-challenge-select-row">
-              <el-select class="ssl-type-select" :placeholder="lang.ssl_auto_http" v-model="sslSettings.challenge"
+              <el-select class="ssl-type-select" :placeholder="lang.ssl_auto_dns" v-model="sslSettings.challenge"
                          :disabled="fullscreenLoading" @change="handleSSLChallengeChange">
-                <el-option :label="lang.ssl_auto_http" value="http"/>
                 <el-option :label="lang.ssl_auto_dns" value="dns"/>
               </el-select>
 
@@ -403,7 +397,6 @@ const {
   dnsInfos,
   hasDNSIPv6,
   sslSettings,
-  port,
   dnsChecking,
   dnsChallengeNotice,
   waitDesc,
