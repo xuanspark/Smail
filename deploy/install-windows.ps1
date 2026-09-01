@@ -1,9 +1,13 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [string]$PackageRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$PackageRoot = $null,
     [string]$InstallRoot = (Join-Path $env:ProgramData "Smail"),
     [switch]$StartService
 )
+
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+    $PackageRoot = Split-Path -Parent $PSScriptRoot
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -130,8 +134,6 @@ try {
     if (Test-Path -LiteralPath $adminTarget) { Move-Item -LiteralPath $adminTarget -Destination $adminBackup }
     Move-Item -LiteralPath (Join-Path $transactionRoot "smail.exe") -Destination $mainTarget
     Move-Item -LiteralPath (Join-Path $transactionRoot "smail-admin.exe") -Destination $adminTarget
-    Set-RestrictedAcl -Root $resolvedInstallRoot
-
     $service = Get-Service -Name "Smail" -ErrorAction SilentlyContinue
     if ($null -eq $service) {
         $binaryPath = '"' + $mainTarget + '"'
@@ -147,6 +149,11 @@ try {
             "start=", "auto", "obj=", "NT SERVICE\Smail"
         )
     }
+    Invoke-Native -FilePath "sc.exe" -Arguments @(
+        "sidtype", "Smail", "unrestricted"
+    )
+    Set-RestrictedAcl -Root $resolvedInstallRoot
+
     $failureActions = "restart/60000/restart/60000/"
     Invoke-Native -FilePath "sc.exe" -Arguments @(
         "failure", "Smail", "reset=", "86400", "actions=", $failureActions

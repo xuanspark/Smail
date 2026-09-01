@@ -18,6 +18,9 @@ func TestWindowsDeploymentScriptsKeepAdminChannelManual(t *testing.T) {
 		"sc.exe",
 		"smail-admin.exe",
 		"Set-RestrictedAcl",
+		"sidtype",
+		"$PackageRoot = $null",
+		"$PackageRoot = Split-Path -Parent $PSScriptRoot",
 		"NT SERVICE\\Smail:(F)",
 		".backup-",
 		"$mainBackup",
@@ -27,6 +30,14 @@ func TestWindowsDeploymentScriptsKeepAdminChannelManual(t *testing.T) {
 		if !strings.Contains(content, required) {
 			t.Fatalf("Windows installer is missing %q", required)
 		}
+	}
+	if !hasUTF8BOM(installer) {
+		t.Fatal("Windows installer must be encoded as UTF-8 with BOM for Windows PowerShell")
+	}
+	serviceSetup := strings.Index(content, `"sidtype", "Smail", "unrestricted"`)
+	aclSetup := strings.Index(content, "Set-RestrictedAcl -Root $resolvedInstallRoot")
+	if serviceSetup < 0 || aclSetup < 0 || serviceSetup > aclSetup {
+		t.Fatal("Windows installer must create the service SID before applying service ACLs")
 	}
 	for _, forbidden := range []string{
 		"create SmailAdmin",
@@ -39,6 +50,10 @@ func TestWindowsDeploymentScriptsKeepAdminChannelManual(t *testing.T) {
 	}
 }
 
+func hasUTF8BOM(data []byte) bool {
+	return len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF
+}
+
 func TestWindowsUninstallerPreservesData(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	uninstaller, err := os.ReadFile(filepath.Join(root, "deploy", "uninstall-windows.ps1"))
@@ -46,6 +61,9 @@ func TestWindowsUninstallerPreservesData(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(uninstaller)
+	if !hasUTF8BOM(uninstaller) {
+		t.Fatal("Windows uninstaller must be encoded as UTF-8 with BOM for Windows PowerShell")
+	}
 	if strings.Contains(content, "Remove-Item -LiteralPath $resolvedInstallRoot -Recurse") {
 		t.Fatal("Windows uninstaller recursively removes the data root")
 	}
