@@ -11,7 +11,11 @@ import (
 )
 
 func runMain() error {
-	if !svc.IsWindowsService() {
+	windowsServiceMode, err := svc.IsWindowsService()
+	if err != nil {
+		return err
+	}
+	if !windowsServiceMode {
 		return app.RecoverPanic(app.Run)
 	}
 	return svc.Run("Smail", &windowsService{})
