@@ -1787,3 +1787,71 @@
     width: 40px;
   }
 }
+/* SSL页面专属布局规则：提示与标题同排，验证帮助与选择框同排。 */
+.ssl-page .ssl-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+}
+
+.ssl-page .ssl-title-row h2 {
+  flex: none;
+}
+
+.ssl-page .ssl-title-description {
+  margin-top: 10px;
+}
+
+.ssl-page .ssl-challenge-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.ssl-page .ssl-challenge-select-row .ssl-type-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ssl-page .ssl-challenge-help {
+  flex: none;
+}
+
+.ssl-page .ssl-help-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--pm-brand);
+  border: 1px solid rgba(0, 113, 227, 0.28);
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.ssl-page .ssl-port-warning {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ssl-page .ssl-dns-refresh-notice {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .ssl-page .ssl-title-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ssl-page .ssl-port-warning {
+    width: 100%;
+  }
+}

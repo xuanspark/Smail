@@ -115,6 +115,7 @@ export function usePage() {
   }
 
   const dnsChecking = ref(false)
+  const dnsChallengeNotice = ref("")
 
   const dnsInfos = ref({})
 
@@ -382,6 +383,7 @@ export function usePage() {
       if (sslType === "2") {
         fullscreenLoading.value = false
         dnsChecking.value = true
+        dnsChallengeNotice.value = ""
         return getSSLDNSParams()
       }
       if (sslType === "1") {
@@ -404,6 +406,8 @@ export function usePage() {
   let statusCheckRunning = false
   let statusCheckStartedAt = 0
   const statusCheckTimeout = 10 * 60 * 1000
+  const dnsVerificationTimeout = 30 * 60 * 1000
+  const dnsChallengeTimerDelay = 30 * 60 * 1000
 
   const stopStatusCheck = () => {
     if (statusTimer !== null) {
@@ -421,14 +425,25 @@ export function usePage() {
     }
   }
 
+  let dnsChallengeTimer = null
+
+  const stopDNSChallengeTimer = () => {
+    if (dnsChallengeTimer !== null) {
+      window.clearTimeout(dnsChallengeTimer)
+      dnsChallengeTimer = null
+    }
+  }
+
   onUnmounted(() => {
     setupViewUnmounted = true
     stopStatusCheck()
     stopDNSParamsPolling()
+    stopDNSChallengeTimer()
   })
 
   const navigateToFormalService = (sslData) => {
     stopStatusCheck()
+    stopDNSChallengeTimer()
     fullscreenLoading.value = false
     const target = buildFinalURL(sslData)
     if (target && target !== window.location.href) {
@@ -453,10 +468,17 @@ export function usePage() {
     if (!statusCheckStartedAt) {
       statusCheckStartedAt = Date.now()
     }
-    if (Date.now() - statusCheckStartedAt > statusCheckTimeout) {
+    const currentStatusCheckTimeout = dnsChecking.value && sslSettings.challenge === "dns"
+      ? dnsVerificationTimeout
+      : statusCheckTimeout
+    if (Date.now() - statusCheckStartedAt > currentStatusCheckTimeout) {
       stopStatusCheck()
       fullscreenLoading.value = false
-      ElMessage.error(lang.setup_failed)
+      if (dnsChecking.value && sslSettings.challenge === "dns") {
+        refreshDNSChallenge()
+      } else {
+        ElMessage.error(lang.setup_failed)
+      }
       return
     }
 
@@ -516,6 +538,9 @@ export function usePage() {
         }, 1000)
       } else if (sslSettings.paramsList.length > 0 || !dnsChecking.value) {
         stopDNSParamsPolling()
+        if (sslSettings.paramsList.length > 0 && dnsChecking.value) {
+          scheduleDNSChallengeRefresh()
+        }
       }
       return res
     }).catch((error) => {
@@ -523,6 +548,61 @@ export function usePage() {
       showSetupError(error)
       return null
     })
+  }
+
+  const scheduleDNSChallengeRefresh = () => {
+    stopDNSChallengeTimer()
+    if (setupViewUnmounted || !dnsChecking.value) {
+      return
+    }
+
+    dnsChallengeTimer = window.setTimeout(() => {
+      dnsChallengeTimer = null
+      refreshDNSChallenge()
+    }, dnsChallengeTimerDelay)
+  }
+
+  const getDNSRefreshNotice = () => `${lang.ssl_dns_ready}（记录已刷新，请使用最新记录。）`
+
+  const refreshDNSChallenge = () => {
+    if (setupViewUnmounted || !dnsChecking.value || fullscreenLoading.value) {
+      return
+    }
+
+    stopStatusCheck()
+    stopDNSChallengeTimer()
+    stopDNSParamsPolling()
+    fullscreenLoading.value = true
+
+    return setupRequest({
+      "action": "set",
+      "step": "ssl",
+      "ssl_type": "2",
+      "key_path": sslSettings.key_path,
+      "crt_path": sslSettings.crt_path
+    }).then((res) => {
+      assertSetupSuccess(res)
+      sslSettings.paramsList = []
+      dnsChallengeNotice.value = getDNSRefreshNotice()
+      return getSSLDNSParams()
+    }).then((res) => {
+      ElMessage.warning(getDNSRefreshNotice())
+      return res
+    }).catch((error) => {
+      showSetupError(error)
+      return null
+    }).finally(() => {
+      fullscreenLoading.value = false
+    })
+  }
+
+  const handleSSLChallengeChange = (challenge) => {
+    if (challenge !== "dns" || dnsChecking.value || fullscreenLoading.value) {
+      return
+    }
+
+    dnsChallengeNotice.value = ""
+    return setSSLConfig()
   }
 
   const runStep = (action) => {
@@ -568,6 +648,7 @@ export function usePage() {
         break
       case 5:
         if (dnsChecking.value) {
+          stopDNSChallengeTimer()
           fullscreenLoading.value = true
           waitDesc.value = lang.dns_challenge_wait
           checkStatus()
@@ -579,6 +660,15 @@ export function usePage() {
   }
   const previous = () => {
     if (active.value > 0) {
+      if (active.value === 5) {
+        stopStatusCheck()
+        stopDNSChallengeTimer()
+        stopDNSParamsPolling()
+        dnsChecking.value = false
+        dnsChallengeNotice.value = ""
+        sslSettings.paramsList = []
+        fullscreenLoading.value = false
+      }
       active.value--
     }
   }
@@ -602,6 +692,7 @@ export function usePage() {
     active,
     fullscreenLoading,
     dnsChecking,
+    dnsChallengeNotice,
     dnsInfos,
     hasDNSIPv6,
     port,
@@ -621,6 +712,7 @@ export function usePage() {
     checkStatus,
     setDomainConfig,
     getSSLDNSParams,
+    handleSSLChallengeChange,
     next,
     previous
   }

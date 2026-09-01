@@ -274,16 +274,17 @@
       <el-empty v-else :description="lang.dns_empty" />
     </div>
 
-    <div v-if="active === 5 && sslSettings.type === '0' && sslSettings.challenge === 'http' && port !== 80"
-         class="ssl-port-warning" role="alert">
-      <strong>{{ lang.warning }}</strong>
-      <span>{{ lang.autoSSLWarn }}</span>
-    </div>
-
     <div v-if="active === 5" class="ctn setup-form-panel">
       <div class="desc">
-        <h2>{{ lang.setSSL }}</h2>
-        <div style="margin-top: 10px;">{{ lang.setSSL }}</div>
+        <div class="ssl-title-row">
+          <h2>{{ lang.setSSL }}</h2>
+          <div v-if="sslSettings.type === '0' && sslSettings.challenge === 'http' && port !== 80"
+               class="ssl-port-warning" role="alert">
+            <strong>{{ lang.warning }}</strong>
+            <span>{{ lang.autoSSLWarn }}</span>
+          </div>
+        </div>
+        <div class="ssl-title-description">{{ lang.setSSL }}</div>
       </div>
       <div class="form ssl-form">
         <el-form label-position="top">
@@ -295,16 +296,18 @@
           </el-form-item>
 
           <el-form-item :label="lang.ssl_challenge_type" v-if="sslSettings.type === '0'">
-            <el-select class="ssl-type-select" :placeholder="lang.ssl_auto_http" v-model="sslSettings.challenge"
-                       :disabled="dnsChecking">
-              <el-option :label="lang.ssl_auto_http" value="http"/>
-              <el-option :label="lang.ssl_auto_dns" value="dns"/>
-            </el-select>
+            <div class="ssl-challenge-select-row">
+              <el-select class="ssl-type-select" :placeholder="lang.ssl_auto_http" v-model="sslSettings.challenge"
+                         :disabled="dnsChecking || fullscreenLoading" @change="handleSSLChallengeChange">
+                <el-option :label="lang.ssl_auto_http" value="http"/>
+                <el-option :label="lang.ssl_auto_dns" value="dns"/>
+              </el-select>
 
-            <el-tooltip class="box-item" effect="dark" :content="lang.challenge_typ_desc"
-                        placement="top-start">
-              <span style="margin-left: 6px; font-size:18px; font-weight: bolder;">?</span>
-            </el-tooltip>
+              <el-tooltip class="ssl-challenge-help" effect="dark" :content="lang.challenge_typ_desc"
+                          placement="top-start">
+                <span class="ssl-help-mark">?</span>
+              </el-tooltip>
+            </div>
           </el-form-item>
 
           <div v-if="sslSettings.type === '0'" class="ssl-storage-card">
@@ -346,6 +349,14 @@
           {{ sslSettings.paramsList.length }} 条记录
         </span>
       </div>
+      <el-alert
+        v-if="dnsChallengeNotice"
+        :title="dnsChallengeNotice"
+        type="warning"
+        show-icon
+        :closable="false"
+        class="ssl-dns-refresh-notice"
+      />
       <el-table v-if="sslSettings.paramsList.length > 0" :data="sslSettings.paramsList" border>
         <el-table-column prop="host" label="主机名" width="180px"/>
         <el-table-column prop="type" label="类型" width="100px"/>
@@ -393,10 +404,12 @@ const {
   sslSettings,
   port,
   dnsChecking,
+  dnsChallengeNotice,
   waitDesc,
   next,
   previous,
   handleDbTypeChange,
+  handleSSLChallengeChange,
   clearDatabaseError,
   formatDNSRecordTTL,
   copyDNSValue,
