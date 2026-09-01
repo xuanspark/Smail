@@ -138,6 +138,9 @@ func Init(serverVersion string) error {
 		select {
 		case <-signal.InitChan:
 			http_server.SetupStop()
+		case <-signal.StopChan:
+			http_server.SetupStop()
+			return nil
 		case err := <-setupErrors:
 			if err != nil {
 				return fmt.Errorf("setup service failed: %w", err)
