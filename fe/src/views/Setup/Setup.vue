@@ -289,7 +289,8 @@
       <div class="form ssl-form">
         <el-form label-position="top">
           <el-form-item :label="lang.type">
-            <el-select class="ssl-type-select" :placeholder="lang.ssl_auto" v-model="sslSettings.type" :disabled="dnsChecking">
+            <el-select class="ssl-type-select" :placeholder="lang.ssl_auto" v-model="sslSettings.type"
+                       :disabled="fullscreenLoading" @change="handleSSLTypeChange">
               <el-option :label="lang.ssl_auto" value="0"/>
               <el-option :label="lang.ssl_manuallyf" value="1"/>
             </el-select>
@@ -298,7 +299,7 @@
           <el-form-item :label="lang.ssl_challenge_type" v-if="sslSettings.type === '0'">
             <div class="ssl-challenge-select-row">
               <el-select class="ssl-type-select" :placeholder="lang.ssl_auto_http" v-model="sslSettings.challenge"
-                         :disabled="dnsChecking || fullscreenLoading" @change="handleSSLChallengeChange">
+                         :disabled="fullscreenLoading" @change="handleSSLChallengeChange">
                 <el-option :label="lang.ssl_auto_http" value="http"/>
                 <el-option :label="lang.ssl_auto_dns" value="dns"/>
               </el-select>
@@ -409,6 +410,7 @@ const {
   next,
   previous,
   handleDbTypeChange,
+  handleSSLTypeChange,
   handleSSLChallengeChange,
   clearDatabaseError,
   formatDNSRecordTTL,

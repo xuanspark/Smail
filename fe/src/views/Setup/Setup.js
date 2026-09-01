@@ -596,13 +596,35 @@ export function usePage() {
     })
   }
 
+  const resetDNSChallenge = () => {
+    stopStatusCheck()
+    stopDNSChallengeTimer()
+    stopDNSParamsPolling()
+    dnsChecking.value = false
+    dnsChallengeNotice.value = ""
+    sslSettings.paramsList = []
+    fullscreenLoading.value = false
+  }
+
+  const handleSSLTypeChange = () => {
+    if (dnsChecking.value) {
+      resetDNSChallenge()
+    }
+  }
+
   const handleSSLChallengeChange = (challenge) => {
-    if (challenge !== "dns" || dnsChecking.value || fullscreenLoading.value) {
+    if (fullscreenLoading.value) {
       return
     }
 
-    dnsChallengeNotice.value = ""
-    return setSSLConfig()
+    if (challenge === "dns") {
+      dnsChallengeNotice.value = ""
+      return setSSLConfig()
+    }
+
+    if (dnsChecking.value) {
+      resetDNSChallenge()
+    }
   }
 
   const runStep = (action) => {
@@ -703,6 +725,7 @@ export function usePage() {
     getDomainConfig,
     setDbConfig,
     handleDbTypeChange,
+    handleSSLTypeChange,
     clearDatabaseError,
     getDNSConfig,
     formatDNSRecordTTL,
