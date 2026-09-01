@@ -486,7 +486,7 @@
 .dns-value-cell {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   min-width: 0;
   padding-right: 42px;
 }
@@ -513,6 +513,8 @@
   position: absolute;
   top: -4px;
   right: 0;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -983,7 +985,7 @@
 
 .dns-page .dns-table :deep(.el-table__cell) {
   padding: 10px 0;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .dns-page .dns-table :deep(.cell) {
@@ -995,6 +997,16 @@
   overflow: visible;
 }
 
+.dns-page .dns-table :deep(thead th .cell) {
+  text-align: center;
+}
+
+.dns-page .dns-table :deep(.el-table__body-wrapper td:nth-child(1) .cell),
+.dns-page .dns-table :deep(.el-table__body-wrapper td:nth-child(2) .cell),
+.dns-page .dns-table :deep(.el-table__body-wrapper td:nth-child(4) .cell) {
+  text-align: center;
+}
+
 .dns-page .dns-host,
 .dns-page .dns-value {
   font-size: 14px;
@@ -1002,6 +1014,9 @@
 }
 
 .dns-page .dns-value-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  align-items: center;
   gap: 8px;
   padding-right: 0;
 }
@@ -1013,6 +1028,8 @@
 .dns-page .dns-copy-button {
   position: static;
   flex: none;
+  min-width: 56px;
+  width: 56px;
   opacity: 1;
   margin-top: 0;
   font-size: 14px;

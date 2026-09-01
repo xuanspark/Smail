@@ -204,7 +204,13 @@
           </div>
 
           <el-table :data="info" border class="dns-table" table-layout="auto">
-            <el-table-column prop="host" :label="lang.dns_host" width="190px">
+            <el-table-column
+              prop="host"
+              :label="lang.dns_host"
+              width="190px"
+              align="center"
+              header-align="center"
+            >
               <template #default="scope">
                 <el-tooltip :content="lang.dns_root_desc" placement="top" v-if="scope.row.host === '' || scope.row.host === '@'">
                   <span class="dns-host dns-host-root">{{ scope.row.host || '@' }}</span>
@@ -213,7 +219,13 @@
               </template>
             </el-table-column>
 
-            <el-table-column prop="type" :label="lang.dns_type" width="110px">
+            <el-table-column
+              prop="type"
+              :label="lang.dns_type"
+              width="110px"
+              align="center"
+              header-align="center"
+            >
               <template #default="scope">
                 <span :class="['dns-type', 'dns-type-' + scope.row.type.toLowerCase()]">
                   {{ scope.row.type }}
@@ -221,7 +233,12 @@
               </template>
             </el-table-column>
 
-            <el-table-column prop="value" :label="lang.dns_value" min-width="420px">
+            <el-table-column
+              prop="value"
+              :label="lang.dns_value"
+              min-width="420px"
+              header-align="center"
+            >
               <template #default="scope">
                 <div class="dns-value-cell">
                   <el-tooltip :content="scope.row.tips" placement="top" v-if="scope.row.tips">
@@ -239,7 +256,13 @@
               </template>
             </el-table-column>
 
-            <el-table-column prop="ttl" :label="lang.dns_ttl" width="120px">
+            <el-table-column
+              prop="ttl"
+              :label="lang.dns_ttl"
+              width="120px"
+              align="center"
+              header-align="center"
+            >
               <template #default="scope">
                 <span class="dns-ttl">{{ formatDNSRecordTTL(scope.row.ttl) }}</span>
               </template>
