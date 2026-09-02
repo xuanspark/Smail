@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -95,6 +96,35 @@ func TestApplyManagedSSLReferenceDoesNotPersistLegacyPaths(t *testing.T) {
 	}
 	if cfg.SSL.CustomDirectory != "config/ssl/managed/upload" {
 		t.Fatalf("自定义受控目录写入错误: %s", cfg.SSL.CustomDirectory)
+	}
+}
+
+func TestNormalizeUserCertificateImportError(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{name: "certificate mismatch", err: config.ErrSSLCertificateMismatch, message: "SSL 证书与私钥不匹配"},
+		{name: "domain mismatch", err: fmt.Errorf("%w: web.xuan.com", config.ErrSSLCertificateDomain), message: "SSL 证书与已配置域名不匹配，请检查主域名、Web 域名和附加域名"},
+		{name: "certificate expired", err: config.ErrSSLCertificateExpired, message: "SSL 证书无效、尚未生效或已经过期"},
+		{name: "private key permission", err: config.ErrSSLPrivateKeyPermission, message: "SSL 私钥权限过于宽松，请限制为仅 Smail 运行用户可读取"},
+		{name: "invalid material", err: config.ErrInvalidSSLMaterial, message: "SSL 证书或私钥文件无效"},
+		{name: "unsafe file", err: config.ErrUnsafeSSLFile, message: "SSL 证书或私钥文件无效"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			message := UserCertificateErrorMessage(normalizeUserCertificateImportError(test.err))
+			if message != test.message {
+				t.Fatalf("证书错误提示不匹配: got %q, want %q", message, test.message)
+			}
+		})
+	}
+
+	unknown := fmt.Errorf("unknown certificate import error")
+	if normalized := normalizeUserCertificateImportError(unknown); normalized != unknown {
+		t.Fatalf("未知错误不应被替换: %v", normalized)
 	}
 }
 

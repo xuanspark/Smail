@@ -54,6 +54,23 @@ func UserCertificateErrorMessage(err error) string {
 	return ""
 }
 
+func normalizeUserCertificateImportError(err error) error {
+	switch {
+	case stderrors.Is(err, config.ErrSSLCertificateMismatch):
+		return newUserCertificateError("SSL 证书与私钥不匹配")
+	case stderrors.Is(err, config.ErrSSLCertificateDomain):
+		return newUserCertificateError("SSL 证书与已配置域名不匹配，请检查主域名、Web 域名和附加域名")
+	case stderrors.Is(err, config.ErrSSLCertificateExpired):
+		return newUserCertificateError("SSL 证书无效、尚未生效或已经过期")
+	case stderrors.Is(err, config.ErrSSLPrivateKeyPermission):
+		return newUserCertificateError("SSL 私钥权限过于宽松，请限制为仅 Smail 运行用户可读取")
+	case stderrors.Is(err, config.ErrInvalidSSLMaterial), stderrors.Is(err, config.ErrUnsafeSSLFile):
+		return newUserCertificateError("SSL 证书或私钥文件无效")
+	default:
+		return err
+	}
+}
+
 func (u *MyUser) GetEmail() string {
 	return u.Email
 }
@@ -109,7 +126,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		}
 		reference, err := config.ImportManagedSSL(config.ManagedSSLModeUpload, privatePEM, publicPEM, nil, sslDomains(cfg))
 		if err != nil {
-			return err
+			return normalizeUserCertificateImportError(err)
 		}
 		applyManagedSSLReference(cfg, reference)
 		// 手动设置证书的情况下后台地址默认不启用https
