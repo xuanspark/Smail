@@ -331,8 +331,6 @@
 
       </div>
 
-    </div>
-
     <div v-if="dnsChecking" class="ssl-dns-challenge">
       <div class="ssl-dns-challenge-header">
         <div>
@@ -371,6 +369,8 @@
         <el-table-column prop="ttl" label="TTL" width="100px"/>
       </el-table>
     </div>
+    </div>
+
 
 
     <div class="setup-actions">

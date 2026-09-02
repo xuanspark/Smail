@@ -248,6 +248,17 @@
   border-radius: var(--pm-radius-lg);
   background: rgba(0, 113, 227, 0.05);
 }
+.ssl-page .setup-form-panel > .ssl-dns-challenge {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid rgba(0, 113, 227, 0.14);
+  border-radius: 0;
+  background: transparent;
+}
+
 
 .ssl-dns-challenge-header {
   display: flex;
