@@ -2072,3 +2072,28 @@
     padding: 6px 16px;
   }
 }
+
+@media (min-width: 1081px) {
+  #main.setup-page.ssl-page .ssl-form {
+    width: min(100%, 1200px);
+    max-width: 1200px;
+  }
+
+  #main.setup-page.ssl-page .ssl-form > .el-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.7fr);
+    column-gap: 28px;
+    align-items: start;
+  }
+
+  #main.setup-page.ssl-page .ssl-form > .el-form > .el-form-item {
+    grid-column: 1;
+  }
+
+  #main.setup-page.ssl-page .ssl-form > .el-form > .ssl-storage-card {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    margin: 0 0 18px;
+  }
+}
