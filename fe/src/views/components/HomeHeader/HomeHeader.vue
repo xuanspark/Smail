@@ -18,8 +18,8 @@
   </div>
 
   <!-- Settings Drawer -->
-  <el-drawer v-model="globalStatus.settingsDrawerVisible" :size="isMobile ? '100%' : '600px'" :title="lang.settings" class="settings-drawer" :with-header="true" direction="rtl">
-    <el-tabs :tab-position="isMobile ? 'top' : 'left'" class="settings-tabs">
+  <el-drawer v-model="globalStatus.settingsDrawerVisible" :size="isMobile ? '100%' : '50vw'" :title="lang.settings" class="settings-drawer" :with-header="true" direction="rtl">
+    <el-tabs :tab-position="isMobile ? 'top' : 'right'" class="settings-tabs">
       <el-tab-pane :label="lang.security">
         <SecuritySettings/>
       </el-tab-pane>
