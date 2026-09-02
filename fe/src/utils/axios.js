@@ -63,7 +63,7 @@ http.interceptors.response.use(async (response) => {
         await router.replace({
             path: '/login',
             query: {
-                redirect: router.currentRoute.fullPath
+                redirect: router.currentRoute.value.fullPath
             }
         });
     }
@@ -72,7 +72,7 @@ http.interceptors.response.use(async (response) => {
         await router.replace({
             path: '/setup',
             query: {
-                redirect: router.currentRoute.fullPath
+                redirect: router.currentRoute.value.fullPath
             }
         });
     }
@@ -95,7 +95,7 @@ http.interceptors.response.use(async (response) => {
                     await router.replace({
                         path: '/login',
                         query: {
-                            redirect: router.currentRoute.fullPath
+                            redirect: router.currentRoute.value.fullPath
                         }
                     });
                 }

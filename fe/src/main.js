@@ -29,7 +29,12 @@ if (isReservedResetPath(window.location.pathname)) {
 }
 
 const app = createApp(App)
+const pinia = createPinia()
+
+app.use(pinia)
 app.use(router)
-app.use(createPinia())
-app.use(ElementPlus) 
-app.mount('#app')
+app.use(ElementPlus)
+
+router.isReady().then(() => {
+  app.mount('#app')
+})

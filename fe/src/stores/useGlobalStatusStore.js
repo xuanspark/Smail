@@ -1,6 +1,8 @@
 import { defineStore } from "pinia";
 import { http } from "@/utils/axios";
 
+let authRefreshPromise = null;
+
 const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
     state() {
         return {
@@ -27,33 +29,39 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
         }
     },
     actions: {
-        async refresh() {
-            if (this.authLoading) {
-                return this.isLogin;
+        refresh() {
+            if (authRefreshPromise) {
+                return authRefreshPromise;
             }
 
             this.authLoading = true;
-            try {
-                const response = await http.post("/api/v1/user/info", {});
-                if (response.errorNo === 0 && response.data) {
-                    this.setUser(response.data, false);
-                    this.authChecked = true;
-                    return true;
+            authRefreshPromise = (async () => {
+                try {
+                    const response = await http.post("/api/v1/user/info", {});
+                    if (response.errorNo === 0 && response.data) {
+                        this.setUser(response.data, false);
+                        this.authChecked = true;
+                        return true;
+                    }
+                    this.clear();
+                    return false;
+                } catch (error) {
+                    this.clear();
+                    return false;
+                } finally {
+                    this.authLoading = false;
+                    authRefreshPromise = null;
                 }
-                this.clear();
-                return false;
-            } catch (error) {
-                this.clear();
-                return false;
-            } finally {
-                this.authLoading = false;
-            }
+            })();
+
+            return authRefreshPromise;
         },
         init(callback) {
-            this.refresh().then(() => {
+            return this.refresh().then((authenticated) => {
                 if (typeof callback === "function") {
-                    callback();
+                    callback(authenticated);
                 }
+                return authenticated;
             });
         },
         clear() {
