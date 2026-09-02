@@ -5,7 +5,7 @@ export const brandLogoProps = {
   },
   src: {
     type: String,
-    default: '/smail-logo.png'
+    default: '/smail-logo-transparent.png'
   },
   variant: {
     type: String,
