@@ -23,6 +23,9 @@
       <el-tab-pane :label="lang.security">
         <SecuritySettings/>
       </el-tab-pane>
+      <el-tab-pane label="第三方授权">
+        <ThirdPartyAuthorization />
+      </el-tab-pane>
       <el-tab-pane v-if="canReadConfig" label="配置管理">
         <ConfigSettings />
       </el-tab-pane>
@@ -43,7 +46,18 @@
 </template>
 
 <script setup>
-import { usePage, EpMenu, BrandLogo, SecuritySettings, ConfigSettings, GroupSettings, RuleSettings, UserManagement, PluginSettings } from './HomeHeader.js'
+import {
+  usePage,
+  EpMenu,
+  BrandLogo,
+  SecuritySettings,
+  ThirdPartyAuthorization,
+  ConfigSettings,
+  GroupSettings,
+  RuleSettings,
+  UserManagement,
+  PluginSettings,
+} from './HomeHeader.js'
 
 const {
   globalStatus,

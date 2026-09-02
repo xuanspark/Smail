@@ -4,6 +4,8 @@ import {computed, ref, onMounted, onUnmounted} from 'vue'
 
 import SecuritySettings from '@/views/components/SecuritySettings/SecuritySettings.vue'
 
+import ThirdPartyAuthorization from '@/views/components/ThirdPartyAuthorization/ThirdPartyAuthorization.vue'
+
 import ConfigSettings from '@/views/components/ConfigSettings/ConfigSettings.vue'
 
 import lang from '../../../i18n/i18n';
@@ -45,6 +47,7 @@ export function usePage() {
     onMounted,
     onUnmounted,
     SecuritySettings,
+    ThirdPartyAuthorization,
     ConfigSettings,
     lang,
     GroupSettings,
@@ -67,6 +70,7 @@ export {
   EpMenu,
   BrandLogo,
   SecuritySettings,
+  ThirdPartyAuthorization,
   ConfigSettings,
   GroupSettings,
   RuleSettings,
