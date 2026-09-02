@@ -32,7 +32,7 @@
 
 <script setup>
 import { usePage } from './PluginSettings.js'
-import SpamBlockSettings from './SpamBlockSettings.vue'
+import SpamBlockSettings from './SpamBlockSettings/SpamBlockSettings.vue'
 
 const {
   lang,
