@@ -50,6 +50,29 @@ func TestWildcardCertificateDomains(t *testing.T) {
 	}
 }
 
+func TestCertificateDomainsFollowChallengeMode(t *testing.T) {
+	cfg := &config.Config{
+		Domain:    "xuans.com",
+		WebDomain: "web.xuans.com",
+		Domains:   []string{"xuans.com"},
+	}
+
+	cfg.SSLType = config.SSLTypeAutoHTTP
+	httpDomains := certificateDomains(cfg)
+	if len(httpDomains) != 5 {
+		t.Fatalf("got %d HTTP domains, want 5: %v", len(httpDomains), httpDomains)
+	}
+	if httpDomains[0] != "web.xuans.com" || httpDomains[1] != "xuans.com" {
+		t.Fatalf("unexpected HTTP domains: %v", httpDomains)
+	}
+
+	cfg.SSLType = config.SSLTypeAutoDNS
+	dnsDomains := certificateDomains(cfg)
+	if len(dnsDomains) != 1 || dnsDomains[0] != "*.xuans.com" {
+		t.Fatalf("unexpected DNS domains: %v", dnsDomains)
+	}
+}
+
 func TestDNSChallengeWildcardProducesSingleRecord(t *testing.T) {
 	challenge := &DNSChallenge{authInfo: map[string]*authInfo{}}
 	if err := challenge.Present("*.xuans.com", "token", "key-auth"); err != nil {

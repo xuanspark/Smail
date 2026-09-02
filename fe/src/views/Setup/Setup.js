@@ -123,7 +123,8 @@ export function usePage() {
     records.some((record) => record.type === 'AAAA')
   ))
 
- const sslRuntime = ref({})
+  const port = ref(80)
+  const sslRuntime = ref({})
 
   const addDomain = () => {
     domainSettings.multi_domain.push([])
@@ -352,12 +353,14 @@ export function usePage() {
       sslSettings.type = res.data.type
       if (sslSettings.type === "2") {
         sslSettings.type = "0"
+        sslSettings.challenge = "dns"
       }
       if (sslSettings.type === "0") {
-        sslSettings.challenge = ""
+        sslSettings.challenge = sslSettings.challenge || "http"
       }
       sslRuntime.value = res.data || {}
-     return res
+      port.value = res.data?.port || res.data?.httpPort || 80
+      return res
     }).catch((error) => {
       showSetupError(error)
       return null
@@ -368,7 +371,7 @@ export function usePage() {
     fullscreenLoading.value = true;
 
     let sslType = sslSettings.type;
-    if (sslType === "0") {
+    if (sslType === "0" && sslSettings.challenge === "dns") {
       sslType = "2"
     }
 
@@ -718,9 +721,10 @@ export function usePage() {
     fullscreenLoading,
     dnsChecking,
     dnsChallengeNotice,
+    port,
     dnsInfos,
     hasDNSIPv6,
-   addDomain,
+    addDomain,
     setPassword,
     getPassword,
     getDbConfig,

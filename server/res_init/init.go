@@ -19,6 +19,7 @@ import (
 	"git.pcux.cn/xuans/Smail/listen/pop3_server"
 	"git.pcux.cn/xuans/Smail/listen/smtp_server"
 	"git.pcux.cn/xuans/Smail/services/adminreset"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
@@ -160,6 +161,9 @@ func Init(serverVersion string) error {
 		// 等待 HTTP 服务就绪后再执行需要 HTTP 回调的 SSL 更新。
 		// ssl.Update(false)
 
+		if _, err := auth.DkimGen(); err != nil {
+			return err
+		}
 		if err := parsemail.Init(); err != nil {
 			return err
 		}
