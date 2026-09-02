@@ -284,6 +284,23 @@
   line-height: 1.5;
 }
 
+.ssl-dns-value-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ssl-dns-value-cell .ssl-dns-value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ssl-dns-copy-button {
+  flex: none;
+  margin-top: 0;
+}
+
 .ssl-storage-path {
   margin-top: 5px;
   color: var(--pm-text-primary);

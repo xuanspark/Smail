@@ -91,7 +91,7 @@ export function usePage() {
 
   const sslSettings = reactive({
     "type": "0",
-    "challenge": "dns",
+    "challenge": "",
     "key_path": "./config/ssl/private.key",
     "crt_path": "./config/ssl/public.crt",
     "paramsList": [],
@@ -352,10 +352,9 @@ export function usePage() {
       sslSettings.type = res.data.type
       if (sslSettings.type === "2") {
         sslSettings.type = "0"
-        sslSettings.challenge = "dns"
       }
       if (sslSettings.type === "0") {
-        sslSettings.challenge = "dns"
+        sslSettings.challenge = ""
       }
       sslRuntime.value = res.data || {}
      return res
@@ -610,6 +609,9 @@ export function usePage() {
   const handleSSLTypeChange = () => {
     if (dnsChecking.value) {
       resetDNSChallenge()
+    }
+    if (sslSettings.type === "0") {
+      sslSettings.challenge = ""
     }
   }
 

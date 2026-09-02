@@ -309,7 +309,7 @@
             <div class="ssl-storage-title">{{ lang.ssl_auto_storage_title }}</div>
             <div class="ssl-storage-desc">{{ lang.ssl_auto_storage_desc }}</div>
             <div v-if="sslSettings.challenge === 'dns'" class="ssl-dns-intro">
-              {{ lang.ssl_dns_desc }}
+              {{ sslSettings.paramsList.length === 0 ? lang.ssl_dns_waiting : lang.ssl_dns_ready }}
             </div>
             <div class="ssl-storage-path">{{ lang.ssl_auto_certificate_path }}</div>
             <div class="ssl-storage-path">{{ lang.ssl_auto_private_key_path }}</div>
@@ -337,8 +337,6 @@
       <div class="ssl-dns-challenge-header">
         <div>
           <h3>{{ lang.ssl_dns_title }}</h3>
-          <p v-if="sslSettings.paramsList.length === 0">{{ lang.ssl_dns_waiting }}</p>
-          <p v-else>{{ lang.ssl_dns_ready }}</p>
         </div>
         <span v-if="sslSettings.paramsList.length > 0" class="ssl-dns-record-count">
           {{ sslSettings.paramsList.length }} 条记录
@@ -357,7 +355,17 @@
         <el-table-column prop="type" label="类型" width="100px"/>
         <el-table-column prop="value" label="记录值" min-width="360px">
           <template #default="scope">
-            <div class="ssl-dns-value">{{ scope.row.value }}</div>
+            <div class="ssl-dns-value-cell">
+              <div class="ssl-dns-value">{{ scope.row.value }}</div>
+              <el-button
+                class="ssl-dns-copy-button"
+                link
+                type="primary"
+                @click.stop="copyDNSValue(scope.row.value)"
+              >
+                {{ lang.dns_copy }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="ttl" label="TTL" width="100px"/>
