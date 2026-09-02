@@ -24,13 +24,15 @@
   width: 42px;
   height: 30px;
   overflow: hidden;
-  border-radius: 7px;
-  background: #1f4f91;
 }
 
 .brand-logo-shell :deep(.brand-logo-frame) {
   width: 100%;
   height: 100%;
+}
+
+.brand-logo-shell :deep(.brand-logo) {
+  mix-blend-mode: normal;
 }
 
 .brand-text {
