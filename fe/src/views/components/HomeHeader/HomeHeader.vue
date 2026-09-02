@@ -20,26 +20,8 @@
   <!-- Settings Drawer -->
   <el-drawer v-model="globalStatus.settingsDrawerVisible" :size="isMobile ? '100%' : '50vw'" :title="lang.settings" class="settings-drawer" :with-header="true" direction="rtl">
     <el-tabs :tab-position="isMobile ? 'top' : 'right'" class="settings-tabs">
-      <el-tab-pane :label="lang.security">
-        <SecuritySettings/>
-      </el-tab-pane>
-      <el-tab-pane label="第三方授权">
-        <ThirdPartyAuthorization />
-      </el-tab-pane>
-      <el-tab-pane v-if="canReadConfig" label="配置管理">
-        <ConfigSettings />
-      </el-tab-pane>
-      <el-tab-pane :label="lang.group_settings">
-        <GroupSettings/>
-      </el-tab-pane>
-      <el-tab-pane :label="lang.rule_setting">
-        <RuleSettings/>
-      </el-tab-pane>
-      <el-tab-pane v-if="canManageUsers" :label="lang.user_management">
-        <UserManagement/>
-      </el-tab-pane>
-      <el-tab-pane v-if="canReadPlugins" :label="lang.plugin_settings">
-        <PluginSettings/>
+      <el-tab-pane v-for="item in settingsMenu" :key="item.key" :label="item.label">
+        <component :is="item.component" />
       </el-tab-pane>
     </el-tabs>
   </el-drawer>
@@ -63,9 +45,7 @@ const {
   globalStatus,
   isMobile,
   lang,
-  canReadConfig,
-  canManageUsers,
-  canReadPlugins
+  settingsMenu
 } = usePage()
 </script>
 

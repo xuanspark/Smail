@@ -1,6 +1,22 @@
 <template>
-  <div class="settings-card" v-loading="securityLoading">
-    <section v-if="!isSuperAdmin" class="security-section">
+  <div class="settings-card security-settings-card" v-loading="securityLoading">
+    <div class="security-workspace">
+      <nav class="security-submenu" aria-label="安全设置">
+        <button
+          v-for="item in sectionOptions"
+          :key="item.value"
+          type="button"
+          class="security-submenu-item"
+          :class="{ active: selectedSection === item.value }"
+          :aria-current="selectedSection === item.value ? 'page' : undefined"
+          @click="selectSection(item.value)"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
+
+      <div class="security-main">
+    <section v-if="selectedSection === 'password' && !isSuperAdmin" class="security-section">
       <div class="settings-header">
         <h3>{{ lang.modify_pwd }}</h3>
         <p class="settings-desc">{{ lang.modify_pwd_desc }}</p>
@@ -16,9 +32,9 @@
       <el-divider class="settings-divider" />
     </section>
 
-    <el-alert v-else title="超级管理员密码只能通过部署端专用本机通道重置，网页不会提供修改入口。" type="warning" :closable="false" show-icon class="security-alert" />
+    <el-alert v-if="selectedSection === 'password' && isSuperAdmin" title="超级管理员密码只能通过部署端专用本机通道重置，网页不会提供修改入口。" type="warning" :closable="false" show-icon class="security-alert" />
 
-    <section class="security-section">
+    <section v-if="selectedSection === 'question'" class="security-section">
       <div class="settings-header">
         <h3>密保问题</h3>
         <p class="settings-desc">密保问题不能单独重置密码，必须与离线恢复码组合使用。</p>
@@ -30,8 +46,8 @@
       </el-form>
     </section>
 
-    <el-divider v-if="!isSuperAdmin" class="settings-divider" />
-    <section v-if="!isSuperAdmin" class="security-section">
+    <el-divider v-if="selectedSection === 'recovery'" class="settings-divider" />
+    <section v-if="selectedSection === 'recovery' && !isSuperAdmin" class="security-section">
       <div class="settings-header security-key-header">
         <div><h3>离线恢复码</h3><p class="settings-desc">恢复码只在生成时显示一次，请保存到安全位置。</p></div>
         <div class="section-actions"><el-button type="primary" @click="generateRecoveryCodes">生成新恢复码</el-button><el-button v-if="recoveryConfigured" type="danger" plain @click="revokeRecoveryCodes">撤销</el-button></div>
@@ -44,8 +60,8 @@
       </div>
     </section>
 
-    <el-divider class="settings-divider" />
-    <section class="security-section">
+    <el-divider v-if="selectedSection === 'external-email'" class="settings-divider" />
+    <section v-if="selectedSection === 'external-email'" class="security-section">
       <div class="settings-header"><h3>外部安全邮箱</h3><p class="settings-desc">用于登录二次验证和密码恢复，只显示脱敏地址。</p></div>
       <div class="external-bind-form">
         <el-input v-model="bindForm.email" placeholder="请输入完整邮箱地址" clearable />
@@ -61,15 +77,17 @@
       <el-empty v-else description="暂无外部安全邮箱" />
     </section>
 
-    <el-divider class="settings-divider" />
-    <section v-if="supported" class="security-section">
+    <el-divider v-if="selectedSection === 'webauthn'" class="settings-divider" />
+    <section v-if="selectedSection === 'webauthn' && supported" class="security-section">
       <div class="settings-header security-key-header"><div><h3>WebAuthn 安全密钥</h3><p class="settings-desc">使用设备或浏览器内置的安全密钥无密码登录。</p></div><el-button type="primary" :loading="registering" @click="registerCredential">注册安全密钥</el-button></div>
       <div class="credential-list" v-loading="credentialsLoading"><el-empty v-if="!credentialsLoading && credentials.length === 0" description="暂无已注册的安全密钥" /><div v-for="item in credentials" :key="item.id" class="credential-item"><div class="credential-info"><strong>{{ item.display_name }}</strong><span>创建于{{ formatTime(item.created_at) }}</span><span v-if="item.last_used_at">最后使用于{{ formatTime(item.last_used_at) }}</span><el-tag v-if="item.revoked_at" type="info" size="small">已撤销</el-tag><el-tag v-else-if="item.requires_re_registration" type="warning" size="small">需要重新注册</el-tag><el-tag v-else type="success" size="small">有效</el-tag></div><div class="credential-actions"><el-button size="small" :disabled="Boolean(item.revoked_at)" @click="renameCredential(item)">重命名</el-button><el-button size="small" type="danger" plain :disabled="Boolean(item.revoked_at)" @click="revokeCredential(item)">撤销</el-button></div></div></div>
     </section>
-    <el-alert v-else title="当前浏览器不支持 WebAuthn，请使用 HTTPS 和受支持的浏览器。" type="warning" :closable="false" show-icon />
+    <el-alert v-if="selectedSection === 'webauthn' && !supported" title="当前浏览器不支持 WebAuthn，请使用 HTTPS 和受支持的浏览器。" type="warning" :closable="false" show-icon />
 
-    <el-divider class="settings-divider" />
-    <section class="security-section"><div class="settings-header"><h3 class="danger-text">{{ lang.logout }}</h3><p class="settings-desc">{{ lang.logout_desc }}</p></div><el-button type="danger" plain @click="logout" class="logout-btn">{{ lang.logout }}</el-button></section>
+    <el-divider v-if="selectedSection === 'logout'" class="settings-divider" />
+    <section v-if="selectedSection === 'logout'" class="security-section"><div class="settings-header"><h3 class="danger-text">{{ lang.logout }}</h3><p class="settings-desc">{{ lang.logout_desc }}</p></div><el-button type="danger" plain @click="logout" class="logout-btn">{{ lang.logout }}</el-button></section>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -77,7 +95,8 @@
 import { usePage } from './SecuritySettings.js'
 
 const {
-  lang, isSuperAdmin, supported, registering, credentialsLoading, credentials, securityLoading,
+  lang, isSuperAdmin, supported, sectionOptions, selectedSection, selectSection,
+  registering, credentialsLoading, credentials, securityLoading,
   securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
   bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
   saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, bindExternalEmail,

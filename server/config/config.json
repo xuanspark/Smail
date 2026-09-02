@@ -1,8 +1,8 @@
 {
   "logLevel": "debug",
-  "domain": "test.domain",
+  "domain": "xuans.com",
   "domains": null,
-  "webDomain": "mail.test.domain",
+  "webDomain": "xuans.com",
   "dkimPrivateKeyPath": "config/dkim/dkim.priv",
   "sslType": "1",
   "SSLPrivateKeyPath": "./config/ssl/private.key",

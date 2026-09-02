@@ -1,4 +1,4 @@
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 
 import { ElMessageBox, ElNotification } from 'element-plus'
 
@@ -11,6 +11,33 @@ export function usePage() {
   const globalStatus = useGlobalStatusStore()
   const isSuperAdmin = computed(() => globalStatus.role === 'super_admin')
   const supported = webAuthnSupported()
+  const sectionOptions = computed(() => {
+    const options = []
+    if (!isSuperAdmin.value) {
+      options.push({ value: 'password', label: lang.modify_pwd })
+    }
+    options.push({ value: 'question', label: '密保问题' })
+    if (!isSuperAdmin.value) {
+      options.push({ value: 'recovery', label: '离线恢复码' })
+    }
+    options.push({ value: 'external-email', label: '外部安全邮箱' })
+    options.push({ value: 'webauthn', label: '安全密钥' })
+    options.push({ value: 'logout', label: lang.logout })
+    return options
+  })
+  const selectedSection = ref('question')
+
+  const selectSection = value => {
+    if (sectionOptions.value.some(item => item.value === value)) {
+      selectedSection.value = value
+    }
+  }
+
+  watch(sectionOptions, options => {
+    if (!options.some(item => item.value === selectedSection.value)) {
+      selectedSection.value = options[0]?.value || ''
+    }
+  }, { immediate: true })
 
   const registering = ref(false)
   const credentialsLoading = ref(false)
@@ -233,7 +260,8 @@ export function usePage() {
   })
 
   return {
-    lang, isSuperAdmin, supported, registering, credentialsLoading, credentials, securityLoading,
+    lang, isSuperAdmin, supported, sectionOptions, selectedSection, selectSection,
+    registering, credentialsLoading, credentials, securityLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
     bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
     saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, bindExternalEmail,
