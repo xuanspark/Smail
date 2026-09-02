@@ -26,3 +26,19 @@ server/config/credential.key
 server/smail.exe
 server/smail-admin.exe
 .codex-smail-*
+
+# 本地测试输出和临时文件
+artifacts/
+ssl/
+.tmp-*
+*.log
+*.pid
+server/smail_*
+server/smail-admin_*
+server/*.exe
+server/config/smail_temp.db
+server/config/external-email-*.key
+server/config/ssl/*.crt
+server/config/ssl/*.key
+server/config/ssl/*.csr
+server/config/dkim/backup-*/
