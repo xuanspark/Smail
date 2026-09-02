@@ -17,6 +17,7 @@ server/spam_block.exe
 server/wechat_push.exe
 server/utils/validation/test.tmp
 server/.codex-smail-*
+server/.tmp-*
 
 !server/config/
 !server/config/*.go
