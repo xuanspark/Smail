@@ -135,6 +135,12 @@ export function usePage() {
     }
   }
 
+  const selectSection = value => {
+    if (selectedSection.value === value) return
+    selectedSection.value = value
+    loadSection()
+  }
+
   const loadBackups = async () => {
     if (!canRollback.value) return
     backupsLoading.value = true
@@ -426,7 +432,7 @@ export function usePage() {
 
   return {
     loading, working, status, stateLabel, stateTagType, sectionOptions: sections,
-    selectedSection, editorText, sectionError, sensitiveHint, secretField, secretValue,
+    selectedSection, selectSection, editorText, sectionError, sensitiveHint, secretField, secretValue,
     confirmed, savedGeneration, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     auditLoading, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig,

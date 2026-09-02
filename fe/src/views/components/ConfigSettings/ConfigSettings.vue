@@ -14,58 +14,72 @@
       class="config-alert"
     />
 
-    <section class="status-panel">
-      <div class="status-heading">
-        <div>
-          <span class="section-eyebrow">运行状态</span>
-          <h4>配置快照</h4>
-        </div>
-        <el-button size="small" plain :loading="loading" @click="loadAll">刷新</el-button>
-      </div>
-      <div class="status-grid">
-        <div class="status-item">
-          <span>状态</span>
-          <el-tag :type="stateTagType">{{ stateLabel }}</el-tag>
-        </div>
-        <div class="status-item">
-          <span>当前生效代次</span>
-          <strong>{{ status.activeGeneration || '-' }}</strong>
-        </div>
-        <div class="status-item">
-          <span>最近校验时间</span>
-          <strong>{{ formatTime(status.lastValidAt) }}</strong>
-        </div>
-        <div class="status-item status-wide">
-          <span>待重启服务</span>
-          <div v-if="status.pendingRestart?.length" class="tag-list">
-            <el-tag v-for="service in status.pendingRestart" :key="service" type="warning" effect="plain">
-              {{ serviceLabel(service) }}
-            </el-tag>
-          </div>
-          <strong v-else>无</strong>
-        </div>
-      </div>
-      <el-alert
-        v-for="issue in status.degradedReasons || []"
-        :key="`${issue.code}-${issue.message}`"
-        :title="`${issue.code}：${issue.message}`"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="degraded-alert"
-      />
-    </section>
+    <div class="config-workspace">
+      <nav class="config-submenu" aria-label="配置分区">
+        <button
+          v-for="item in sectionOptions"
+          :key="item.value"
+          type="button"
+          class="config-submenu-item"
+          :class="{ active: selectedSection === item.value }"
+          :aria-current="selectedSection === item.value ? 'page' : undefined"
+          @click="selectSection(item.value)"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
 
-    <section class="editor-panel">
-      <div class="panel-heading">
-        <div>
-          <span class="section-eyebrow">分区配置</span>
-          <h4>编辑候选配置</h4>
-        </div>
-        <el-select v-model="selectedSection" class="section-select" aria-label="配置分区" @change="loadSection">
-          <el-option v-for="item in sectionOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </div>
+      <div class="config-main">
+        <section class="status-panel">
+          <div class="status-heading">
+            <div>
+              <span class="section-eyebrow">运行状态</span>
+              <h4>配置快照</h4>
+            </div>
+            <el-button size="small" plain :loading="loading" @click="loadAll">刷新</el-button>
+          </div>
+          <div class="status-grid">
+            <div class="status-item">
+              <span>状态</span>
+              <el-tag :type="stateTagType">{{ stateLabel }}</el-tag>
+            </div>
+            <div class="status-item">
+              <span>当前生效代次</span>
+              <strong>{{ status.activeGeneration || '-' }}</strong>
+            </div>
+            <div class="status-item">
+              <span>最近校验时间</span>
+              <strong>{{ formatTime(status.lastValidAt) }}</strong>
+            </div>
+            <div class="status-item status-wide">
+              <span>待重启服务</span>
+              <div v-if="status.pendingRestart?.length" class="tag-list">
+                <el-tag v-for="service in status.pendingRestart" :key="service" type="warning" effect="plain">
+                  {{ serviceLabel(service) }}
+                </el-tag>
+              </div>
+              <strong v-else>无</strong>
+            </div>
+          </div>
+          <el-alert
+            v-for="issue in status.degradedReasons || []"
+            :key="`${issue.code}-${issue.message}`"
+            :title="`${issue.code}：${issue.message}`"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="degraded-alert"
+          />
+        </section>
+
+        <section class="editor-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="section-eyebrow">分区配置</span>
+              <h4>编辑候选配置</h4>
+            </div>
+            <strong class="selected-section-label">{{ sectionOptions.find(item => item.value === selectedSection)?.label }}</strong>
+          </div>
 
       <el-alert
         v-if="sectionError"
@@ -124,9 +138,9 @@
           <li v-for="issue in validationResult.issues" :key="`${issue.code}-${issue.message}`">{{ issue.code }}：{{ issue.message }}</li>
         </ul>
       </div>
-    </section>
+        </section>
 
-    <section v-if="canMigrate" class="migration-panel">
+        <section v-if="canMigrate" class="migration-panel">
       <div class="panel-heading">
         <div>
           <span class="section-eyebrow">数据库迁移</span>
@@ -172,9 +186,9 @@
         <span>目标数据库：{{ migrationRecord.target?.name || migrationRecord.target?.localRef || '-' }}</span>
         <span v-if="migrationRecord.errorCode" class="migration-error">错误代码：{{ migrationRecord.errorCode }}</span>
       </div>
-    </section>
+        </section>
 
-    <section v-if="canRestart && status.pendingRestart?.length" class="restart-panel">
+        <section v-if="canRestart && status.pendingRestart?.length" class="restart-panel">
       <div class="panel-heading">
         <div>
           <span class="section-eyebrow">受控重启</span>
@@ -196,9 +210,9 @@
         <span>服务管理器：{{ restartPreview.serviceManager }}</span>
         <span>{{ restartPreview.triggerAvailable ? '重启通道可用' : '重启通道暂不可用，请先检查服务部署' }}</span>
       </div>
-    </section>
+        </section>
 
-    <section v-if="canRollback" class="rollback-panel">
+        <section v-if="canRollback" class="rollback-panel">
       <div class="panel-heading">
         <div>
           <span class="section-eyebrow">受控回滚</span>
@@ -231,9 +245,9 @@
         <span>候选代次：{{ rollbackPreview.candidateGeneration }}</span>
         <span>变更分区：{{ rollbackPreview.changedSections?.map(sectionLabel).join('、') || '无' }}</span>
       </div>
-    </section>
+        </section>
 
-    <section v-if="canAudit" class="audit-panel">
+        <section v-if="canAudit" class="audit-panel">
       <div class="panel-heading">
         <div>
           <span class="section-eyebrow">审计记录</span>
@@ -255,7 +269,9 @@
         </div>
       </div>
       <el-empty v-else description="暂无配置审计记录" :image-size="72" />
-    </section>
+        </section>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -271,6 +287,7 @@ const {
   stateTagType,
   sectionOptions,
   selectedSection,
+  selectSection,
   editorText,
   sectionError,
   sensitiveHint,
