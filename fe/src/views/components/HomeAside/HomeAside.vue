@@ -2,7 +2,9 @@
 <div class="sidebar-main">
     <div class="brand">
       <router-link to="/" class="brand-link">
-        <BrandLogo variant="compact" surface />
+        <span class="brand-logo-shell">
+          <BrandLogo variant="compact" surface />
+        </span>
         <span class="brand-text">Smail</span>
       </router-link>
     </div>
