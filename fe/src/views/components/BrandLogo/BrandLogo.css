@@ -16,11 +16,8 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 3px;
-  box-sizing: border-box;
-  background: #0f172a;
+  background: transparent;
   border: 0;
-  border-radius: 10px;
   box-shadow: none;
 }
 
@@ -35,8 +32,8 @@
 }
 
 .brand-logo-frame--compact {
-  width: 44px;
-  height: 32px;
+  width: 38px;
+  height: 26px;
 }
 
 .brand-logo--login,
@@ -59,8 +56,8 @@
   }
 
   .brand-logo-frame--compact {
-    width: 40px;
-    height: 29px;
+    width: 34px;
+    height: 23px;
   }
 }
 
