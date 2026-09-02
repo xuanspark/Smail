@@ -33,8 +33,6 @@ type MyUser struct {
 	key          crypto.PrivateKey
 }
 
-var externalUserCertificateRoot = filepath.Join(string(os.PathSeparator), "ssl")
-
 type userCertificateError struct {
 	message string
 }
@@ -169,23 +167,15 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 	if err != nil {
 		return "", "", err
 	}
-	managedRoot := filepath.Join(rootPath, "config", "ssl")
-	externalRoot, err := filepath.Abs(filepath.Clean(externalUserCertificateRoot))
-	if err != nil {
-		return "", "", err
-	}
-
 	resolve := func(value string) (string, []byte, error) {
 		if strings.TrimSpace(value) == "" {
 			return "", nil, newUserCertificateError("请填写 SSL 证书和私钥路径")
 		}
 		path := strings.TrimSpace(value)
-		allowedRoots := []string{managedRoot}
 		if isAbsoluteUserCertificatePath(path) {
 			if filepath.VolumeName(path) != "" && !filepath.IsAbs(path) {
 				return "", nil, newUserCertificateError("SSL 路径必须是完整的绝对路径")
 			}
-			allowedRoots = append(allowedRoots, externalRoot)
 		} else {
 			path = filepath.Join(rootPath, path)
 		}
@@ -194,58 +184,18 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 			return "", nil, err
 		}
 
-		var selectedRoot string
-		var relativePath string
-		for _, allowedRoot := range allowedRoots {
-			candidate, relativeErr := filepath.Rel(allowedRoot, path)
-			if relativeErr == nil && candidate != "." && !filepath.IsAbs(candidate) && candidate != ".." && !strings.HasPrefix(candidate, ".."+string(os.PathSeparator)) {
-				selectedRoot = allowedRoot
-				relativePath = candidate
-				break
-			}
-		}
-		if selectedRoot == "" {
-			return "", nil, newUserCertificateError("SSL 文件仅允许放在 ./config/ssl 或 /ssl/域名 目录中")
-		}
-		if filepath.Clean(selectedRoot) == filepath.Clean(externalRoot) {
-			parts := strings.Split(filepath.Clean(relativePath), string(os.PathSeparator))
-			if len(parts) < 2 || strings.TrimSpace(parts[0]) == "" {
-				return "", nil, newUserCertificateError("外部 SSL 文件必须放在 /ssl/域名 目录中")
-			}
-			selectedRoot = filepath.Join(externalRoot, parts[0])
-			relativePath = filepath.Join(parts[1:]...)
-		}
-
-		rootInfo, err := os.Lstat(selectedRoot)
-		if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-			return "", nil, newUserCertificateError("SSL 证书目录不存在或不可访问")
-		}
-
-		candidatePath := filepath.Join(selectedRoot, relativePath)
-		currentPath := selectedRoot
-		for _, part := range strings.Split(filepath.Clean(relativePath), string(os.PathSeparator)) {
-			currentPath = filepath.Join(currentPath, part)
-			info, statErr := os.Lstat(currentPath)
-			if statErr != nil {
-				return "", nil, newUserCertificateError("SSL 文件不存在或无权读取")
-			}
-			if info.Mode()&os.ModeSymlink != 0 {
-				return "", nil, newUserCertificateError("SSL 路径不能包含符号链接")
-			}
-		}
-
-		info, err := os.Lstat(candidatePath)
+		info, err := os.Stat(path)
 		if err != nil {
 			return "", nil, newUserCertificateError("SSL 文件不存在或无权读取")
 		}
 		if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
 			return "", nil, newUserCertificateError("SSL 文件无效或大小超过限制")
 		}
-		content, err := os.ReadFile(candidatePath)
+		content, err := os.ReadFile(path)
 		if err != nil || len(content) == 0 || len(content) > 1<<20 {
 			return "", nil, newUserCertificateError("SSL 文件读取失败或内容无效")
 		}
-		return filepath.Join(selectedRoot, relativePath), content, nil
+		return path, content, nil
 	}
 
 	privatePath, privatePEM, err := resolve(privatePath)

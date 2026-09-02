@@ -49,7 +49,7 @@ func writeTestCertificate(t *testing.T, root string, bits int) (string, string) 
 	return keyPath, certPath
 }
 
-func TestIsAbsoluteUserCertificatePathRejectsWindowsPaths(t *testing.T) {
+func TestIsAbsoluteUserCertificatePathRecognizesWindowsPaths(t *testing.T) {
 	cases := []string{
 		`C:\outside\private.key`,
 		`D:/outside/public.crt`,
@@ -100,14 +100,10 @@ func TestApplyManagedSSLReferenceDoesNotPersistLegacyPaths(t *testing.T) {
 
 func TestValidateUserCertificatePaths(t *testing.T) {
 	oldRoot := config.ROOT_PATH
-	oldExternalRoot := externalUserCertificateRoot
 	root := t.TempDir()
-	externalRoot := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
-	externalUserCertificateRoot = externalRoot
 	t.Cleanup(func() {
 		config.ROOT_PATH = oldRoot
-		externalUserCertificateRoot = oldExternalRoot
 	})
 
 	keyPath, certPath := writeTestCertificate(t, root, 2048)
@@ -116,43 +112,34 @@ func TestValidateUserCertificatePaths(t *testing.T) {
 	}
 	externalSourceRoot := t.TempDir()
 	externalKey, externalCert := writeTestCertificate(t, externalSourceRoot, 2048)
-	externalDirectory := filepath.Join(externalRoot, "example.com")
-	if err := os.MkdirAll(externalDirectory, 0700); err != nil {
-		t.Fatal(err)
+	if _, _, err := validateUserCertificatePaths(externalKey, externalCert); err != nil {
+		t.Fatalf("certificate in an arbitrary directory was rejected: %v", err)
 	}
-	externalKeyTarget := filepath.Join(externalDirectory, "private.key")
-	externalCertTarget := filepath.Join(externalDirectory, "public.crt")
-	keyPEM, err := os.ReadFile(externalKey)
+	relativeKey, err := filepath.Rel(root, externalKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	certPEM, err := os.ReadFile(externalCert)
+	relativeCert, err := filepath.Rel(root, externalCert)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(externalKeyTarget, keyPEM, 0640); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(externalCertTarget, certPEM, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := validateUserCertificatePaths(externalKeyTarget, externalCertTarget); err != nil {
-		t.Fatalf("external /ssl certificate was rejected: %v", err)
+	if _, _, err := validateUserCertificatePaths(relativeKey, relativeCert); err != nil {
+		t.Fatalf("certificate in an arbitrary relative directory was rejected: %v", err)
 	}
 	weakKey, weakCert := writeTestCertificate(t, root, 1024)
 	if _, _, err := validateUserCertificatePaths(weakKey, weakCert); err == nil {
 		t.Fatal("weak certificate was accepted")
 	}
-	outside := filepath.Join(t.TempDir(), "outside.key")
-	if err := os.WriteFile(outside, []byte("invalid"), 0600); err != nil {
+	invalid := filepath.Join(t.TempDir(), "invalid.key")
+	if err := os.WriteFile(invalid, []byte("invalid"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := validateUserCertificatePaths(outside, certPath); err == nil {
-		t.Fatal("outside path was accepted")
+	if _, _, err := validateUserCertificatePaths(invalid, certPath); err == nil {
+		t.Fatal("invalid certificate data was accepted")
 	}
 }
 
-func TestValidateUserCertificatePathsRejectsEscapingParentSymlink(t *testing.T) {
+func TestValidateUserCertificatePathsAcceptsParentSymlink(t *testing.T) {
 	oldRoot := config.ROOT_PATH
 	root := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
@@ -170,7 +157,7 @@ func TestValidateUserCertificatePathsRejectsEscapingParentSymlink(t *testing.T) 
 	}
 	linkedKey := filepath.Join(linkPath, filepath.Base(outsideKey))
 	linkedCert := filepath.Join(linkPath, filepath.Base(outsideCert))
-	if _, _, err := validateUserCertificatePaths(linkedKey, linkedCert); err == nil {
-		t.Fatal("certificate paths escaped through a parent symlink")
+	if _, _, err := validateUserCertificatePaths(linkedKey, linkedCert); err != nil {
+		t.Fatalf("certificate paths through a parent symlink were rejected: %v", err)
 	}
 }
