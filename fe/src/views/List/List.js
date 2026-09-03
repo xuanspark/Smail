@@ -53,10 +53,17 @@ export function usePage() {
     })
   }
   
-  const updateGroupList = function () {
-    http.post("/api/v1/group/list").then(res => {
+  const updateGroupList = async function () {
+    try {
+      const res = await http.get("/api/v1/group/list")
+      if (res.errorNo !== 0) {
+        throw new Error(res.errorMsg || "分组列表加载失败")
+      }
       groupList.value = res.data || []
-    })
+    } catch (error) {
+      groupList.value = []
+      ElMessage.error(error?.message || "分组列表加载失败，请稍后重试")
+    }
   }
   
   updateList()

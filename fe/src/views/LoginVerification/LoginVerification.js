@@ -6,6 +6,7 @@ import { useRouter } from "vue-router"
 
 import { useGlobalStatusStore } from "@/stores/useGlobalStatusStore"
 import { http } from "@/utils/axios"
+import { getSafeLoginRedirect } from "@/utils/navigation.mjs"
 import {
   normalizeRequestOptions,
   serializeCredential,
@@ -77,7 +78,7 @@ export function usePage() {
       if (response.errorNo !== 0) {
         throw new Error(response.errorMsg || "验证码验证失败")
       }
-      const redirect = pending.value.redirect || "/"
+      const redirect = getSafeLoginRedirect(pending.value.redirect)
       globalStatus.clearPendingLogin()
       globalStatus.setUser(response.data, true)
       await router.replace(redirect)
@@ -145,7 +146,7 @@ export function usePage() {
       if (finish.errorNo !== 0) {
         throw new Error(finish.errorMsg || "安全密钥验证失败")
       }
-      const redirect = pending.value?.redirect || "/"
+      const redirect = getSafeLoginRedirect(pending.value?.redirect)
       globalStatus.clearPendingLogin()
       globalStatus.setUser(finish.data, true)
       await router.replace(redirect)

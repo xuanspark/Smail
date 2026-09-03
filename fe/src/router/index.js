@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
+import {AUTH_STATUS} from "@/utils/auth.mjs";
+import {createLoginLocation} from "@/utils/navigation.mjs";
 
 const router = createRouter({
     history: createWebHashHistory(),
@@ -65,13 +67,32 @@ const router = createRouter({
 router.beforeEach(async (to) => {
     const globalStatus = useGlobalStatusStore();
     const needsAuthentication = to.meta.requiresAuth || to.name === "force-password-change";
-    const authenticated = globalStatus.isLogin || (needsAuthentication && await globalStatus.refresh());
+    let authStatus = globalStatus.isLogin
+        ? AUTH_STATUS.AUTHENTICATED
+        : globalStatus.authStatus;
+
+    if (needsAuthentication && authStatus !== AUTH_STATUS.AUTHENTICATED) {
+        authStatus = await globalStatus.refresh();
+    }
+
+    if (needsAuthentication && authStatus === AUTH_STATUS.UNAVAILABLE) {
+        globalStatus.setAuthRetryPath(to.fullPath);
+        return false;
+    }
+
+    if (!needsAuthentication && authStatus === AUTH_STATUS.UNAVAILABLE) {
+        globalStatus.resetAuthAvailability();
+        authStatus = AUTH_STATUS.UNKNOWN;
+    }
+
+    const authenticated = authStatus === AUTH_STATUS.AUTHENTICATED;
 
     if (!authenticated && needsAuthentication) {
-        return {
-            name: "login",
-            query: {redirect: to.fullPath}
-        };
+        return createLoginLocation(to.fullPath);
+    }
+
+    if (authenticated) {
+        globalStatus.clearAuthRetryPath();
     }
 
     if (to.name === "force-password-change") {

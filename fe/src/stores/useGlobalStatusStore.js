@@ -1,7 +1,12 @@
 import { defineStore } from "pinia";
 import { http } from "@/utils/axios";
-
-let authRefreshPromise = null;
+import {
+    AUTH_STATUS,
+    classifyAuthenticationError,
+    classifyAuthenticationResponse,
+    runSharedAuthRefresh
+} from "@/utils/auth.mjs";
+import {getSafeLoginRedirect} from "@/utils/navigation.mjs";
 
 const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
     state() {
@@ -11,6 +16,10 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
             settingsDrawerVisible: false,
             authChecked: false,
             authLoading: false,
+            authStatus: AUTH_STATUS.UNKNOWN,
+            authError: "",
+            authRetryPath: "/",
+            startupError: "",
             pendingLogin: null,
             recoveryPromptDismissed: false
         };
@@ -26,42 +35,49 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
             return Array.isArray(state.userInfos.capabilities)
                 ? state.userInfos.capabilities
                 : [];
+        },
+        startupBlocked(state) {
+            return Boolean(state.startupError)
+                || (state.authLoading && Object.keys(state.userInfos).length === 0)
+                || state.authStatus === AUTH_STATUS.UNAVAILABLE;
         }
     },
     actions: {
         refresh() {
-            if (authRefreshPromise) {
-                return authRefreshPromise;
-            }
-
-            this.authLoading = true;
-            authRefreshPromise = (async () => {
+            return runSharedAuthRefresh(async () => {
+                this.authLoading = true;
+                this.authStatus = AUTH_STATUS.LOADING;
+                this.authError = "";
                 try {
                     const response = await http.post("/api/v1/user/info", {});
-                    if (response.errorNo === 0 && response.data) {
+                    const result = classifyAuthenticationResponse(response);
+                    if (result === AUTH_STATUS.AUTHENTICATED) {
                         this.setUser(response.data, false);
-                        this.authChecked = true;
-                        return true;
+                    } else if (result === AUTH_STATUS.UNAUTHENTICATED) {
+                        this.clear();
+                    } else {
+                        this.markAuthUnavailable();
                     }
-                    this.clear();
-                    return false;
+                    return result;
                 } catch (error) {
-                    this.clear();
-                    return false;
+                    const result = classifyAuthenticationError(error);
+                    if (result === AUTH_STATUS.UNAUTHENTICATED) {
+                        this.clear();
+                    } else {
+                        this.markAuthUnavailable();
+                    }
+                    return result;
                 } finally {
                     this.authLoading = false;
-                    authRefreshPromise = null;
                 }
-            })();
-
-            return authRefreshPromise;
+            });
         },
         init(callback) {
-            return this.refresh().then((authenticated) => {
+            return this.refresh().then((status) => {
                 if (typeof callback === "function") {
-                    callback(authenticated);
+                    callback(status);
                 }
-                return authenticated;
+                return status;
             });
         },
         clear() {
@@ -69,6 +85,8 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
             this.pendingLogin = null;
             this.recoveryPromptDismissed = false;
             this.authChecked = true;
+            this.authStatus = AUTH_STATUS.UNAUTHENTICATED;
+            this.authError = "";
         },
         setUser(payload, resetPrompt = false) {
             const previousAccount = this.userInfos?.account || "";
@@ -77,6 +95,30 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
                 this.recoveryPromptDismissed = false;
             }
             this.authChecked = true;
+            this.authStatus = AUTH_STATUS.AUTHENTICATED;
+            this.authError = "";
+        },
+        markAuthUnavailable() {
+            this.authChecked = true;
+            this.authStatus = AUTH_STATUS.UNAVAILABLE;
+            this.authError = "认证服务暂时不可用，请检查网络后重试";
+        },
+        resetAuthAvailability() {
+            this.authChecked = false;
+            this.authStatus = AUTH_STATUS.UNKNOWN;
+            this.authError = "";
+        },
+        setAuthRetryPath(path) {
+            this.authRetryPath = typeof path === "string" && path ? path : "/";
+        },
+        clearAuthRetryPath() {
+            this.authRetryPath = "/";
+        },
+        setStartupError(message) {
+            this.startupError = message || "页面加载失败，请刷新后重试";
+        },
+        clearStartupError() {
+            this.startupError = "";
         },
         dismissRecoveryPrompt() {
             this.recoveryPromptDismissed = true;
@@ -87,7 +129,7 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
                 account: payload?.account || "",
                 email: payload?.email || "",
                 expiresAt: payload?.expires_at || "",
-                redirect: payload?.redirect || "/"
+                redirect: getSafeLoginRedirect(payload?.redirect)
             };
         },
         clearPendingLogin() {

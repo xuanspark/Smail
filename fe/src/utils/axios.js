@@ -1,6 +1,7 @@
 import axios from 'axios'
 import lang from '../i18n/i18n';
 import {router} from "@/router";
+import {createLoginRedirectHandler} from "@/utils/navigation.mjs";
 
 //创建axios的一个实例
 const http = axios.create({
@@ -16,6 +17,15 @@ const http = axios.create({
         'Lang': lang.lang
     }
 });
+
+let redirectToLogin = null;
+
+function handleLoginRedirect() {
+    if (!redirectToLogin) {
+        redirectToLogin = createLoginRedirectHandler(router);
+    }
+    return redirectToLogin();
+}
 
 //请求拦截器
 http.interceptors.request.use((config) => {
@@ -56,16 +66,17 @@ function isSetupRequest(config) {
     return path === '/api/setup' || path === '/api/v1/setup' || path === '/__smail_setup_bootstrap'
 }
 
+function isAuthenticationRefreshRequest(config) {
+    const rawUrl = String(config?.url || '').split('?')[0]
+    return rawUrl === '/api/user/info' || rawUrl === '/api/v1/user/info'
+}
+
 http.interceptors.response.use(async (response) => {
     //响应成功
-    if (response.data?.errorNo === 403 && !isSetupRequest(response.config)) {
-
-        await router.replace({
-            path: '/login',
-            query: {
-                redirect: router.currentRoute.value.fullPath
-            }
-        });
+    if (response.data?.errorNo === 403
+        && !isSetupRequest(response.config)
+        && !isAuthenticationRefreshRequest(response.config)) {
+        await handleLoginRedirect();
     }
     //响应成功
     if (response.data?.errorNo === 402 && !isSetupRequest(response.config)) {
@@ -91,13 +102,10 @@ http.interceptors.response.use(async (response) => {
             case 403:
                 if (isSetupRequest(error.config)) {
                     message = lang.setup_failed
+                } else if (isAuthenticationRefreshRequest(error.config)) {
+                    message = '登录状态已失效'
                 } else {
-                    await router.replace({
-                        path: '/login',
-                        query: {
-                            redirect: router.currentRoute.value.fullPath
-                        }
-                    });
+                    await handleLoginRedirect();
                 }
                 break;
             case 404:

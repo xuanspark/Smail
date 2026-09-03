@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import {router} from './router'
+import {useGlobalStatusStore} from './stores/useGlobalStatusStore'
 
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
@@ -30,11 +31,15 @@ if (isReservedResetPath(window.location.pathname)) {
 
 const app = createApp(App)
 const pinia = createPinia()
+const globalStatus = useGlobalStatusStore(pinia)
 
 app.use(pinia)
+
+router.onError((error) => {
+  console.error('Router navigation failed', error)
+  globalStatus.setStartupError('页面加载失败，请刷新后重试')
+})
+
 app.use(router)
 app.use(ElementPlus)
-
-router.isReady().then(() => {
-  app.mount('#app')
-})
+app.mount('#app')

@@ -9,6 +9,7 @@ import lang from "../../i18n/i18n"
 import { http } from "@/utils/axios"
 
 import { useGlobalStatusStore } from "@/stores/useGlobalStatusStore"
+import { getSafeLoginRedirect } from "@/utils/navigation.mjs"
 
 export function usePage() {
   const router = useRouter()
@@ -31,9 +32,7 @@ export function usePage() {
         ElMessage.error(res.errorMsg)
         return
       }
-      const redirect = typeof router.currentRoute.value.query.redirect === "string"
-        ? router.currentRoute.value.query.redirect
-        : "/"
+      const redirect = getSafeLoginRedirect(router.currentRoute.value.query.redirect)
       if (res.data?.pending) {
         globalStatus.setPendingLogin({ ...res.data, redirect })
         await router.replace({ name: "login-verification" })

@@ -3,6 +3,7 @@ import {RouterView, useRoute} from 'vue-router'
 import HomeHeader from '@/views/components/HomeHeader/HomeHeader.vue'
 import HomeAside from '@/views/components/HomeAside/HomeAside.vue';
 import RecoverySetupPrompt from '@/views/components/RecoverySetupPrompt/RecoverySetupPrompt.vue'
+import StartupStatus from '@/views/components/StartupStatus/StartupStatus.vue'
 import {ref, watch} from 'vue'
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
@@ -21,7 +22,8 @@ watch(
 </script>
 
 <template>
-  <div id="main">
+  <StartupStatus v-if="globalStatus.startupBlocked" />
+  <div v-else id="main">
     <HomeHeader v-if="!standalonePages.includes(pageName)"/>
     <div id="content">
       <div id="aside" v-if="!standalonePages.includes(pageName)">
