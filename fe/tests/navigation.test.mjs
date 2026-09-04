@@ -4,7 +4,8 @@ import test from "node:test";
 import {
     createLoginRedirectHandler,
     getCurrentLoginRedirect,
-    getSafeLoginRedirect
+    getSafeLoginRedirect,
+    createSetupLocation
 } from "../src/utils/navigation.mjs";
 
 test("登录重定向只接受非登录页的站内路径", () => {
@@ -29,6 +30,17 @@ test("已在登录页时保留原有安全重定向", () => {
         fullPath: "/login?redirect=/login",
         query: {redirect: "/login"}
     }), "/");
+});
+
+test("初始化跳转使用安全的站内重定向", () => {
+    assert.deepEqual(createSetupLocation("/setup?redirect=/list"), {
+        name: "setup",
+        query: {redirect: "/"}
+    });
+    assert.deepEqual(createSetupLocation("/list?tag=inbox"), {
+        name: "setup",
+        query: {redirect: "/list?tag=inbox"}
+    });
 });
 
 test("并发 403 只执行一次登录跳转且不会嵌套 redirect", async () => {

@@ -55,14 +55,18 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
                         this.setUser(response.data, false);
                     } else if (result === AUTH_STATUS.UNAUTHENTICATED) {
                         this.clear();
+                    } else if (result === AUTH_STATUS.NEEDS_SETUP) {
+                        this.markSetupRequired();
                     } else {
                         this.markAuthUnavailable();
                     }
                     return result;
                 } catch (error) {
-                    const result = classifyAuthenticationError(error);
+                    const result = classifyAuthenticationError(error, {authenticationRequest: true});
                     if (result === AUTH_STATUS.UNAUTHENTICATED) {
                         this.clear();
+                    } else if (result === AUTH_STATUS.NEEDS_SETUP) {
+                        this.markSetupRequired();
                     } else {
                         this.markAuthUnavailable();
                     }
@@ -102,6 +106,14 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
             this.authChecked = true;
             this.authStatus = AUTH_STATUS.UNAVAILABLE;
             this.authError = "认证服务暂时不可用，请检查网络后重试";
+        },
+        markSetupRequired() {
+            this.userInfos = {};
+            this.pendingLogin = null;
+            this.recoveryPromptDismissed = false;
+            this.authChecked = true;
+            this.authStatus = AUTH_STATUS.NEEDS_SETUP;
+            this.authError = "";
         },
         resetAuthAvailability() {
             this.authChecked = false;

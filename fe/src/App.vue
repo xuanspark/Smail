@@ -4,13 +4,14 @@ import HomeHeader from '@/views/components/HomeHeader/HomeHeader.vue'
 import HomeAside from '@/views/components/HomeAside/HomeAside.vue';
 import RecoverySetupPrompt from '@/views/components/RecoverySetupPrompt/RecoverySetupPrompt.vue'
 import StartupStatus from '@/views/components/StartupStatus/StartupStatus.vue'
-import {ref, watch} from 'vue'
+import {computed, ref, watch} from 'vue'
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 const route = useRoute()
 const pageName = ref(route.name)
 const globalStatus = useGlobalStatusStore();
 const standalonePages = ['login', 'login-verification', 'force-password-change', 'setup', 'forgot-password', 'reset-blocked']
+const showStartupStatus = computed(() => globalStatus.startupBlocked && pageName.value !== 'setup')
 
 watch(
     () => route.fullPath,
@@ -22,7 +23,7 @@ watch(
 </script>
 
 <template>
-  <StartupStatus v-if="globalStatus.startupBlocked" />
+  <StartupStatus v-if="showStartupStatus" />
   <div v-else id="main">
     <HomeHeader v-if="!standalonePages.includes(pageName)"/>
     <div id="content">

@@ -18,15 +18,34 @@ test("认证响应会区分已登录、未登录和服务不可用", () => {
         AUTH_STATUS.UNAUTHENTICATED
     );
     assert.equal(
+        classifyAuthenticationResponse({errorNo: 402}),
+        AUTH_STATUS.NEEDS_SETUP
+    );
+    assert.equal(
         classifyAuthenticationResponse({errorNo: 500}),
         AUTH_STATUS.UNAVAILABLE
     );
 });
 
-test("只有明确的 403 错误会被识别为未登录", () => {
+test("只有认证接口的 HTTP 403 或明确业务码会被识别为未登录", () => {
     assert.equal(
-        classifyAuthenticationError({response: {status: 403}}),
+        classifyAuthenticationError(
+            {response: {status: 403}},
+            {authenticationRequest: true}
+        ),
         AUTH_STATUS.UNAUTHENTICATED
+    );
+    assert.equal(
+        classifyAuthenticationError({response: {status: 403}}, {authenticationRequest: false}),
+        AUTH_STATUS.UNAVAILABLE
+    );
+    assert.equal(
+        classifyAuthenticationError({response: {status: 200, data: {errorNo: 403}}}),
+        AUTH_STATUS.UNAUTHENTICATED
+    );
+    assert.equal(
+        classifyAuthenticationError({response: {status: 402}}, {authenticationRequest: true}),
+        AUTH_STATUS.NEEDS_SETUP
     );
     assert.equal(
         classifyAuthenticationError({response: {status: 500}}),

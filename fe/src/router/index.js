@@ -1,7 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 import {AUTH_STATUS} from "@/utils/auth.mjs";
-import {createLoginLocation} from "@/utils/navigation.mjs";
+import {createLoginLocation, createSetupLocation} from "@/utils/navigation.mjs";
 
 const router = createRouter({
     history: createWebHashHistory(),
@@ -78,6 +78,11 @@ router.beforeEach(async (to) => {
     if (needsAuthentication && authStatus === AUTH_STATUS.UNAVAILABLE) {
         globalStatus.setAuthRetryPath(to.fullPath);
         return false;
+    }
+
+    if (needsAuthentication && authStatus === AUTH_STATUS.NEEDS_SETUP) {
+        globalStatus.setAuthRetryPath(to.fullPath);
+        return createSetupLocation(to.fullPath);
     }
 
     if (!needsAuthentication && authStatus === AUTH_STATUS.UNAVAILABLE) {

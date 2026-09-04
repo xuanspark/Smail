@@ -3,7 +3,7 @@ import { useRouter } from "vue-router"
 
 import { useGlobalStatusStore } from "@/stores/useGlobalStatusStore"
 import { AUTH_STATUS } from "@/utils/auth.mjs"
-import { createLoginLocation, getSafeLoginRedirect } from "@/utils/navigation.mjs"
+import { createLoginLocation, createSetupLocation, getSafeLoginRedirect } from "@/utils/navigation.mjs"
 
 export function useStartupStatus() {
   const router = useRouter()
@@ -51,6 +51,9 @@ export function useStartupStatus() {
       } else if (status === AUTH_STATUS.UNAUTHENTICATED) {
         globalStatus.clearAuthRetryPath()
         await router.replace(createLoginLocation(redirect))
+      } else if (status === AUTH_STATUS.NEEDS_SETUP) {
+        globalStatus.clearAuthRetryPath()
+        await router.replace(createSetupLocation(redirect))
       }
     } catch (error) {
       console.error("Authentication retry failed", error)

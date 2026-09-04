@@ -1,4 +1,4 @@
-const BLOCKED_REDIRECT_PATHS = ["/login", "/login-verification"];
+const BLOCKED_REDIRECT_PATHS = ["/login", "/login-verification", "/setup"];
 
 function decodeRedirect(value) {
     let decoded = value;
@@ -52,6 +52,15 @@ function createLoginLocation(redirect) {
     };
 }
 
+function createSetupLocation(redirect) {
+    return {
+        name: "setup",
+        query: {
+            redirect: getSafeLoginRedirect(redirect)
+        }
+    };
+}
+
 function getCurrentLoginRedirect(route) {
     if (route?.name === "login" || route?.name === "login-verification") {
         return getSafeLoginRedirect(route?.query?.redirect);
@@ -85,6 +94,7 @@ function createLoginRedirectHandler(router) {
 export {
     createLoginLocation,
     createLoginRedirectHandler,
+    createSetupLocation,
     getCurrentLoginRedirect,
     getSafeLoginRedirect
 };

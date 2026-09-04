@@ -55,20 +55,29 @@ function attachApiErrorDetails(error) {
     return error
 }
 
-function isSetupRequest(config) {
+function getRequestPath(config) {
     const rawUrl = String(config?.url || '').split('?')[0]
-    let path = rawUrl
     try {
-        path = new URL(rawUrl, config?.baseURL || window.location.origin).pathname
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+        return new URL(rawUrl, config?.baseURL || origin).pathname
     } catch (error) {
-        path = rawUrl
+        return rawUrl
     }
+}
+
+function isSetupRequest(config) {
+    const path = getRequestPath(config)
     return path === '/api/setup' || path === '/api/v1/setup' || path === '/__smail_setup_bootstrap'
 }
 
 function isAuthenticationRefreshRequest(config) {
-    const rawUrl = String(config?.url || '').split('?')[0]
-    return rawUrl === '/api/user/info' || rawUrl === '/api/v1/user/info'
+    const path = getRequestPath(config)
+    return path === '/api/user/info' || path === '/api/v1/user/info'
+}
+
+function isAuthenticationFailureError(error) {
+    return error?.response?.data?.errorNo === 403
+        || (error?.response?.status === 403 && isAuthenticationRefreshRequest(error.config))
 }
 
 http.interceptors.response.use(async (response) => {
@@ -77,15 +86,6 @@ http.interceptors.response.use(async (response) => {
         && !isSetupRequest(response.config)
         && !isAuthenticationRefreshRequest(response.config)) {
         await handleLoginRedirect();
-    }
-    //响应成功
-    if (response.data?.errorNo === 402 && !isSetupRequest(response.config)) {
-        await router.replace({
-            path: '/setup',
-            query: {
-                redirect: router.currentRoute.value.fullPath
-            }
-        });
     }
     return response.data;
 }, async (error) => {
@@ -104,8 +104,10 @@ http.interceptors.response.use(async (response) => {
                     message = lang.setup_failed
                 } else if (isAuthenticationRefreshRequest(error.config)) {
                     message = '登录状态已失效'
-                } else {
+                } else if (isAuthenticationFailureError(error)) {
                     await handleLoginRedirect();
+                } else {
+                    message = '无权访问'
                 }
                 break;
             case 404:
