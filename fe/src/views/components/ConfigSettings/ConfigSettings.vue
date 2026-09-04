@@ -319,7 +319,6 @@ const {
   canRestart,
   restartPreview,
   loadAll,
-  loadSection,
   validateConfig,
   saveConfig,
   applyConfig,

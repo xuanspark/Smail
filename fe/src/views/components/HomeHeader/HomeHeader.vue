@@ -32,14 +32,7 @@ import {
   usePage,
   EpMenu,
   BrandLogo,
-  SecuritySettings,
-  ThirdPartyAuthorization,
-  ConfigSettings,
-  GroupSettings,
-  RuleSettings,
-  UserManagement,
-  PluginSettings,
-} from './HomeHeader.js'
+  } from './HomeHeader.js'
 
 const {
   globalStatus,
