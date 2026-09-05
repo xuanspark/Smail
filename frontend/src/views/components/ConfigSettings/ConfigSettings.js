@@ -2,6 +2,7 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
+import { readFormConfig, updateFormConfig, validateFormConfig } from './ConfigForm/ConfigForm.js'
 
 const sections = [
   { value: 'base', label: '基础配置', description: '管理站点与数据库连接，敏感凭据单独填写。' },
@@ -51,11 +52,14 @@ export function usePage(pageKey = 'base') {
   let sectionRequestId = 0
   let disposed = false
   const editorText = ref('')
+  const formConfig = computed(() => readFormConfig(editorText.value))
+  const formErrors = ref({})
   const loadedText = ref('')
   const sectionError = ref('')
   const secretValue = ref('')
   const confirmed = ref(false)
   const savedGeneration = ref(0)
+  let savedInput = null
   const validationResult = ref(null)
   const backups = ref([])
   const rollbackGeneration = ref(0)
@@ -79,7 +83,7 @@ export function usePage(pageKey = 'base') {
   const stateLabel = computed(() => ({ new: '未初始化', bootstrap: '初始化中', ready: '就绪', degraded: '降级' }[status.setupState] || status.setupState || '未知'))
   const stateTagType = computed(() => ({ ready: 'success', degraded: 'warning', bootstrap: 'info', new: 'danger' }[status.setupState] || 'info'))
   const secretField = computed(() => {
-    if (selectedSection.value === 'base') {
+    if (selectedSection.value === 'base' && ['mysql', 'postgresql'].includes(formConfig.value.database?.type)) {
       return { label: '数据库密码', description: '只在本次请求内传输，保存后仅保留密文状态。留空表示保持原值。', placeholder: '输入新数据库密码（可选）' }
     }
     if (selectedSection.value === 'smtp') {
@@ -87,7 +91,28 @@ export function usePage(pageKey = 'base') {
     }
     return null
   })
-  const sensitiveHint = computed(() => secretField.value ? '密码字段已脱敏，修改请使用下方输入框' : '当前分区不包含可编辑密文')
+  const sensitiveHint = computed(() => secretField.value ? '密码不会回填，修改请使用下方独立输入框，留空保持原值' : '系统内部字段自动保留，无需手工填写')
+
+  const invalidateCandidate = () => {
+    savedGeneration.value = 0
+    savedInput = null
+    validationResult.value = null
+    confirmed.value = false
+  }
+  const canEdit = () => !disposed && canWrite.value && !loading.value && !working.value && !sectionLoading.value && !sectionError.value
+  const updateField = (path, value) => {
+    if (!canEdit()) return
+    const updated = updateFormConfig(editorText.value, selectedSection.value, path, value)
+    if (updated === editorText.value) return
+    editorText.value = updated
+    if (Object.keys(formErrors.value).length) formErrors.value = validateFormConfig(selectedSection.value, formConfig.value)
+    invalidateCandidate()
+  }
+  const updateSecret = value => {
+    if (!canEdit() || !secretField.value || secretValue.value === value) return
+    secretValue.value = value
+    invalidateCandidate()
+  }
 
   const notifyResponseError = (response, fallback) => {
     if (!response || response.errorNo !== 0) {
@@ -130,12 +155,14 @@ export function usePage(pageKey = 'base') {
     const section = selectedSection.value
     sectionLoading.value = true
     sectionError.value = ''
+    formErrors.value = {}
     editorText.value = ''
     loadedText.value = ''
     secretValue.value = ''
     confirmed.value = false
     validationResult.value = null
     savedGeneration.value = 0
+    savedInput = null
     try {
       const response = await http.get(`/api/v1/config/${section}`)
       if (requestId !== sectionRequestId) return
@@ -317,7 +344,7 @@ export function usePage(pageKey = 'base') {
     try {
       const payload = JSON.parse(editorText.value)
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        throw new Error('配置必须是 JSON 对象')
+        throw new Error('配置内容不可用，请刷新页面后重试')
       }
       if (selectedSection.value === 'base') {
         delete payload.databasePasswordStatus
@@ -329,19 +356,20 @@ export function usePage(pageKey = 'base') {
         Object.values(payload.plugins).forEach(plugin => {
           if (plugin && typeof plugin === 'object') {
             delete plugin.settingsConfigured
+            delete plugin.secretStatus
           }
         })
       }
       return payload
     } catch (error) {
-      throw new Error(error.message || 'JSON 格式错误')
+      throw new Error('配置内容不可用，请刷新页面后重试')
     }
   }
 
   const buildRequest = () => {
     const secretChanges = {}
-    const value = secretValue.value.trim()
-    if (value && selectedSection.value === 'base') {
+    const value = secretValue.value
+    if (value && selectedSection.value === 'base' && secretField.value) {
       secretChanges['database.password'] = { operation: 'replace', value: { plaintext: value } }
     }
     if (value && selectedSection.value === 'smtp') {
@@ -355,8 +383,17 @@ export function usePage(pageKey = 'base') {
     }
   }
 
+  const checkForm = () => {
+    formErrors.value = validateFormConfig(selectedSection.value, formConfig.value)
+    const issues = Object.entries(formErrors.value).map(([code, message]) => ({ code, message }))
+    if (!issues.length) return true
+    validationResult.value = { valid: false, issues }
+    ElMessage.warning('请先检查表单中标红的字段')
+    return false
+  }
+
   const validateConfig = async () => {
-    if (!canWrite.value || working.value || sectionLoading.value || sectionError.value) return
+    if (!canEdit() || !checkForm()) return
     working.value = 'validate'
     try {
       const request = buildRequest()
@@ -372,13 +409,14 @@ export function usePage(pageKey = 'base') {
   }
 
   const saveConfig = async () => {
-    if (!canWrite.value || working.value || sectionLoading.value || sectionError.value) return
+    if (!canEdit() || !checkForm()) return
     working.value = 'save'
     try {
       const request = buildRequest()
       const response = await http.put(`/api/v1/config/${selectedSection.value}`, request)
       notifyResponseError(response, '配置保存失败')
       savedGeneration.value = response.data?.generation || 0
+      savedInput = { text: editorText.value, secret: secretValue.value }
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await loadStatus()
       ElMessage.success(`候选配置已保存，代次 ${savedGeneration.value} 等待应用`)
@@ -390,7 +428,12 @@ export function usePage(pageKey = 'base') {
   }
 
   const applyConfig = async () => {
-    if (!canWrite.value || working.value || !savedGeneration.value) return
+    if (!canEdit() || !savedGeneration.value) return
+    if (!savedInput || savedInput.text !== editorText.value || savedInput.secret !== secretValue.value) {
+      invalidateCandidate()
+      ElMessage.warning('填写内容已变更，请重新保存候选配置后再应用')
+      return
+    }
     working.value = 'apply'
     try {
       const response = await http.post(`/api/v1/config/${selectedSection.value}/apply`, { generation: savedGeneration.value })
@@ -493,13 +536,15 @@ export function usePage(pageKey = 'base') {
     disposed = true
     sectionRequestId++
     secretValue.value = ''
+    savedInput = null
     confirmed.value = false
     migrationToken.value = ''
   })
 
   return {
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
-    selectedSection, currentSection, sectionLoading, editorText, sectionError, sensitiveHint, secretField, secretValue,
+    selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,
+    sectionError, sensitiveHint, secretField, secretValue,
     confirmed, savedGeneration, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig,

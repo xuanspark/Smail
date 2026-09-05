@@ -5,11 +5,14 @@ import { compileFunction } from 'node:vm'
 import { createRequire } from 'node:module'
 import { computed, reactive, ref } from './vue.mjs'
 
+const formSource = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigForm/ConfigForm.js', import.meta.url), 'utf8')
+const formHelpers = compileFunction(formSource.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, updateFormConfig, validateFormConfig }')()
 const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigSettings.js', import.meta.url), 'utf8')
-const createPageWithKey = compileFunction(
+const compilePage = compileFunction(
   source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage(pageKey)',
-  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount']
+  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount', 'readFormConfig', 'updateFormConfig', 'validateFormConfig']
 )
+const createPageWithKey = (...args) => compilePage(...args, formHelpers.readFormConfig, formHelpers.updateFormConfig, formHelpers.validateFormConfig)
 const createPage = (...args) => createPageWithKey(...args, 'base', () => {})
 
 function fixture(get, pageKey = 'base', options = {}) {
@@ -322,4 +325,115 @@ test('独立页保持验证、保存、应用端点和代次协议，敏感值�
   assert.equal(page.secretValue.value, '')
   assert.equal(page.confirmed.value, false)
   assert.equal(page.savedGeneration.value, 0)
+})
+
+test('可视化编辑按权限和工作状态保护，编辑会清除过期确认及候选代次', async () => {
+  const { page, dispose } = fixture(async () => ({ errorNo: 0, data: { relay: { relayHost: 'smtp.example.com' } } }), 'smtp')
+  await page.loadAll()
+  const original = page.editorText.value
+  for (const state of ['loading', 'sectionLoading', 'working', 'sectionError']) {
+    page[state].value = true
+    page.updateField(['relay', 'relayHost'], 'blocked.example.com')
+    page.updateSecret('blocked-value')
+    assert.equal(page.editorText.value, original)
+    assert.equal(page.secretValue.value, '')
+    page[state].value = false
+  }
+  const readonly = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', { hasCapability: () => false }).page
+  readonly.updateField(['relay', 'relayHost'], 'blocked.example.com')
+  assert.equal(readonly.editorText.value, '')
+  page.savedGeneration.value = 8
+  page.confirmed.value = true
+  page.validationResult.value = { valid: true }
+  page.updateField(['relay', 'relayHost'], 'new.example.com')
+  assert.equal(page.formConfig.value.relay.relayHost, 'new.example.com')
+  assert.equal(page.savedGeneration.value, 0)
+  assert.equal(page.confirmed.value, false)
+  assert.equal(page.validationResult.value, null)
+  dispose()
+  page.updateField(['relay', 'relayHost'], 'blocked.example.com')
+  assert.equal(page.formConfig.value.relay.relayHost, 'new.example.com')
+})
+
+test('前端无效字段阻止网络请求，修正字段后同步清除错误', async () => {
+  const requests = []
+  const { page } = fixture(async () => ({ errorNo: 0, data: { policy: { smtpPort: 25, imapPort: 143, pop3Port: 110 } } }), 'email', {
+    http: { post: async path => { requests.push(path); return { errorNo: 0, data: { valid: true } } } }
+  })
+  await page.loadAll()
+  page.updateField(['policy', 'smtpPort'], null)
+  await page.validateConfig()
+  await page.saveConfig()
+  assert.deepEqual(requests, [])
+  assert.ok(page.formErrors.value['policy.smtpPort'])
+  page.updateField(['policy', 'smtpPort'], 2525)
+  assert.deepEqual(page.formErrors.value, {})
+  await page.validateConfig()
+  assert.deepEqual(requests, ['/api/v1/config/email/validate'])
+})
+
+test('插件读取状态字段不传回严格解析接口，未展示字段和权限仍保留', async () => {
+  let request
+  const plugin = { enabled: true, executable: 'pmail_telegram_push.exe', permissions: { capabilities: ['network', 'userSettings', 'settingsHtml'], network: [] }, settings: { timeout: 30, future: 'preserved' }, secretStatus: { configured: true }, settingsConfigured: true }
+  const { page } = fixture(async () => ({ errorNo: 0, data: { meta: { generation: 7 }, plugins: { telegram_push: plugin } } }), 'plugins', {
+    http: { put: async (path, body) => { request = body; return { errorNo: 0, data: { generation: 8 } } } }
+  })
+  await page.loadSection()
+  page.updateField(['plugins', 'telegram_push', 'settings', 'timeout'], 40)
+  await page.saveConfig()
+  const actual = request.payload.plugins.telegram_push
+  assert.equal(actual.secretStatus, undefined)
+  assert.equal(actual.settingsConfigured, undefined)
+  assert.deepEqual(actual.permissions, plugin.permissions)
+  assert.deepEqual(actual.settings, { timeout: 40, future: 'preserved' })
+  assert.equal(request.payload.meta.generation, 7)
+  assert.deepEqual(request.secretChanges, {})
+  assert.equal(page.formConfig.value.plugins.telegram_push.secretStatus.configured, true)
+})
+
+test('SQLite 不显示或发送密码，网络数据库和中继密码留空保留且不裁剪空格', async () => {
+  for (const type of ['sqlite', 'mysql', 'postgresql']) {
+    let request
+    const { page } = fixture(async () => ({ errorNo: 0, data: {
+      database: { type, host: 'localhost', port: 3306, username: 'test' },
+      domains: { primary: 'example.com', web: 'mail.example.com', accepted: ['example.com'] }
+    } }), 'base', {
+      http: { post: async (path, body) => { request = body; return { errorNo: 0, data: { valid: true } } } }
+    })
+    await page.loadSection()
+    assert.equal(!!page.secretField.value, type !== 'sqlite')
+    await page.validateConfig()
+    assert.deepEqual(request.secretChanges, {})
+    page.secretValue.value = ' test-only-value '
+    await page.validateConfig()
+    assert.deepEqual(request.secretChanges, type === 'sqlite' ? {} : { 'database.password': { operation: 'replace', value: { plaintext: ' test-only-value ' } } })
+  }
+  let request
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
+    http: { post: async (path, body) => { request = body; return { errorNo: 0, data: { valid: true } } } }
+  })
+  await page.loadSection()
+  page.updateSecret(' smtp-test-only ')
+  await page.validateConfig()
+  assert.equal(request.secretChanges['relay.password'].value.plaintext, ' smtp-test-only ')
+})
+
+test('保存后更改密码或填写内容不能应用旧候选', async () => {
+  const requests = []
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
+    http: {
+      put: async () => ({ errorNo: 0, data: { generation: 8 } }),
+      post: async path => { requests.push(path); return { errorNo: 0 } }
+    }
+  })
+  await page.loadSection()
+  await page.saveConfig()
+  page.updateSecret('test-only-value')
+  assert.equal(page.savedGeneration.value, 0)
+  await page.applyConfig()
+  await page.saveConfig()
+  page.editorText.value = '{"relay":{"relayHost":"new.example.com"}}'
+  await page.applyConfig()
+  assert.equal(page.savedGeneration.value, 0)
+  assert.deepEqual(requests, [])
 })

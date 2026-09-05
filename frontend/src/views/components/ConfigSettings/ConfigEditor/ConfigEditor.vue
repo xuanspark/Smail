@@ -77,8 +77,8 @@
         <section class="editor-panel" :aria-busy="sectionLoading">
           <div class="panel-heading">
             <div>
-              <h4>{{ canWrite ? '编辑配置' : '查看配置' }}</h4>
-              <p class="heading-note">{{ canWrite ? '仅处理当前页面的配置，保存后再应用生效。' : '当前页面的脱敏配置内容。' }}</p>
+              <h4>{{ canWrite ? '填写配置' : '查看配置' }}</h4>
+              <p class="heading-note">{{ canWrite ? '按分组填写内容，验证并保存后再应用生效。' : '当前页面的脱敏配置内容。' }}</p>
             </div>
             <span class="selected-section-label">{{ currentSection.label }}</span>
           </div>
@@ -98,24 +98,14 @@
             class="config-alert"
           />
 
-          <div class="editor-shell" v-loading="sectionLoading">
-            <div class="editor-toolbar">
-              <strong>配置内容 <span class="format-label">JSON</span></strong>
-              <span>编辑代次 {{ status.activeGeneration || '-' }}</span>
-            </div>
-            <el-input
-              v-model="editorText"
-              type="textarea"
-              :rows="12"
-              resize="vertical"
-              spellcheck="false"
-              wrap="off"
-              class="config-editor"
-              :readonly="!canWrite || sectionLoading || !!working || !!sectionError"
-              aria-label="配置 JSON 编辑器"
-              aria-describedby="config-sensitive-hint"
-            />
-          </div>
+          <ConfigForm
+            v-if="!sectionLoading && !sectionError"
+            :section="selectedSection"
+            :config="formConfig"
+            :errors="formErrors"
+            :disabled="!canWrite || !!working"
+            @change="updateField"
+          />
           <p id="config-sensitive-hint" class="editor-hint">{{ sensitiveHint }}。</p>
 
           <div v-if="secretField" class="secret-editor">
@@ -125,13 +115,14 @@
             </div>
             <el-input
               id="config-secret-input"
-              v-model="secretValue"
+              :model-value="secretValue"
               type="password"
               show-password
               clearable
               :disabled="!canWrite || sectionLoading || !!working || !!sectionError"
               :placeholder="secretField.placeholder"
               autocomplete="new-password"
+              @update:model-value="updateSecret"
             />
           </div>
 
@@ -150,7 +141,7 @@
                 {{ savedGeneration ? `应用代次 ${savedGeneration}` : '应用配置' }}
               </el-button>
             </div>
-            <p class="action-hint">保存不会立即生效，确认候选配置后再应用。</p>
+            <p class="action-hint">保存不会立即生效；保存后若继续修改内容，需要重新保存才能应用。</p>
           </div>
           <div v-if="validationResult" class="result-box" :class="validationResult.valid ? 'result-success' : 'result-error'" role="status">
             <strong>{{ validationResult.valid ? '验证通过' : '验证未通过' }}</strong>
@@ -169,6 +160,7 @@
 
 <script setup>
 import { inject } from 'vue'
+import ConfigForm from '../ConfigForm/ConfigForm.vue'
 
 const {
   availabilityError,
@@ -180,7 +172,10 @@ const {
   selectedSection,
   currentSection,
   sectionLoading,
-  editorText,
+  formConfig,
+  formErrors,
+  updateField,
+  updateSecret,
   sectionError,
   sensitiveHint,
   secretField,

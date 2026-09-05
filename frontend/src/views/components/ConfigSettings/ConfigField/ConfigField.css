@@ -1,0 +1,94 @@
+.config-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pm-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.field-required,
+.field-error {
+  color: var(--el-color-danger);
+}
+
+.field-locked {
+  color: var(--pm-text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.config-field > .el-input-number,
+.config-field > .el-select {
+  width: 100%;
+}
+
+.config-field :deep(.el-input-number .el-input__inner) {
+  text-align: left;
+}
+
+.config-field > .el-switch {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.field-list {
+  display: grid;
+  gap: 8px;
+}
+
+.field-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.network-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) 90px auto;
+  gap: 8px;
+}
+
+.network-row > * {
+  min-width: 0;
+  width: 100%;
+}
+
+.field-add {
+  justify-self: start;
+  margin-left: 0;
+}
+
+.field-hint,
+.field-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.field-hint {
+  color: var(--pm-text-secondary);
+}
+
+@container config-main (max-width: 620px) {
+  .network-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 10px;
+    border: 1px solid var(--pm-border-color);
+    border-radius: 8px;
+  }
+}

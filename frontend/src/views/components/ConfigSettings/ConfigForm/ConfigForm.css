@@ -1,0 +1,58 @@
+.config-form {
+  display: grid;
+  gap: 24px;
+  margin-top: 22px;
+  min-width: 0;
+}
+
+.form-group {
+  min-width: 0;
+}
+
+.form-group + .form-group {
+  padding-top: 24px;
+  border-top: 1px solid var(--pm-border-color);
+}
+
+.form-group-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.form-group-heading h5 {
+  margin: 0;
+  color: var(--pm-text-primary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.credential-status {
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+}
+
+.form-group-description,
+.form-empty {
+  margin: 6px 0 18px;
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
+}
+
+@container config-main (max-width: 620px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
