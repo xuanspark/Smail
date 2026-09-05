@@ -59,6 +59,7 @@ export function usePage() {
   const migrationToken = ref('')
   const migrationRecord = ref(null)
   const restartPreview = ref(null)
+  let initializationErrorShown = false
 
   const canWrite = computed(() => globalStatus.hasCapability('config.write_global'))
   const canRollback = computed(() => globalStatus.hasCapability('config.rollback'))
@@ -271,10 +272,14 @@ export function usePage() {
   }
   const loadAll = async () => {
     loading.value = true
+    initializationErrorShown = false
     try {
       await Promise.all([loadStatus(), loadSection(), loadBackups(), loadAudit()])
     } catch (error) {
-      ElMessage.error(error.message || '配置管理数据读取失败')
+      if (!initializationErrorShown) {
+        initializationErrorShown = true
+        ElMessage.error(error.message || '配置管理数据读取失败')
+      }
     } finally {
       loading.value = false
     }

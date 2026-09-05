@@ -49,6 +49,8 @@ export function usePage() {
   const generatedCodes = ref([])
   const externalEmails = ref([])
   const externalLoading = ref(false)
+  let lastNotificationKey = ''
+  let lastNotificationAt = 0
   const bindForm = reactive({ email: '', type: 'backup', challengeId: '', bindingId: 0, code: '' })
 
   const ruleForm = reactive({ current_pwd: '', new_pwd: '', new_pwd2: '' })
@@ -59,6 +61,11 @@ export function usePage() {
   })
 
   const notify = (message, type = 'error') => {
+    const notificationKey = `${type}:${String(message || '').trim()}`
+    const now = Date.now()
+    if (notificationKey === lastNotificationKey && now - lastNotificationAt < 1500) return
+    lastNotificationKey = notificationKey
+    lastNotificationAt = now
     ElNotification({ title: type === 'success' ? '操作成功' : '操作失败', message, type })
   }
 
