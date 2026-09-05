@@ -63,20 +63,20 @@ func (lease *requestLease) release() {
 
 // 只有权限、请求体与一次性票据均已验证，才排空请求并独占迁移。
 // 独占状态由外层中间件持有到会话响应提交完成，不能在控制器返回前释放。
-func (s *Service) drainRequests(ctx context.Context) func() {
+func (s *Service) drainRequests(ctx context.Context) (func(), error) {
 	if lease, ok := ctx.Value(requestLeaseKey{}).(*requestLease); ok && lease.service == s {
 		lease.service.requests.RUnlock()
 		if !lease.service.requests.lockContext(ctx) {
 			lease.service = nil
-			return func() {}
+			return func() {}, contextError(ctx)
 		}
 		lease.exclusive = true
-		return func() {}
+		return func() {}, nil
 	}
 	if !s.requests.lockContext(ctx) {
-		return func() {}
+		return func() {}, contextError(ctx)
 	}
-	return s.requests.Unlock
+	return s.requests.Unlock, nil
 }
 
 func maintenanceRequest(r *http.Request) bool {

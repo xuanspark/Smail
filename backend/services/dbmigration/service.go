@@ -223,8 +223,11 @@ func (s *Service) execute(ctx context.Context, id, token string, actor config.Au
 	item.targetConfig = config.DatabaseConfig{}
 	s.mu.Unlock()
 
-	releaseRequests := s.drainRequests(ctx)
+	releaseRequests, drainErr := s.drainRequests(ctx)
 	defer releaseRequests()
+	if drainErr != nil {
+		return s.fail(id, drainErr)
+	}
 	if err := contextError(ctx); err != nil {
 		return s.fail(id, err)
 	}

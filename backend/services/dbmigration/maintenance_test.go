@@ -50,7 +50,11 @@ func TestMaintenanceGuardDrainsRequestsAndKeepsRestartRoute(t *testing.T) {
 			close(entered)
 			<-release
 		case "/api/v1/database/migrations":
-			release := service.drainRequests(r.Context())
+			release, err := service.drainRequests(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusRequestTimeout)
+				return
+			}
 			defer release()
 			executor.paused.Store(true)
 			close(migrated)
