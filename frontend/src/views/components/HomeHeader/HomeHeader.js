@@ -1,4 +1,5 @@
 import {EpMenu} from "vue-icons-plus/ep";
+import { Lock, Connection, Setting, FolderOpened, Filter, User, Grid } from '@element-plus/icons-vue';
 
 import {computed, ref, onMounted, onUnmounted} from 'vue'
 
@@ -42,14 +43,16 @@ export function usePage() {
   });
 
   const settingsMenu = computed(() => [
-    { key: 'security', label: lang.security, component: SecuritySettings, capability: 'password.change_own' },
-    { key: 'third-party', label: '第三方授权', component: ThirdPartyAuthorization, capability: 'plugin.write_own' },
-    { key: 'config', label: '配置管理', component: ConfigSettings, capability: 'config.read' },
-    { key: 'group', label: lang.group_settings, component: GroupSettings, capability: 'user.read' },
-    { key: 'rule', label: lang.rule_setting, component: RuleSettings, capability: 'user.read' },
-    { key: 'users', label: lang.user_management, component: UserManagement, capability: 'user.manage' },
-    { key: 'plugins', label: lang.plugin_settings, component: PluginSettings, capability: 'plugin.read' },
+    { key: 'security', label: lang.security, hint: '账号与登录保护', icon: Lock, component: SecuritySettings, capability: 'password.change_own' },
+    { key: 'third-party', label: '第三方授权', hint: '邮件客户端接入', icon: Connection, component: ThirdPartyAuthorization, capability: 'plugin.write_own' },
+    { key: 'config', label: '配置管理', hint: '服务与运行配置', icon: Setting, component: ConfigSettings, capability: 'config.read' },
+    { key: 'group', label: lang.group_settings, hint: '邮箱分组管理', icon: FolderOpened, component: GroupSettings, capability: 'user.read' },
+    { key: 'rule', label: lang.rule_setting, hint: '邮件处理规则', icon: Filter, component: RuleSettings, capability: 'user.read' },
+    { key: 'users', label: lang.user_management, hint: '账号与权限管理', icon: User, component: UserManagement, capability: 'user.manage' },
+    { key: 'plugins', label: lang.plugin_settings, hint: '扩展功能管理', icon: Grid, component: PluginSettings, capability: 'plugin.read' },
   ].filter(item => globalStatus.hasCapability(item.capability)))
+
+  const activeSettings = computed(() => settingsMenu.value.find(item => item.key === globalStatus.settingsActiveTab))
 
   return {
     EpMenu,
@@ -70,7 +73,8 @@ export function usePage() {
     userInfos,
     isMobile,
     handleResize,
-    settingsMenu
+    settingsMenu,
+    activeSettings
   }
 }
 

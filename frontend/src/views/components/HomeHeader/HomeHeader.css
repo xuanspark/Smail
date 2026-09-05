@@ -66,25 +66,148 @@
 }
 
 .settings-tabs {
+  width: 100%;
   height: 100%;
+  min-height: 0;
+  --settings-accent: var(--pm-primary-color);
 }
 
-.settings-drawer :deep(.el-drawer__body) {
+/* 抽屉由 Teleport 挂载，使用专属类限定，不能依赖祖先的作用域属性。 */
+:global(.settings-drawer > .el-drawer__header) {
+  margin-bottom: 0;
+  padding: 24px;
+  border-bottom: 1px solid var(--pm-border-color);
+}
+
+.settings-drawer-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.settings-drawer-heading h2 {
+  margin: 0;
+  color: var(--pm-text-primary);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.settings-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  color: var(--pm-text-secondary);
+  font-size: 14px;
+}
+
+.settings-location > span {
+  color: var(--pm-text-muted);
+}
+
+:global(.settings-drawer > .el-drawer__body) {
   display: flex;
   min-height: 0;
-  padding: 0 20px 20px;
+  padding: 24px;
   overflow: hidden;
 }
 
-.settings-tabs :deep(.el-tabs__header) {
-  flex: 0 0 176px;
-  margin: 0 0 0 20px;
+.settings-tabs > :deep(.el-tabs__header) {
+  flex: 0 0 184px;
+  margin: 0 0 0 20px !important;
+  padding: 12px 8px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: var(--pm-radius-lg);
+  background: var(--pm-bg-primary);
 }
 
-.settings-tabs :deep(.el-tabs__content) {
+.settings-tabs > :deep(.el-tabs__header .el-tabs__nav-wrap::after),
+.settings-tabs > :deep(.el-tabs__header .el-tabs__active-bar) {
+  display: none;
+}
+
+.settings-tabs > :deep(.el-tabs__header .el-tabs__nav-wrap) {
+  margin: 0;
+}
+
+.settings-tabs > :deep(.el-tabs__header .el-tabs__nav) {
+  border: 0;
+}
+
+.settings-tabs > :deep(.el-tabs__header .el-tabs__item) {
+  height: auto;
+  min-height: 64px;
+  justify-content: flex-start;
+  margin: 3px 0;
+  padding: 12px !important;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--pm-text-secondary);
+  text-align: left;
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease;
+}
+
+.settings-tabs > :deep(.el-tabs__header .el-tabs__item:hover:not(.is-active)) {
+  color: var(--pm-text-primary);
+  background: var(--pm-bg-hover);
+}
+
+.settings-tabs > :deep(.el-tabs__header .el-tabs__item.is-active) {
+  color: #fff;
+  background: var(--pm-primary-color);
+  border-color: var(--pm-primary-color);
+  box-shadow: var(--pm-shadow-sm);
+}
+
+.settings-tabs > :deep(.el-tabs__header .el-tabs__item:focus-visible) {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 4px var(--pm-surface-solid);
+}
+
+.settings-category {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-category-icon {
+  flex: none;
+  font-size: 20px;
+}
+
+.settings-category-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-category-label {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.settings-category-hint {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: .85;
+}
+
+.settings-tabs > :deep(.el-tabs__content) {
   flex: 1;
   min-width: 0;
+  padding-right: 4px;
   overflow: auto;
+  scrollbar-gutter: stable;
+  container: settings-content / inline-size;
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-tabs {
+    --settings-accent: var(--pm-primary-light-3);
+  }
 }
 
 @media (max-width: 768px) {
@@ -106,17 +229,34 @@
     display: block;
   }
 
-  .settings-drawer :deep(.el-drawer__body) {
+  :global(.settings-drawer > .el-drawer__body) {
     padding: 0 10px 10px;
     overflow: auto;
   }
 
-  .settings-tabs :deep(.el-tabs__header) {
-    flex: none;
-    margin: 0;
+  :global(.settings-drawer > .el-drawer__header) {
+    padding: 18px 14px;
   }
 
-  .settings-tabs :deep(.el-tabs__content) {
+  .settings-tabs > :deep(.el-tabs__header) {
+    flex: none;
+    margin: 12px 0 16px !important;
+    padding: 4px;
+    border-radius: 14px;
+  }
+
+  .settings-tabs > :deep(.el-tabs__header .el-tabs__item) {
+    min-height: 44px;
+    margin: 0 2px;
+    padding: 8px 12px !important;
+  }
+
+  .settings-category-hint {
+    display: none;
+  }
+
+  .settings-tabs > :deep(.el-tabs__content) {
+    padding-right: 0;
     overflow: visible;
   }
 }

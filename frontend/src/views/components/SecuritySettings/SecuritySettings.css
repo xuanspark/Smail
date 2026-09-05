@@ -1,43 +1,17 @@
 .settings-card { padding: 0; }
 .security-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 176px;
+  grid-template-columns: minmax(0, 1fr) 152px;
   grid-template-areas: "main submenu";
   align-items: start;
   gap: 20px;
 }
-.security-submenu {
-  grid-area: submenu;
-  position: sticky;
-  top: 0;
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--pm-border-color);
-  border-radius: var(--pm-radius-lg);
-  background: var(--pm-bg-secondary);
-}
-.security-submenu-item {
-  width: 100%;
-  padding: 12px 14px;
-  color: var(--pm-text-secondary);
-  text-align: left;
-  font: inherit;
-  border: 0;
-  border-radius: var(--pm-radius-sm);
-  background: transparent;
-  cursor: pointer;
-  transition: color .2s ease, background-color .2s ease;
-}
-.security-submenu-item:hover,
-.security-submenu-item.active {
-  color: var(--pm-primary-color);
-  background: var(--el-color-primary-light-9);
-}
-.security-submenu-item.active { font-weight: 600; }
 .security-main {
   grid-area: main;
   min-width: 0;
+}
+.security-main > .settings-divider:first-child {
+  display: none;
 }
 .settings-header { margin-bottom: 24px; }
 .settings-header h3 { font-size: 18px; font-weight: 600; color: var(--pm-text-primary); margin: 0 0 8px; }
@@ -59,25 +33,13 @@
 .credential-info span { color: var(--pm-text-secondary); font-size: 13px; }
 .credential-warning { width: 100%; color: #b45309 !important; font-size: 13px; }
 .credential-actions { display: flex; flex: none; gap: 8px; }
-@media (max-width: 640px) {
+@container settings-content (max-width: 560px) {
   .security-workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "submenu"
       "main";
     gap: 16px;
-  }
-  .security-submenu {
-    position: static;
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding: 6px;
-  }
-  .security-submenu-item {
-    flex: 0 0 auto;
-    width: auto;
-    white-space: nowrap;
   }
   .security-key-header, .credential-item { flex-direction: column; align-items: stretch; }
   .credential-actions { width: 100%; }

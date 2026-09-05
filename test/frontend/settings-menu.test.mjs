@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { compileFunction } from 'node:vm'
+import { computed, reactive, ref } from './vue.mjs'
+
+const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
+const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
+const root = new URL('../../frontend/src/views/components/', import.meta.url)
+const read = path => readFileSync(new URL(path, root), 'utf8')
+const useSubmenu = compileFunction(
+  read('SettingsSubmenu/SettingsSubmenu.js').replaceAll('export ', '') + '\nreturn useSubmenu'
+)()
+
+test('二级菜单只发送可见且尚未选中的选项，不提前修改父组件状态', () => {
+  const props = reactive({
+    modelValue: 'question',
+    items: [{ value: 'question' }, { value: 'external-email' }]
+  })
+  const events = []
+  const { select } = useSubmenu(props, (...event) => events.push(event))
+  select('password')
+  select('question')
+  select('external-email')
+  assert.deepEqual(events, [['select', 'external-email']])
+  assert.equal(props.modelValue, 'question')
+  props.modelValue = 'external-email'
+  select('external-email')
+  props.items = [{ value: 'external-email' }]
+  select('question')
+  assert.equal(events.length, 1)
+})
+
+test('一级菜单保留能力过滤和当前分类标题联动', () => {
+  const source = read('HomeHeader/HomeHeader.js')
+  const names = [
+    'EpMenu', 'Lock', 'Connection', 'Setting', 'FolderOpened', 'Filter', 'User', 'Grid',
+    'SecuritySettings', 'ThirdPartyAuthorization', 'ConfigSettings', 'GroupSettings',
+    'RuleSettings', 'UserManagement', 'PluginSettings', 'BrandLogo'
+  ]
+  const createPage = compileFunction(
+    source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
+      .replace(/export \{[\s\S]*?\}\s*$/, '') + '\nreturn usePage()',
+    ['computed', 'ref', 'onMounted', 'onUnmounted', 'window', 'useGlobalStatusStore', 'lang', ...names]
+  )
+  const capabilities = reactive(new Set(['password.change_own', 'plugin.write_own']))
+  const store = reactive({
+    settingsActiveTab: 'security',
+    hasCapability: value => capabilities.has(value)
+  })
+  const page = createPage(computed, ref, () => {}, () => {}, { innerWidth: 1440 }, () => store,
+    { security: '安全' }, ...names.map(name => ({ name })))
+  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party'])
+  assert.equal(page.activeSettings.value.label, '安全')
+  capabilities.add('config.read')
+  store.settingsActiveTab = 'config'
+  assert.equal(page.activeSettings.value.label, '配置管理')
+  assert.equal(page.settingsMenu.value.length, 3)
+  assert.ok(page.settingsMenu.value.every(item => item.icon && item.hint))
+  capabilities.delete('config.read')
+  assert.equal(page.activeSettings.value, undefined)
+})
+
+test('菜单模板可编译并保留按钮、当前项语义及原有选区处理器', () => {
+  for (const name of ['HomeHeader', 'SettingsSubmenu', 'SecuritySettings', 'ConfigSettings']) {
+    const source = read(`${name}/${name}.vue`)
+    const { descriptor, errors } = parse(source)
+    assert.deepEqual(errors, [])
+    assert.doesNotThrow(() => compileScript(descriptor, { id: 'settings-test', inlineTemplate: true }))
+  }
+  const submenu = read('SettingsSubmenu/SettingsSubmenu.vue')
+  assert.match(submenu, /<button[\s\S]*type="button"/)
+  assert.match(submenu, /:aria-current="modelValue === item.value \? 'page' : undefined"/)
+  for (const name of ['SecuritySettings', 'ConfigSettings']) {
+    assert.match(read(`${name}/${name}.vue`), /<SettingsSubmenu[\s\S]*@select="selectSection"/)
+  }
+  assert.match(read('HomeHeader/HomeHeader.vue'), /globalStatus.settingsDrawerVisible && globalStatus.settingsActiveTab === item.key/)
+})
+
+test('一级标签样式不会穿透到插件内部，抽屉样式可命中传送后的节点', () => {
+  const { code, errors } = compileStyle({
+    source: read('HomeHeader/HomeHeader.css'), id: 'data-v-settings-test', scoped: true
+  })
+  assert.deepEqual(errors, [])
+  assert.match(code, /\.settings-tabs\[data-v-settings-test\]\s*>\s*\.el-tabs__header/)
+  assert.doesNotMatch(code, /\.settings-tabs\[data-v-settings-test\]\s+\.el-tabs__header/)
+  assert.match(code, /\.settings-drawer > \.el-drawer__body\s*\{/)
+  assert.match(code, /container: settings-content \/ inline-size/)
+})
+
+test('两级菜单分别提供选中、非选中悬停和键盘焦点样式', () => {
+  for (const path of [
+    'HomeHeader/HomeHeader.css',
+    'SettingsSubmenu/SettingsSubmenu.css',
+    'PluginSettings/PluginSettings.css'
+  ]) {
+    const source = read(path)
+    assert.match(source, /:hover:not\(/)
+    assert.match(source, /:focus-visible/)
+    assert.match(source, /(?:\.is-active|\.active)/)
+  }
+  for (const name of ['SecuritySettings', 'ConfigSettings', 'SettingsSubmenu']) {
+    assert.match(read(`${name}/${name}.css`), /@container settings-content \(max-width: 560px\)/)
+  }
+})

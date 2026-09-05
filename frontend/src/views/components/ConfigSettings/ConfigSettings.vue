@@ -20,19 +20,13 @@
     </div>
 
     <div v-else-if="!loading" class="config-workspace">
-      <nav class="config-submenu" aria-label="配置分区">
-        <button
-          v-for="item in sectionOptions"
-          :key="item.value"
-          type="button"
-          class="config-submenu-item"
-          :class="{ active: selectedSection === item.value }"
-          :aria-current="selectedSection === item.value ? 'page' : undefined"
-          @click="selectSection(item.value)"
-        >
-          {{ item.label }}
-        </button>
-      </nav>
+      <SettingsSubmenu
+        title="配置管理"
+        caption="配置分区"
+        :items="sectionOptions"
+        :model-value="selectedSection"
+        @select="selectSection"
+      />
 
       <div class="config-main">
         <section class="status-panel">
@@ -285,6 +279,7 @@
 <script setup>
 import { computed } from 'vue'
 import { usePage } from './ConfigSettings.js'
+import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
 
 const {
   availabilityError,

@@ -1,19 +1,12 @@
 <template>
   <div class="settings-card security-settings-card" v-loading="securityLoading">
     <div class="security-workspace">
-      <nav class="security-submenu" aria-label="安全设置">
-        <button
-          v-for="item in sectionOptions"
-          :key="item.value"
-          type="button"
-          class="security-submenu-item"
-          :class="{ active: selectedSection === item.value }"
-          :aria-current="selectedSection === item.value ? 'page' : undefined"
-          @click="selectSection(item.value)"
-        >
-          {{ item.label }}
-        </button>
-      </nav>
+      <SettingsSubmenu
+        title="安全设置"
+        :items="sectionOptions"
+        :model-value="selectedSection"
+        @select="selectSection"
+      />
 
       <div class="security-main">
     <section v-if="selectedSection === 'password' && !isSuperAdmin" class="security-section">
@@ -101,6 +94,7 @@
 
 <script setup>
 import { usePage } from './SecuritySettings.js'
+import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
 
 const {
   lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
