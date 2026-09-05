@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { compileFunction } from 'node:vm'
+import { computed, reactive, ref } from './vue.mjs'
+
+const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigNavigation.js', import.meta.url), 'utf8')
+const components = ['BaseConfig', 'SmtpConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']
+const createNavigation = compileFunction(
+  source.replace(/^import .*$/gm, '').replace('export function useNavigation', 'function useNavigation') + '\nreturn useNavigation()',
+  ['computed', 'nextTick', 'ref', 'useGlobalStatusStore', ...components]
+)
+
+function fixture(capabilities = ['config.read']) {
+  const allowed = reactive(new Set(capabilities))
+  const page = createNavigation(computed, async () => {}, ref,
+    () => ({ hasCapability: key => allowed.has(key) }), ...components.map(name => ({ name })))
+  return { page, allowed }
+}
+
+test('五个菜单对应五个不同页面组件，无权限的维护入口不可打开', async () => {
+  const { page, allowed } = fixture()
+  assert.equal(new Set(page.sectionOptions.value.map(item => item.component)).size, 5)
+  assert.equal(page.maintenanceOptions.value.length, 0)
+  await page.selectSection('audit')
+  await page.selectSection('invalid')
+  assert.equal(page.selectedSection.value, 'base')
+  allowed.add('audit.read')
+  assert.deepEqual(page.maintenanceOptions.value.map(item => item.value), ['audit'])
+  await page.selectSection('audit')
+  assert.equal(page.activePage.value.component.name, 'ConfigMaintenance')
+  allowed.delete('config.read')
+  assert.equal(page.activePage.value, undefined)
+})
+
+test('切页等待离开确认，取消和快速重复点击不会更改页面', async () => {
+  const { page } = fixture()
+  let resolve
+  let prompts = 0
+  page.currentPage.value = { beforeLeave: () => { prompts++; return new Promise(done => { resolve = done }) } }
+  const first = page.selectSection('smtp')
+  await page.selectSection('ssl')
+  assert.equal(prompts, 1)
+  assert.equal(page.selectedSection.value, 'base')
+  resolve(false)
+  await first
+  assert.equal(page.selectedSection.value, 'base')
+  const second = page.selectSection('email')
+  resolve(true)
+  await second
+  assert.equal(page.selectedSection.value, 'email')
+  assert.equal(page.activePage.value.component.name, 'EmailConfig')
+})
+
+test('退出确认期间收回权限，不得进入原先可见的维护页', async () => {
+  const { page, allowed } = fixture(['config.read', 'config.rollback'])
+  page.currentPage.value = { beforeLeave: async () => { allowed.delete('config.rollback'); return true } }
+  await page.selectSection('backups')
+  assert.equal(page.selectedSection.value, 'base')
+})

@@ -25,6 +25,7 @@
     class="settings-drawer"
     :with-header="true"
     direction="rtl"
+    :before-close="closeSettings"
   >
     <template #header="{ titleId }">
       <div class="settings-drawer-heading">
@@ -39,6 +40,7 @@
       v-model="globalStatus.settingsActiveTab"
       :tab-position="isMobile ? 'top' : 'right'"
       class="settings-tabs"
+      :before-leave="beforeSettingsLeave"
     >
       <el-tab-pane
         v-for="item in settingsMenu"
@@ -61,6 +63,7 @@
         <component
           v-if="globalStatus.settingsDrawerVisible && globalStatus.settingsActiveTab === item.key"
           :is="item.component"
+          :ref="instance => setSettingsPage(item.key, instance)"
         />
       </el-tab-pane>
     </el-tabs>
@@ -79,7 +82,10 @@ const {
   isMobile,
   lang,
   settingsMenu,
-  activeSettings
+  activeSettings,
+  closeSettings,
+  beforeSettingsLeave,
+  setSettingsPage
 } = usePage()
 </script>
 

@@ -1,4 +1,4 @@
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
@@ -28,7 +28,8 @@ const operationLabels = {
   rollback: '执行回滚'
 }
 
-export function usePage() {
+export function usePage(pageKey = 'base') {
+  const isConfigPage = sections.some(item => item.value === pageKey)
   const globalStatus = useGlobalStatusStore()
   const loading = ref(false)
   const availabilityError = ref('')
@@ -44,11 +45,13 @@ export function usePage() {
     pendingRestart: [],
     degradedReasons: []
   })
-  const selectedSection = ref('base')
+  const selectedSection = ref(isConfigPage ? pageKey : 'base')
   const currentSection = computed(() => sections.find(item => item.value === selectedSection.value) || sections[0])
   const sectionLoading = ref(false)
   let sectionRequestId = 0
+  let disposed = false
   const editorText = ref('')
+  const loadedText = ref('')
   const sectionError = ref('')
   const secretValue = ref('')
   const confirmed = ref(false)
@@ -65,6 +68,7 @@ export function usePage() {
   const migrationToken = ref('')
   const migrationRecord = ref(null)
   const restartPreview = ref(null)
+  const hasChanges = computed(() => editorText.value !== loadedText.value || !!secretValue.value || !!savedGeneration.value)
 
   const canWrite = computed(() => globalStatus.hasCapability('config.write_global'))
   const canRollback = computed(() => globalStatus.hasCapability('config.rollback'))
@@ -127,6 +131,7 @@ export function usePage() {
     sectionLoading.value = true
     sectionError.value = ''
     editorText.value = ''
+    loadedText.value = ''
     secretValue.value = ''
     confirmed.value = false
     validationResult.value = null
@@ -137,6 +142,7 @@ export function usePage() {
       notifyResponseError(response, '配置分区读取失败')
       const publicConfig = response.data || {}
       editorText.value = JSON.stringify(publicConfig, null, 2)
+      loadedText.value = editorText.value
       if (section === 'base') {
         const database = publicConfig.database || {}
         Object.assign(databaseConfig, { type: database.type || '', name: database.name || '', localRef: database.localRef || '' })
@@ -148,12 +154,6 @@ export function usePage() {
     } finally {
       if (requestId === sectionRequestId) sectionLoading.value = false
     }
-  }
-
-  const selectSection = value => {
-    if (selectedSection.value === value || working.value || !sections.some(item => item.value === value)) return
-    selectedSection.value = value
-    return loadSection()
   }
 
   const loadBackups = async () => {
@@ -192,7 +192,7 @@ export function usePage() {
   }
 
   const previewDatabaseMigration = async () => {
-    if (!canMigrate.value || !migrationTargetName.value.trim()) return
+    if (!canMigrate.value || working.value || sectionError.value || !migrationTargetName.value.trim()) return
     working.value = 'migration-preview'
     migrationPreview.value = null
     migrationRecord.value = null
@@ -229,7 +229,8 @@ export function usePage() {
   }
 
   const executeDatabaseMigration = async () => {
-    if (!migrationPreview.value?.id || !migrationToken.value) return
+    if (!canMigrate.value || working.value || !migrationPreview.value?.id || !migrationToken.value) return
+    working.value = 'migration-confirm'
     try {
       await ElMessageBox.confirm(
         '迁移将复制数据库内容并切换配置，旧数据库会保留。确认继续吗？',
@@ -259,7 +260,7 @@ export function usePage() {
   }
 
   const previewRestart = async () => {
-    if (!canRestart.value) return
+    if (!canRestart.value || working.value) return
     working.value = 'restart-preview'
     try {
       const response = await http.post('/api/v1/system/restart/preview', {})
@@ -273,7 +274,8 @@ export function usePage() {
   }
 
   const requestRestart = async () => {
-    if (!canRestart.value) return
+    if (!canRestart.value || working.value || !restartPreview.value?.triggerAvailable) return
+    working.value = 'restart-confirm'
     try {
       await ElMessageBox.confirm(
         '服务将按固定服务管理器重启，当前页面可能会短暂断开。确认继续吗？',
@@ -296,11 +298,14 @@ export function usePage() {
     availabilityError.value = ''
     try {
       await loadStatus()
+      if (disposed) return
       if (status.available === false) {
         availabilityError.value = status.unavailableReason || '在线配置管理尚未启用'
         return
       }
-      await Promise.all([loadSection(), loadBackups(), loadAudit()])
+      if (isConfigPage || (pageKey === 'migration' && canMigrate.value)) await loadSection()
+      if (pageKey === 'backups') await loadBackups()
+      if (pageKey === 'audit') await loadAudit()
     } catch (error) {
       availabilityError.value = error.message || '配置管理数据读取失败'
     } finally {
@@ -351,6 +356,7 @@ export function usePage() {
   }
 
   const validateConfig = async () => {
+    if (!canWrite.value || working.value || sectionLoading.value || sectionError.value) return
     working.value = 'validate'
     try {
       const request = buildRequest()
@@ -366,6 +372,7 @@ export function usePage() {
   }
 
   const saveConfig = async () => {
+    if (!canWrite.value || working.value || sectionLoading.value || sectionError.value) return
     working.value = 'save'
     try {
       const request = buildRequest()
@@ -383,7 +390,7 @@ export function usePage() {
   }
 
   const applyConfig = async () => {
-    if (!savedGeneration.value) return
+    if (!canWrite.value || working.value || !savedGeneration.value) return
     working.value = 'apply'
     try {
       const response = await http.post(`/api/v1/config/${selectedSection.value}/apply`, { generation: savedGeneration.value })
@@ -399,9 +406,10 @@ export function usePage() {
   }
 
   const previewRollback = async () => {
-    if (!rollbackGeneration.value) return
+    if (!canRollback.value || working.value || !rollbackGeneration.value) return
     working.value = 'preview'
     rollbackPreview.value = null
+    rollbackConfirmed.value = false
     try {
       const response = await http.post('/api/v1/config/rollback/preview', { targetGeneration: rollbackGeneration.value })
       notifyResponseError(response, '回滚预览失败')
@@ -415,7 +423,8 @@ export function usePage() {
   }
 
   const executeRollback = async () => {
-    if (!rollbackPreview.value || !rollbackConfirmed.value) return
+    if (!canRollback.value || working.value || !rollbackPreview.value || !rollbackConfirmed.value) return
+    working.value = 'rollback-confirm'
     try {
       await ElMessageBox.confirm('回滚会替换当前候选配置并可能需要重启服务，确定继续吗？', '确认执行回滚', { type: 'warning', confirmButtonText: '继续回滚', cancelButtonText: '取消' })
       working.value = 'rollback'
@@ -428,7 +437,7 @@ export function usePage() {
       notifyResponseError(response, '配置回滚失败')
       rollbackPreview.value = null
       rollbackConfirmed.value = false
-      await Promise.all([loadStatus(), loadSection(), loadBackups()])
+      await Promise.all([loadStatus(), loadBackups()])
       ElMessage.success('配置已回滚')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '配置回滚失败')
@@ -438,6 +447,7 @@ export function usePage() {
   }
 
   const exportAudit = async format => {
+    if (!canExportAudit.value || working.value) return
     working.value = format === 'csv' ? 'export-csv' : 'export'
     try {
       const response = await http.post('/api/v1/audits/config', { format, limit: 500 }, { responseType: 'blob' })
@@ -456,11 +466,40 @@ export function usePage() {
     }
   }
 
+  const beforeLeave = async () => {
+    if (working.value) {
+      ElMessage.warning('当前操作尚未完成，请稍后再切换页面')
+      return false
+    }
+    if (!hasChanges.value && !migrationToken.value && !rollbackPreview.value) return true
+    try {
+      await ElMessageBox.confirm(
+        '当前页有编辑内容、待应用候选配置或操作预览。离开会清除本页状态，但不会撤销已保存到服务器的候选配置。确认离开吗？',
+        '确认离开当前页',
+        { type: 'warning', confirmButtonText: '离开页面', cancelButtonText: '继续编辑' }
+      )
+      return !working.value
+    } catch {
+      return false
+    }
+  }
+
+  const refreshPage = async () => {
+    if (await beforeLeave()) await loadAll()
+  }
+
   onMounted(loadAll)
+  onBeforeUnmount(() => {
+    disposed = true
+    sectionRequestId++
+    secretValue.value = ''
+    confirmed.value = false
+    migrationToken.value = ''
+  })
 
   return {
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
-    selectedSection, currentSection, sectionLoading, selectSection, editorText, sectionError, sensitiveHint, secretField, secretValue,
+    selectedSection, currentSection, sectionLoading, editorText, sectionError, sensitiveHint, secretField, secretValue,
     confirmed, savedGeneration, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig,
@@ -468,6 +507,6 @@ export function usePage() {
     serviceLabel, sectionLabel, operationLabel, databaseConfig, databaseTypeLabel, canMigrate,
     migrationTargetName, migrationPreview, migrationToken, migrationRecord, migrationStatusLabel, migrationStatusType,
     previewDatabaseMigration, loadMigrationStatus, executeDatabaseMigration, canRestart, restartPreview,
-    previewRestart, requestRestart
+    previewRestart, requestRestart, beforeLeave, refreshPage, hasChanges
   }
 }

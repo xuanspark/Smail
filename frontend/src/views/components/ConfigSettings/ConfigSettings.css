@@ -4,6 +4,24 @@
   padding-bottom: 16px;
   --config-accent: var(--pm-primary-color);
 }
+.config-page,
+.config-page-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+.config-navigation {
+  grid-area: submenu;
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: 20px;
+}
+.config-navigation > .settings-submenu {
+  grid-area: auto;
+  position: static;
+}
 .settings-header,
 .panel-heading,
 .status-heading {
@@ -146,6 +164,14 @@
 }
 .config-main > * {
   min-width: 0;
+}
+.config-main:focus {
+  outline: none;
+}
+.config-main:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--config-accent) 35%, transparent);
+  outline-offset: -2px;
+  border-radius: 12px;
 }
 .panel-heading {
   flex-wrap: wrap;
@@ -511,6 +537,10 @@
   }
   .selected-section-label {
     white-space: normal;
+  }
+  .config-navigation {
+    gap: 12px;
+    position: static;
   }
 }
 .panel-desc {

@@ -6,16 +6,20 @@ import { createRequire } from 'node:module'
 import { computed, reactive, ref } from './vue.mjs'
 
 const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigSettings.js', import.meta.url), 'utf8')
-const createPage = compileFunction(
-  source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage()',
-  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore']
+const createPageWithKey = compileFunction(
+  source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage(pageKey)',
+  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount']
 )
+const createPage = (...args) => createPageWithKey(...args, 'base', () => {})
 
-function fixture(get) {
+function fixture(get, pageKey = 'base', options = {}) {
   const messages = []
-  const page = createPage(computed, () => {}, reactive, ref,
-    { error: message => messages.push(message) }, {}, { get }, () => ({ hasCapability: () => true }))
-  return { page, messages }
+  let dispose = () => {}
+  const page = createPageWithKey(computed, () => {}, reactive, ref,
+    { error: message => messages.push(message), warning: message => messages.push(message), success: () => {} },
+    { confirm: options.confirm || (async () => {}) }, { get, ...options.http },
+    () => ({ hasCapability: options.hasCapability || (() => true) }), pageKey, callback => { dispose = callback })
+  return { page, messages, dispose: () => dispose() }
 }
 
 function deferred() {
@@ -38,17 +42,26 @@ test('旧版配置仅请求状态，不并发请求分区、备份和审计', as
   assert.equal(page.loading.value, false)
 })
 
-test('备份和审计失败只显示局部错误，不阻挡配置编辑区域', async () => {
-  const { page, messages } = fixture(async path => {
+test('配置页不加载备份或审计，维护页失败只显示本页错误', async () => {
+  const requests = []
+  const get = async path => {
+    requests.push(path)
     if (path.endsWith('/status')) return { errorNo: 0, data: { available: true } }
     if (path.endsWith('/base')) return { errorNo: 0, data: {} }
     throw new Error('配置服务暂时不可用')
-  })
+  }
+  const { page, messages } = fixture(get)
   await page.loadAll()
   assert.equal(page.availabilityError.value, '')
   assert.equal(page.editorText.value, '{}')
-  assert.equal(page.backupsError.value, '配置服务暂时不可用')
-  assert.equal(page.auditError.value, '配置服务暂时不可用')
+  assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/base'])
+  const backup = fixture(get, 'backups').page
+  const audit = fixture(get, 'audit').page
+  await Promise.all([backup.loadAll(), audit.loadAll()])
+  assert.equal(backup.backupsError.value, '配置服务暂时不可用')
+  assert.equal(audit.auditError.value, '配置服务暂时不可用')
+  assert.equal(backup.editorText.value, '')
+  assert.equal(audit.editorText.value, '')
   assert.deepEqual(messages, [])
   await page.loadBackups()
   assert.deepEqual(messages, [])
@@ -95,10 +108,10 @@ test('状态请求失败后可重试恢复，不保留不可用提示', async ()
   assert.equal(page.availabilityError.value, '')
 })
 
-test('快速切换分区时丢弃较慢的旧响应，并清除旧编辑内容与确认状态', async () => {
+test('独立页互不覆盖，旧页卸载时清除密码并丢弃较慢响应', async () => {
   const base = deferred()
   const email = deferred()
-  const { page } = fixture(path => path.endsWith('/base') ? base.promise : email.promise)
+  const { page, dispose } = fixture(() => base.promise)
   page.editorText.value = '{"old":true}'
   page.confirmed.value = true
   page.secretValue.value = 'test-only-value'
@@ -107,23 +120,29 @@ test('快速切换分区时丢弃较慢的旧响应，并清除旧编辑内容�
   assert.equal(page.confirmed.value, false)
   assert.equal(page.secretValue.value, '')
   assert.equal(page.sectionLoading.value, true)
-  const emailRequest = page.selectSection('email')
+  page.secretValue.value = 'test-only-value'
+  dispose()
+  assert.equal(page.secretValue.value, '')
+  const emailPage = fixture(() => email.promise, 'email').page
+  const emailRequest = emailPage.loadSection()
   email.resolve({ errorNo: 0, data: { policy: { smtpPort: 25 } } })
   await emailRequest
-  assert.equal(page.currentSection.value.label, '邮箱策略')
-  assert.equal(page.sectionLoading.value, false)
+  assert.equal(emailPage.currentSection.value.label, '邮箱策略')
+  assert.equal(emailPage.sectionLoading.value, false)
   base.resolve({ errorNo: 0, data: { database: { type: 'sqlite' } } })
   await baseRequest
-  assert.deepEqual(JSON.parse(page.editorText.value), { policy: { smtpPort: 25 } })
+  assert.deepEqual(JSON.parse(emailPage.editorText.value), { policy: { smtpPort: 25 } })
+  assert.equal(page.editorText.value, '')
   assert.equal(page.databaseConfig.type, '')
 })
 
-test('过期请求失败不清除新分区的加载状态或覆盖错误信息', async () => {
+test('同一页重复加载时，过期失败不覆盖最新请求', async () => {
   const base = deferred()
   const ssl = deferred()
-  const { page } = fixture(path => path.endsWith('/base') ? base.promise : ssl.promise)
+  let count = 0
+  const { page } = fixture(() => ++count === 1 ? base.promise : ssl.promise, 'ssl')
   const baseRequest = page.loadSection()
-  const sslRequest = page.selectSection('ssl')
+  const sslRequest = page.loadSection()
   base.reject(new Error('旧分区读取失败'))
   await baseRequest
   assert.equal(page.sectionLoading.value, true)
@@ -135,22 +154,19 @@ test('过期请求失败不清除新分区的加载状态或覆盖错误信息',
   assert.deepEqual(JSON.parse(page.editorText.value), { enabled: true })
 })
 
-test('变更执行期间或分区值无效时不切换，所有分区均提供中文说明', async () => {
+test('五个配置页固定分区并按需加载，所有分区均提供中文说明', async () => {
   const requests = []
-  const { page } = fixture(async path => { requests.push(path); return { errorNo: 0, data: {} } })
-  page.working.value = 'save'
-  await page.selectSection('smtp')
-  assert.equal(page.selectedSection.value, 'base')
-  page.working.value = ''
-  await page.selectSection('invalid-section')
-  await page.selectSection('base')
-  assert.deepEqual(requests, [])
-  for (const section of page.sectionOptions) {
-    assert.match(section.description, /[\u4e00-\u9fff]/)
+  for (const key of ['base', 'smtp', 'email', 'ssl', 'plugins']) {
+    const { page } = fixture(async path => { requests.push(path); return { errorNo: 0, data: {} } }, key)
+    await page.loadAll()
+    assert.equal(page.selectedSection.value, key)
+    assert.match(page.currentSection.value.description, /[\u4e00-\u9fff]/)
+    assert.equal(page.secretValue.value, '')
+    assert.equal(page.confirmed.value, false)
+    assert.equal(page.savedGeneration.value, 0)
   }
-  await page.selectSection('plugins')
-  assert.deepEqual(requests, ['/api/v1/config/plugins'])
-  assert.equal(page.currentSection.value.label, '插件配置')
+  assert.deepEqual(requests, ['base', 'smtp', 'email', 'ssl', 'plugins']
+    .flatMap(key => ['/api/v1/config/status', `/api/v1/config/${key}`]))
 })
 
 test('迁移预览票据返回模板，迁移执行取消时不发送写入请求', async () => {
@@ -175,11 +191,12 @@ test('迁移预览票据返回模板，迁移执行取消时不发送写入请�
   }])
 })
 
-test('配置模板保留权限与确认绑定，维护操作使用原生可访问折叠面板', () => {
+test('独立页模板可编译，编辑器不再连接维护面板且权限绑定保留', () => {
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
   const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
-  const template = readFileSync(new URL('ConfigSettings.vue', root), 'utf8')
+  const template = readFileSync(new URL('ConfigEditor/ConfigEditor.vue', root), 'utf8')
+  const maintenance = readFileSync(new URL('ConfigMaintenance/ConfigMaintenance.vue', root), 'utf8')
   const css = readFileSync(new URL('ConfigSettings.css', root), 'utf8')
   const { descriptor, errors } = parse(template)
   assert.deepEqual(errors, [])
@@ -187,12 +204,93 @@ test('配置模板保留权限与确认绑定，维护操作使用原生可访�
   assert.deepEqual(compileStyle({ source: css, id: 'data-v-config-layout', scoped: true }).errors, [])
   assert.match(template, /v-if="canWrite" class="editor-footer"/)
   assert.match(template, /v-model="confirmed"/)
-  assert.match(template, /<details v-if="canMigrate && selectedSection === 'base'"/)
-  assert.match(template, /<details v-if="canRestart && status.pendingRestart\?\.length"[^>]+ open>/)
-  assert.match(template, /<details v-if="canRollback"/)
-  assert.match(template, /<details v-if="canAudit"/)
-  assert.equal((template.match(/<summary class="maintenance-summary">/g) || []).length, 4)
+  assert.doesNotMatch(template, /maintenance-panel|migration-panel|rollback-panel|audit-panel/)
+  for (const [key, capability] of [['migration', 'canMigrate'], ['restart', 'canRestart'], ['backups', 'canRollback'], ['audit', 'canAudit']]) {
+    assert.ok(maintenance.includes(`pageKey === '${key}' && ${capability}`))
+  }
+  assert.match(maintenance, /v-if="canExportAudit"/)
+  for (const name of ['BaseConfig', 'SmtpConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']) {
+    const page = readFileSync(new URL(`${name}/${name}.vue`, root), 'utf8')
+    const { descriptor, errors } = parse(page)
+    assert.deepEqual(errors, [])
+    assert.doesNotThrow(() => compileScript(descriptor, { id: name, inlineTemplate: true }))
+  }
   assert.match(css, /@container config-main \(max-width: 620px\)/)
   assert.match(css, /\.maintenance-summary:focus-visible/)
   assert.doesNotMatch(template, /&#x[0-9a-f]+;/i)
+})
+
+test('离开、刷新和正在执行的变更受保护，取消时保留编辑内容', async () => {
+  let cancel = true
+  let prompts = 0
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
+    confirm: async () => { prompts++; if (cancel) throw 'cancel' }
+  })
+  await page.loadAll()
+  assert.equal(await page.beforeLeave(), true)
+  assert.equal(prompts, 0)
+  page.editorText.value = '{"test":true}'
+  assert.equal(await page.beforeLeave(), false)
+  await page.refreshPage()
+  assert.equal(page.editorText.value, '{"test":true}')
+  cancel = false
+  assert.equal(await page.beforeLeave(), true)
+  page.working.value = 'save'
+  assert.equal(await page.beforeLeave(), false)
+  page.working.value = ''
+  await page.refreshPage()
+  assert.equal(page.hasChanges.value, false)
+  page.savedGeneration.value = 3
+  cancel = true
+  assert.equal(await page.beforeLeave(), false)
+})
+
+test('卸载发生在状态请求期间，不再发送后续分区请求', async () => {
+  const pending = deferred()
+  const requests = []
+  const { page, dispose } = fixture(path => { requests.push(path); return pending.promise })
+  const loading = page.loadAll()
+  dispose()
+  pending.resolve({ errorNo: 0, data: { available: true } })
+  await loading
+  assert.deepEqual(requests, ['/api/v1/config/status'])
+})
+
+test('只读账号不得发送配置写入请求或读取无权限维护数据', async () => {
+  const requests = []
+  const { page } = fixture(async path => { requests.push(path); return { errorNo: 0, data: {} } }, 'audit', {
+    hasCapability: capability => capability === 'config.read'
+  })
+  await page.loadAll()
+  await page.validateConfig()
+  await page.saveConfig()
+  page.savedGeneration.value = 3
+  await page.applyConfig()
+  assert.deepEqual(requests, ['/api/v1/config/status'])
+})
+
+test('独立页保持验证、保存、应用端点和代次协议，敏感值不串页', async () => {
+  const requests = []
+  const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 8 } : { relayPasswordStatus: 'configured' } }), 'smtp', {
+    http: {
+      post: async (path, body) => { requests.push({ path, body }); return { errorNo: 0, data: { valid: true } } },
+      put: async (path, body) => { requests.push({ path, body }); return { errorNo: 0, data: { generation: 9 } } }
+    }
+  })
+  await page.loadAll()
+  page.secretValue.value = 'test-only-value'
+  page.confirmed.value = true
+  await page.validateConfig()
+  await page.saveConfig()
+  assert.equal(page.savedGeneration.value, 9)
+  await page.applyConfig()
+  assert.deepEqual(requests.map(item => item.path), ['/api/v1/config/smtp/validate', '/api/v1/config/smtp', '/api/v1/config/smtp/apply'])
+  assert.equal(requests[0].body.expectedGeneration, 8)
+  assert.deepEqual(requests[0].body.payload, {})
+  assert.deepEqual(requests[0].body.secretChanges, { 'relay.password': { operation: 'replace', value: { plaintext: 'test-only-value' } } })
+  assert.deepEqual(requests[0].body.confirmation, { confirmed: true, method: 'recent_auth' })
+  assert.deepEqual(requests[2].body, { generation: 9 })
+  assert.equal(page.secretValue.value, '')
+  assert.equal(page.confirmed.value, false)
+  assert.equal(page.savedGeneration.value, 0)
 })

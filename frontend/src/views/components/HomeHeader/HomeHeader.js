@@ -53,6 +53,24 @@ export function usePage() {
   ].filter(item => globalStatus.hasCapability(item.capability)))
 
   const activeSettings = computed(() => settingsMenu.value.find(item => item.key === globalStatus.settingsActiveTab))
+  const settingsPages = new Map()
+  const setSettingsPage = (key, instance) => {
+    if (instance) settingsPages.set(key, instance)
+    else settingsPages.delete(key)
+  }
+  let checkingLeave = false
+  const beforeSettingsLeave = async () => {
+    if (checkingLeave) return false
+    checkingLeave = true
+    try {
+      return await (settingsPages.get(globalStatus.settingsActiveTab)?.beforeLeave?.() ?? true)
+    } finally {
+      checkingLeave = false
+    }
+  }
+  const closeSettings = async done => {
+    if (await beforeSettingsLeave()) done()
+  }
 
   return {
     EpMenu,
@@ -74,7 +92,10 @@ export function usePage() {
     isMobile,
     handleResize,
     settingsMenu,
-    activeSettings
+    activeSettings,
+    setSettingsPage,
+    beforeSettingsLeave,
+    closeSettings
   }
 }
 
