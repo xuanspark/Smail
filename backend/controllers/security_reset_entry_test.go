@@ -73,7 +73,7 @@ func TestRecoveryBrowserContextCookieProperties(t *testing.T) {
 		t.Fatal("recovery context was not created")
 	}
 	cookie := recorder.Result().Cookies()[0]
-	if cookie.Name != recoveryContextCookieName || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/api/security/recovery" || cookie.Secure {
+	if cookie.Name != recoveryContextCookieName || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/api/" || cookie.Secure {
 		t.Fatalf("unexpected recovery context cookie: %+v", cookie)
 	}
 	request.AddCookie(cookie)

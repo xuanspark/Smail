@@ -27,11 +27,14 @@ func getList(ctx *context.Context, tagInfo dto.SearchTag, keyword string, pop3Li
 
 	totalSQL, totalParams := genSQL(ctx, true, tagInfo, keyword, pop3List, offset, limit)
 
-	if _, err := db.Instance.SQL(totalSQL, totalParams...).Get(&total); err != nil {
+	var countResult struct {
+		Total int64 `xorm:"total"`
+	}
+	if _, err := db.Instance.SQL(totalSQL, totalParams...).Get(&countResult); err != nil {
 		return nil, 0, fmt.Errorf("query email count: %w", err)
 	}
 
-	return emailList, total, nil
+	return emailList, countResult.Total, nil
 }
 
 func genSQL(ctx *context.Context, count bool, tagInfo dto.SearchTag, keyword string, pop3List bool, offset, limit int) (string, []any) {
@@ -39,7 +42,7 @@ func genSQL(ctx *context.Context, count bool, tagInfo dto.SearchTag, keyword str
 	sql := "select "
 
 	if count {
-		sql += `count(1) from email e left join user_email ue on e.id=ue.email_id where ue.user_id = ? `
+		sql += `count(1) AS total from email e left join user_email ue on e.id=ue.email_id where ue.user_id = ? `
 	} else if pop3List {
 		sql += `e.id,e.size from email e left join user_email ue on e.id=ue.email_id where ue.user_id = ? `
 	} else {
@@ -94,8 +97,12 @@ func genSQL(ctx *context.Context, count bool, tagInfo dto.SearchTag, keyword str
 		sqlParams = append(sqlParams, "%"+keyword+"%", "%"+keyword+"%")
 	}
 
-	if limit == 0 {
+	if !count && limit == 0 {
 		limit = 10
+	}
+
+	if count {
+		return sql, sqlParams
 	}
 
 	sql += " order by e.id desc"

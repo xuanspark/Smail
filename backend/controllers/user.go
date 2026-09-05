@@ -147,15 +147,15 @@ func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	domains := array.Difference(mailDomains.Accepted, []string{mailDomains.Primary})
 	domains = append([]string{mailDomains.Primary}, domains...)
 	result := map[string]any{
-		"account":              ctx.UserAccount,
-		"name":                 ctx.UserName,
-		"role":                 ctx.EffectiveRole(),
-		"capabilities":         access.Capabilities(ctx.EffectiveRole()),
-		"is_admin":             ctx.IsAdmin,
-		"must_change_password": ctx.MustChangePassword,
+		"account":                 ctx.UserAccount,
+		"name":                    ctx.UserName,
+		"role":                    ctx.EffectiveRole(),
+		"capabilities":            access.Capabilities(ctx.EffectiveRole()),
+		"is_admin":                ctx.IsAdmin,
+		"must_change_password":    ctx.MustChangePassword,
 		"showSecuritySetupPrompt": ctx.SecuritySetupAcknowledged == 0,
-		"webAuthnEnabled": webAuthnRuntime() != nil,
-		"domains":              domains,
+		"webAuthnEnabled":         webAuthnRuntime() != nil,
+		"domains":                 domains,
 	}
 	if ctx.EffectiveRole() != access.RoleSuperAdmin {
 		result["recoveryCodesConfigured"] = ctx.RecoveryCodeConfigured
@@ -232,7 +232,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			}
 			ctx.TargetRecoveryConfigured = configured
 		}
-		if err := authorizeCapability(ctx, access.CapabilityRoleManage, targetRole, false); err != nil {
+		if err := authorizeCapabilityWithNewRole(ctx, access.CapabilityRoleManage, targetRole, newRole, false); err != nil {
 			response.NewErrorResponse(response.NoAccessPrivileges, "角色变更需要近期认证和恢复凭据", "").FPrint(w)
 			return
 		}

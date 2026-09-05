@@ -583,7 +583,7 @@ func recoveryBrowserContext(req *http.Request, w http.ResponseWriter, create boo
 	value := hex.EncodeToString(raw[:])
 	secure := req.TLS != nil || !config.DevelopmentMode
 	http.SetCookie(w, &http.Cookie{
-		Name: recoveryContextCookieName, Value: value, Path: "/api/security/recovery",
+		Name: recoveryContextCookieName, Value: value, Path: "/api/",
 		HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: 15 * 60,
 	})
 	return value, true
@@ -595,7 +595,7 @@ func clearRecoveryBrowserContext(w http.ResponseWriter, req *http.Request) {
 	}
 	secure := req != nil && (req.TLS != nil || !config.DevelopmentMode)
 	http.SetCookie(w, &http.Cookie{
-		Name: recoveryContextCookieName, Value: "", Path: "/api/security/recovery",
+		Name: recoveryContextCookieName, Value: "", Path: "/api/",
 		HttpOnly: true, Secure: secure, SameSite: http.SameSiteStrictMode, MaxAge: -1,
 	})
 }

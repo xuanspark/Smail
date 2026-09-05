@@ -326,6 +326,13 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 			return ErrRecoveryDenied
 		}
 	}
+	if item.Method == "webauthn" && item.CredentialID > 0 {
+		var credential models.WebAuthnCredential
+		found, lookupErr := s.engine.Where("id = ? AND user_id = ? AND revoked_at IS NULL", item.CredentialID, item.UserID).Get(&credential)
+		if lookupErr != nil || !found {
+			return ErrRecoveryDenied
+		}
+	}
 	version := user.SessionVersion + 1
 	if version <= 0 {
 		version = 1

@@ -7,6 +7,11 @@ import (
 
 // authorizeCapability 统一把 HTTP 请求上下文映射到能力授权器。
 func authorizeCapability(ctx *context.Context, capability access.Capability, targetRole access.Role, ownResource bool) error {
+	return authorizeCapabilityWithNewRole(ctx, capability, targetRole, "", ownResource)
+}
+
+// authorizeCapabilityWithNewRole 在角色变更时同时把目标新角色传给统一授权器。
+func authorizeCapabilityWithNewRole(ctx *context.Context, capability access.Capability, targetRole, newRole access.Role, ownResource bool) error {
 	if ctx == nil {
 		return &access.Denial{Code: access.CodeAccessDenied}
 	}
@@ -18,6 +23,7 @@ func authorizeCapability(ctx *context.Context, capability access.Capability, tar
 		RecentAuth:               ctx.RecentAuth,
 		RecoveryCodeConfigured:   ctx.RecoveryCodeConfigured,
 		TargetRecoveryConfigured: ctx.TargetRecoveryConfigured,
+		NewRole:                  newRole,
 		PluginInstanceAuthorized: ctx.PluginInstanceAuthorized,
 		AuditScopeAuthorized:     ctx.AuditScopeAuthorized,
 		DeploymentChannel:        ctx.DeploymentChannel,
