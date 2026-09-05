@@ -208,11 +208,13 @@ func GetMaxUIDByMailbox(ctx *context.Context, groupName string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	var maxUID int
-	if _, err := db.Instance.SQL("SELECT COALESCE(MAX(id), 0) FROM ("+inner+") mailbox", params...).Get(&maxUID); err != nil {
+	var result struct {
+		MaxUID int `xorm:"max_uid"`
+	}
+	if _, err := db.Instance.SQL("SELECT COALESCE(MAX(id), 0) AS max_uid FROM ("+inner+") mailbox", params...).Get(&result); err != nil {
 		return 0, fmt.Errorf("query mailbox maximum UID: %w", err)
 	}
-	return maxUID, nil
+	return result.MaxUID, nil
 }
 
 func getEmailListByUidList(ctx *context.Context, groupName string, req ImapListReq) ([]*response.EmailResponseData, error) {
