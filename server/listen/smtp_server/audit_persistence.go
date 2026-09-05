@@ -153,7 +153,7 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 	accounts := incomingAccounts(email, reallyTo)
 	var users []*models.User
 	if len(accounts) > 0 {
-		where, params, err := builder.ToSQL(builder.In("LOWER(account)", accounts))
+		where, params, err := builder.ToSQL(builder.And(builder.In("LOWER(account)", accounts), builder.Eq{"disabled": 0}))
 		if err != nil {
 			return nil, false, err
 		}
@@ -175,7 +175,7 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 	}
 
 	log.WithContext(ctx).Infof("收件人不存在但DKIM验证通过，转交管理员: recipient_count=%d", len(accounts))
-	if err := db.Instance.Table(&models.User{}).Where("is_admin=1").Find(&users); err != nil {
+	if err := db.Instance.Table(&models.User{}).Where("is_admin=1 AND disabled=0").Find(&users); err != nil {
 		return nil, false, err
 	}
 	if len(users) == 0 {

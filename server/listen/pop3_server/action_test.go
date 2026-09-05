@@ -72,3 +72,28 @@ func TestActionUserPreservesFullEmailIdentifier(t *testing.T) {
 		t.Fatalf("POP3 user identifier = %q, want full email identifier", session.User)
 	}
 }
+
+func TestActionUidlOwnershipValidation(t *testing.T) {
+	testRoot := t.TempDir()
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "pop3_uidl.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if db.Instance != nil {
+			_ = db.Instance.Close()
+		}
+	})
+
+	a := action{}
+	session := &gopop.Session{
+		Ctx: &context.Context{
+			UserID: 1,
+		},
+	}
+	// 查询未授权/不存在的邮件 ID 应返回错误
+	_, err := a.Uidl(session, "99999")
+	if err == nil {
+		t.Fatal("expected error for unauthorized/non-existent message UIDL query, got nil")
+	}
+}

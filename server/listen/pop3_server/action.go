@@ -144,6 +144,10 @@ func (a action) Uidl(session *gopop.Session, msg string) ([]gopop.UidlItem, erro
 
 	reqId := cast.ToInt64(msg)
 	if reqId > 0 {
+		info, err := detail.GetEmailDetail(session.Ctx.(*context.Context), cast.ToInt(reqId), false)
+		if err != nil || info == nil {
+			return nil, errors2.New("no such message")
+		}
 		log.WithContext(session.Ctx).Debugf("Uidl \n %+v", reqId)
 		return []gopop.UidlItem{
 			{
