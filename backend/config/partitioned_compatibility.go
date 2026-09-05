@@ -101,9 +101,12 @@ func compatibilityDatabase(database DatabaseConfig, vault *credential.Vault) (st
 		settings.User, settings.Passwd = database.Username, password
 		settings.Net, settings.Addr, settings.DBName = "tcp", address, database.Name
 		settings.ParseTime = true
+		// 与迁移连接保持相同时区，避免重启后 TIMESTAMP 会话到期时间偏移。
+		settings.Params = map[string]string{"charset": "utf8mb4", "time_zone": "'+00:00'"}
 		return DBTypeMySQL, settings.FormatDSN(), nil
 	case DatabaseTypePostgreSQL:
 		uri := url.URL{Scheme: "postgres", User: url.UserPassword(database.Username, password), Host: address, Path: "/" + database.Name}
+		uri.RawQuery = "sslmode=require&timezone=UTC&search_path=public"
 		return DBTypePostgres, uri.String(), nil
 	default:
 		return "", "", fmt.Errorf("不支持的数据库类型")

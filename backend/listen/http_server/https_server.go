@@ -19,6 +19,7 @@ import (
 	"git.pcux.cn/xuans/Smail/i18n"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/csrf"
@@ -73,7 +74,7 @@ func HttpsStart() error {
 
 	httpsServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", httpsPort),
-		Handler:           securityHeaders(session.Instance.LoadAndSave(mux)),
+		Handler:           securityHeaders(dbmigration.GuardHTTP(session.Instance.LoadAndSave(mux))),
 		ReadTimeout:       time.Second * 90,
 		ReadHeaderTimeout: time.Second * 10,
 		WriteTimeout:      time.Second * 90,
@@ -160,6 +161,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 						ctx.IsAdmin = ctx.Role == access.RoleSuperAdmin || ctx.Role == access.RoleAdmin
 						ctx.MustChangePassword = currentUser.MustChangePassword
 						ctx.SecuritySetupAcknowledged = currentUser.SecuritySetupAcknowledged
+						ctx.RecentAuth = identity.HasRecentAuthentication(time.Now().UTC())
 						controllers.LoadSecurityContext(ctx)
 					}
 				}

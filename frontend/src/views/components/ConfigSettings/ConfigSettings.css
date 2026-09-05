@@ -471,7 +471,21 @@
   overflow-wrap: anywhere;
 }
 .migration-form {
+  max-width: 880px;
   margin-top: 16px;
+}
+.migration-connection-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 0 20px;
+}
+.migration-connection-grid :deep(.el-input-number) {
+  width: 100%;
+}
+@container config-main (max-width: 620px) {
+  .migration-connection-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .migration-form :deep(.el-form-item) {
   margin-bottom: 0;

@@ -2,10 +2,47 @@ package config
 
 import (
 	"bytes"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"git.pcux.cn/xuans/Smail/utils/credential"
+	"github.com/go-sql-driver/mysql"
 )
+
+func TestPartitionedDatabaseConnectionPreservesMigrationTimezone(t *testing.T) {
+	vault, err := credential.NewVault(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, err := ApplySecretChange(vault, StoredSecret{}, SecretChange{Operation: SecretReplace, Value: &SecretInput{Plaintext: "test-password"}}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []DatabaseType{DatabaseTypeMySQL, DatabaseTypePostgreSQL} {
+		_, dsn, err := compatibilityDatabase(DatabaseConfig{Type: kind, Host: "::1", Port: 3306, Username: "test", Name: "test", Password: secret}, vault)
+		if err != nil {
+			t.Fatal("runtime connection failed")
+		}
+		if kind == DatabaseTypeMySQL {
+			settings, err := mysql.ParseDSN(dsn)
+			_, rawQuery, _ := strings.Cut(dsn, "?")
+			query, queryErr := url.ParseQuery(rawQuery)
+			// charset 会被驱动解析为内部选项，不再保留在 Params 中。
+			if err != nil || queryErr != nil || !settings.ParseTime || settings.Params["time_zone"] != "'+00:00'" || query.Get("charset") != "utf8mb4" {
+				t.Fatal("MySQL runtime timezone differs from migration")
+			}
+		} else {
+			uri, err := url.Parse(dsn)
+			if err != nil || uri.Query().Get("timezone") != "UTC" || uri.Query().Get("search_path") != "public" || uri.Query().Get("sslmode") != "require" {
+				t.Fatal("PostgreSQL runtime options differ from migration")
+			}
+		}
+	}
+}
 
 func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 	root := t.TempDir()

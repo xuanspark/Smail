@@ -5,6 +5,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"github.com/alexedwards/scs/mysqlstore"
 	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/sqlite3store"
@@ -32,14 +33,18 @@ func Init() error {
 
 	switch cfg.DbType {
 	case config.DBTypeMySQL:
-		Instance.Store = mysqlstore.New(db.Instance.DB().DB)
+		Instance.Store = mysqlstore.NewWithCleanupInterval(db.Instance.DB().DB, 0)
 	case config.DBTypeSQLite:
-		Instance.Store = sqlite3store.New(db.Instance.DB().DB)
+		Instance.Store = sqlite3store.NewWithCleanupInterval(db.Instance.DB().DB, 0)
 	case config.DBTypePostgres:
-		Instance.Store = postgresstore.New(db.Instance.DB().DB)
+		Instance.Store = postgresstore.NewWithCleanupInterval(db.Instance.DB().DB, 0)
 	default:
 		return fmt.Errorf("unsupported database type: %s", cfg.DbType)
 	}
+	Instance.Store = &migrationStore{Store: Instance.Store, codec: Instance.Codec, paused: func() bool {
+		return dbmigration.Current().WritePaused()
+	}}
+	startCleanup(db.Instance.DB().DB, cfg.DbType == config.DBTypeSQLite)
 
 	return nil
 }

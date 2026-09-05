@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/response"
@@ -12,8 +13,9 @@ import (
 )
 
 type databaseMigrationPreviewRequest struct {
-	TargetName         string `json:"targetName"`
-	ExpectedGeneration uint64 `json:"expectedGeneration"`
+	TargetName         string                   `json:"targetName"`
+	Target             *dbmigration.TargetInput `json:"target,omitempty"`
+	ExpectedGeneration uint64                   `json:"expectedGeneration"`
 }
 
 type databaseMigrationExecuteRequest struct {
@@ -21,7 +23,7 @@ type databaseMigrationExecuteRequest struct {
 	Token string `json:"token"`
 }
 
-// PreviewDatabaseMigration 校验只改数据库名称的迁移计划，不连接或修改目标数据库。
+// PreviewDatabaseMigration 验证三种数据库的结构化目标连接，不创建或修改目标库。
 func PreviewDatabaseMigration(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
 	if err := authorizeCapability(ctx, access.CapabilityDatabaseMigrate, "", false); err != nil {
 		writeConfigAccessError(w, err)
@@ -42,11 +44,27 @@ func PreviewDatabaseMigration(ctx *appcontext.Context, w http.ResponseWriter, re
 		return
 	}
 	status := manager.Status()
-	if input.ExpectedGeneration != status.ActiveGeneration {
+	if input.ExpectedGeneration != status.ActiveGeneration || len(status.PendingRestart) > 0 {
 		writeConfigError(w, config.ErrGenerationConflict)
 		return
 	}
-	record, token, err := service.Preview(req.Context(), manager.Snapshot().Root.Database, status.ActiveGeneration, input.TargetName)
+	var record dbmigration.Record
+	var token string
+	var err error
+	if input.Target != nil {
+		if input.TargetName != "" {
+			writeConfigError(w, dbmigration.ErrInvalidRequest)
+			return
+		}
+		target, prepareErr := input.Target.Prepare(config.ROOT_PATH)
+		if prepareErr != nil {
+			writeConfigError(w, prepareErr)
+			return
+		}
+		record, token, err = service.PreviewTarget(req.Context(), manager.Snapshot().Root.Database, status.ActiveGeneration, target)
+	} else {
+		record, token, err = service.Preview(req.Context(), manager.Snapshot().Root.Database, status.ActiveGeneration, input.TargetName)
+	}
 	if err != nil {
 		writeConfigError(w, err)
 		return
@@ -69,6 +87,8 @@ func ExecuteDatabaseMigration(ctx *appcontext.Context, w http.ResponseWriter, re
 		writeConfigError(w, dbmigration.ErrInvalidRequest)
 		return
 	}
+	// 迁移最长十分钟，不能沿用普通接口的九十秒响应写入期限。
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(11 * time.Minute))
 	record, err := dbmigration.Current().ExecuteAuthorized(req.Context(), input.ID, input.Token, configActor(ctx, req))
 	if err != nil {
 		writeConfigError(w, err)

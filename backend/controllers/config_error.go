@@ -49,6 +49,9 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 		code = string(denial.Code)
 		status = http.StatusForbidden
 		message = "无权访问或请求不满足安全条件"
+		if denial.Code == access.CodeRecentAuthRequired {
+			message = "此操作需要最近十分钟内完成登录，请重新登录后再试"
+		}
 	case errors.Is(err, config.ErrManagerStorage):
 		code = "CONFIG_MANAGER_UNAVAILABLE"
 		status = http.StatusServiceUnavailable

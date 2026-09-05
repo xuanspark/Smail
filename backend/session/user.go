@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 )
 
 const userSessionKey = "user"
+const recentAuthenticationLifetime = 10 * time.Minute
 
 type UserIdentity struct {
 	ID                 int         `json:"id"`
@@ -20,6 +22,17 @@ type UserIdentity struct {
 	SessionVersion     int         `json:"session_version"`
 	SecurityVersion    int         `json:"security_version"`
 	MustChangePassword int         `json:"must_change_password"`
+	AuthenticatedAt    int64       `json:"authenticated_at,omitempty"`
+}
+
+// HasRecentAuthentication 只信任完成登录时写入的服务端时间，刷新不会续期。
+// 旧会话缺少时间或时间来自未来时必须重新登录，不能自动获得高风险权限。
+func (identity UserIdentity) HasRecentAuthentication(now time.Time) bool {
+	if identity.ID <= 0 || identity.AuthenticatedAt <= 0 {
+		return false
+	}
+	authenticated := time.Unix(identity.AuthenticatedAt, 0)
+	return !now.Before(authenticated) && now.Before(authenticated.Add(recentAuthenticationLifetime))
 }
 
 func PutUser(ctx context.Context, user *models.User) error {
@@ -36,6 +49,7 @@ func PutUser(ctx context.Context, user *models.User) error {
 		SessionVersion:     user.SessionVersion,
 		SecurityVersion:    user.SecurityVersion,
 		MustChangePassword: user.MustChangePassword,
+		AuthenticatedAt:    time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return err

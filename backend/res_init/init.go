@@ -82,18 +82,13 @@ func startConfigManager() error {
 	authorizedSwitch := func(ctx context.Context, expectedGeneration uint64, target config.DatabaseConfig, actor config.AuditActor) error {
 		return manager.SwitchDatabase(ctx, expectedGeneration, target, actor)
 	}
-	sqliteExecutor := dbmigration.NewAuthorizedSQLiteExecutor(config.ROOT_PATH, authorizedSwitch)
-	var structuredExecutor dbmigration.Runner
-	if manager.Snapshot().Root.Database.Type != config.DatabaseTypeSQLite {
-		factory, factoryErr := dbmigration.NewRuntimeSQLConnectionFactory(config.ROOT_PATH)
-		if factoryErr != nil {
-			return fmt.Errorf("initialize structured database migration: %w", factoryErr)
-		}
-		structuredExecutor = dbmigration.NewSQLExecutor(dbmigration.NewSQLCopier(factory), authorizedSwitch)
+	factory, factoryErr := dbmigration.NewRuntimeSQLConnectionFactory(config.ROOT_PATH)
+	if factoryErr != nil {
+		return fmt.Errorf("initialize database migration: %w", factoryErr)
 	}
 	dbmigration.SetCurrent(
 		dbmigration.NewService(
-			dbmigration.NewDatabaseExecutor(sqliteExecutor, structuredExecutor),
+			dbmigration.NewPortableDatabaseExecutor(config.ROOT_PATH, factory, authorizedSwitch),
 		),
 	)
 
@@ -101,6 +96,7 @@ func startConfigManager() error {
 }
 
 func stopConfigManager() {
+	dbmigration.Current().Close()
 	config.SetRuntimeManager(nil)
 	dbmigration.SetCurrent(nil)
 }
@@ -231,11 +227,12 @@ func Init(serverVersion string) error {
 			return err
 		case <-signal.RestartChan:
 			log.Infof("Server Restart!")
-			stopServices()
+			if err := stopServices(); err != nil {
+				return err
+			}
 		case <-signal.StopChan:
 			log.Infof("Server Stop!")
-			stopServices()
-			return nil
+			return stopServices()
 		}
 		log.Infof("Server Stop Success!")
 		time.Sleep(5 * time.Second)
@@ -252,9 +249,9 @@ func startService(serviceErrors chan<- error, name string, service func() error)
 	}()
 }
 
-func stopServices() {
+func stopServices() error {
 	restart.SetCurrent(nil)
-	stopConfigManager()
+	session.Stop()
 	stopAdminResetControl()
 	stopVerificationRuntime()
 	smtp_server.Stop()
@@ -263,6 +260,17 @@ func stopServices() {
 	pop3_server.Stop()
 	imap_server.Stop()
 	hooks.Stop()
+	// 关闭连接池后还要等待借出的连接归还，不能提前解除迁移源锁。
+	if db.Instance != nil {
+		_ = db.Instance.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		if err := dbmigration.WaitForDatabaseDrain(ctx, db.Instance.DB().DB); err != nil {
+			return fmt.Errorf("database operations did not drain; migration lock retained: %w", err)
+		}
+	}
+	stopConfigManager()
+	return nil
 }
 
 func startVerificationRuntime() error {

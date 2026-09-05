@@ -3,14 +3,14 @@ package config
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
 var ErrDatabaseMigrationTarget = errors.New("database migration target is invalid")
 
-// SwitchDatabase commits only the database name or SQLite local reference.
-// It deliberately does not open a connection or restart the service; the
-// caller must complete the physical migration before invoking this method.
+// SwitchDatabase 提交已完成复制与校验的目标连接，保留旧库并标记重启。
+// 普通配置编辑不能绕过本迁移入口切换数据库类型。
 func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration uint64, target DatabaseConfig, actor AuditActor) error {
 	if err := contextError(ctx); err != nil {
 		return err
@@ -42,14 +42,7 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if err := ValidateDatabaseConfig(target); err != nil {
 		return ErrDatabaseMigrationTarget
 	}
-	if !sameDatabaseConnection(current.Root.Database, target) {
-		return ErrDatabaseMigrationTarget
-	}
-	if target.Type == DatabaseTypeSQLite {
-		if target.LocalRef == current.Root.Database.LocalRef {
-			return ErrDatabaseMigrationTarget
-		}
-	} else if target.Name == current.Root.Database.Name {
+	if SameDatabaseLocation(current.Root.Database, target) {
 		return ErrDatabaseMigrationTarget
 	}
 
@@ -95,6 +88,9 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if target.Type == DatabaseTypeSQLite {
 		changedField = "root.database.localRef"
 	}
+	if !sameDatabaseConnection(current.Root.Database, target) {
+		changedField = "root.database"
+	}
 	return m.writeAudit(ctx, ConfigAuditEvent{
 		Operation:        ConfigOperationMigration,
 		Section:          SectionRoot,
@@ -107,6 +103,20 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 		Result:           "success",
 		CreatedAt:        now,
 	})
+}
+
+// SameDatabaseLocation 不把用户名或密码不同误认为不同数据库。
+func SameDatabaseLocation(current, target DatabaseConfig) bool {
+	current = NormalizeDatabaseConfig(current)
+	target = NormalizeDatabaseConfig(target)
+	if current.Type != target.Type {
+		return false
+	}
+	if current.Type == DatabaseTypeSQLite {
+		return strings.EqualFold(current.LocalRef, target.LocalRef)
+	}
+	return strings.EqualFold(current.Host, target.Host) && current.Port == target.Port &&
+		strings.EqualFold(current.Name, target.Name)
 }
 
 func sameDatabaseConnection(current, target DatabaseConfig) bool {

@@ -12,7 +12,9 @@
       <section v-if="pageKey === 'migration' && canMigrate" class="maintenance-panel migration-panel">
         <div class="maintenance-body">
           <el-alert v-if="sectionError" :title="sectionError" type="error" :closable="false" show-icon />
-          <p class="panel-desc">系统先生成一次性预览票据，再复制并校验数据。主机、端口、用户名和密码保持不变，旧数据库不会自动删除。</p>
+          <p class="panel-desc">支持 SQLite、MySQL、PostgreSQL 之间迁移。先验证目标连接，再复制并逐表校验数据；旧数据库不会删除。迁移期间暂停写入，成功后必须立即重启后端。</p>
+          <el-alert v-if="status.pendingRestart?.length" title="当前配置等待重启，请先重启后端再发起新的迁移。" type="warning" :closable="false" show-icon />
+          <el-alert v-if="migrationError" :title="migrationError" type="error" :closable="false" show-icon />
           <div class="migration-source">
             <div>
               <span>当前数据库类型</span>
@@ -24,19 +26,43 @@
             </div>
           </div>
           <el-form label-position="top" class="migration-form">
-            <el-form-item :label="databaseConfig.type === 'sqlite' ? '目标数据库文件引用' : '目标数据库名称'">
+            <el-form-item label="目标数据库类型">
+              <el-radio-group :model-value="migrationTarget.type" :disabled="!!working || !!sectionError" @update:model-value="changeMigrationType">
+                <el-radio-button label="sqlite">SQLite</el-radio-button>
+                <el-radio-button label="mysql">MySQL</el-radio-button>
+                <el-radio-button label="postgresql">PostgreSQL</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <div v-if="migrationTarget.type !== 'sqlite'" class="migration-connection-grid">
+              <el-form-item label="数据库主机" required>
+                <el-input v-model="migrationTarget.host" placeholder="例如 127.0.0.1 或数据库域名" :disabled="!!working" maxlength="253" @update:model-value="invalidateMigration" />
+              </el-form-item>
+              <el-form-item label="数据库端口" required>
+                <el-input-number v-model="migrationTarget.port" :min="1" :max="65535" :precision="0" :disabled="!!working" @update:model-value="invalidateMigration" />
+              </el-form-item>
+              <el-form-item label="数据库用户名" required>
+                <el-input v-model="migrationTarget.username" autocomplete="off" placeholder="具有创建数据库权限的账号" :disabled="!!working" maxlength="128" @update:model-value="invalidateMigration" />
+              </el-form-item>
+              <el-form-item label="数据库密码" required>
+                <el-input v-model="migrationTarget.password" type="password" autocomplete="new-password" placeholder="填写目标连接密码，不会回显旧密码" :disabled="!!working" maxlength="4096" @update:model-value="invalidateMigration" />
+              </el-form-item>
+            </div>
+            <el-form-item :label="migrationTarget.type === 'sqlite' ? '目标数据库文件名' : '目标数据库名称'" required>
               <el-input
                 v-model="migrationTargetName"
-                :placeholder="databaseConfig.type === 'sqlite' ? '例如 smail-next.db' : '例如 smail_next'"
+                :placeholder="migrationTarget.type === 'sqlite' ? '例如 smail-next.db' : '例如 smail_next'"
                 :disabled="!!working || !!sectionError"
                 maxlength="128"
                 clearable
+                @update:model-value="invalidateMigration"
               />
             </el-form-item>
+            <p class="panel-desc">{{ migrationTarget.type === 'sqlite' ? '文件固定存放在运行目录 config 下，只填写新文件名，不填写路径。' : '请使用尚不存在的库名，系统执行时自动建库。新连接必须填写密码，不会复用源数据库密码。' }}</p>
+            <p v-if="migrationTarget.type === 'postgresql'" class="panel-desc">PostgreSQL 连接要求数据库服务启用 TLS 加密，与迁移后的运行连接保持一致。</p>
           </el-form>
           <div class="action-row">
-            <el-button :loading="working === 'migration-preview'" :disabled="!!working || !!sectionError || !migrationTargetName.trim()" @click="previewDatabaseMigration">
-              生成迁移预览
+            <el-button :loading="working === 'migration-preview'" :disabled="!!working || !!sectionError || !migrationReady" @click="previewDatabaseMigration">
+              验证连接并预览
             </el-button>
             <el-button type="primary" :loading="working === 'migration-execute'" :disabled="!!working || !migrationPreview || !migrationToken" @click="executeDatabaseMigration">
               执行迁移
@@ -52,7 +78,9 @@
             </div>
             <span>迁移编号：{{ migrationRecord.id }}</span>
             <span>源数据库：{{ migrationRecord.source?.name || migrationRecord.source?.localRef || '-' }}</span>
-            <span>目标数据库：{{ migrationRecord.target?.name || migrationRecord.target?.localRef || '-' }}</span>
+            <span>目标数据库：{{ databaseTypeLabel(migrationRecord.target?.type) }} · {{ migrationRecord.target?.name || migrationRecord.target?.localRef || '-' }}</span>
+            <span v-if="migrationRecord.target?.host">目标连接：{{ migrationRecord.target.host }}:{{ migrationRecord.target.port }} · {{ migrationRecord.target.username }}</span>
+            <el-alert v-if="migrationRecord.status === 'succeeded'" title="迁移完成，旧库已暂停写入。请立即重启后端启用新数据库；若网页提示近期认证已过期，请在部署端重启，不要重复迁移。" type="warning" :closable="false" show-icon />
             <span v-if="migrationRecord.errorCode" class="migration-error">错误代码：{{ migrationRecord.errorCode }}</span>
           </div>
         </div>
@@ -160,6 +188,7 @@ const {
   loading, availabilityError, working, status, refreshPage, beforeLeave, sectionError,
   canMigrate, databaseConfig, databaseTypeLabel, migrationTargetName, migrationPreview,
   migrationToken, migrationRecord, migrationStatusType, migrationStatusLabel,
+  migrationTarget, migrationReady, migrationError, invalidateMigration, changeMigrationType,
   previewDatabaseMigration, executeDatabaseMigration, loadMigrationStatus,
   canRestart, serviceLabel, restartPreview, previewRestart, requestRestart,
   canRollback, backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed,

@@ -1,6 +1,8 @@
 package http_server
 
 import (
+	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +19,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/session"
 )
@@ -35,7 +38,14 @@ func TestSecuritySetupBrowserFixture(t *testing.T) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
 	}
+	migrationEnabled := os.Getenv("SMAIL_BROWSER_MIGRATION") == "1"
 	databasePath := filepath.Join(root, "browser.db")
+	if migrationEnabled {
+		if err := os.MkdirAll(filepath.Join(root, "config"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		databasePath = filepath.Join(root, "config", "browser.db")
+	}
 	if _, err := os.Stat(databasePath); !os.IsNotExist(err) {
 		t.Fatal("fixture requires a fresh database path")
 	}
@@ -47,11 +57,53 @@ func TestSecuritySetupBrowserFixture(t *testing.T) {
 		IsInit: true, SetupState: config.SetupStateReady, HttpsPort: 15443,
 	}
 	config.SetInitState(true)
+	if migrationEnabled {
+		legacy, err := json.Marshal(map[string]any{
+			"domain": "localhost", "webDomain": "localhost", "accessHosts": []string{"127.0.0.1"},
+			"dbType": "sqlite", "dbDSN": databasePath, "isInit": true,
+			"httpPort": 15080, "httpsPort": 15443, "httpsEnabled": 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		configPath := filepath.Join(root, "config", "config.json")
+		file, err := os.OpenFile(configPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, writeErr := file.Write(legacy)
+		closeErr := file.Close()
+		if writeErr != nil || closeErr != nil {
+			t.Fatal("isolated configuration could not be saved")
+		}
+		validation := config.RuntimeValidationOptions{HasSuperAdmin: true, Production: true}
+		if _, err := config.MigrateLegacyConfig(root, validation); err != nil {
+			t.Fatal(err)
+		}
+		manager, err := config.NewConfigManager(root, config.ConfigLoaderOptions{Validation: validation})
+		if err != nil {
+			t.Fatal(err)
+		}
+		config.SetRuntimeManager(manager)
+		factory, err := dbmigration.NewRuntimeSQLConnectionFactory(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		service := dbmigration.NewService(dbmigration.NewPortableDatabaseExecutor(root, factory,
+			func(ctx context.Context, generation uint64, target config.DatabaseConfig, actor config.AuditActor) error {
+				return manager.SwitchDatabase(ctx, generation, target, actor)
+			}))
+		dbmigration.SetCurrent(service)
+		defer service.Close()
+	}
 	if err := db.Init("browser-fixture"); err != nil {
 		t.Fatal(err)
 	}
 	defer db.Instance.Close()
 	user := models.User{Account: "xuans", Name: "Test", SessionVersion: 1, SecurityVersion: 1}
+	if migrationEnabled {
+		user.SecuritySetupAcknowledged = 1
+	}
 	user.ApplyRole(access.RoleSuperAdmin)
 	if err := auth.SetPassword(&user, password); err != nil {
 		t.Fatal(err)
@@ -75,6 +127,7 @@ func TestSecuritySetupBrowserFixture(t *testing.T) {
 	if err := session.Init(); err != nil {
 		t.Fatal(err)
 	}
+	defer session.Stop()
 	mux := http.NewServeMux()
 	if err := router(mux); err != nil {
 		t.Fatal(err)
@@ -92,7 +145,7 @@ func TestSecuritySetupBrowserFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewUnstartedServer(securityHeaders(session.Instance.LoadAndSave(handler)))
+	server := httptest.NewUnstartedServer(securityHeaders(dbmigration.GuardHTTP(session.Instance.LoadAndSave(handler))))
 	_ = server.Listener.Close()
 	server.Listener = listener
 	server.StartTLS()

@@ -44,6 +44,7 @@ type StructuredDatabaseCleanup interface {
 type DatabaseExecutor struct {
 	sqlite     Runner
 	structured Runner
+	portable   *PortableExecutor
 }
 
 func NewDatabaseExecutor(sqlite, structured Runner) Runner {
@@ -53,6 +54,9 @@ func NewDatabaseExecutor(sqlite, structured Runner) Runner {
 func (e *DatabaseExecutor) Run(ctx context.Context, plan Plan, update func(Status) error) error {
 	if e == nil {
 		return ErrExecutorUnavailable
+	}
+	if e.portable != nil {
+		return e.portable.Run(ctx, plan, update)
 	}
 	if plan.sourceConfig.Type == config.DatabaseTypeSQLite {
 		if e.sqlite == nil {
@@ -883,13 +887,17 @@ func runtimeSQLDSN(database config.DatabaseConfig, password, databaseName string
 	switch database.Type {
 	case config.DatabaseTypeMySQL:
 		settings := mysql.Config{
-			User:      database.Username,
-			Passwd:    password,
-			Net:       "tcp",
-			Addr:      address,
-			DBName:    databaseName,
-			ParseTime: true,
-			Params:    map[string]string{"charset": "utf8mb4"},
+			User:                 database.Username,
+			Passwd:               password,
+			Net:                  "tcp",
+			Addr:                 address,
+			DBName:               databaseName,
+			ParseTime:            true,
+			AllowNativePasswords: true,
+			Timeout:              10 * time.Second,
+			ReadTimeout:          30 * time.Second,
+			WriteTimeout:         30 * time.Second,
+			Params:               map[string]string{"charset": "utf8mb4", "time_zone": "'+00:00'", "sql_mode": "'STRICT_ALL_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE'"},
 		}
 		return "mysql", settings.FormatDSN(), nil
 	case config.DatabaseTypePostgreSQL:
@@ -898,11 +906,12 @@ func runtimeSQLDSN(database config.DatabaseConfig, password, databaseName string
 			maintenanceDatabase = "postgres"
 		}
 		databaseURL := url.URL{
-			Scheme:   "postgres",
-			User:     url.UserPassword(database.Username, password),
-			Host:     address,
-			Path:     "/" + maintenanceDatabase,
-			RawQuery: "sslmode=prefer",
+			Scheme: "postgres",
+			User:   url.UserPassword(database.Username, password),
+			Host:   address,
+			Path:   "/" + maintenanceDatabase,
+			// 与分区配置运行连接的默认模式一致；lib/pq 不支持 prefer。
+			RawQuery: "sslmode=require&connect_timeout=10&timezone=UTC&search_path=public",
 		}
 		return "postgres", databaseURL.String(), nil
 	default:

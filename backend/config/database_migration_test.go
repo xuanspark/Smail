@@ -2,8 +2,11 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestConfigManagerSwitchDatabaseCommitsSQLiteReference(t *testing.T) {
@@ -33,6 +36,43 @@ func TestConfigManagerSwitchDatabaseCommitsSQLiteReference(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].ChangedFields[0] != "root.database.localRef" {
 		t.Fatalf("migration audit events = %+v", events)
+	}
+}
+
+func TestConfigManagerSwitchAcrossTypesPersistsAndRedactsAudit(t *testing.T) {
+	for _, kind := range []DatabaseType{DatabaseTypeMySQL, DatabaseTypePostgreSQL} {
+		t.Run(string(kind), func(t *testing.T) {
+			root := t.TempDir()
+			writeRuntimeFixture(t, root, validRuntimeConfig())
+			options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+			manager, err := NewConfigManager(root, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			secret, err := ApplySecretChange(manager.vault, StoredSecret{}, SecretChange{Operation: SecretReplace, Value: &SecretInput{Plaintext: "migration-test-secret"}}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := NormalizeDatabaseConfig(DatabaseConfig{Type: kind, Host: "127.0.0.1", Username: "review", Name: "smail_next", Password: secret})
+			if err := manager.SwitchDatabase(context.Background(), 1, target, authorizedConfigActor()); err != nil {
+				t.Fatal(err)
+			}
+			reloaded, err := NewConfigManager(root, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reloaded.Snapshot(); got.Generation != 2 || got.Root.Database != target {
+				t.Fatal("target configuration was not persisted")
+			}
+			events, err := manager.security.Audit.(*FileAuditWriter).Query(context.Background(), ConfigAuditQuery{Operation: ConfigOperationMigration, Limit: 10})
+			if err != nil || len(events) != 1 {
+				t.Fatal("migration audit missing")
+			}
+			data, _ := json.Marshal(events)
+			if strings.Contains(string(data), "migration-test-secret") || strings.Contains(string(data), secret.Ciphertext) || events[0].ChangedFields[0] != "root.database" {
+				t.Fatal("migration audit disclosed secret or omitted connection change")
+			}
+		})
 	}
 }
 

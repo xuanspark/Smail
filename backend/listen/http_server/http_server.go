@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/controllers"
 	"git.pcux.cn/xuans/Smail/controllers/email"
+	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
@@ -290,7 +291,7 @@ func newHTTPHandler(cfg config.HTTPConfig) (http.Handler, error) {
 		if session.Instance == nil {
 			return nil, fmt.Errorf("session manager is unavailable")
 		}
-		handler = session.Instance.LoadAndSave(mux)
+		handler = dbmigration.GuardHTTP(session.Instance.LoadAndSave(mux))
 	} else {
 		mux.HandleFunc("/.well-known/", controllers.AcmeChallenge)
 		mux.HandleFunc("/api/ping", controllers.Ping)

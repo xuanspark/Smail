@@ -32,6 +32,22 @@ Set-Location test/tools/password-check
 go build -o ../../../out/test-tools/password-check.exe .
 ```
 
+## 三种数据库迁移验收
+
+```sh
+node test/run.mjs backend -count=1 -v ./services/dbmigration -run TestPortableSQLIntegration
+```
+
+网络数据库实测必须先配置专用测试服务的环境变量：
+
+- `SMAIL_TEST_MIGRATION_MYSQL`：结构化连接，`type` 为 `mysql`。
+- `SMAIL_TEST_MIGRATION_POSTGRES`：结构化连接，`type` 为 `postgresql`，服务必须支持 TLS。
+- 两个变量的内容均为 JSON，字段为 `type`、`host`、`port`、`username`、`password`，其中 `password` 是包含 `plaintext` 字段的对象；不填写 `name` 或 `localRef`，不把真实凭据写入仓库。
+- 使用拥有创建数据库权限的专用账号。测试仅创建 `smail_migration_test_` 前缀的随机新库，不访问现有业务库，不自动删除网络测试库。
+- 单个服务执行 SQLite → 网络库 → 同类型新库 → SQLite；同时提供两种服务时，额外执行 SQLite → MySQL → PostgreSQL → MySQL → SQLite。
+- 逐表校验内容，并检查中文主题、二进制会话、日期、布尔值和新增记录主键。配置切换使用测试回调，不代表完整部署重启验收。
+- 未提供连接时显示跳过，不能作为 MySQL/PostgreSQL 实库迁移通过的证据。
+
 ## Go 测试源码的必要例外
 
 `backend/` 中的同包 `*_test.go` 保持原位，其中许多测试使用包内私有函数或相对路径。将其机械移动到独立目录会破坏 Go 测试语义，因此只集中运行入口，不改变业务包的可见性和 API。后续跨模块、浏览器和独立协议测试应放到本目录。

@@ -13,6 +13,7 @@ const sections = [
 ]
 
 const serviceLabels = {
+  database: '数据库服务',
   smtp: 'SMTP 服务',
   email: '邮箱服务',
   ssl: 'SSL 服务',
@@ -68,9 +69,43 @@ export function usePage(pageKey = 'base') {
   const auditItems = ref([])
   const databaseConfig = reactive({ type: '', name: '', localRef: '' })
   const migrationTargetName = ref('')
+  const migrationTarget = reactive({ type: 'sqlite', host: '127.0.0.1', port: 3306, username: '', password: '' })
+  const migrationError = ref('')
+  let migrationInput = ''
   const migrationPreview = ref(null)
   const migrationToken = ref('')
   const migrationRecord = ref(null)
+  const invalidateMigration = () => {
+    migrationPreview.value = null
+    migrationToken.value = ''
+    migrationInput = ''
+    migrationError.value = ''
+  }
+  const changeMigrationType = type => {
+    migrationTarget.type = type
+    migrationTarget.port = type === 'postgresql' ? 5432 : 3306
+    migrationTarget.password = ''
+    migrationTargetName.value = ''
+    invalidateMigration()
+  }
+  const migrationPayload = () => migrationTarget.type === 'sqlite'
+    ? { type: 'sqlite', localRef: migrationTargetName.value.trim() }
+    : {
+        type: migrationTarget.type,
+        host: migrationTarget.host.trim(),
+        port: Number(migrationTarget.port),
+        username: migrationTarget.username.trim(),
+        name: migrationTargetName.value.trim(),
+        password: { plaintext: migrationTarget.password }
+      }
+  const migrationReady = computed(() => {
+    if (!migrationTargetName.value.trim() || status.pendingRestart?.length) return false
+    if (migrationTarget.type === 'sqlite') return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(migrationTargetName.value.trim())
+    return ['mysql', 'postgresql'].includes(migrationTarget.type) &&
+      /^[A-Za-z][A-Za-z0-9_-]{0,62}$/.test(migrationTargetName.value.trim()) &&
+      !!migrationTarget.host.trim() && !!migrationTarget.username.trim() && !!migrationTarget.password &&
+      Number.isInteger(Number(migrationTarget.port)) && Number(migrationTarget.port) > 0 && Number(migrationTarget.port) <= 65535
+  })
   const restartPreview = ref(null)
   const hasChanges = computed(() => editorText.value !== loadedText.value || !!secretValue.value || !!savedGeneration.value)
 
@@ -219,22 +254,27 @@ export function usePage(pageKey = 'base') {
   }
 
   const previewDatabaseMigration = async () => {
-    if (!canMigrate.value || working.value || sectionError.value || !migrationTargetName.value.trim()) return
+    if (!canMigrate.value || working.value || sectionError.value || !migrationReady.value) return
     working.value = 'migration-preview'
     migrationPreview.value = null
     migrationRecord.value = null
     migrationToken.value = ''
+    migrationError.value = ''
     try {
+      const target = migrationPayload()
       const response = await http.post('/api/v1/database/migrations/preview', {
-        targetName: migrationTargetName.value.trim(),
+        target,
         expectedGeneration: Number(status.activeGeneration)
       })
+      if (disposed) return
       notifyResponseError(response, '数据库迁移预览失败')
       migrationPreview.value = response.data?.migration || null
       migrationRecord.value = migrationPreview.value
       migrationToken.value = response.data?.token || ''
-      ElMessage.success('数据库迁移预览已生成，请确认目标名称后执行')
+      migrationInput = JSON.stringify(target)
+      ElMessage.success('目标连接验证通过，请核对数据库类型和连接后执行')
     } catch (error) {
+      migrationError.value = error.message || '数据库迁移预览失败'
       ElMessage.error(error.message || '数据库迁移预览失败')
     } finally {
       working.value = ''
@@ -257,10 +297,15 @@ export function usePage(pageKey = 'base') {
 
   const executeDatabaseMigration = async () => {
     if (!canMigrate.value || working.value || !migrationPreview.value?.id || !migrationToken.value) return
+    if (migrationInput !== JSON.stringify(migrationPayload())) {
+      invalidateMigration()
+      migrationError.value = '目标连接已修改，请重新生成迁移预览'
+      return
+    }
     working.value = 'migration-confirm'
     try {
       await ElMessageBox.confirm(
-        '迁移将复制数据库内容并切换配置，旧数据库会保留。确认继续吗？',
+        `将迁移到 ${databaseTypeLabel(migrationPreview.value.target?.type)}：${migrationPreview.value.target?.name || migrationPreview.value.target?.localRef || migrationTargetName.value.trim()}。迁移期间暂停写入，成功后必须立即重启后端。旧数据库及失败目标均保留。确认继续吗？`,
         '确认执行数据库迁移',
         { type: 'warning', confirmButtonText: '继续迁移', cancelButtonText: '取消' }
       )
@@ -268,19 +313,29 @@ export function usePage(pageKey = 'base') {
       const response = await http.post('/api/v1/database/migrations', {
         id: migrationPreview.value.id,
         token: migrationToken.value
-      })
+      }, { timeout: 11 * 60 * 1000 })
       notifyResponseError(response, '数据库迁移执行失败')
       migrationRecord.value = response.data || migrationPreview.value
       migrationToken.value = ''
       migrationPreview.value = null
+      migrationTarget.password = ''
+      migrationInput = ''
       await Promise.all([loadStatus(), loadSection()])
       if (migrationRecord.value.status === 'succeeded') {
-        ElMessage.success('数据库迁移已完成，旧数据库仍然保留')
+        ElMessage.success('数据已复制校验并切换配置，请立即重启后端以恢复写入；旧数据库保留')
       } else {
         ElMessage.warning(`数据库迁移${migrationStatusLabel(migrationRecord.value.status)}`)
       }
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '数据库迁移执行失败')
+      if (error !== 'cancel' && error !== 'close') {
+        migrationToken.value = ''
+        migrationPreview.value = null
+        migrationTarget.password = ''
+        migrationInput = ''
+        migrationError.value = error.message || '数据库迁移执行失败'
+        await loadMigrationStatus()
+        ElMessage.error(migrationError.value)
+      }
     } finally {
       working.value = ''
     }
@@ -321,6 +376,8 @@ export function usePage(pageKey = 'base') {
     }
   }
   const loadAll = async () => {
+    invalidateMigration()
+    migrationTarget.password = ''
     loading.value = true
     availabilityError.value = ''
     try {
@@ -539,6 +596,8 @@ export function usePage(pageKey = 'base') {
     savedInput = null
     confirmed.value = false
     migrationToken.value = ''
+    migrationTarget.password = ''
+    migrationInput = ''
   })
 
   return {
@@ -551,6 +610,7 @@ export function usePage(pageKey = 'base') {
     loadBackups, previewRollback, executeRollback, loadAudit, exportAudit, formatTime,
     serviceLabel, sectionLabel, operationLabel, databaseConfig, databaseTypeLabel, canMigrate,
     migrationTargetName, migrationPreview, migrationToken, migrationRecord, migrationStatusLabel, migrationStatusType,
+    migrationTarget, migrationReady, migrationError, invalidateMigration, changeMigrationType,
     previewDatabaseMigration, loadMigrationStatus, executeDatabaseMigration, canRestart, restartPreview,
     previewRestart, requestRestart, beforeLeave, refreshPage, hasChanges
   }

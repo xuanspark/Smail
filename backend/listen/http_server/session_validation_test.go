@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/controllers"
@@ -49,7 +50,7 @@ func TestContextInterceptorValidatesCurrentUserState(t *testing.T) {
 		session.Instance = manager
 		called := false
 		handler := contextIterceptor(controllers.HandlerFunc(func(ctx *appcontext.Context, w http.ResponseWriter, r *http.Request) {
-			called = ctx.UserID == user.ID && ctx.UserAccount == user.Account && ctx.IsAdmin
+			called = ctx.UserID == user.ID && ctx.UserAccount == user.Account && ctx.IsAdmin && ctx.RecentAuth
 			response.NewSuccessResponse("ok").FPrint(w)
 		}))
 		request := httptest.NewRequest(http.MethodGet, "/api/user/info", nil).WithContext(loaded)
@@ -57,6 +58,37 @@ func TestContextInterceptorValidatesCurrentUserState(t *testing.T) {
 		handler.ServeHTTP(recorder, request)
 		if !called {
 			t.Fatalf("current user session was not accepted: %s", recorder.Body.String())
+		}
+	})
+
+	t.Run("refresh does not elevate or renew authentication", func(t *testing.T) {
+		for _, authenticatedAt := range []int64{0, time.Now().Add(-11 * time.Minute).Unix(), time.Now().Add(time.Hour).Unix()} {
+			manager, loaded := sessionContext(t, &user)
+			session.Instance = manager
+			identity, err := session.GetUser(loaded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			identity.AuthenticatedAt = authenticatedAt
+			encoded, err := json.Marshal(identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager.Put(loaded, "user", string(encoded))
+			called := false
+			handler := contextIterceptor(controllers.HandlerFunc(func(ctx *appcontext.Context, w http.ResponseWriter, r *http.Request) {
+				called = true
+				if ctx.UserID != user.ID || ctx.RecentAuth {
+					t.Fatalf("refresh changed authentication authority: user=%d recent=%v", ctx.UserID, ctx.RecentAuth)
+				}
+			}))
+			for range 2 {
+				handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/v1/user/info", nil).WithContext(loaded))
+			}
+			stored, err := session.GetUser(loaded)
+			if err != nil || !called || stored.AuthenticatedAt != authenticatedAt {
+				t.Fatalf("refresh renewed authentication: called=%v identity=%+v err=%v", called, stored, err)
+			}
 		}
 	})
 

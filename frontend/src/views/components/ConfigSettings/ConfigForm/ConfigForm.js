@@ -41,7 +41,7 @@ const baseGroups = [
     field('domains.accessHosts', '额外允许的访问主机', 'list', { hint: '按需填写域名或 IP 地址，不填写则保持默认访问范围。', placeholder: 'mail.example.com' }),
     field('logLevel', '日志级别', 'select', { options: options([['', '默认级别'], ['debug', '调试'], ['info', '信息'], ['warn', '警告'], ['error', '错误']]) })
   ]),
-  group('database', '数据库连接', '数据库类型保持不变；修改数据库名称或文件请使用右侧“数据库迁移”，避免切换到空数据库。', [
+  group('database', '数据库连接', '修改数据库类型、名称或文件请使用右侧“数据库迁移”，支持 SQLite、MySQL、PostgreSQL，避免切换到空数据库。', [
     field('database.type', '数据库类型', 'select', { locked: true, options: options([['sqlite', 'SQLite（本地文件）'], ['mysql', 'MySQL'], ['postgresql', 'PostgreSQL']]) }),
     field('database.localRef', '数据库文件', 'text', { locked: true, show: config => !networkDatabase(config) }),
     field('database.name', '数据库名称', 'text', { locked: true, show: networkDatabase }),

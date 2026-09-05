@@ -190,8 +190,46 @@ test('迁移预览票据返回模板，迁移执行取消时不发送写入请�
   await page.executeDatabaseMigration()
   assert.deepEqual(requests, [{
     path: '/api/v1/database/migrations/preview',
-    payload: { targetName: 'test-next.db', expectedGeneration: 3 }
+    payload: { target: { type: 'sqlite', localRef: 'test-next.db' }, expectedGeneration: 3 }
   }])
+})
+
+test('三种数据库使用独立目标字段，类型切换清除密码及旧预览', async () => {
+  const requests = []
+  const { page, dispose } = fixture(async () => ({ errorNo: 0, data: {} }), 'migration', {
+    http: { post: async (path, payload) => {
+      requests.push({ path, payload })
+      return { errorNo: 0, data: { migration: { id: 'next', target: payload.target }, token: 'ticket' } }
+    } }
+  })
+  for (const type of ['mysql', 'postgresql']) {
+    page.changeMigrationType(type)
+    assert.equal(page.migrationTarget.port, type === 'mysql' ? 3306 : 5432)
+    assert.equal(page.migrationReady.value, false)
+    page.migrationTargetName.value = 'smail_next'
+    Object.assign(page.migrationTarget, { host: ' db.local ', username: ' smail ', password: ' test-secret ' })
+    assert.equal(page.migrationReady.value, true)
+    await page.previewDatabaseMigration()
+    assert.equal(requests.at(-1).payload.target.type, type)
+    assert.equal(requests.at(-1).payload.target.host, 'db.local')
+    assert.equal(requests.at(-1).payload.target.password.plaintext, ' test-secret ')
+    page.migrationTarget.host = 'other.local'
+    await page.executeDatabaseMigration()
+    assert.equal(page.migrationToken.value, '')
+    assert.match(page.migrationError.value, /重新生成/)
+  }
+  assert.equal(requests.length, 2)
+  page.changeMigrationType('sqlite')
+  assert.equal(page.migrationTarget.password, '')
+  assert.equal(page.migrationPreview.value, null)
+  page.migrationTargetName.value = '../bad.db'
+  assert.equal(page.migrationReady.value, false)
+  page.migrationTargetName.value = 'next.db'
+  page.status.pendingRestart = ['database']
+  assert.equal(page.migrationReady.value, false)
+  page.migrationTarget.password = 'temporary'
+  dispose()
+  assert.equal(page.migrationTarget.password, '')
 })
 
 test('独立页模板可编译，编辑器不再连接维护面板且权限绑定保留', () => {

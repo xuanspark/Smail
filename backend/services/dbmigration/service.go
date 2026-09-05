@@ -81,10 +81,11 @@ type Runner interface {
 }
 
 type Service struct {
-	mu      sync.RWMutex
-	records map[string]*record
-	runner  Runner
-	now     func() time.Time
+	requests sync.RWMutex
+	mu       sync.RWMutex
+	records  map[string]*record
+	runner   Runner
+	now      func() time.Time
 }
 
 type record struct {
@@ -117,6 +118,15 @@ func Current() *Service {
 }
 
 func (s *Service) Preview(ctx context.Context, source config.DatabaseConfig, currentGeneration uint64, targetName string) (Record, string, error) {
+	plan, err := buildPlan(source, strings.TrimSpace(targetName))
+	if err != nil {
+		return Record{}, "", err
+	}
+	return s.PreviewTarget(ctx, source, currentGeneration, plan.targetConfig)
+}
+
+// PreviewTarget 固定完整目标连接；返回记录不包含密码或密文。
+func (s *Service) PreviewTarget(ctx context.Context, source config.DatabaseConfig, currentGeneration uint64, target config.DatabaseConfig) (Record, string, error) {
 	if err := contextError(ctx); err != nil {
 		return Record{}, "", err
 	}
@@ -126,13 +136,16 @@ func (s *Service) Preview(ctx context.Context, source config.DatabaseConfig, cur
 	if err := config.ValidateDatabaseConfig(source); err != nil {
 		return Record{}, "", ErrSourceDatabase
 	}
-	targetName = strings.TrimSpace(targetName)
-	if (source.Type == config.DatabaseTypeSQLite && !sqliteTargetNamePattern.MatchString(targetName)) || (source.Type != config.DatabaseTypeSQLite && !targetNamePattern.MatchString(targetName)) {
-		return Record{}, "", ErrInvalidTargetName
-	}
-	plan, err := buildPlan(source, targetName)
+	plan, err := buildTargetPlan(source, target)
 	if err != nil {
 		return Record{}, "", err
+	}
+	if checker, ok := s.runner.(interface {
+		Preview(context.Context, Plan) error
+	}); ok {
+		if err := checker.Preview(ctx, plan); err != nil {
+			return Record{}, "", err
+		}
 	}
 	id, err := randomID("dbmig-")
 	if err != nil {
@@ -189,8 +202,11 @@ func (s *Service) execute(ctx context.Context, id, token string, actor config.Au
 		item.Status = StatusFailed
 		item.ErrorCode = "PREVIEW_EXPIRED"
 		item.UpdatedAt = now
+		item.sourceConfig = config.DatabaseConfig{}
+		item.targetConfig = config.DatabaseConfig{}
+		snapshot := cloneRecord(item.Record)
 		s.mu.Unlock()
-		return cloneRecord(item.Record), ErrPreviewExpired
+		return snapshot, ErrPreviewExpired
 	}
 	hash := sha256.Sum256([]byte(token))
 	if subtle.ConstantTimeCompare(hash[:], item.tokenHash[:]) != 1 {
@@ -201,8 +217,12 @@ func (s *Service) execute(ctx context.Context, id, token string, actor config.Au
 	item.Status = StatusCreated
 	item.UpdatedAt = now
 	plan := Plan{Source: item.Source, Target: item.Target, sourceConfig: item.sourceConfig, targetConfig: item.targetConfig, expectedGeneration: item.CurrentGeneration, actor: actor}
+	item.sourceConfig = config.DatabaseConfig{}
+	item.targetConfig = config.DatabaseConfig{}
 	s.mu.Unlock()
 
+	releaseRequests := s.drainRequests(ctx)
+	defer releaseRequests()
 	if err := s.setStatus(id, StatusCopying); err != nil {
 		return s.fail(id, err)
 	}
