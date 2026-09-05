@@ -12,7 +12,6 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/dto/response"
-	"git.pcux.cn/xuans/Smail/services/detail"
 	"git.pcux.cn/xuans/Smail/services/list"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
@@ -345,7 +344,7 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 		}
 		for _, section := range options.BodySection {
 			if !section.Peek {
-				if err := detail.MakeRead(ctx, email.Id, true); err != nil {
+				if err := updateReadByUID(ctx.UserID, email.UeId, true); err != nil {
 					log.WithContext(ctx).WithError(err).Error("mark IMAP message as read failed")
 					return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
 				}

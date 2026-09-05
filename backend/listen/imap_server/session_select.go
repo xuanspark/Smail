@@ -16,12 +16,14 @@ func (s *serverSession) Select(mailbox string, options *imap.SelectOptions) (*im
 	}
 
 	mailbox = strings.Trim(mailbox, `"`)
+	readOnly := options != nil && options.ReadOnly
 	_, data, err := group.GetGroupStatus(s.ctx, mailbox, []string{"MESSAGES", "UNSEEN", "UIDNEXT", "UIDVALIDITY"})
 	if err != nil {
 		log.WithContext(s.ctx).WithError(err).Error("query selected mailbox status failed")
 		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Select failed"}
 	}
 	s.currentMailbox = mailbox
+	s.readOnly = readOnly
 
 	numMessages, err := imapUint32(data["MESSAGES"])
 	if err != nil {

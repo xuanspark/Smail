@@ -398,7 +398,11 @@ func MoveMailToGroup(ctx *context.Context, mailIDs []int, groupID int) error {
 		rollbackGroupTransaction(session)
 		return fmt.Errorf("load message ownership: %w", err)
 	}
-	if len(relations) != len(uniqueIDs) {
+	ownedIDs := make(map[int]struct{}, len(relations))
+	for _, relation := range relations {
+		ownedIDs[relation.EmailID] = struct{}{}
+	}
+	if len(ownedIDs) != len(uniqueIDs) {
 		rollbackGroupTransaction(session)
 		return errors2.New("one or more messages are not owned by the user")
 	}
@@ -426,6 +430,48 @@ func MoveMailToGroup(ctx *context.Context, mailIDs []int, groupID int) error {
 
 	if err := session.Commit(); err != nil {
 		return fmt.Errorf("commit message move transaction: %w", err)
+	}
+	return nil
+}
+
+// MoveRelationsToGroup 按当前用户的邮箱关系 ID 移动邮件，避免同一封邮件的多个关系互相影响。
+func MoveRelationsToGroup(ctx *context.Context, relationIDs []int, groupID int) error {
+	if groupID <= 0 {
+		return errors2.New("invalid message move request")
+	}
+	uniqueIDs, err := normalizeMoveMessageIDs(relationIDs)
+	if err != nil {
+		return err
+	}
+	session := db.Instance.NewSession()
+	defer session.Close()
+	if err := session.Begin(); err != nil {
+		return fmt.Errorf("begin relation move transaction: %w", err)
+	}
+	var target models.Group
+	found, err := session.Table("group").Where("id = ? and user_id = ?", groupID, ctx.UserID).Get(&target)
+	if err != nil || !found {
+		rollbackGroupTransaction(session)
+		if err != nil {
+			return fmt.Errorf("load move destination: %w", err)
+		}
+		return errors2.New("move destination not found")
+	}
+	var relations []models.UserEmail
+	if err := session.Table(&models.UserEmail{}).Where(builder.Eq{"id": uniqueIDs, "user_id": ctx.UserID}).And("email_id > 0").Find(&relations); err != nil {
+		rollbackGroupTransaction(session)
+		return fmt.Errorf("load relation ownership: %w", err)
+	}
+	if len(relations) != len(uniqueIDs) {
+		rollbackGroupTransaction(session)
+		return errors2.New("one or more messages are not owned by the user")
+	}
+	if _, err := session.Table(&models.UserEmail{}).Where(builder.Eq{"id": uniqueIDs, "user_id": ctx.UserID}).Cols("group_id").Update(map[string]interface{}{"group_id": groupID}); err != nil {
+		rollbackGroupTransaction(session)
+		return fmt.Errorf("move relations: %w", err)
+	}
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("commit relation move transaction: %w", err)
 	}
 	return nil
 }
@@ -569,14 +615,14 @@ func GetGroupStatus(ctx *context.Context, groupName string, params []string) (st
 			var err error
 			switch param {
 			case "MESSAGES":
-				value, err = readGroupValue(db.Instance.Table("user_email").Select("count(1)").Where("group_id=? and user_id=?", group.ID, ctx.UserID), "query mailbox message count failed")
+				value, err = readGroupValue(db.Instance.Table("user_email").Select("count(1)").Where("group_id=? and user_id=? and email_id > 0", group.ID, ctx.UserID), "query mailbox message count failed")
 			case "UIDNEXT":
 				value, err = readGroupValue(db.Instance.Table("user_email").Select("id").Where("group_id=? and user_id=?", group.ID, ctx.UserID).OrderBy("id desc"), "query mailbox next UID failed")
 				value++
 			case "UIDVALIDITY":
 				value = group.ID
 			case "UNSEEN":
-				value, err = readGroupValue(db.Instance.Table("user_email").Select("count(1)").Where("group_id=? and user_id=? and is_read=0", group.ID, ctx.UserID), "query mailbox unseen count failed")
+				value, err = readGroupValue(db.Instance.Table("user_email").Select("count(1)").Where("group_id=? and user_id=? and email_id > 0 and is_read=0", group.ID, ctx.UserID), "query mailbox unseen count failed")
 			default:
 				continue
 			}
@@ -629,21 +675,10 @@ func readGroupValue(querySession *xorm.Session, operation string) (int, error) {
 }
 
 func getNextUID(ctx *context.Context, groupName string) (int, error) {
-	var querySession *xorm.Session
-	switch groupName {
-	case "INBOX":
-		querySession = db.Instance.Table("user_email").Select("id").Where("user_id=? and group_id=0 and status = 0", ctx.UserID).OrderBy("id desc")
-	case "Sent Messages":
-		querySession = db.Instance.Table("user_email").Select("id").Where("user_id=? and group_id=0 and status = 1", ctx.UserID).OrderBy("id desc")
-	case "Drafts":
-		querySession = db.Instance.Table("user_email").Select("id").Where("user_id=? and group_id=0 and status = 4", ctx.UserID).OrderBy("id desc")
-	case "Deleted Messages":
-		querySession = db.Instance.Table("user_email").Select("id").Where("user_id=? and group_id=0 and status = 3", ctx.UserID).OrderBy("id desc")
-	case "Junk":
-		querySession = db.Instance.Table("user_email").Select("id").Where("user_id=? and group_id=0 and status = 5", ctx.UserID).OrderBy("id desc")
-	default:
+	if !IsDefaultBox(groupName) {
 		return 0, errors2.New("invalid default mailbox")
 	}
+	querySession := db.Instance.Table("user_email").Select("id").Where("user_id=? and email_id > 0", ctx.UserID).OrderBy("id desc")
 	value, err := readGroupValue(querySession, "query next mailbox UID failed")
 	if err != nil {
 		return 0, err
@@ -656,32 +691,32 @@ func getGroupNum(ctx *context.Context, groupName string, mustUnread bool) (int, 
 	switch groupName {
 	case "INBOX":
 		if mustUnread {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=0 and is_read=0", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=0 and email_id > 0 and is_read=0", ctx.UserID)
 		} else {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=0", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=0 and email_id > 0", ctx.UserID)
 		}
 	case "Sent Messages":
 		if mustUnread {
 			return 0, nil
 		}
-		querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=1", ctx.UserID)
+		querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=1 and email_id > 0", ctx.UserID)
 	case "Drafts":
 		if mustUnread {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=4 and is_read=0", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=4 and email_id > 0 and is_read=0", ctx.UserID)
 		} else {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=4", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=4 and email_id > 0", ctx.UserID)
 		}
 	case "Deleted Messages":
 		if mustUnread {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=3 and is_read=0", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=3 and email_id > 0 and is_read=0", ctx.UserID)
 		} else {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=3", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=3 and email_id > 0", ctx.UserID)
 		}
 	case "Junk":
 		if mustUnread {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=5 and is_read=0", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=5 and email_id > 0 and is_read=0", ctx.UserID)
 		} else {
-			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=5", ctx.UserID)
+			querySession = db.Instance.Table("user_email").Select("count(1)").Where("user_id=? and group_id=0 and status=5 and email_id > 0", ctx.UserID)
 		}
 	default:
 		return 0, errors2.New("invalid default mailbox")
@@ -776,6 +811,51 @@ func Move2DefaultBox(ctx *context.Context, mailIDs []int, groupName string) erro
 	}
 	if err := session.Commit(); err != nil {
 		return fmt.Errorf("commit default mailbox move transaction: %w", err)
+	}
+	return nil
+}
+
+// MoveRelationsToDefaultBox 按当前用户的邮箱关系 ID 移动邮件到系统邮箱。
+func MoveRelationsToDefaultBox(ctx *context.Context, relationIDs []int, groupName string) error {
+	var status int8
+	switch groupName {
+	case "INBOX":
+		status = consts.EmailTypeReceive
+	case "Sent Messages":
+		status = consts.EmailStatusSent
+	case "Drafts":
+		status = consts.EmailStatusDrafts
+	case "Deleted Messages":
+		status = consts.EmailStatusDel
+	case "Junk":
+		status = consts.EmailStatusJunk
+	default:
+		return errors2.New("invalid default mailbox")
+	}
+	uniqueIDs, err := normalizeMoveMessageIDs(relationIDs)
+	if err != nil {
+		return err
+	}
+	session := db.Instance.NewSession()
+	defer session.Close()
+	if err := session.Begin(); err != nil {
+		return fmt.Errorf("begin relation default mailbox move transaction: %w", err)
+	}
+	var relations []models.UserEmail
+	if err := session.Table(&models.UserEmail{}).Where(builder.Eq{"id": uniqueIDs, "user_id": ctx.UserID}).And("email_id > 0").Find(&relations); err != nil {
+		rollbackGroupTransaction(session)
+		return fmt.Errorf("load relation default mailbox ownership: %w", err)
+	}
+	if len(relations) != len(uniqueIDs) {
+		rollbackGroupTransaction(session)
+		return errors2.New("one or more messages are not owned by the user")
+	}
+	if _, err := session.Table(&models.UserEmail{}).Where(builder.Eq{"id": uniqueIDs, "user_id": ctx.UserID}).Cols("status", "group_id").Update(map[string]interface{}{"status": status, "group_id": 0}); err != nil {
+		rollbackGroupTransaction(session)
+		return fmt.Errorf("move relations to default mailbox: %w", err)
+	}
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("commit relation default mailbox move transaction: %w", err)
 	}
 	return nil
 }

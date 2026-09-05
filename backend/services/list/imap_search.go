@@ -170,37 +170,32 @@ func validIMAPNumber(value int) (uint32, bool) {
 
 // filterByUIDSets filters the list by UID sets
 func filterByUIDSets(list []*response.UserEmailUIDData, uidSets []imap.UIDSet) []*response.UserEmailUIDData {
-	var result []*response.UserEmailUIDData
-	for _, item := range list {
-		number, ok := validIMAPNumber(item.ID)
-		if !ok {
-			continue
-		}
-		uid := imap.UID(number)
-		for _, uidSet := range uidSets {
-			if uidSet.Contains(uid) {
-				result = append(result, item)
-				break
+	result := list
+	for _, uidSet := range uidSets {
+		filtered := make([]*response.UserEmailUIDData, 0, len(result))
+		for _, item := range result {
+			number, ok := validIMAPNumber(item.ID)
+			if ok && uidSet.Contains(imap.UID(number)) {
+				filtered = append(filtered, item)
 			}
 		}
+		result = filtered
 	}
 	return result
 }
 
 // filterBySeqNumSets filters the list by sequence number sets
 func filterBySeqNumSets(list []*response.UserEmailUIDData, seqSets []imap.SeqSet) []*response.UserEmailUIDData {
-	var result []*response.UserEmailUIDData
-	for _, item := range list {
-		number, ok := validIMAPNumber(item.SerialNumber)
-		if !ok {
-			continue
-		}
-		for _, seqSet := range seqSets {
-			if seqSet.Contains(number) {
-				result = append(result, item)
-				break
+	result := list
+	for _, seqSet := range seqSets {
+		filtered := make([]*response.UserEmailUIDData, 0, len(result))
+		for _, item := range result {
+			number, ok := validIMAPNumber(item.SerialNumber)
+			if ok && seqSet.Contains(number) {
+				filtered = append(filtered, item)
 			}
 		}
+		result = filtered
 	}
 	return result
 }
@@ -242,7 +237,7 @@ func hasFlag(item *response.UserEmailUIDData, flag imap.Flag) bool {
 	case imap.FlagSeen:
 		return item.IsRead == 1
 	case imap.FlagDeleted:
-		return item.Status == 3
+		return item.IsDeleted == 1
 	case imap.FlagDraft:
 		return item.Status == 4
 	case imap.FlagJunk:
@@ -468,16 +463,14 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 		return list, nil
 	}
 
-	// Build a set of current UIDs for intersection
+	// 多个 OR 子句仍属于同一个 SEARCH，子句之间取交集。
 	currentUIDs := make(map[int]bool)
 	for _, item := range list {
 		currentUIDs[item.ID] = true
 	}
 
-	// For each OR pair, find items matching either condition
-	resultUIDs := make(map[int]bool)
-
 	for _, pair := range orCriteria {
+		pairUIDs := make(map[int]bool)
 		// Get matches for first condition
 		matches1, err := SearchEmails(ctx, groupName, &pair[0])
 		if err != nil {
@@ -485,7 +478,7 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 		}
 		for _, item := range matches1 {
 			if currentUIDs[item.ID] {
-				resultUIDs[item.ID] = true
+				pairUIDs[item.ID] = true
 			}
 		}
 
@@ -496,7 +489,12 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 		}
 		for _, item := range matches2 {
 			if currentUIDs[item.ID] {
-				resultUIDs[item.ID] = true
+				pairUIDs[item.ID] = true
+			}
+		}
+		for uid := range currentUIDs {
+			if !pairUIDs[uid] {
+				delete(currentUIDs, uid)
 			}
 		}
 	}
@@ -504,7 +502,7 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 	// Build result from original list preserving order
 	var result []*response.UserEmailUIDData
 	for _, item := range list {
-		if resultUIDs[item.ID] {
+		if currentUIDs[item.ID] {
 			result = append(result, item)
 		}
 	}

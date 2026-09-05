@@ -43,30 +43,32 @@ func (s *serverSession) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest 
 		}
 	}
 
-	mailIDs := make([]int, 0, len(emailList))
+	relationIDs := make([]int, 0, len(emailList))
 	for _, email := range emailList {
-		mailIDs = append(mailIDs, email.Id)
+		if email.UeId > 0 {
+			relationIDs = append(relationIDs, email.UeId)
+		}
 	}
 
-	if len(mailIDs) == 0 {
+	if len(relationIDs) == 0 {
 		return nil
 	}
 
 	if group.IsDefaultBox(dest) {
-		return move2defaultbox(s.ctx, mailIDs, dest)
+		return move2defaultbox(s.ctx, relationIDs, dest)
 	}
-	return move2userbox(s.ctx, mailIDs, dest)
+	return move2userbox(s.ctx, relationIDs, dest)
 }
 
-func move2defaultbox(ctx *context.Context, mailIDs []int, dest string) error {
-	if err := group.Move2DefaultBox(ctx, mailIDs, dest); err != nil {
+func move2defaultbox(ctx *context.Context, relationIDs []int, dest string) error {
+	if err := group.MoveRelationsToDefaultBox(ctx, relationIDs, dest); err != nil {
 		log.WithContext(ctx).WithError(err).Error("move messages to default mailbox failed")
 		return moveFailedError()
 	}
 	return nil
 }
 
-func move2userbox(ctx *context.Context, mailIDs []int, dest string) error {
+func move2userbox(ctx *context.Context, relationIDs []int, dest string) error {
 	groupInfo, err := group.GetGroupByFullPath(ctx, dest)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("resolve IMAP move destination failed")
@@ -75,7 +77,7 @@ func move2userbox(ctx *context.Context, mailIDs []int, dest string) error {
 	if groupInfo == nil || groupInfo.ID == 0 {
 		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Mailbox not found"}
 	}
-	if err := group.MoveMailToGroup(ctx, mailIDs, groupInfo.ID); err != nil {
+	if err := group.MoveRelationsToGroup(ctx, relationIDs, groupInfo.ID); err != nil {
 		log.WithContext(ctx).Error("move messages to user mailbox failed")
 		return moveFailedError()
 	}

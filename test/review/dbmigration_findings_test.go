@@ -64,7 +64,11 @@ func TestAuditRequestDrainMustRespectCancellation(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		release := service.drainRequests(ctx)
+		release, err := service.drainRequests(ctx)
+		if err != nil {
+			close(done)
+			return
+		}
 		release()
 		close(done)
 	}()

@@ -13,7 +13,7 @@ import (
 
 func matchGroup(ctx *context.Context, w *imapserver.ListWriter, basePath, pattern string) error {
 	var groups []*models.Group
-	if basePath == "" && pattern == "*" {
+	if basePath == "" && (pattern == "*" || pattern == "%") {
 		if err := db.Instance.Table("group").Where("user_id=?", ctx.UserID).Find(&groups); err != nil {
 			log.WithContext(ctx).WithError(err).Error("query IMAP mailbox list failed")
 			return listFailedError()

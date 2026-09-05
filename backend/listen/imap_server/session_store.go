@@ -18,6 +18,9 @@ func (s *serverSession) Store(w *imapserver.FetchWriter, numSet imap.NumSet, fla
 	if s == nil || s.ctx == nil || s.ctx.UserID <= 0 || flags == nil {
 		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Store failed"}
 	}
+	if s.readOnly {
+		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Mailbox is read-only"}
+	}
 
 	var emailList []*response.EmailResponseData
 

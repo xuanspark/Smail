@@ -52,6 +52,7 @@ type serverSession struct {
 	ctx            *context.Context
 	status         Status
 	currentMailbox string
+	readOnly       bool
 	connectTime    time.Time
 	deleteUidList  []int
 	remoteAddress  string
@@ -277,5 +278,6 @@ func appendTooBigError() error {
 
 func (s *serverSession) Unselect() error {
 	s.currentMailbox = ""
+	s.readOnly = false
 	return nil
 }

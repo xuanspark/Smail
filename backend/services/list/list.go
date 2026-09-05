@@ -133,7 +133,7 @@ func buildIMAPMailboxRelationQuery(ctx *context.Context, groupName string) (stri
 	if ctx == nil || ctx.UserID <= 0 {
 		return "", nil, fmt.Errorf("invalid mailbox user")
 	}
-	inner := "SELECT id,email_id,is_read,is_deleted,ROW_NUMBER() OVER (ORDER BY id) AS serial_number FROM user_email WHERE user_id = ?"
+	inner := "SELECT id,email_id,is_read,is_deleted,status,ROW_NUMBER() OVER (ORDER BY id) AS serial_number FROM user_email WHERE user_id = ? AND email_id > 0"
 	params := []any{ctx.UserID}
 	switch groupName {
 	case "INBOX":
@@ -224,6 +224,23 @@ func getEmailListByUidList(ctx *context.Context, groupName string, req ImapListR
 		return nil, err
 	}
 	sql := "SELECT * FROM (" + inner + ") mailbox WHERE "
+	if req.Star == 0 && req.End == 0 && len(req.UidList) == 0 {
+		maxUID, err := GetMaxUIDByMailbox(ctx, groupName)
+		if err != nil {
+			return nil, err
+		}
+		if maxUID == 0 {
+			return []*response.EmailResponseData{}, nil
+		}
+		sql += "id = ?"
+		params = append(params, maxUID)
+		sql += " ORDER BY id"
+		var relations []*response.UserEmailUIDData
+		if err := db.Instance.SQL(sql, params...).Find(&relations); err != nil {
+			return nil, fmt.Errorf("query mailbox wildcard UID: %w", err)
+		}
+		return hydrateIMAPEmailResponses(relations)
+	}
 	if req.Star > 0 {
 		sql += "id >= ?"
 		params = append(params, req.Star)
@@ -248,7 +265,7 @@ func getEmailListByUidList(ctx *context.Context, groupName string, req ImapListR
 }
 
 func GetEmailListByGroup(ctx *context.Context, groupName string, req ImapListReq, uid bool) ([]*response.EmailResponseData, error) {
-	if len(req.UidList) == 0 && req.Star == 0 && req.End == 0 {
+	if len(req.UidList) == 0 && req.Star == 0 && req.End == 0 && !uid {
 		return nil, nil
 	}
 	if uid {
@@ -315,11 +332,12 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 		if message == nil {
 			continue
 		}
-		message.IsRead = relation.IsRead
-		message.IsDeleted = relation.IsDeleted
-		message.SerialNumber = relation.SerialNumber
-		message.UeId = relation.ID
-		result = append(result, message)
+		copyMessage := *message
+		copyMessage.IsRead = relation.IsRead
+		copyMessage.IsDeleted = relation.IsDeleted
+		copyMessage.SerialNumber = relation.SerialNumber
+		copyMessage.UeId = relation.ID
+		result = append(result, &copyMessage)
 	}
 	return result, nil
 }
