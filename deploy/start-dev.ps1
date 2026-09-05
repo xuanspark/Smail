@@ -11,10 +11,18 @@ try {
         $binary = Join-Path $root 'out\backend\smail-dev.exe'
         if (-not (Test-Path -LiteralPath $binary)) { throw '请先运行 deploy/build.ps1 编译后端' }
         if (Get-NetTCPConnection -State Listen -LocalPort 443 -ErrorAction SilentlyContinue) { throw '443 端口已占用，请先确认并停止旧后端' }
-        # 二进制与配置分离后必须显式指定根目录，不能在 out 下初始化新数据库。
-        $env:SMAIL_ROOT = Join-Path $root 'backend'
+        # 拒绝沿用旧运行目录，避免迁移遗漏时静默创建另一份账号库。
+        $legacyConfig = Join-Path $root 'backend\config'
+        foreach ($name in @('config.json', 'config.dev.json', 'credential.key', 'smail.db', 'smail_temp.db')) {
+            if (Test-Path -LiteralPath (Join-Path $legacyConfig $name)) {
+                throw 'backend/config 中仍有运行文件，请先停止后端并完成根目录 config 迁移'
+            }
+        }
+        # SMAIL_ROOT 是 config 的父目录，不能指向 config 本身或编译输出目录。
+        $env:SMAIL_ROOT = $root
         $arguments = @('--dev-disable-admin-reset')
-        $workingDirectory = $env:SMAIL_ROOT
+        # 插件工作目录保持不变；配置、数据库和密钥统一通过 SMAIL_ROOT 定位。
+        $workingDirectory = Join-Path $root 'backend'
     } else {
         if (Get-NetTCPConnection -State Listen -LocalPort 15173 -ErrorAction SilentlyContinue) { throw '15173 端口已占用，请先确认并停止旧前端' }
         $binary = (Get-Command node -ErrorAction Stop).Source

@@ -28,7 +28,10 @@ test('前端构建必须自动同步 Go 嵌入资源', async () => {
 
 test('开发启动必须固定运行配置根目录并集中保存日志', async () => {
   const content = await read('deploy/start-dev.ps1')
-  assert.match(content, /\$env:SMAIL_ROOT = Join-Path \$root 'backend'/)
+  assert.match(content, /\$env:SMAIL_ROOT = \$root\r?\n/)
+  assert.match(content, /\$legacyConfig = Join-Path \$root 'backend\\config'/)
+  assert.match(content, /Test-Path -LiteralPath \(Join-Path \$legacyConfig \$name\)/)
+  assert.match(content, /\$workingDirectory = Join-Path \$root 'backend'/)
   assert.match(content, /out\\backend\\smail-dev\.exe/)
   assert.match(content, /test-log\\runtime/)
   assert.match(content, /-WindowStyle Hidden/)

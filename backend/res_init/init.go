@@ -32,7 +32,6 @@ import (
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/signal"
 	"git.pcux.cn/xuans/Smail/utils/credential"
-	"git.pcux.cn/xuans/Smail/utils/file"
 	log "github.com/sirupsen/logrus"
 	// 导入 HTTP 客户端，用于等待服务启动。
 	"net/http"
@@ -453,24 +452,18 @@ func stopAdminResetControl() {
 }
 
 func dirInit() error {
-	if !file.PathExist("./config") {
-		err := os.MkdirAll("./config", 0700)
-		if err != nil {
-			return fmt.Errorf("create config directory: %w", err)
+	// 初始化与配置读写使用同一个运行根目录，不依赖启动时的工作目录。
+	root := filepath.Join(config.ROOT_PATH, "config")
+	for _, directory := range []string{root, filepath.Join(root, "dkim"), filepath.Join(root, "ssl")} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			return fmt.Errorf("创建运行配置目录失败: %w", err)
 		}
-	}
-
-	if !file.PathExist("./config/dkim") {
-		err := os.MkdirAll("./config/dkim", 0700)
+		info, err := os.Lstat(directory)
 		if err != nil {
-			return fmt.Errorf("create DKIM directory: %w", err)
+			return fmt.Errorf("检查运行配置目录失败: %w", err)
 		}
-	}
-
-	if !file.PathExist("./config/ssl") {
-		err := os.MkdirAll("./config/ssl", 0700)
-		if err != nil {
-			return fmt.Errorf("create SSL directory: %w", err)
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("运行配置目录不能是符号链接或普通文件")
 		}
 	}
 	return nil
