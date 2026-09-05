@@ -66,7 +66,7 @@ package: clean
 	mkdir output/plugins
 	mv server/smail_linux_amd64 server/smail_linux_arm64 server/smail_windows_amd64.exe server/smail_windows_arm64.exe server/smail_mac_amd64 server/smail_mac_arm64 output/
 	mv server/smail-admin_linux_amd64 server/smail-admin_linux_arm64 server/smail-admin_windows_amd64.exe server/smail-admin_windows_arm64.exe server/smail-admin_mac_amd64 server/smail-admin_mac_arm64 output/
-	cp -r server/config/dkim output/config/
+	mkdir -p output/config/dkim && cp server/config/dkim/dkim.public output/config/dkim/ 2>/dev/null || true
 	cp -r server/config/ssl output/config/
 	cp -r server/config/config.json output/config/
 	mv server/hooks/spam_block/output/* output/plugins
