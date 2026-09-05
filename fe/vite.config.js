@@ -31,15 +31,18 @@ export default defineConfig(({ mode }) => {
     proxy: {
       "/api": {
         target: backendUrl,
-        changeOrigin: false
+        changeOrigin: false,
+        secure: false
       },
       "/attachments": {
         target: backendUrl,
-        changeOrigin: false
+        changeOrigin: false,
+        secure: false
       },
       "/__smail_setup_bootstrap": {
         target: backendUrl,
         changeOrigin: false,
+        secure: false,
         rewrite: () => "/"
       }
     }
