@@ -4,11 +4,11 @@ import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 
 const sections = [
-  { value: 'base', label: '基础配置' },
-  { value: 'smtp', label: 'SMTP 配置' },
-  { value: 'email', label: '邮箱策略' },
-  { value: 'ssl', label: 'SSL 配置' },
-  { value: 'plugins', label: '插件配置' }
+  { value: 'base', label: '基础配置', description: '管理站点与数据库连接，敏感凭据单独填写。' },
+  { value: 'smtp', label: 'SMTP 配置', description: '管理邮件发送与中继连接，密码留空时保持原值。' },
+  { value: 'email', label: '邮箱策略', description: '管理邮件协议端口与账号恢复策略。' },
+  { value: 'ssl', label: 'SSL 配置', description: '管理证书与加密连接，应用后请留意待重启提示。' },
+  { value: 'plugins', label: '插件配置', description: '管理插件运行配置，敏感设置仅显示配置状态。' }
 ]
 
 const serviceLabels = {
@@ -45,6 +45,9 @@ export function usePage() {
     degradedReasons: []
   })
   const selectedSection = ref('base')
+  const currentSection = computed(() => sections.find(item => item.value === selectedSection.value) || sections[0])
+  const sectionLoading = ref(false)
+  let sectionRequestId = 0
   const editorText = ref('')
   const sectionError = ref('')
   const secretValue = ref('')
@@ -119,29 +122,38 @@ export function usePage() {
   }
 
   const loadSection = async () => {
+    const requestId = ++sectionRequestId
+    const section = selectedSection.value
+    sectionLoading.value = true
     sectionError.value = ''
+    editorText.value = ''
     secretValue.value = ''
+    confirmed.value = false
     validationResult.value = null
     savedGeneration.value = 0
     try {
-      const response = await http.get(`/api/v1/config/${selectedSection.value}`)
+      const response = await http.get(`/api/v1/config/${section}`)
+      if (requestId !== sectionRequestId) return
       notifyResponseError(response, '配置分区读取失败')
       const publicConfig = response.data || {}
       editorText.value = JSON.stringify(publicConfig, null, 2)
-      if (selectedSection.value === 'base') {
+      if (section === 'base') {
         const database = publicConfig.database || {}
         Object.assign(databaseConfig, { type: database.type || '', name: database.name || '', localRef: database.localRef || '' })
       }
     } catch (error) {
+      if (requestId !== sectionRequestId) return
       sectionError.value = error.message || '配置分区读取失败'
       editorText.value = ''
+    } finally {
+      if (requestId === sectionRequestId) sectionLoading.value = false
     }
   }
 
   const selectSection = value => {
-    if (selectedSection.value === value) return
+    if (selectedSection.value === value || working.value || !sections.some(item => item.value === value)) return
     selectedSection.value = value
-    loadSection()
+    return loadSection()
   }
 
   const loadBackups = async () => {
@@ -448,13 +460,13 @@ export function usePage() {
 
   return {
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
-    selectedSection, selectSection, editorText, sectionError, sensitiveHint, secretField, secretValue,
+    selectedSection, currentSection, sectionLoading, selectSection, editorText, sectionError, sensitiveHint, secretField, secretValue,
     confirmed, savedGeneration, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig,
     loadBackups, previewRollback, executeRollback, loadAudit, exportAudit, formatTime,
     serviceLabel, sectionLabel, operationLabel, databaseConfig, databaseTypeLabel, canMigrate,
-    migrationTargetName, migrationPreview, migrationRecord, migrationStatusLabel, migrationStatusType,
+    migrationTargetName, migrationPreview, migrationToken, migrationRecord, migrationStatusLabel, migrationStatusType,
     previewDatabaseMigration, loadMigrationStatus, executeDatabaseMigration, canRestart, restartPreview,
     previewRestart, requestRestart
   }
