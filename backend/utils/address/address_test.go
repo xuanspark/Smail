@@ -40,3 +40,24 @@ func TestIsValidEmailAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestIsValidEmailAddressRejectsMalformedAddresses(t *testing.T) {
+	invalid := []string{
+		"@example.com",
+		"user@",
+		"user..name@example.com",
+		"user@example..com",
+		"user name@example.com",
+		"User <user@example.com>",
+		" user@example.com",
+		"user@example.com ",
+		".user@example.com",
+		"user.@example.com",
+		"user@example.com.",
+	}
+	for _, value := range invalid {
+		if IsValidEmailAddress(value) {
+			t.Errorf("IsValidEmailAddress(%q) = true, want false", value)
+		}
+	}
+}
