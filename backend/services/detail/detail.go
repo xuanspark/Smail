@@ -41,6 +41,9 @@ func GetEmailDetail(ctx *context.Context, id int, markRead bool) (*response.Emai
 	}
 
 	email.IsRead = ue.IsRead
+	if email.Type == 0 {
+		email.Bcc = "[]"
+	}
 
 	// 将内容中的cid内容替换成url
 	if strings.TrimSpace(email.Attachments) != "" {

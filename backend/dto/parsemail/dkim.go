@@ -8,7 +8,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
-	"git.pcux.cn/xuans/Smail/utils/consts"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	securefile "git.pcux.cn/xuans/Smail/utils/file"
 	"github.com/emersion/go-msgauth/dkim"
@@ -132,9 +131,6 @@ func Check(ctx *context.Context, mail io.Reader) bool {
 	}
 
 	for _, v := range verifications {
-		if v.Domain == consts.TEST_DOMAIN {
-			return true
-		}
 		if v.Err == nil {
 			log.Println("Valid signature for:", v.Domain)
 		} else {

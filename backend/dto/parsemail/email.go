@@ -399,7 +399,7 @@ func NewEmailFromReader(to []string, r io.Reader, size int) (*Email, error) {
 	}
 
 	ret.Cc = buildUsers(m.Header.Values("Cc"))
-	ret.ReplyTo = buildUsers(m.Header.Values("ReplyTo"))
+	ret.ReplyTo = buildUsers(m.Header.Values("Reply-To"))
 	ret.Sender = buildUser(m.Header.Get("Sender"))
 	if ret.Sender == nil || strings.TrimSpace(ret.Sender.EmailAddress) == "" {
 		ret.Sender = ret.From
@@ -582,12 +582,15 @@ func buildUsers(strs []string) []*User {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-
-		parts := strings.Split(line, ",")
-		for _, part := range parts {
-			if u := buildUser(strings.TrimSpace(part)); u != nil {
-				ret = append(ret, u)
+		addresses, err := mail.ParseAddressList(line)
+		if err == nil {
+			for _, address := range addresses {
+				ret = append(ret, buildUser(address.String()))
 			}
+			continue
+		}
+		if user := buildUser(line); user != nil {
+			ret = append(ret, user)
 		}
 	}
 	return ret
@@ -692,6 +695,9 @@ func (e *Email) ForwardBuildBytes(ctx *context.Context, sender *models.User, for
 		}
 		var ah mail.AttachmentHeader
 		ah.Set("Content-Type", attachment.ContentType)
+		if attachment.ContentID != "" {
+			ah.Set("Content-ID", fmt.Sprintf("<%s>", attachment.ContentID))
+		}
 		ah.SetFilename(attachment.Filename)
 		w, err = mw.CreateAttachment(ah)
 		if err != nil {
@@ -825,6 +831,16 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) ([]byte, error) {
 	h.SetAddressList("Sender", from)
 	h.SetAddressList("To", to)
 	h.SetText("Subject", e.Subject)
+	if len(e.ReplyTo) != 0 {
+		replyTo := make([]*mail.Address, 0, len(e.ReplyTo))
+		for _, user := range e.ReplyTo {
+			if user == nil || user.EmailAddress == "" {
+				return nil, errors.New("invalid reply-to recipient")
+			}
+			replyTo = append(replyTo, &mail.Address{Name: user.Name, Address: user.EmailAddress})
+		}
+		h.SetAddressList("Reply-To", replyTo)
+	}
 	if len(e.Cc) != 0 {
 		cc := []*mail.Address{}
 		for _, user := range e.Cc {
@@ -894,6 +910,9 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) ([]byte, error) {
 		}
 		var ah mail.AttachmentHeader
 		ah.Set("Content-Type", attachment.ContentType)
+		if attachment.ContentID != "" {
+			ah.Set("Content-ID", fmt.Sprintf("<%s>", attachment.ContentID))
+		}
 		ah.SetFilename(attachment.Filename)
 		w, err = mw.CreateAttachment(ah)
 		if err != nil {
