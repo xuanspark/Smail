@@ -10,6 +10,7 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = (env.VITE_DEV_BACKEND_URL || 'https://127.0.0.1:443').replace(/\/$/, '')
+  const backendOrigin = (env.VITE_DEV_BACKEND_ORIGIN || 'https://xuans.com').replace(/\/$/, '')
 
   return {
     plugins: [
@@ -31,17 +32,26 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: backendUrl,
-          changeOrigin: false,
-          secure: false
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyRequest) => {
+              const originURL = new URL(backendOrigin)
+              proxyRequest.setHeader('origin', backendOrigin)
+              proxyRequest.setHeader('host', originURL.host)
+              proxyRequest.setHeader('x-forwarded-proto', originURL.protocol.replace(':', ''))
+              proxyRequest.removeHeader('referer')
+            })
+          }
         },
         "/attachments": {
           target: backendUrl,
-          changeOrigin: false,
+          changeOrigin: true,
           secure: false
         },
         "/__smail_setup_bootstrap": {
           target: backendUrl,
-          changeOrigin: false,
+          changeOrigin: true,
           secure: false,
           rewrite: () => "/"
         }
