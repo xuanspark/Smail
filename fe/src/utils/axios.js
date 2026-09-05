@@ -13,7 +13,6 @@ const http = axios.create({
     xsrfHeaderName: 'X-CSRF-Token',
     withXSRFToken: true, //设置超时
     headers: {
-        'Content-Type': 'application/json;charset=UTF-8;',
         'Lang': lang.lang
     }
 });
@@ -26,17 +25,6 @@ function handleLoginRedirect() {
     }
     return redirectToLogin();
 }
-
-//请求拦截器
-http.interceptors.request.use((config) => {
-    //若请求方式为post，则将data参数转为JSON字符串
-    if (config.method === 'POST') {
-        config.data = JSON.stringify(config.data);
-    }
-    return config;
-}, (error) =>
-    // 对请求错误做些什么
-    Promise.reject(error));
 
 //响应拦截器
 function attachApiErrorDetails(error) {
