@@ -1,14 +1,63 @@
 <template>
   <div class="config-page" :data-config-page="selectedSection" v-loading="loading">
-    <div class="settings-header">
-      <div>
-        <h3>{{ currentSection.label }}</h3>
-        <p class="settings-desc">{{ currentSection.description }}</p>
+    <header class="config-overview" aria-labelledby="config-page-title">
+      <div class="overview-heading">
+        <div class="overview-copy">
+          <div class="overview-title">
+            <h3 id="config-page-title">{{ currentSection.label }}</h3>
+            <el-tag v-if="!loading && !availabilityError" :type="stateTagType" effect="light" size="small">
+              <span class="sr-only">运行状态：</span>{{ stateLabel }}
+            </el-tag>
+          </div>
+          <p class="settings-desc">{{ currentSection.description }}</p>
+        </div>
+        <div class="overview-actions">
+          <el-tag class="access-tag" :type="canWrite ? 'info' : 'warning'" effect="plain" size="small">
+            {{ canWrite ? '敏感凭据已脱敏' : '只读模式' }}
+          </el-tag>
+          <el-button
+            v-if="!availabilityError"
+            size="small"
+            plain
+            :loading="loading"
+            :disabled="!!working || sectionLoading || loading"
+            @click="refreshPage"
+          >
+            刷新状态
+          </el-button>
+        </div>
       </div>
-      <el-tag class="access-tag" :type="canWrite ? 'info' : 'warning'" effect="plain">
-        {{ canWrite ? '敏感凭据已脱敏' : '只读模式' }}
-      </el-tag>
-    </div>
+      <template v-if="!loading && !availabilityError">
+        <dl class="overview-meta" aria-label="当前配置状态">
+          <div class="overview-meta-item">
+            <dt>生效代次</dt>
+            <dd>{{ status.activeGeneration || '-' }}</dd>
+          </div>
+          <div class="overview-meta-item">
+            <dt>最近校验</dt>
+            <dd>{{ formatTime(status.lastValidAt) }}</dd>
+          </div>
+          <div class="overview-meta-item" :class="{ 'overview-meta-warning': status.pendingRestart?.length }">
+            <dt>待重启服务</dt>
+            <dd v-if="status.pendingRestart?.length" class="tag-list">
+              <el-tag v-for="service in status.pendingRestart" :key="service" type="warning" effect="plain" size="small">
+                {{ serviceLabel(service) }}
+              </el-tag>
+            </dd>
+            <dd v-else>无需重启</dd>
+          </div>
+        </dl>
+        <el-alert
+          v-for="issue in status.degradedReasons || []"
+          :key="`${issue.code}-${issue.message}`"
+          :title="`${issue.code}：${issue.message}`"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="degraded-alert"
+        />
+      </template>
+    </header>
 
     <el-alert
       v-if="!canWrite"
@@ -25,50 +74,6 @@
     </div>
 
     <div v-else-if="!loading" class="config-page-body">
-        <section class="status-panel">
-          <div class="status-heading">
-            <div>
-              <h4>配置快照</h4>
-              <p class="heading-note">当前运行状态与生效版本</p>
-            </div>
-            <el-button size="small" plain :loading="loading" :disabled="!!working || sectionLoading" @click="refreshPage">
-              刷新状态
-            </el-button>
-          </div>
-          <div class="status-grid">
-            <div class="status-item">
-              <span class="status-label">运行状态</span>
-              <el-tag :type="stateTagType" effect="light">{{ stateLabel }}</el-tag>
-            </div>
-            <div class="status-item">
-              <span class="status-label">当前生效代次</span>
-              <strong class="generation-value">{{ status.activeGeneration || '-' }}</strong>
-            </div>
-            <div class="status-item">
-              <span class="status-label">最近校验时间</span>
-              <strong>{{ formatTime(status.lastValidAt) }}</strong>
-            </div>
-            <div class="status-item" :class="{ 'status-warning': status.pendingRestart?.length }">
-              <span class="status-label">待重启服务</span>
-              <div v-if="status.pendingRestart?.length" class="tag-list">
-                <el-tag v-for="service in status.pendingRestart" :key="service" type="warning" effect="plain">
-                  {{ serviceLabel(service) }}
-                </el-tag>
-              </div>
-              <strong v-else>无需重启</strong>
-            </div>
-          </div>
-          <el-alert
-            v-for="issue in status.degradedReasons || []"
-            :key="`${issue.code}-${issue.message}`"
-            :title="`${issue.code}：${issue.message}`"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="degraded-alert"
-          />
-        </section>
-
         <section class="editor-panel" :aria-busy="sectionLoading">
           <div class="panel-heading">
             <div>
@@ -194,3 +199,4 @@ const {
 </script>
 
 <style scoped src="../ConfigSettings.css"></style>
+<style scoped src="./ConfigEditor.css"></style>

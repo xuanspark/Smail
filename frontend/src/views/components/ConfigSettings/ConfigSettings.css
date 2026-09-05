@@ -23,16 +23,14 @@
   position: static;
 }
 .settings-header,
-.panel-heading,
-.status-heading {
+.panel-heading {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
 }
 .settings-header h3,
-.panel-heading h4,
-.status-heading h4 {
+.panel-heading h4 {
   margin: 0;
   color: var(--pm-text-primary);
 }
@@ -59,8 +57,7 @@
 .config-availability .el-alert {
   width: 100%;
 }
-.panel-heading h4,
-.status-heading h4 {
+.panel-heading h4 {
   font-size: 16px;
   line-height: 1.5;
 }
@@ -83,60 +80,14 @@
   font-size: 12px;
   font-weight: 700;
 }
-.status-panel,
 .editor-panel,
 .maintenance-panel {
   border: 1px solid var(--pm-border-color);
   border-radius: 16px;
   background: var(--pm-bg-secondary);
 }
-.status-panel,
 .editor-panel {
   padding: 20px;
-}
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-}
-.status-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--pm-bg-primary);
-}
-.status-item .status-label {
-  color: var(--pm-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.status-item strong {
-  color: var(--pm-text-primary);
-  font-size: 13px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-.status-item .generation-value {
-  font-size: 18px;
-  line-height: 1.3;
-  font-variant-numeric: tabular-nums;
-}
-.status-warning {
-  border-color: var(--el-color-warning-light-5);
-  background: var(--el-color-warning-light-9);
-}
-.status-item :deep(.el-tag) {
-  max-width: 100%;
-  height: auto;
-  min-height: 24px;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 .tag-list {
   display: flex;
@@ -488,15 +439,11 @@
   flex: none;
 }
 @container config-main (max-width: 620px) {
-  .status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .secret-editor {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 @container config-main (max-width: 400px) {
-  .status-panel,
   .editor-panel {
     padding: 16px;
   }

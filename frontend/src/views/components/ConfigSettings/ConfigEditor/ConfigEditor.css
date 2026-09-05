@@ -1,0 +1,139 @@
+.config-overview {
+  min-width: 0;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--pm-border-color);
+}
+
+.overview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.overview-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.overview-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.overview-title h3 {
+  margin: 0;
+  color: var(--pm-text-primary);
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.overview-copy .settings-desc {
+  margin: 6px 0 0;
+}
+
+.overview-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.overview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 0;
+  margin: 16px 0 0;
+}
+
+.overview-meta-item {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 0 16px;
+  border-left: 1px solid var(--pm-border-color);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.overview-meta-item:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.overview-meta-item dt {
+  color: var(--pm-text-secondary);
+}
+
+.overview-meta-item dd {
+  margin: 0;
+  color: var(--pm-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.overview-meta-item .tag-list {
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+
+.overview-meta-warning {
+  flex: 1;
+}
+
+.overview-meta-warning dt {
+  color: var(--el-color-warning-dark-2);
+}
+
+.overview-meta :deep(.el-tag) {
+  max-width: 100%;
+  height: auto;
+  min-height: 20px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@container config-main (max-width: 620px) {
+  .overview-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .overview-copy {
+    flex-basis: 100%;
+  }
+
+  .overview-actions {
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .overview-meta {
+    gap: 8px 16px;
+  }
+
+  .overview-meta-item {
+    padding: 0;
+    border-left: 0;
+  }
+}

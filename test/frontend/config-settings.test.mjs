@@ -245,6 +245,35 @@ test('离开、刷新和正在执行的变更受保护，取消时保留编辑�
   assert.equal(await page.beforeLeave(), false)
 })
 
+test('标题合并配置状态，保留刷新保护和降级提示，不再渲染快照卡片', () => {
+  const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
+  const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
+  const root = new URL('../../frontend/src/views/components/ConfigSettings/ConfigEditor/', import.meta.url)
+  const template = readFileSync(new URL('ConfigEditor.vue', root), 'utf8')
+  const css = readFileSync(new URL('ConfigEditor.css', root), 'utf8')
+  const { descriptor, errors } = parse(template)
+  assert.deepEqual(errors, [])
+  assert.doesNotThrow(() => compileScript(descriptor, { id: 'config-overview', inlineTemplate: true }))
+  assert.deepEqual(compileStyle({ source: css, id: 'data-v-config-overview', scoped: true }).errors, [])
+  const header = template.match(/<header[\s\S]*?<\/header>/)?.[0] || ''
+  assert.match(header, /aria-labelledby="config-page-title"/)
+  assert.match(header, /<h3 id="config-page-title">{{ currentSection.label }}/)
+  assert.match(header, /<span class="sr-only">运行状态：<\/span>{{ stateLabel }}/)
+  assert.match(header, /<dl class="overview-meta" aria-label="当前配置状态">/)
+  assert.equal((header.match(/<dt>/g) || []).length, 3)
+  assert.match(header, /status.activeGeneration/)
+  assert.match(header, /formatTime\(status.lastValidAt\)/)
+  assert.match(header, /v-for="service in status.pendingRestart"/)
+  assert.match(header, /v-for="issue in status.degradedReasons \|\| \[\]"/)
+  assert.match(header, /v-if="!loading && !availabilityError"/)
+  assert.match(header, /:disabled="!!working \|\| sectionLoading \|\| loading"/)
+  assert.match(header, /@click="refreshPage"/)
+  assert.match(header, /canWrite \? '敏感凭据已脱敏' : '只读模式'/)
+  assert.doesNotMatch(template, /配置快照|status-panel|status-grid/)
+  assert.match(css, /@container config-main \(max-width: 620px\)/)
+  assert.match(css, /overflow-wrap: anywhere/)
+})
+
 test('卸载发生在状态请求期间，不再发送后续分区请求', async () => {
   const pending = deferred()
   const requests = []
