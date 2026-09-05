@@ -226,6 +226,14 @@ func (s *TransactionStore) Recover() error {
 		if err := validateTransactionFiles(transactionDirectory, "original", manifest.OriginalFiles); err != nil {
 			return err
 		}
+		loader := NewConfigLoader(s.root, ConfigLoaderOptions{Validation: s.validation})
+		runtime, loadErr := loader.Load()
+		if loadErr == nil && runtime.Generation >= manifest.ToGeneration {
+			if err := os.RemoveAll(transactionDirectory); err != nil {
+				return err
+			}
+			continue
+		}
 		switch manifest.Phase {
 		case TransactionPrepared, TransactionSectionsCommitted:
 			if err := restoreTransactionOriginal(directory, transactionDirectory, manifest); err != nil {
@@ -239,14 +247,6 @@ func (s *TransactionStore) Recover() error {
 				return err
 			}
 		case TransactionRootCommitted, TransactionVerified:
-			loader := NewConfigLoader(s.root, ConfigLoaderOptions{Validation: s.validation})
-			runtime, loadErr := loader.Load()
-			if loadErr == nil && runtime.Generation == manifest.ToGeneration {
-				if err := os.RemoveAll(transactionDirectory); err != nil {
-					return err
-				}
-				continue
-			}
 			if err := restoreTransactionOriginal(directory, transactionDirectory, manifest); err != nil {
 				return err
 			}

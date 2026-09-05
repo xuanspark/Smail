@@ -75,7 +75,7 @@ func validateDatabase(database DatabaseConfig) error {
 	database = NormalizeDatabaseConfig(database)
 	switch database.Type {
 	case DatabaseTypeSQLite:
-		if !databaseLocalRefPattern.MatchString(database.LocalRef) ||
+		if !validSQLiteLocalRef(database.LocalRef) ||
 			filepath.IsAbs(database.LocalRef) ||
 			isWindowsAbsolute(database.LocalRef) ||
 			strings.ContainsAny(database.LocalRef, `/\\:`) ||
@@ -97,6 +97,20 @@ func validateDatabase(database DatabaseConfig) error {
 		return ErrInvalidDatabase
 	}
 	return nil
+}
+
+func validSQLiteLocalRef(value string) bool {
+	value = filepath.ToSlash(value)
+	if value == "" || filepath.IsAbs(value) || isWindowsAbsolute(value) || strings.HasPrefix(value, "config/") || strings.ContainsAny(value, `\\:`) {
+		return false
+	}
+	parts := strings.Split(value, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." || !databaseLocalRefPattern.MatchString(part) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateSMTP(smtp SMTPConfig) error {

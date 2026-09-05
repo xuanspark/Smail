@@ -581,12 +581,8 @@ func legacyDatabaseConfig(root string, vault *credential.Vault, legacy legacyMig
 func legacyDatabasePlan(legacy legacyMigrationConfig) (DatabaseConfig, string, []string) {
 	switch legacy.DbType {
 	case "", DBTypeSQLite:
-		name := strings.TrimSpace(legacy.DbDSN)
-		if name == "" {
-			name = "smail.db"
-		}
-		name = filepath.Base(filepath.Clean(name))
-		if !databaseLocalRefPattern.MatchString(name) {
+		name, ok := legacySQLiteLocalRef(legacy.DbDSN)
+		if !ok {
 			return DatabaseConfig{}, "", []string{"dbDSN"}
 		}
 		return DatabaseConfig{Type: DatabaseTypeSQLite, LocalRef: name}, "", nil
@@ -605,6 +601,29 @@ func legacyDatabasePlan(legacy legacyMigrationConfig) (DatabaseConfig, string, [
 	default:
 		return DatabaseConfig{}, "", []string{"dbType"}
 	}
+}
+
+func legacySQLiteLocalRef(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = "smail.db"
+	}
+	if filepath.IsAbs(value) || isWindowsAbsolute(value) {
+		return "", false
+	}
+	value = filepath.ToSlash(value)
+	value = strings.TrimPrefix(value, "./")
+	value = strings.TrimPrefix(value, "config/")
+	if value == "" || strings.HasPrefix(value, "../") || value == ".." || strings.Contains(value, "/../") || strings.Contains(value, "\\") || strings.Contains(value, ":") {
+		return "", false
+	}
+	parts := strings.Split(value, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || !databaseLocalRefPattern.MatchString(part) {
+			return "", false
+		}
+	}
+	return value, true
 }
 
 func parseLegacyMySQLDSN(value string) (DatabaseConfig, string, bool) {

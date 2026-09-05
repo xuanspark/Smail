@@ -81,7 +81,7 @@ type Runner interface {
 }
 
 type Service struct {
-	requests sync.RWMutex
+	requests requestGate
 	mu       sync.RWMutex
 	records  map[string]*record
 	runner   Runner
@@ -102,7 +102,9 @@ var current struct {
 }
 
 func NewService(runner Runner) *Service {
-	return &Service{records: make(map[string]*record), runner: runner, now: func() time.Time { return time.Now().UTC() }}
+	service := &Service{records: make(map[string]*record), runner: runner, now: func() time.Time { return time.Now().UTC() }}
+	service.requests.initialize()
+	return service
 }
 
 func SetCurrent(service *Service) {
@@ -223,6 +225,9 @@ func (s *Service) execute(ctx context.Context, id, token string, actor config.Au
 
 	releaseRequests := s.drainRequests(ctx)
 	defer releaseRequests()
+	if err := contextError(ctx); err != nil {
+		return s.fail(id, err)
+	}
 	if err := s.setStatus(id, StatusCopying); err != nil {
 		return s.fail(id, err)
 	}

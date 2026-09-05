@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -18,6 +19,34 @@ import (
 
 type portableQuery interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+type sqliteSequence struct {
+	Name string
+	Seq  int64
+}
+
+func readSQLiteSequences(ctx context.Context, database portableQuery) ([]sqliteSequence, error) {
+	rows, err := database.QueryContext(ctx, "SELECT name, seq FROM sqlite_sequence")
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+			return nil, nil
+		}
+		return nil, ErrSQLUnsupportedObject
+	}
+	defer rows.Close()
+	var sequences []sqliteSequence
+	for rows.Next() {
+		var item sqliteSequence
+		if err := rows.Scan(&item.Name, &item.Seq); err != nil || item.Seq < 0 {
+			return nil, ErrSQLUnsupportedObject
+		}
+		sequences = append(sequences, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, ErrSQLUnsupportedObject
+	}
+	return sequences, nil
 }
 
 func portableTables(ctx context.Context, database portableQuery, kind config.DatabaseType) ([]string, error) {
@@ -104,6 +133,13 @@ func copyPortableTables(ctx context.Context, source *sql.Conn, target *sql.DB, p
 		return ErrSQLConnectionUnavailable
 	}
 	defer transaction.Rollback()
+	var sequences []sqliteSequence
+	if plan.Source.Type == config.DatabaseTypeSQLite {
+		sequences, err = readSQLiteSequences(ctx, source)
+		if err != nil {
+			return err
+		}
+	}
 	for _, table := range tables {
 		if table == "schema_migration" {
 			continue
@@ -154,8 +190,49 @@ func copyPortableTables(ctx context.Context, source *sql.Conn, target *sql.DB, p
 			}
 		}
 	}
+	if err := synchronizeSequences(ctx, transaction, plan, sequences); err != nil {
+		return err
+	}
 	if err := transaction.Commit(); err != nil {
 		return ErrSQLDataVerification
+	}
+	return nil
+}
+
+func synchronizeSequences(ctx context.Context, transaction *sql.Tx, plan Plan, sequences []sqliteSequence) error {
+	for _, sequence := range sequences {
+		if sequence.Name == "schema_migration" {
+			continue
+		}
+		switch plan.Target.Type {
+		case config.DatabaseTypeSQLite:
+			var current int64
+			err := transaction.QueryRowContext(ctx, "SELECT seq FROM sqlite_sequence WHERE name=?", sequence.Name).Scan(&current)
+			if errors.Is(err, sql.ErrNoRows) {
+				if _, err := transaction.ExecContext(ctx, "INSERT INTO sqlite_sequence(name, seq) VALUES(?, ?)", sequence.Name, sequence.Seq); err != nil {
+					return ErrSQLDataVerification
+				}
+				continue
+			}
+			if err != nil {
+				return ErrSQLDataVerification
+			}
+			if current < sequence.Seq {
+				if _, err := transaction.ExecContext(ctx, "UPDATE sqlite_sequence SET seq=? WHERE name=?", sequence.Seq, sequence.Name); err != nil {
+					return ErrSQLDataVerification
+				}
+			}
+		case config.DatabaseTypeMySQL:
+			query := "ALTER TABLE " + quoteMySQLIdentifier(sequence.Name) + " AUTO_INCREMENT = " + strconv.FormatInt(sequence.Seq+1, 10)
+			if _, err := transaction.ExecContext(ctx, query); err != nil {
+				return ErrSQLDataVerification
+			}
+		case config.DatabaseTypePostgreSQL:
+			query := "SELECT setval(pg_get_serial_sequence($1, 'id'), GREATEST(COALESCE(MAX(id), 0), $2), true) FROM " + quotePostgreSQLIdentifier(sequence.Name)
+			if _, err := transaction.ExecContext(ctx, query, sequence.Name, sequence.Seq); err != nil {
+				return ErrSQLDataVerification
+			}
+		}
 	}
 	return nil
 }

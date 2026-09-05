@@ -145,7 +145,7 @@ func (e *SQLiteExecutor) Run(ctx context.Context, plan Plan, update func(Status)
 }
 
 func (e *SQLiteExecutor) resolveReference(reference string) (string, error) {
-	if e == nil || strings.TrimSpace(e.root) == "" || !sqliteTargetNamePattern.MatchString(reference) {
+	if e == nil || strings.TrimSpace(e.root) == "" || !validSQLiteReference(reference) {
 		return "", ErrInvalidTargetName
 	}
 	root, err := filepath.Abs(filepath.Clean(e.root))
@@ -159,10 +159,60 @@ func (e *SQLiteExecutor) resolveReference(reference string) (string, error) {
 	}
 	path := filepath.Join(configDirectory, reference)
 	absolute, err := filepath.Abs(filepath.Clean(path))
-	if err != nil || filepath.Dir(absolute) != configDirectory {
+	if err != nil || !pathWithinDirectory(configDirectory, absolute) {
 		return "", ErrInvalidTargetName
 	}
+	if realConfig, configErr := filepath.EvalSymlinks(configDirectory); configErr == nil {
+		if realTarget, targetErr := evalWithExistingAncestor(absolute); targetErr == nil && !pathWithinDirectory(realConfig, realTarget) {
+			return "", ErrInvalidTargetName
+		}
+	}
 	return absolute, nil
+}
+
+func validSQLiteReference(value string) bool {
+	value = filepath.ToSlash(strings.TrimSpace(value))
+	if value == "" || filepath.IsAbs(value) || isWindowsAbsoluteReference(value) || strings.ContainsAny(value, `\\:`) {
+		return false
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == "" || part == "." || part == ".." || !sqliteTargetNamePattern.MatchString(part) {
+			return false
+		}
+	}
+	return true
+}
+
+func isWindowsAbsoluteReference(value string) bool {
+	return strings.HasPrefix(value, "//") || (len(value) >= 3 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' && value[2] == '/')
+}
+
+func pathWithinDirectory(directory, target string) bool {
+	relative, err := filepath.Rel(directory, target)
+	return err == nil && !filepath.IsAbs(relative) && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func evalWithExistingAncestor(target string) (string, error) {
+	current := target
+	parts := make([]string, 0)
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for index := len(parts) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, parts[index])
+			}
+			return filepath.Abs(resolved)
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		parts = append(parts, filepath.Base(current))
+		current = parent
+	}
 }
 
 func (e *SQLiteExecutor) temporaryPath(target string) (string, error) {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,6 +51,9 @@ type requestLease struct {
 }
 
 func (lease *requestLease) release() {
+	if lease == nil || lease.service == nil {
+		return
+	}
 	if lease.exclusive {
 		lease.service.requests.Unlock()
 	} else {
@@ -62,11 +66,16 @@ func (lease *requestLease) release() {
 func (s *Service) drainRequests(ctx context.Context) func() {
 	if lease, ok := ctx.Value(requestLeaseKey{}).(*requestLease); ok && lease.service == s {
 		lease.service.requests.RUnlock()
-		lease.service.requests.Lock()
+		if !lease.service.requests.lockContext(ctx) {
+			lease.service = nil
+			return func() {}
+		}
 		lease.exclusive = true
 		return func() {}
 	}
-	s.requests.Lock()
+	if !s.requests.lockContext(ctx) {
+		return func() {}
+	}
 	return s.requests.Unlock
 }
 
@@ -82,6 +91,94 @@ func maintenanceRequest(r *http.Request) bool {
 	}
 	return r.Method == http.MethodPost && (path == "/api/user/info" || path == "/api/v1/user/info" ||
 		path == "/api/v1/system/restart" || path == "/api/v1/system/restart/preview")
+}
+
+type requestGate struct {
+	mu      sync.Mutex
+	readers int
+	writer  bool
+	changed chan struct{}
+}
+
+func (gate *requestGate) initialize() {
+	gate.mu.Lock()
+	if gate.changed == nil {
+		gate.changed = make(chan struct{})
+	}
+	gate.mu.Unlock()
+}
+
+func (gate *requestGate) RLock() {
+	gate.initialize()
+	for {
+		gate.mu.Lock()
+		if !gate.writer {
+			gate.readers++
+			gate.mu.Unlock()
+			return
+		}
+		changed := gate.changed
+		gate.mu.Unlock()
+		<-changed
+	}
+}
+
+func (gate *requestGate) RUnlock() {
+	gate.mu.Lock()
+	if gate.readers > 0 {
+		gate.readers--
+	}
+	gate.notifyLocked()
+	gate.mu.Unlock()
+}
+
+func (gate *requestGate) Lock() {
+	gate.initialize()
+	for {
+		gate.mu.Lock()
+		if !gate.writer && gate.readers == 0 {
+			gate.writer = true
+			gate.mu.Unlock()
+			return
+		}
+		changed := gate.changed
+		gate.mu.Unlock()
+		<-changed
+	}
+}
+
+func (gate *requestGate) lockContext(ctx context.Context) bool {
+	gate.initialize()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		gate.mu.Lock()
+		if !gate.writer && gate.readers == 0 {
+			gate.writer = true
+			gate.mu.Unlock()
+			return true
+		}
+		changed := gate.changed
+		gate.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-changed:
+		}
+	}
+}
+
+func (gate *requestGate) Unlock() {
+	gate.mu.Lock()
+	gate.writer = false
+	gate.notifyLocked()
+	gate.mu.Unlock()
+}
+
+func (gate *requestGate) notifyLocked() {
+	close(gate.changed)
+	gate.changed = make(chan struct{})
 }
 
 // WhileWritable 用于会话后台清理，与 HTTP 迁移执行共享排空边界。

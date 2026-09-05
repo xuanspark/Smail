@@ -9,6 +9,9 @@ import (
 // 仅迁移 Smail 版本化业务表；不能静默忽略自定义对象。
 func validatePortableObjects(ctx context.Context, database portableQuery, kind config.DatabaseType) error {
 	queries := []string{"SELECT COUNT(*) FROM sqlite_master WHERE type IN ('view','trigger')"}
+	if kind == config.DatabaseTypeSQLite {
+		queries = append(queries, "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
+	}
 	switch kind {
 	case config.DatabaseTypeMySQL:
 		queries = []string{
