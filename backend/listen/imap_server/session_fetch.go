@@ -143,10 +143,31 @@ func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, opt
 
 	case imap.UIDSet:
 		uidSet := numSet.(imap.UIDSet)
+		maxUID := 0
+		if uidSet.Dynamic() {
+			var err error
+			maxUID, err = list.GetMaxUIDByMailbox(s.ctx, s.currentMailbox)
+			if err != nil {
+				log.WithContext(s.ctx).WithError(err).Error("query IMAP maximum UID for fetch failed")
+				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
+			}
+		}
 		for _, uid := range uidSet {
+			start := cast.ToInt(uint32(uid.Start))
+			end := cast.ToInt(uint32(uid.Stop))
+			if uid.Stop == 0 {
+				if uid.Start == 0 {
+					start = maxUID
+					end = maxUID
+				} else if maxUID == 0 || uid.Start > imap.UID(maxUID) {
+					continue
+				} else {
+					end = maxUID
+				}
+			}
 			emailList, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
-				Star: cast.ToInt(uint32(uid.Start)),
-				End:  cast.ToInt(uint32(uid.Stop)),
+				Star: start,
+				End:  end,
 			}, true)
 			if err != nil {
 				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for UID fetch failed")
