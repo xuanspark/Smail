@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import test from 'node:test'
+
+const root = fileURLToPath(new URL('../../', import.meta.url))
+const read = relative => readFile(path.join(root, relative), 'utf8')
+
+test('跨平台构建输出不得越过项目 out 目录', async () => {
+  const content = await read('Makefile')
+  const commands = [...content.matchAll(/cd ([^\s]+) && [^\n]*go build [^\n]* -o ([^\s]+) /g)]
+  assert.equal(commands.length, 30)
+  for (const [, directory, output] of commands) {
+    const relative = path.relative(path.join(root, 'out'), path.resolve(root, directory, output))
+    assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative), output)
+  }
+})
+
+test('前端构建必须自动同步 Go 嵌入资源', async () => {
+  const frontend = JSON.parse(await read('frontend/package.json'))
+  const telegram = JSON.parse(await read('plugins/pmail_telegram_push/package.json'))
+  assert.equal(frontend.scripts.postbuild, 'node ../deploy/prepare-frontend.mjs')
+  assert.equal(telegram.scripts['postbuild-only'], 'node ../../deploy/prepare-frontend.mjs telegram')
+  assert.match(await read('frontend/vite.config.js'), /\.\.\/out\/frontend/)
+  assert.match(await read('plugins/pmail_telegram_push/vite.config.ts'), /\.\.\/\.\.\/out\/plugins\/telegram-ui/)
+})
+
+test('开发启动必须固定运行配置根目录并集中保存日志', async () => {
+  const content = await read('deploy/start-dev.ps1')
+  assert.match(content, /\$env:SMAIL_ROOT = Join-Path \$root 'backend'/)
+  assert.match(content, /out\\backend\\smail-dev\.exe/)
+  assert.match(content, /test-log\\runtime/)
+  assert.match(content, /-WindowStyle Hidden/)
+  assert.ok(content.charCodeAt(0) === 0xfeff, 'Windows PowerShell 5 脚本应有 UTF-8 BOM')
+})
+
+test('安全工作流必须先构建嵌入资源再执行 Go 测试', async () => {
+  for (const file of ['.github/workflows/release.yml', '.github/workflows/security.yml']) {
+    const content = (await read(file)).split('  security:')[1]
+    assert.ok(content)
+    const prepare = content.indexOf('yarn build')
+    const goTest = content.indexOf('node test/run.mjs backend')
+    assert.ok(prepare >= 0 && goTest > prepare, file)
+  }
+})

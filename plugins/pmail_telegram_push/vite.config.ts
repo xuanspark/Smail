@@ -34,6 +34,7 @@ export default defineConfig({
   },
   build: {
     // 输出目录
-    outDir: 'hook/dist',
+    outDir: fileURLToPath(new URL('../../out/plugins/telegram-ui', import.meta.url)),
+    emptyOutDir: false,
   },
 })

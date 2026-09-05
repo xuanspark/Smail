@@ -55,21 +55,21 @@ jobs:
           echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
           echo "TELEGRAMFILENAME=pmail_telegram_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
       - name: FE Build
-        run: cd fe && yarn install --frozen-lockfile && yarn build
+        run: cd frontend && yarn install --frozen-lockfile && yarn build
       - name: BE Build
         run: |
-          cd server
-          cp -rf ../fe/dist listen/http_server
+          mkdir -p out/release/plugins
+          cd backend
           BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-          go build -ldflags "$BUILD_FLAGS" -o ${{ env.FILENAME }} ./cmd/smail
-          go build -ldflags "$BUILD_FLAGS" -o ${{ env.ADMINFILENAME }} ./cmd/smail-admin
-          go build -ldflags "-s -w" -o ${{ env.WCFILENAME }} hooks/wechat_push/wechat_push.go
-          go build -ldflags "-s -w" -o ${{ env.SPAMBLOCKFILENAME }} hooks/spam_block/spam_block.go
+          go build -ldflags "$BUILD_FLAGS" -o ../out/release/${{ env.FILENAME }} ./cmd/smail
+          go build -ldflags "$BUILD_FLAGS" -o ../out/release/${{ env.ADMINFILENAME }} ./cmd/smail-admin
+          go build -ldflags "-s -w" -o ../out/release/plugins/${{ env.WCFILENAME }} hooks/wechat_push/wechat_push.go
+          go build -ldflags "-s -w" -o ../out/release/plugins/${{ env.SPAMBLOCKFILENAME }} hooks/spam_block/spam_block.go
           cd ../plugins/pmail_telegram_push
           npm ci
           npm run build-only
-          go build -ldflags "-s -w" -o ../../server/${{ env.TELEGRAMFILENAME }} .
-          cd ../../server
+          go build -ldflags "-s -w" -o ../../out/release/plugins/${{ env.TELEGRAMFILENAME }} .
+          cd ../../out/release
           cat > release.json <<EOF
           {
             "version": "${{ env.VERSION }}",
@@ -78,27 +78,23 @@ jobs:
             "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
-          cp ../README.md README.md
+          cp ../../README.md README.md
           ls -alh
       - name: Zip
         run: |
-          cd ./server
-          mkdir plugins
-          mv ${{ env.WCFILENAME }} plugins/
-          mv ${{ env.SPAMBLOCKFILENAME }} plugins/
-          mv ${{ env.TELEGRAMFILENAME }} plugins/
+          cd ./out/release
           zip -r ${{ env.ZIPNAME }}.zip ${{ env.FILENAME }} ${{ env.ADMINFILENAME }} plugins release.json README.md
           ls
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ env.ZIPNAME }}
-          path: server/${{ env.ZIPNAME }}.zip
+          path: out/release/${{ env.ZIPNAME }}.zip
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: server/${{ env.ZIPNAME }}.zip
+          file: out/release/${{ env.ZIPNAME }}.zip
           tag: ${{ github.ref }}
           file_glob: true
 
@@ -113,32 +109,35 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.6'
-      - name: Verify Go dependencies
-        run: cd server && go mod verify
-      - name: Run Go tests
-        run: cd server && go test ./...
-      - name: Run Go static analysis
-        run: cd server && go vet ./...
-      - name: Run Go race tests
-        run: cd server && go test -race ./...
-      - name: Run Go security analysis
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
-          cd server && gosec ./...
-      - name: Scan Go vulnerabilities
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-          cd server && govulncheck ./...
-      - name: Setup Node.js environment
+      - name: Setup Node.js for test runner
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
-      - name: Install Yarn
-        run: npm install --global yarn@1.22.22
-      - name: Verify frontend dependencies and build
+      - name: Prepare frontend and Go embedded assets
         run: |
-          cd fe
+          npm install --global yarn@1.22.22
+          cd frontend
           yarn install --frozen-lockfile
+          yarn test
+          yarn build
+      - name: Verify Go dependencies
+        run: cd backend && go mod verify
+      - name: Run Go tests
+        run: node test/run.mjs backend
+      - name: Run Go static analysis
+        run: cd backend && go vet ./...
+      - name: Run Go race tests
+        run: node test/run.mjs backend -race ./...
+      - name: Run Go security analysis
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
+          cd backend && gosec ./...
+      - name: Scan Go vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          cd backend && govulncheck ./...
+      - name: Verify frontend dependencies and lint
+        run: |
+          cd frontend
           yarn audit --groups dependencies
           yarn eslint . --ext .vue,.js,.jsx,.cjs,.mjs --ignore-path .gitignore
-          yarn build

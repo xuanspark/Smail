@@ -100,14 +100,16 @@ function Stop-SmailService {
 
 Assert-Administrator
 $mainSource = Resolve-PackageFile -Candidates @(
-    (Join-Path $PackageRoot "server\smail_windows_amd64.exe"),
-    (Join-Path $PackageRoot "server\smail.exe"),
+    (Join-Path $PackageRoot "out\backend\smail_windows_amd64.exe"),
+    (Join-Path $PackageRoot "backend\smail_windows_amd64.exe"),
+    (Join-Path $PackageRoot "backend\smail.exe"),
     (Join-Path $PackageRoot "smail_windows_amd64.exe"),
     (Join-Path $PackageRoot "smail.exe")
 ) -Description "smail.exe"
 $adminSource = Resolve-PackageFile -Candidates @(
-    (Join-Path $PackageRoot "server\smail-admin_windows_amd64.exe"),
-    (Join-Path $PackageRoot "server\smail-admin.exe"),
+    (Join-Path $PackageRoot "out\backend\smail-admin_windows_amd64.exe"),
+    (Join-Path $PackageRoot "backend\smail-admin_windows_amd64.exe"),
+    (Join-Path $PackageRoot "backend\smail-admin.exe"),
     (Join-Path $PackageRoot "smail-admin_windows_amd64.exe"),
     (Join-Path $PackageRoot "smail-admin.exe")
 ) -Description "smail-admin.exe"

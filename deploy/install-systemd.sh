@@ -11,8 +11,13 @@ install -d -m 0750 /var/lib/smail /run/smail /usr/local/lib/smail
 if ! getent group smail >/dev/null; then groupadd --system smail; fi
 if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-dir /var/lib/smail --shell /usr/sbin/nologin smail; fi
 chown smail:smail /var/lib/smail
-install -o root -g root -m 0755 "$root_dir/server/smail" /usr/local/lib/smail/smail
-install -o root -g root -m 0750 "$root_dir/server/smail-admin" /usr/local/lib/smail/smail-admin
+case "$(uname -m)" in
+  x86_64) arch=amd64 ;;
+  aarch64|arm64) arch=arm64 ;;
+  *) echo "不支持的系统架构" >&2; exit 1 ;;
+esac
+install -o root -g root -m 0755 "$root_dir/out/backend/smail_linux_$arch" /usr/local/lib/smail/smail
+install -o root -g root -m 0750 "$root_dir/out/backend/smail-admin_linux_$arch" /usr/local/lib/smail/smail-admin
 install -o root -g root -m 0644 "$root_dir/deploy/systemd/smail.service" /etc/systemd/system/smail.service
 install -o root -g root -m 0644 "$root_dir/deploy/systemd/smail-admin.service" /etc/systemd/system/smail-admin.service
 chown smail:smail /run/smail

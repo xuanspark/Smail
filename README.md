@@ -115,9 +115,9 @@ IMAP端口： 993(SSL)
 
 # 插件
 
-[微信推送](server/hooks/wechat_push/README.md)
+[微信推送](backend/hooks/wechat_push/README.md)
 
-[垃圾邮件屏蔽](server/hooks/spam_block/README.md)
+[垃圾邮件屏蔽](backend/hooks/spam_block/README.md)
 
 # 其他优秀开源插件
 
@@ -131,15 +131,17 @@ IMAP端口： 993(SSL)
 
 # 参与开发
 
+目录约定：独立测试代码和脚本位于 `test/`，测试日志及截图位于 `test-log/`，编译输出位于 `out/`。构建与开发启动方式见 [文件目录整理说明](docs/文件目录整理说明.md)，测试入口见 [测试说明](test/README.md)。
+
 ## 项目架构
 
 1、前端： vue3+element-plus
 
-前端代码位于 `fe`目录中，运行参考 `fe`目录中的README文件
+前端代码位于 `frontend` 目录中，运行参考 `frontend` 目录中的 README 文件。
 
 2、后端： golang + MySQL/SQLite
 
-后端代码进入 `server`文件夹，运行 `main.go`文件
+后端代码位于 `backend/`；推荐使用 `deploy/build.ps1` 构建后，通过 `deploy/start-dev.ps1` 启动开发服务。
 
 3、编译项目
 

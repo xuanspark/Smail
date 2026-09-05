@@ -1,0 +1,35 @@
+.setup-description {
+  margin: 0 0 16px;
+  line-height: 1.7;
+}
+
+.setup-options {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.setup-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+}
+
+.setup-option h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.setup-option p {
+  margin: 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.security-setup-dialog .el-alert + .el-alert {
+  margin-top: 12px;
+}

@@ -40,4 +40,4 @@ require (
 	xorm.io/builder v0.3.13 // indirect
 )
 
-replace git.pcux.cn/xuans/Smail => ../../server
+replace git.pcux.cn/xuans/Smail => ../../backend
