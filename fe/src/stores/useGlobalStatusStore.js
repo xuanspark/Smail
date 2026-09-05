@@ -91,6 +91,7 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
             this.authChecked = true;
             this.authStatus = AUTH_STATUS.UNAUTHENTICATED;
             this.authError = "";
+            this.clearAuthRetryPath();
         },
         setUser(payload, resetPrompt = false) {
             const previousAccount = this.userInfos?.account || "";
@@ -114,11 +115,13 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
             this.authChecked = true;
             this.authStatus = AUTH_STATUS.NEEDS_SETUP;
             this.authError = "";
+            this.clearAuthRetryPath();
         },
         resetAuthAvailability() {
             this.authChecked = false;
             this.authStatus = AUTH_STATUS.UNKNOWN;
             this.authError = "";
+            this.clearAuthRetryPath();
         },
         setAuthRetryPath(path) {
             this.authRetryPath = typeof path === "string" && path ? path : "/";

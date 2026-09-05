@@ -9,7 +9,7 @@ import vue from '@vitejs/plugin-vue'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const backendUrl = (env.VITE_DEV_BACKEND_URL || 'http://127.0.0.1:9001').replace(/\/$/, '')
+  const backendUrl = (env.VITE_DEV_BACKEND_URL || 'https://127.0.0.1:443').replace(/\/$/, '')
 
   return {
   plugins: [
