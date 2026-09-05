@@ -1,5 +1,5 @@
 {
-  "baseline": "8e50cc6081b68574478f4daceef5ac65254a2435",
+  "baseline": "9849f8f11c9f49efd1bc877d7fedd8da265e32df",
   "note": "仅记录本段有准确路径和完整输出的逐行阅读范围；接续摘要的其他阅读记录需补齐，未记录不等于未读。阅读不等于功能验收或复审通过。",
   "files": {
     "frontend/src/views/components/ConfigSettings/ConfigSettings.js": { "ranges": [[1, "EOF"]], "evidence": "本段分三段完整读取，真实函数复现导出和候选状态错误", "findings": ["R06", "R30"] },
