@@ -12,40 +12,52 @@ export default defineConfig(({ mode }) => {
   const backendUrl = (env.VITE_DEV_BACKEND_URL || 'https://127.0.0.1:443').replace(/\/$/, '')
 
   return {
-  plugins: [
-    vue(),
-    AutoImport({
-      resolvers: [ElementPlusResolver()],
-    }),
-    Components({
-      resolvers: [ElementPlusResolver()],
-    }),
-  ],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
-  },
-  server: {
-    cors: true,
-    proxy: {
-      "/api": {
-        target: backendUrl,
-        changeOrigin: false,
-        secure: false
+    plugins: [
+      vue(),
+      AutoImport({
+        resolvers: [ElementPlusResolver()],
+      }),
+      Components({
+        resolvers: [ElementPlusResolver()],
+      }),
+    ],
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url))
       },
-      "/attachments": {
-        target: backendUrl,
-        changeOrigin: false,
-        secure: false
-      },
-      "/__smail_setup_bootstrap": {
-        target: backendUrl,
-        changeOrigin: false,
-        secure: false,
-        rewrite: () => "/"
+    },
+    server: {
+      cors: true,
+      proxy: {
+        "/api": {
+          target: backendUrl,
+          changeOrigin: false,
+          secure: false
+        },
+        "/attachments": {
+          target: backendUrl,
+          changeOrigin: false,
+          secure: false
+        },
+        "/__smail_setup_bootstrap": {
+          target: backendUrl,
+          changeOrigin: false,
+          secure: false,
+          rewrite: () => "/"
+        }
+      }
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vue-core': ['vue', 'vue-router', 'pinia'],
+            'element-plus': ['element-plus'],
+            'editor': ['@wangeditor/editor', '@wangeditor/editor-for-vue'],
+            'icons': ['@element-plus/icons-vue', 'vue-icons-plus']
+          }
+        }
       }
     }
-  }
   }
 })
