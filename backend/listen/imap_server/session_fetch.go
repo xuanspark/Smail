@@ -147,6 +147,7 @@ func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, opt
 		if uidSet.Dynamic() {
 			var err error
 			maxUID, err = list.GetMaxUIDByMailbox(s.ctx, s.currentMailbox)
+			log.WithContext(s.ctx).Infof("IMAP FETCH UID set=%s dynamic=%t max_uid=%d", uidSet.String(), uidSet.Dynamic(), maxUID)
 			if err != nil {
 				log.WithContext(s.ctx).WithError(err).Error("query IMAP maximum UID for fetch failed")
 				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
