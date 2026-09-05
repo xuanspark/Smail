@@ -781,7 +781,11 @@ func Move2DefaultBox(ctx *context.Context, mailIDs []int, groupName string) erro
 		rollbackGroupTransaction(session)
 		return fmt.Errorf("load default mailbox move ownership: %w", err)
 	}
-	if len(relations) != len(uniqueIDs) {
+	ownedEmailIDs := make(map[int]struct{}, len(relations))
+	for _, relation := range relations {
+		ownedEmailIDs[relation.EmailID] = struct{}{}
+	}
+	if len(ownedEmailIDs) != len(uniqueIDs) {
 		rollbackGroupTransaction(session)
 		return errors2.New("one or more messages are not owned by the user")
 	}
