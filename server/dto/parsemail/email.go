@@ -195,7 +195,7 @@ func init() {
 	relaxedPolicy.SkipElementsContent("script", "object", "embed", "iframe", "frame", "frameset")
 }
 
-func sanitizeHTML(htmlContent string) string {
+func SanitizeHTML(htmlContent string) string {
 	if htmlContent == "" {
 		return ""
 	}
@@ -269,7 +269,7 @@ func sanitizeHTMLNode(node *xhtml.Node) bool {
 }
 
 // Sanitize Text
-func sanitizeText(text string) string {
+func SanitizeText(text string) string {
 	return strictPolicy.Sanitize(text)
 }
 
@@ -461,8 +461,8 @@ func formatContent(entity *message.Entity, ret *Email) error {
 			fileName := getFileName(entity, p)
 
 			ret.Attachments = append(ret.Attachments, &Attachment{
-				Filename:    sanitizeText(fileName),
-				ContentType: sanitizeText(strings.TrimSpace(contentType)),
+				Filename:    SanitizeText(fileName),
+				ContentType: SanitizeText(strings.TrimSpace(contentType)),
 				Content:     body,
 				ContentID:   strings.TrimPrefix(strings.TrimSuffix(entity.Header.Get("Content-Id"), ">"), "<"),
 			})
@@ -481,8 +481,8 @@ func formatContent(entity *message.Entity, ret *Email) error {
 			fileName := getFileName(entity, p)
 
 			ret.Attachments = append(ret.Attachments, &Attachment{
-				Filename:    sanitizeText(fileName),
-				ContentType: sanitizeText(strings.TrimSpace(contentType)),
+				Filename:    SanitizeText(fileName),
+				ContentType: SanitizeText(strings.TrimSpace(contentType)),
 				Content:     body,
 				ContentID:   strings.TrimPrefix(strings.TrimSuffix(entity.Header.Get("Content-Id"), ">"), "<"),
 			})
@@ -490,7 +490,7 @@ func formatContent(entity *message.Entity, ret *Email) error {
 			return nil
 		}
 
-		ret.HTML = []byte(sanitizeHTML(string(body)))
+		ret.HTML = []byte(SanitizeHTML(string(body)))
 	case "multipart/related":
 	default:
 		c, err := io.ReadAll(entity.Body)
@@ -500,8 +500,8 @@ func formatContent(entity *message.Entity, ret *Email) error {
 		fileName := getFileName(entity, p)
 
 		ret.Attachments = append(ret.Attachments, &Attachment{
-			Filename:    sanitizeText(fileName),
-			ContentType: sanitizeText(strings.TrimSpace(contentType)),
+			Filename:    SanitizeText(fileName),
+			ContentType: SanitizeText(strings.TrimSpace(contentType)),
 			Content:     c,
 			ContentID:   strings.TrimPrefix(strings.TrimSuffix(entity.Header.Get("Content-Id"), ">"), "<"),
 		})

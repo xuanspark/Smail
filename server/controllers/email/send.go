@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/consts"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/dto/response"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"xorm.io/xorm"
 )
 
 const (
@@ -159,9 +161,9 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	e.Text = []byte(reqData.Text)
-	e.HTML = []byte(reqData.HTML)
-	e.Subject = reqData.Subject
+	e.Text = []byte(parsemail.SanitizeText(reqData.Text))
+	e.HTML = []byte(parsemail.SanitizeHTML(reqData.HTML))
+	e.Subject = parsemail.SanitizeText(reqData.Subject)
 	totalAttachmentSize := 0
 	for _, att := range reqData.Attachments {
 		contentType, content, err := decodeAttachment(att.Data)
@@ -222,8 +224,9 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	now := time.Now()
 	modelEmail := models.Email{
-		Type:         1,
+		Type:         consts.EmailTypeSend,
 		Subject:      e.Subject,
 		ReplyTo:      storedFields.ReplyTo,
 		FromName:     e.From.Name,
@@ -238,18 +241,38 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		SPFCheck:     1,
 		DKIMCheck:    1,
 		SendUserID:   ctx.UserID,
-		SendDate:     time.Now(),
-		CronSendTime: time.Now(),
-		Status:       1,
-		CreateTime:   time.Now(),
+		SendDate:     now,
+		CronSendTime: now,
+		Status:       consts.EmailStatusSent,
+		CreateTime:   now,
 		MsgID:        msgID,
 	}
 
-	_, err = db.Instance.Insert(&modelEmail)
+	err = db.Transaction(db.Instance, func(session *xorm.Session) error {
+		candidate := modelEmail
+		candidate.Id = 0
+		if _, insertErr := session.Insert(&candidate); insertErr != nil {
+			return insertErr
+		}
+		if candidate.Id <= 0 {
+			return fmt.Errorf("insert outgoing email returned no identifier")
+		}
+		relation := models.UserEmail{
+			UserID:  ctx.UserID,
+			EmailID: candidate.Id,
+			Status:  consts.EmailStatusSent,
+			IsRead:  1,
+		}
+		if _, insertErr := session.Insert(&relation); insertErr != nil {
+			return insertErr
+		}
+		modelEmail = candidate
+		return nil
+	})
 
 	if err != nil || modelEmail.Id <= 0 {
 		if err != nil {
-			log.WithContext(ctx).WithError(err).Error("insert outgoing email failed")
+			log.WithContext(ctx).WithError(err).Error("insert outgoing email transaction failed")
 		} else {
 			log.WithContext(ctx).Error("insert outgoing email returned no identifier")
 		}
@@ -280,36 +303,29 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 
 		if err != nil {
 			errMsg = err.Error()
-			_, err := db.Instance.Exec(db.WithContext(ctx, "update email set status =2 ,error=? where id = ? "), errMsg, modelEmail.Id)
-			if err != nil {
-				log.WithContext(ctx).Errorf("sql Error :%+v", err)
-			}
-
-			ue := models.UserEmail{
-				UserID:  ctx.UserID,
-				EmailID: modelEmail.Id,
-				Status:  2,
-				IsRead:  1,
-			}
-			if _, insertErr := db.Instance.Insert(&ue); insertErr != nil {
-				log.WithContext(ctx).WithError(insertErr).Error("insert failed outgoing email relation failed")
-			}
-
+			_ = db.Transaction(db.Instance, func(session *xorm.Session) error {
+				if _, updateErr := session.Exec(db.WithContext(ctx, "update email set status = ?, error = ? where id = ?"), consts.EmailStatusFail, errMsg, modelEmail.Id); updateErr != nil {
+					log.WithContext(ctx).Errorf("update email status failed: %+v", updateErr)
+					return updateErr
+				}
+				if _, updateErr := session.Exec(db.WithContext(ctx, "update user_email set status = ? where email_id = ? and user_id = ?"), consts.EmailStatusFail, modelEmail.Id, ctx.UserID); updateErr != nil {
+					log.WithContext(ctx).Errorf("update user_email status failed: %+v", updateErr)
+					return updateErr
+				}
+				return nil
+			})
 		} else {
-			_, err := db.Instance.Exec(db.WithContext(ctx, "update email set status =1  where id = ? "), modelEmail.Id)
-			if err != nil {
-				log.WithContext(ctx).Errorf("sql Error :%+v", err)
-			}
-
-			ue := models.UserEmail{
-				UserID:  ctx.UserID,
-				EmailID: modelEmail.Id,
-				Status:  1,
-				IsRead:  1,
-			}
-			if _, insertErr := db.Instance.Insert(&ue); insertErr != nil {
-				log.WithContext(ctx).WithError(insertErr).Error("insert sent email relation failed")
-			}
+			_ = db.Transaction(db.Instance, func(session *xorm.Session) error {
+				if _, updateErr := session.Exec(db.WithContext(ctx, "update email set status = ?, error = '' where id = ?"), consts.EmailStatusSent, modelEmail.Id); updateErr != nil {
+					log.WithContext(ctx).Errorf("update email status failed: %+v", updateErr)
+					return updateErr
+				}
+				if _, updateErr := session.Exec(db.WithContext(ctx, "update user_email set status = ? where email_id = ? and user_id = ?"), consts.EmailStatusSent, modelEmail.Id, ctx.UserID); updateErr != nil {
+					log.WithContext(ctx).Errorf("update user_email status failed: %+v", updateErr)
+					return updateErr
+				}
+				return nil
+			})
 		}
 
 	}, nil)

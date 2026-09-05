@@ -85,9 +85,9 @@ func TestSanitizeHTML(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := sanitizeHTML(tc.input)
+			result := SanitizeHTML(tc.input)
 			if result != tc.expected {
-				t.Errorf("sanitizeHTML(%q) = %q, want %q", tc.input, result, tc.expected)
+				t.Errorf("SanitizeHTML(%q) = %q, want %q", tc.input, result, tc.expected)
 			}
 		})
 	}
@@ -143,9 +143,9 @@ func TestSanitizeText(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := sanitizeText(tc.input)
+			result := SanitizeText(tc.input)
 			if result != tc.expected {
-				t.Errorf("sanitizeText(%q) = %q, want %q", tc.input, result, tc.expected)
+				t.Errorf("SanitizeText(%q) = %q, want %q", tc.input, result, tc.expected)
 			}
 		})
 	}
@@ -328,13 +328,13 @@ func TestAttachment_XSS(t *testing.T) {
 
 	// Test that sanitizeText function works correctly on attachment data
 	dangerousFilename := `<script>alert('xss')</script>malicious.txt`
-	sanitizedFilename := sanitizeText(dangerousFilename)
+	sanitizedFilename := SanitizeText(dangerousFilename)
 	if strings.Contains(sanitizedFilename, "<script>") {
 		t.Errorf("Sanitized filename should not contain script tags, got: %q", sanitizedFilename)
 	}
 
 	dangerousContentType := `application/octet-stream<script>alert('xss')</script>`
-	sanitizedContentType := sanitizeText(dangerousContentType)
+	sanitizedContentType := SanitizeText(dangerousContentType)
 	if strings.Contains(sanitizedContentType, "<script>") {
 		t.Errorf("Sanitized content type should not contain script tags, got: %q", sanitizedContentType)
 	}
@@ -377,9 +377,9 @@ func TestComplexXSSScenarios(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var result string
 			if tc.testType == "html" {
-				result = sanitizeHTML(tc.input)
+				result = SanitizeHTML(tc.input)
 			} else {
-				result = sanitizeText(tc.input)
+				result = SanitizeText(tc.input)
 			}
 
 			// 检查结果中不应包含危险的内容
