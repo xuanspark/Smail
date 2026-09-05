@@ -9,6 +9,8 @@ const directory = path.join(root, 'test-log', `audit-${stamp}-${process.pid}`)
 await mkdir(directory, { recursive: true })
 const replacements = {
   'backend/hooks/framework/audit_findings_test.go': 'test/review/plugin_framework_findings_test.go',
+  'backend/utils/async/audit_findings_test.go': 'test/review/async_findings_test.go',
+  'backend/utils/address/audit_findings_test.go': 'test/review/address_findings_test.go',
   'backend/services/totp/audit_findings_test.go': 'test/review/totp_findings_test.go',
   'backend/services/setup/ssl/audit_findings_test.go': 'test/review/ssl_findings_test.go',
   'backend/services/setup/audit_findings_test.go': 'test/review/setup_findings_test.go',
@@ -44,14 +46,16 @@ const setupOnly = process.argv.includes('--setup-only')
 const sslOnly = process.argv.includes('--ssl-only')
 const totpOnly = process.argv.includes('--totp-only')
 const frameworkOnly = process.argv.includes('--framework-only')
-const packages = frameworkOnly ? ['./hooks/framework'] : totpOnly ? ['./services/totp'] : sslOnly ? ['./services/setup/ssl'] : setupOnly ? ['./services/setup'] : httpOnly ? ['./listen/http_server'] : controllersOnly ? ['./controllers'] : configOnly ? ['./config'] : migrationOnly ? ['./services/dbmigration'] : pop3Only ? ['./internal/gopop', './listen/pop3_server'] : messageOnly ? [
+const asyncOnly = process.argv.includes('--async-only')
+const addressOnly = process.argv.includes('--address-only')
+const packages = frameworkOnly ? ['./hooks/framework'] : asyncOnly ? ['./utils/async'] : addressOnly ? ['./utils/address'] : totpOnly ? ['./services/totp'] : sslOnly ? ['./services/setup/ssl'] : setupOnly ? ['./services/setup'] : httpOnly ? ['./listen/http_server'] : controllersOnly ? ['./controllers'] : configOnly ? ['./config'] : migrationOnly ? ['./services/dbmigration'] : pop3Only ? ['./internal/gopop', './listen/pop3_server'] : messageOnly ? [
   './dto/parsemail', './listen/smtp_server'
 ] : [
   './services/dbmigration', './listen/http_server', './services/list', './services/recovery',
   './listen/imap_server', './controllers', './internal/gopop', './listen/pop3_server',
   './dto/parsemail', './listen/smtp_server', './config', './services/setup', './services/setup/ssl', './services/totp', './hooks/framework'
 ]
-const extra = process.argv.slice(2).filter(argument => !['--pop3-only', '--message-only', '--migration-only', '--config-only', '--controllers-only', '--http-only', '--setup-only', '--ssl-only', '--totp-only', '--framework-only'].includes(argument))
+const extra = process.argv.slice(2).filter(argument => !['--pop3-only', '--message-only', '--migration-only', '--config-only', '--controllers-only', '--http-only', '--setup-only', '--ssl-only', '--totp-only', '--framework-only', '--async-only', '--address-only'].includes(argument))
 const selection = extra.some(argument => argument === '-run' || argument.startsWith('-run=')) ? [] : ['-run=^TestAudit']
 const child = spawn(process.execPath, [
   path.join(root, 'test/run.mjs'), 'backend', `-overlay=${overlay}`,
