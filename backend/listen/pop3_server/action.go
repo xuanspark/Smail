@@ -5,6 +5,7 @@ import (
 	"git.pcux.cn/xuans/Smail/consts"
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/internal/gopop"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
@@ -17,6 +18,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/id"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
+	"strconv"
 	"strings"
 )
 
@@ -129,52 +131,41 @@ func (a action) Apop(session *gopop.Session, username, digest string) error {
 }
 func (a action) Stat(session *gopop.Session) (msgNum, msgSize int64, err error) {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: STAT")
-
-	num, size, err := list.Stat(session.Ctx.(*context.Context))
+	emailList, err := a.visibleMessages(session)
 	if err != nil {
 		return 0, 0, err
 	}
-	log.WithContext(session.Ctx).Debugf("POP3 STAT RETURT : %d,%d", num, size)
-	return num, size, nil
+	for _, info := range emailList {
+		msgNum++
+		msgSize += int64(info.Size)
+	}
+	log.WithContext(session.Ctx).Debugf("POP3 STAT RETURT : %d,%d", msgNum, msgSize)
+	return msgNum, msgSize, nil
 }
 
 // Uidl 查询某封邮件的唯一标志符
 func (a action) Uidl(session *gopop.Session, msg string) ([]gopop.UidlItem, error) {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: UIDL ,Args:%s", msg)
 
-	reqId := cast.ToInt64(msg)
-	if reqId > 0 {
-		info, err := detail.GetEmailDetail(session.Ctx.(*context.Context), cast.ToInt(reqId), false)
-		if err != nil || info == nil {
-			return nil, errors2.New("no such message")
+	if msg != "" {
+		number, err := parseMessageNumber(msg)
+		if err != nil {
+			return nil, err
 		}
-		log.WithContext(session.Ctx).Debugf("Uidl \n %+v", reqId)
-		return []gopop.UidlItem{
-			{
-				Id:      reqId,
-				UnionId: msg,
-			},
-		}, nil
+		id, err := a.resolveMessageID(session, int64(number))
+		if err != nil {
+			return nil, err
+		}
+		return []gopop.UidlItem{{Id: int64(number), UnionId: cast.ToString(id)}}, nil
 	}
 
-	var res []listItem
-
-	emailList, _, err := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+	emailList, err := a.visibleMessages(session)
 	if err != nil {
 		return nil, err
 	}
-	for _, info := range emailList {
-		res = append(res, listItem{
-			Id:   cast.ToInt64(info.Id),
-			Size: cast.ToInt64(info.Size),
-		})
-	}
-	ret := []gopop.UidlItem{}
-	for _, re := range res {
-		ret = append(ret, gopop.UidlItem{
-			Id:      re.Id,
-			UnionId: cast.ToString(re.Id),
-		})
+	ret := make([]gopop.UidlItem, 0, len(emailList))
+	for number, info := range emailList {
+		ret = append(ret, gopop.UidlItem{Id: int64(number + 1), UnionId: cast.ToString(info.Id)})
 	}
 
 	log.WithContext(session.Ctx).Debugf("Uidl \n %+v", ret)
@@ -189,49 +180,41 @@ type listItem struct {
 // List 邮件列表
 func (a action) List(session *gopop.Session, msg string) ([]gopop.MailInfo, error) {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: LIST ,Args:%s", msg)
-	var res []listItem
-	var listId int
+	requestedNumber := 0
 	if msg != "" {
-		listId = cast.ToInt(msg)
-		if listId == 0 {
-			return nil, errors.New("params error")
+		var err error
+		requestedNumber, err = parseMessageNumber(msg)
+		if err != nil {
+			return nil, err
 		}
 	}
-
-	if listId != 0 {
-		info, err := detail.GetEmailDetail(session.Ctx.(*context.Context), listId, false)
+	emailList, err := a.visibleMessages(session)
+	if err != nil {
+		return nil, err
+	}
+	if requestedNumber > 0 {
+		id, err := a.resolveMessageID(session, int64(requestedNumber))
 		if err != nil {
 			return nil, err
 		}
-		item := listItem{
-			Id:   cast.ToInt64(info.Id),
-			Size: cast.ToInt64(info.Size),
-		}
-		if item.Size == 0 {
-			item.Size = 9999
-		}
-		res = append(res, item)
-	} else {
-		emailList, _, err := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
-		if err != nil {
-			return nil, err
-		}
+		filtered := make([]*response.EmailResponseData, 0, 1)
 		for _, info := range emailList {
-			item := listItem{
-				Id:   cast.ToInt64(info.Id),
-				Size: cast.ToInt64(info.Size),
+			if cast.ToInt64(info.Id) == id {
+				filtered = append(filtered, info)
+				break
 			}
-			if item.Size == 0 {
-				item.Size = 9999
-			}
-			res = append(res, item)
 		}
+		emailList = filtered
 	}
-	ret := []gopop.MailInfo{}
-	for _, re := range res {
+	ret := make([]gopop.MailInfo, 0, len(emailList))
+	for number, info := range emailList {
+		size := int64(info.Size)
+		if size == 0 {
+			size = 9999
+		}
 		ret = append(ret, gopop.MailInfo{
-			Id:   re.Id,
-			Size: re.Size,
+			Id:   int64(number + 1),
+			Size: size,
 		})
 	}
 
@@ -242,7 +225,11 @@ func (a action) List(session *gopop.Session, msg string) ([]gopop.MailInfo, erro
 // Retr 获取邮件详情
 func (a action) Retr(session *gopop.Session, id int64) (string, int64, error) {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: RETR ,Args:%d", id)
-	email, err := detail.GetEmailDetail(session.Ctx.(*context.Context), cast.ToInt(id), false)
+	actualID, err := a.resolveMessageID(session, id)
+	if err != nil {
+		return "", 0, err
+	}
+	email, err := detail.GetEmailDetail(session.Ctx.(*context.Context), cast.ToInt(actualID), false)
 	if err != nil {
 		log.WithContext(session.Ctx.(*context.Context)).Errorf("%+v", err)
 		return "", 0, errors.New("server error")
@@ -266,8 +253,16 @@ func (a action) Retr(session *gopop.Session, id int64) (string, int64, error) {
 // Delete 删除邮件
 func (a action) Delete(session *gopop.Session, id int64) error {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: DELE ,Args:%d", id)
-
-	session.DeleteIds = append(session.DeleteIds, id)
+	actualID, err := a.resolveMessageID(session, id)
+	if err != nil {
+		return err
+	}
+	for _, deletedID := range session.DeleteIds {
+		if deletedID == actualID {
+			return errors2.New("message already marked for deletion")
+		}
+	}
+	session.DeleteIds = append(session.DeleteIds, actualID)
 	session.DeleteIds = array.Unique(session.DeleteIds)
 	return nil
 }
@@ -280,7 +275,14 @@ func (a action) Rest(session *gopop.Session) error {
 
 func (a action) Top(session *gopop.Session, id int64, n int) (string, error) {
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: TOP %d %d", id, n)
-	email, err := detail.GetEmailDetail(session.Ctx.(*context.Context), cast.ToInt(id), false)
+	if n < 0 {
+		return "", errors2.New("invalid line count")
+	}
+	actualID, err := a.resolveMessageID(session, id)
+	if err != nil {
+		return "", err
+	}
+	email, err := detail.GetEmailDetail(session.Ctx.(*context.Context), cast.ToInt(actualID), false)
 	if err != nil {
 		log.WithContext(session.Ctx.(*context.Context)).Errorf("%+v", err)
 		return "", errors2.New("password error")
@@ -312,6 +314,79 @@ func (a action) Top(session *gopop.Session, id int64, n int) (string, error) {
 	log.WithContext(session.Ctx).Debugf("POP3 TOP response_bytes=%d", len(lines))
 	return lines, nil
 
+}
+
+func parseMessageNumber(value string) (int, error) {
+	number, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || number <= 0 {
+		return 0, errors2.New("no such message")
+	}
+	return number, nil
+}
+
+func (a action) ensureMessageMap(session *gopop.Session) ([]*response.EmailResponseData, error) {
+	if session.MessageMap != nil {
+		return nil, nil
+	}
+	emailList, _, err := list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+	if err != nil {
+		return nil, err
+	}
+	session.MessageMap = make(map[int64]int64, len(emailList))
+	session.MessageIDs = make([]int64, 0, len(emailList))
+	for number, info := range emailList {
+		id := cast.ToInt64(info.Id)
+		session.MessageMap[int64(number+1)] = id
+		session.MessageIDs = append(session.MessageIDs, id)
+	}
+	return emailList, nil
+}
+
+func (a action) resolveMessageID(session *gopop.Session, number int64) (int64, error) {
+	if number <= 0 {
+		return 0, errors2.New("no such message")
+	}
+	if _, err := a.ensureMessageMap(session); err != nil {
+		return 0, err
+	}
+	id, ok := session.MessageMap[number]
+	if !ok {
+		return 0, errors2.New("no such message")
+	}
+	for _, deletedID := range session.DeleteIds {
+		if deletedID == id {
+			return 0, errors2.New("message already marked for deletion")
+		}
+	}
+	return id, nil
+}
+
+func (a action) visibleMessages(session *gopop.Session) ([]*response.EmailResponseData, error) {
+	emailList, err := a.ensureMessageMap(session)
+	if err != nil {
+		return nil, err
+	}
+	if emailList == nil {
+		emailList, _, err = list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
+		if err != nil {
+			return nil, err
+		}
+	}
+	result := make([]*response.EmailResponseData, 0, len(emailList))
+	for _, info := range emailList {
+		id := cast.ToInt64(info.Id)
+		marked := false
+		for _, deletedID := range session.DeleteIds {
+			if deletedID == id {
+				marked = true
+				break
+			}
+		}
+		if !marked {
+			result = append(result, info)
+		}
+	}
+	return result, nil
 }
 
 func (a action) Noop(session *gopop.Session) error {

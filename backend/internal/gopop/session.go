@@ -15,11 +15,13 @@ const (
 )
 
 type Session struct {
-	Status    Status
-	User      string
-	DeleteIds []int64
-	Ctx       context.Context
-	Conn      net.Conn
-	InTls     bool
-	AliveTime time.Time
+	Status     Status
+	User       string
+	DeleteIds  []int64
+	MessageIDs []int64
+	MessageMap map[int64]int64
+	Ctx        context.Context
+	Conn       net.Conn
+	InTls      bool
+	AliveTime  time.Time
 }

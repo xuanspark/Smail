@@ -234,6 +234,8 @@ func (s *Server) handleClient(conn net.Conn) {
 				infos, err := s.Action.List(session, getSafeArg(args, 0))
 				if err != nil {
 					fmt.Fprintf(conn, "-ERR %s %s", err.Error(), eol)
+				} else if len(args) > 0 && len(infos) == 1 {
+					fmt.Fprintf(conn, "+OK %d %d%s", infos[0].Id, infos[0].Size, eol)
 				} else {
 					ret := "+OK" + eol
 					for _, info := range infos {
@@ -248,6 +250,8 @@ func (s *Server) handleClient(conn net.Conn) {
 				infos, err := s.Action.Uidl(session, getSafeArg(args, 0))
 				if err != nil {
 					fmt.Fprintf(conn, "-ERR %s %s", err.Error(), eol)
+				} else if len(args) > 0 && len(infos) == 1 {
+					fmt.Fprintf(conn, "+OK %d %s%s", infos[0].Id, infos[0].UnionId, eol)
 				} else {
 					ret := fmt.Sprintf("+OK%s", eol)
 					for _, info := range infos {
@@ -261,7 +265,7 @@ func (s *Server) handleClient(conn net.Conn) {
 			if session.Status == TRANSACTION {
 				id, err1 := strconv.ParseInt(getSafeArg(args, 0), 10, 64)
 				line, err2 := strconv.Atoi(getSafeArg(args, 1))
-				if err1 != nil || err2 != nil {
+				if err1 != nil || err2 != nil || line < 0 {
 					fmt.Fprintf(conn, "-ERR %s %s", "params error", eol)
 				} else {
 					res, err := s.Action.Top(session, id, line)
@@ -306,7 +310,7 @@ func (s *Server) handleClient(conn net.Conn) {
 					}
 				}
 			}
-		case "REST":
+		case "RSET", "REST":
 			if session.Status == TRANSACTION {
 				err := s.Action.Rest(session)
 				if err != nil {
