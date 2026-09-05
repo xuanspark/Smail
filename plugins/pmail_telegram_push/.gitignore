@@ -1,5 +1,11 @@
-config/*.json
-pmail_telegram_push*
+# 配置源码与示例由根规则放行，此处只忽略插件根目录的编译产物。
+/config/*.json
+/pmail_telegram_push
+/pmail_telegram_push.exe
+/pmail_telegram_push_linux_*
+/pmail_telegram_push_windows_*
+/pmail_telegram_push_mac_*
+/pmail_telegram_push_darwin_*
 *.db
 
 # Logs

@@ -1,3 +1,3 @@
 
-!backend/config/
-!backend/config/*.go
+# 后端配置、插件安装目录和构建产物统一由项目根目录 .gitignore 管理。
+# 不在这里重复配置相对 backend/ 的路径，避免规则失效或误放行运行数据。
