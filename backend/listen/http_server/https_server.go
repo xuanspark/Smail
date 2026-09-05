@@ -193,7 +193,7 @@ func mustChangePasswordAllowedPath(path string) bool {
 
 func publicSecurityPath(path string) bool {
 	switch normalizedAPIPath(path) {
-	case "/api/ping", "/api/login", "/api/security/login/verify", "/api/security/recovery/begin", "/api/security/recovery/verify", "/api/security/recovery/complete", "/api/security/recovery/webauthn/begin", "/api/security/recovery/webauthn/verify", "/api/security/webauthn/login/begin", "/api/security/webauthn/login/finish":
+	case "/api/ping", "/api/login", "/api/security/login/verify", "/api/security/login/resend", "/api/security/recovery/begin", "/api/security/recovery/verify", "/api/security/recovery/complete", "/api/security/recovery/webauthn/begin", "/api/security/recovery/webauthn/verify", "/api/security/webauthn/login/begin", "/api/security/webauthn/login/finish":
 		return true
 	default:
 		return false

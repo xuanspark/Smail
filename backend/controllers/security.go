@@ -3,6 +3,7 @@ package controllers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
@@ -633,11 +635,31 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
+	if !ctx.RecentAuth {
+		writeSecurityError(w, response.NoAccessPrivileges, "此操作需要最近十分钟内完成登录，请重新登录后再试")
+		return
+	}
 	var input externalEmailRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil {
 		writeSecurityError(w, response.ParamsError, "请求无效")
 		return
 	}
+	normalizedEmail, err := externalemail.NormalizeEmail(input.Email)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
+		return
+	}
+	owned, err := currentUserPrimaryEmail(ctx.UserID, normalizedEmail)
+	if err != nil {
+		log.WithError(err).Error("check current user primary email failed")
+		writeSecurityError(w, response.ServerError, "外部邮箱绑定失败")
+		return
+	}
+	if owned {
+		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
+		return
+	}
+	input.Email = normalizedEmail
 	item, err := securityRuntime.external.Bind(externalemail.BindRequest{UserID: ctx.UserID, Email: input.Email, Type: input.Type})
 	if err != nil {
 		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
@@ -650,6 +672,14 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 		return
 	}
 	response.NewSuccessResponse(map[string]any{"id": item.ID, "challenge_id": challenge.ID, "status": item.Status, "email": maskEmail(input.Email), "expires_at": challenge.ExpiresAt.UTC()}).FPrint(w)
+}
+
+func currentUserPrimaryEmail(userID int, email string) (bool, error) {
+	if db.Instance == nil || userID <= 0 {
+		return false, errors.New("database is unavailable")
+	}
+	var binding models.UserEmail
+	return db.Instance.Where("user_id = ? AND verified_at IS NOT NULL AND status != ? AND is_primary = 1 AND (address_canonical = ? OR LOWER(address) = ?)", userID, 3, email, email).Limit(1).Get(&binding)
 }
 
 func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {

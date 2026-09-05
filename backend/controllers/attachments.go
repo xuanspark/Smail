@@ -36,12 +36,12 @@ func GetAttachments(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 
 func Download(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	urlInfos := strings.Split(strings.Trim(req.URL.Path, "/"), "/")
-	if len(urlInfos) != 5 {
+	if len(urlInfos) != 4 || urlInfos[0] != "attachments" || urlInfos[1] != "download" {
 		response.NewErrorResponse(response.ParamsError, "", "").FPrint(w)
 		return
 	}
-	emailId := cast.ToInt(urlInfos[3])
-	index := cast.ToInt(urlInfos[4])
+	emailId := cast.ToInt(urlInfos[2])
+	index := cast.ToInt(urlInfos[3])
 
 	fileName, content, err := attachments.GetAttachmentsByIndex(ctx, emailId, index)
 	if err != nil {
