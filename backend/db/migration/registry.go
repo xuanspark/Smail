@@ -1,5 +1,10 @@
 package migration
 
+import (
+	"regexp"
+	"strings"
+)
+
 func DefaultMigrations() []Migration {
 	return []Migration{
 		WithCompatibleChecksums(
@@ -21,4 +26,28 @@ func DefaultMigrations() []Migration {
 		DefineCustom(14, "expand_imap_deleted_flag", "expand_imap_deleted_flag_v1", applyIMAPDeletedFlagSchema),
 		DefineCustom(15, "expand_security_setup", "expand_security_setup_v1", applySecuritySetupSchema),
 	}
+}
+
+var sqliteIndexDefinitionPattern = regexp.MustCompile(`(?i)^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `]([^"` + "`" + `]+)["` + "`" + `]`)
+
+// ManagedSQLiteIndexNames 返回版本化迁移允许存在的 SQLite 索引名称。
+// 自动生成的 sqlite_autoindex_* 不包含在列表中，由 SQLite 自身维护。
+func ManagedSQLiteIndexNames() map[string]struct{} {
+	managed := make(map[string]struct{})
+	for _, item := range DefaultMigrations() {
+		for _, statement := range item.StatementsFor(DialectSQLite) {
+			matches := sqliteIndexDefinitionPattern.FindStringSubmatch(strings.TrimSpace(statement))
+			if len(matches) == 2 {
+				managed[matches[1]] = struct{}{}
+			}
+		}
+	}
+	for _, name := range []string{
+		"uq_user_email_address_canonical",
+		"idx_user_email_user_primary",
+		"idx_verification_event_expires_at",
+	} {
+		managed[name] = struct{}{}
+	}
+	return managed
 }

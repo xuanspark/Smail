@@ -2,16 +2,16 @@ package dbmigration
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db/migration"
 )
 
 // 仅迁移 Smail 版本化业务表；不能静默忽略自定义对象。
 func validatePortableObjects(ctx context.Context, database portableQuery, kind config.DatabaseType) error {
 	queries := []string{"SELECT COUNT(*) FROM sqlite_master WHERE type IN ('view','trigger')"}
-	if kind == config.DatabaseTypeSQLite {
-		queries = append(queries, "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
-	}
 	switch kind {
 	case config.DatabaseTypeMySQL:
 		queries = []string{
@@ -41,6 +41,34 @@ func validatePortableObjects(ctx context.Context, database portableQuery, kind c
 		if !valid {
 			return ErrSQLUnsupportedObject
 		}
+	}
+	if kind == config.DatabaseTypeSQLite {
+		if err := validateSQLiteIndexes(ctx, database); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSQLiteIndexes(ctx context.Context, database portableQuery) error {
+	rows, err := database.QueryContext(ctx, "SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
+	if err != nil {
+		return ErrSQLUnsupportedObject
+	}
+	defer rows.Close()
+	managed := migration.ManagedSQLiteIndexNames()
+	for rows.Next() {
+		var name string
+		var definition sql.NullString
+		if err := rows.Scan(&name, &definition); err != nil || !definition.Valid || strings.TrimSpace(definition.String) == "" {
+			return ErrSQLUnsupportedObject
+		}
+		if _, ok := managed[name]; !ok {
+			return ErrSQLUnsupportedObject
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ErrSQLUnsupportedObject
 	}
 	return nil
 }
