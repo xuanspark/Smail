@@ -185,7 +185,7 @@ export function usePage(pageKey = 'base') {
     }
     return null
   })
-  const sensitiveHint = computed(() => secretField.value ? '密码不会回填，修改请使用下方独立输入框，留空保持原值' : '系统内部字段自动保留，无需手工填写')
+  const sensitiveHint = computed(() => secretField.value ? '密码不会回填，修改请使用下方独立输入框，留空保持原值' : '')
 
   const invalidateCandidate = () => {
     savedGeneration.value = 0

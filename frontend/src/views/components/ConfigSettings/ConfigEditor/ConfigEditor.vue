@@ -12,9 +12,6 @@
           <p class="settings-desc">{{ currentSection.description }}</p>
         </div>
         <div class="overview-actions">
-          <el-tag class="access-tag" :type="canWrite ? 'info' : 'warning'" effect="plain" size="small">
-            {{ canWrite ? '敏感凭据已脱敏' : '只读模式' }}
-          </el-tag>
           <el-button
             v-if="!availabilityError"
             size="small"
@@ -28,25 +25,6 @@
         </div>
       </div>
       <template v-if="!loading && !availabilityError">
-        <dl class="overview-meta" aria-label="当前配置状态">
-          <div class="overview-meta-item">
-            <dt>生效代次</dt>
-            <dd>{{ status.activeGeneration || '-' }}</dd>
-          </div>
-          <div class="overview-meta-item">
-            <dt>最近校验</dt>
-            <dd>{{ formatTime(status.lastValidAt) }}</dd>
-          </div>
-          <div class="overview-meta-item" :class="{ 'overview-meta-warning': status.pendingRestart?.length }">
-            <dt>待重启服务</dt>
-            <dd v-if="status.pendingRestart?.length" class="tag-list">
-              <el-tag v-for="service in status.pendingRestart" :key="service" type="warning" effect="plain" size="small">
-                {{ serviceLabel(service) }}
-              </el-tag>
-            </dd>
-            <dd v-else>无需重启</dd>
-          </div>
-        </dl>
         <el-alert
           v-for="issue in status.degradedReasons || []"
           :key="`${issue.code}-${issue.message}`"
@@ -97,7 +75,7 @@
             :disabled="!canWrite || !!working || !!pendingCandidate"
             @change="updateField"
           />
-          <p id="config-sensitive-hint" class="editor-hint">{{ sensitiveHint }}。</p>
+          <p v-if="sensitiveHint" id="config-sensitive-hint" class="editor-hint">{{ sensitiveHint }}。</p>
 
           <div v-if="secretField" class="secret-editor">
             <div>

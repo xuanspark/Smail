@@ -76,7 +76,7 @@ const validDomain = value => {
 }
 
 const baseGroups = [
-  group('site', '站点与域名', '填写域名即可，无需添加协议前缀或路径。', [
+  group('site', '站点与域名', '', [
     field('domains.primary', '主邮件域名', 'text', { required: true, placeholder: 'example.com' }),
     field('domains.web', '网页访问域名', 'text', { required: true, placeholder: 'mail.example.com' }),
     field('domains.accepted', '接收邮件的域名', 'list', { required: true, wide: false, hint: '需包含主邮件域名，每个域名单独填写。', placeholder: 'example.com' }),
@@ -88,7 +88,7 @@ const baseGroups = [
     port('database.port', '数据库端口', { min: 1, show: networkDatabase }),
     field('database.username', '数据库用户名', 'text', { required: true, show: networkDatabase })
   ]),
-  group('http', '网页访问服务', '端口和加密方式变更可能需要重启，并影响当前访问地址。', [
+  group('http', '网页访问服务', '', [
     field('http.tlsMode', '加密连接方式', 'select', {
       options: options([['', '沿用当前设置'], ['direct', '由 Smail 提供 HTTPS'], ['proxy', '由反向代理提供 HTTPS']]),
       hint: '选择内置 HTTPS 自动启用并补全端口；选择反向代理后，Smail 不自动申请或续期 SSL 证书，由反代服务器负责；邮件协议仍需有效的本地证书。'
