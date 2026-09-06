@@ -57,8 +57,6 @@ const props = defineProps({
 const emit = defineEmits(['change'])
 const groups = computed(() => getFieldGroups(props.section, props.config))
 
-// 切换分区只改变展示，不卸载字段或丢弃尚未保存的配置。
-watch(groups, value => {
 </script>
 
 <style scoped src="./ConfigForm.css"></style>
