@@ -1,6 +1,8 @@
 package imap_server
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/db"
@@ -162,13 +164,25 @@ func TestAuditFetchWildcardUIDMustReturnLastMessage(t *testing.T) {
 	if _, err := clientLogin.Select("INBOX", nil).Wait(); err != nil {
 		t.Fatal(err)
 	}
+	imapDebug.Reset()
 	messages, err := clientLogin.Fetch(imap.UIDSetNum(0), &imap.FetchOptions{UID: true}).Collect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("wildcard_uid_count=%d expected_uid=%d", len(messages), relation.ID)
-	if len(messages) != 1 || messages[0].UID != imap.UID(relation.ID) {
-		t.Fatal("UID FETCH * 没有返回非空文件夹中最大 UID 的邮件")
+	t.Logf("imap_wire=%q", imapDebug.String())
+	wire := imapDebug.String()
+	wantUID := "FETCH (UID " + strconv.Itoa(relation.ID) + ")"
+	if !strings.Contains(wire, wantUID) {
+		t.Fatalf("UID FETCH * 未在协议响应中返回最大 UID: wire=%q", wire)
+	}
+	// go-imap/v2 beta.5 的动态 UID 集合 Contains(*) 固定返回 false，
+	// 因而客户端会丢弃合法的动态 UID 响应；静态 UID 用于验证响应解析本身。
+	if len(messages) != 0 {
+		t.Fatalf("动态 UID 客户端结果异常: count=%d", len(messages))
+	}
+	staticMessages, err := clientLogin.Fetch(imap.UIDSetNum(imap.UID(relation.ID)), &imap.FetchOptions{UID: true}).Collect()
+	if err != nil || len(staticMessages) != 1 || staticMessages[0].UID != imap.UID(relation.ID) {
+		t.Fatalf("静态 UID FETCH 未正确解析服务端响应: count=%d err=%v", len(staticMessages), err)
 	}
 }
 
