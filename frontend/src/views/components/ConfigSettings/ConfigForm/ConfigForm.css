@@ -1,8 +1,11 @@
 .config-form {
   display: grid;
-  gap: 24px;
-  margin-top: 22px;
+  gap: 20px;
   min-width: 0;
+}
+
+.config-form:not(:first-child) {
+  margin-top: 16px;
 }
 
 .form-group {
@@ -10,33 +13,14 @@
 }
 
 .form-group + .form-group {
-  padding-top: 24px;
+  padding-top: 20px;
   border-top: 1px solid var(--pm-border-color);
 }
 
-.form-group-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.form-group-heading h5 {
-  margin: 0;
-  color: var(--pm-text-primary);
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.credential-status {
-  color: var(--pm-text-secondary);
-  font-size: 12px;
-}
-
-.form-group-description,
+.credential-status,
+.form-group-note,
 .form-empty {
-  margin: 6px 0 18px;
+  margin: 0 0 12px;
   color: var(--pm-text-secondary);
   font-size: 12px;
   line-height: 1.7;

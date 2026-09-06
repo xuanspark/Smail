@@ -339,6 +339,20 @@ test('配置编辑页移除步骤提示条和专用样式，保留实际操作�
   assert.match(template, /@click="managePending\('cancel'\)"/)
 })
 
+test('配置编辑区移除填写标题、说明与重复标签，保留主标题和必要提示', () => {
+  const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
+  const template = readFileSync(new URL('ConfigEditor/ConfigEditor.vue', root), 'utf8')
+  const css = readFileSync(new URL('ConfigSettings.css', root), 'utf8')
+  assert.doesNotMatch(template, /'填写配置'|'查看配置'|按分组填写内容|当前页面的脱敏配置内容|panel-heading|selected-section-label/)
+  assert.doesNotMatch(css, /selected-section-label/)
+  assert.match(template, /<h3 id="config-page-title">{{ currentSection.label }}/)
+  assert.match(template, /v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'"[^>]*role="note"/)
+  assert.match(template, /v-if="sectionError"[\s\S]*?:title="sectionError"/)
+  assert.match(template, /<p id="config-sensitive-hint"/)
+  assert.match(template, /v-if="secretField" class="secret-editor"/)
+  assert.match(template, /v-if="validationResult"[^>]*role="status"/)
+})
+
 test('离开、刷新和正在执行的变更受保护，取消时保留编辑内容', async () => {
   let cancel = true
   let prompts = 0

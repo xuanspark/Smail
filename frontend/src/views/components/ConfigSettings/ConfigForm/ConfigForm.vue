@@ -1,13 +1,9 @@
 <template>
   <div class="config-form" :data-form-section="section">
     <p v-if="!groups.length" class="form-empty">当前没有可配置的插件。安装插件后可在这里管理启用状态与运行设置。</p>
-    <section v-for="group in groups" :key="group.id" class="form-group" :aria-labelledby="`form-group-${group.id}`">
-      <div class="form-group-heading">
-        <h5 :id="`form-group-${group.id}`">{{ group.title }}</h5>
-        <span v-if="section === 'plugins'" class="credential-status">{{ group.secretConfigured ? '凭据已配置' : '未配置凭据' }}</span>
-      </div>
-      <p class="form-group-description">{{ group.description }}</p>
-      <p v-if="group.note" class="form-group-description">{{ group.note }}</p>
+    <section v-for="group in groups" :key="group.id" class="form-group" :aria-label="group.title">
+      <p v-if="section === 'plugins'" class="credential-status">{{ group.secretConfigured ? '凭据已配置' : '未配置凭据' }}</p>
+      <p v-if="group.note" class="form-group-note" role="note">{{ group.note }}</p>
       <div class="form-grid">
         <ConfigField
           v-for="field in group.fields"

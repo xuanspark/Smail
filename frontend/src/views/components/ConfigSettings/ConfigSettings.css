@@ -127,15 +127,6 @@
 .panel-heading {
   flex-wrap: wrap;
 }
-.selected-section-label {
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: var(--pm-bg-primary);
-  color: var(--pm-text-secondary);
-  font-size: 11px;
-  line-height: 1.5;
-  white-space: nowrap;
-}
 .editor-hint,
 .action-hint {
   margin: 8px 0 0;
@@ -397,9 +388,6 @@
       "submenu"
       "main";
     gap: 16px;
-  }
-  .selected-section-label {
-    white-space: normal;
   }
   .config-navigation {
     gap: 12px;

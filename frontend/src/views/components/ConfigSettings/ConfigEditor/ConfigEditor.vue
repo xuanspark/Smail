@@ -75,14 +75,6 @@
 
     <div v-else-if="!loading" class="config-page-body">
         <section class="editor-panel" :aria-busy="sectionLoading">
-          <div class="panel-heading">
-            <div>
-              <h4>{{ canWrite ? '填写配置' : '查看配置' }}</h4>
-              <p class="heading-note">{{ canWrite ? '按分组填写内容，验证并保存后再应用生效。' : '当前页面的脱敏配置内容。' }}</p>
-            </div>
-            <span class="selected-section-label">{{ currentSection.label }}</span>
-          </div>
-
           <p v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'" class="heading-note" role="note">
             当前由反向代理提供 HTTPS，Smail 不自动申请或续期 SSL 证书。下方配置仅用于本地邮件服务证书；外部续期后请重新导入并应用，不能仅更新反代服务器上的证书。
           </p>

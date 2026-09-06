@@ -32,6 +32,27 @@ test('五个分区使用分组表单，控件和样式能编译且不再提供 J
   }
 })
 
+test('分组不显示重复标题和介绍，保留无障碍名称、凭据状态及异常提示', () => {
+  const template = readFileSync(new URL('ConfigForm/ConfigForm.vue', root), 'utf8')
+  const css = readFileSync(new URL('ConfigForm/ConfigForm.css', root), 'utf8')
+  assert.doesNotMatch(template, /<h[1-6]\b|form-group-heading|form-group-description|group\.description/)
+  assert.doesNotMatch(template, /aria-labelledby/)
+  assert.match(template, /<section\b[^>]*:aria-label="group.title"/)
+  assert.match(template, /v-if="section === 'plugins'" class="credential-status"/)
+  assert.match(template, /group.secretConfigured \? '凭据已配置' : '未配置凭据'/)
+  assert.match(template, /v-if="group.note" class="form-group-note" role="note"/)
+  assert.match(template, /v-if="!groups.length" class="form-empty"/)
+  assert.match(template, /<ConfigField\b/)
+  for (const binding of ['v-for="field in group.fields"', ':value="getValue(config, field.path)"', ':error="errors[fieldKey(field)]"', ':disabled="disabled"', "emit('change', path, value)"]) {
+    assert.ok(template.includes(binding))
+  }
+  assert.doesNotMatch(css, /form-group-heading|form-group-description/)
+  const formStyle = css.match(/\.config-form\s*\{([^}]+)\}/)?.[1] || ''
+  assert.doesNotMatch(formStyle, /margin-top|padding-top/)
+  assert.match(css, /\.config-form:not\(:first-child\)\s*\{\s*margin-top: 16px;/)
+  assert.match(css, /\.form-group \+ \.form-group\s*\{[^}]*border-top:/)
+})
+
 test('单字段更新完整保留内部数据，锁定字段和污染路径无法写入', () => {
   const config = {
     generation: 8, schemaVersion: 2, database: { type: 'sqlite', localRef: 'test.db', password: null },
