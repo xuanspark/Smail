@@ -4,6 +4,11 @@
       {{ field.label }}
       <span v-if="field.required" class="field-required" aria-hidden="true">*</span>
       <span v-if="field.locked" class="field-locked">系统维护</span>
+      <el-popover v-if="field.hint" trigger="click" :width="300" :content="field.hint" placement="top">
+        <template #reference>
+          <button type="button" class="field-help" :aria-label="`${field.label}填写说明`" @click.prevent>?</button>
+        </template>
+      </el-popover>
     </label>
     <el-select
       v-if="field.type === 'select'"
@@ -46,10 +51,10 @@
       @update:model-value="update"
     />
     <div v-else-if="field.type === 'list'" class="field-list" role="group" :aria-labelledby="`${id}-label`">
-      <div v-for="(entry, index) in entries" :key="index" class="field-list-row">
+      <div v-for="{ entry, index } in pageItems" :key="index" class="field-list-row">
         <el-input
           class="field-text-input"
-          :id="index === 0 ? id : `${id}-${index}`"
+          :id="index === pageItems[0]?.index ? id : `${id}-${index}`"
           :model-value="entry"
           :disabled="disabled || field.locked"
           :placeholder="field.placeholder || '填写内容'"
@@ -60,12 +65,12 @@
         />
         <el-button :disabled="disabled || field.locked" :aria-label="`移除${field.label}第 ${index + 1} 项`" @click="removeEntry(index)">移除</el-button>
       </div>
-      <el-button class="field-add" :disabled="disabled || field.locked" plain @click="update([...entries, ''])">添加一项</el-button>
+      <el-button class="field-add" :disabled="disabled || field.locked" plain @click="addEntry">添加一项</el-button>
     </div>
     <div v-else-if="field.type === 'network'" class="field-list" role="group" :aria-labelledby="`${id}-label`">
-      <div v-for="(entry, index) in entries" :key="index" class="network-row">
+      <div v-for="{ entry, index } in pageItems" :key="index" class="network-row">
         <el-select
-          :id="index === 0 ? id : `${id}-${index}`"
+          :id="index === pageItems[0]?.index ? id : `${id}-${index}`"
           :model-value="entry.scheme"
           :disabled="disabled || field.locked"
           :aria-label="`网络目标 ${index + 1} 协议`"
@@ -101,7 +106,7 @@
         />
         <el-button :disabled="disabled || field.locked" :aria-label="`移除网络目标 ${index + 1}`" @click="removeEntry(index)">移除</el-button>
       </div>
-      <el-button class="field-add" :disabled="disabled || field.locked" plain @click="update([...entries, { scheme: 'https', host: '', port: 443 }])">添加网络目标</el-button>
+      <el-button class="field-add" :disabled="disabled || field.locked" plain @click="addEntry">添加网络目标</el-button>
     </div>
     <el-input
       v-else
@@ -114,6 +119,13 @@
       :aria-invalid="!!error"
       autocomplete="off"
       @update:model-value="update"
+    />
+    <ConfigPagination
+      v-if="['list', 'network'].includes(field.type)"
+      v-model:current-page="currentPage"
+      :page-count="pageCount"
+      :total="total"
+      :label="`${field.label}分页`"
     />
     <div v-if="field.recommendedPort !== undefined" class="field-port-guide">
       <span :class="{ 'port-custom': value !== field.recommendedPort }">
@@ -130,13 +142,14 @@
         使用推荐端口
       </el-button>
     </div>
-    <p v-if="field.hint" :id="`${id}-hint`" class="field-hint">{{ field.hint }}</p>
+    <p v-if="field.hint" :id="`${id}-hint`" class="field-hint field-description">{{ field.hint }}</p>
     <p v-if="error" :id="`${id}-error`" class="field-error" role="alert">{{ error }}</p>
   </div>
 </template>
 
 <script setup>
 import { fieldKey, useField } from './ConfigField.js'
+import ConfigPagination from '../ConfigPagination/ConfigPagination.vue'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -145,7 +158,10 @@ const props = defineProps({
   error: { type: String, default: '' }
 })
 const emit = defineEmits(['change'])
-const { id, descriptionId, entries, selectOptions, update, updateEntry, updateTarget, removeEntry } = useField(props, emit)
+const {
+  id, descriptionId, selectOptions, update, updateEntry, updateTarget, removeEntry,
+  addEntry, currentPage, pageCount, pageItems, total
+} = useField(props, emit)
 </script>
 
 <style scoped src="./ConfigField.css"></style>

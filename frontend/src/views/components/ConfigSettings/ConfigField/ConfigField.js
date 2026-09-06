@@ -1,5 +1,6 @@
-import { computed } from 'vue'
+import { computed, nextTick } from 'vue'
 import { fieldKey } from '../ConfigForm/ConfigForm.js'
+import { usePagination } from '../ConfigPagination/ConfigPagination.js'
 
 export { fieldKey }
 
@@ -10,6 +11,7 @@ export function useField(props, emit) {
     props.error && `${id.value}-error`
   ].filter(Boolean).join(' ') || undefined)
   const entries = computed(() => Array.isArray(props.value) ? props.value : [])
+  const pagination = usePagination(entries, 2)
   const selectOptions = computed(() => {
     const values = props.field.options || []
     const current = props.value ?? props.field.fallback ?? ''
@@ -23,6 +25,11 @@ export function useField(props, emit) {
   const updateEntry = (index, value) => update(entries.value.map((entry, current) => current === index ? value : entry))
   const updateTarget = (index, key, value) => updateEntry(index, { ...entries.value[index], [key]: value ?? null })
   const removeEntry = index => update(entries.value.filter((_, current) => current !== index))
+  const addEntry = async () => {
+    update([...entries.value, props.field.type === 'network' ? { scheme: 'https', host: '', port: 443 } : ''])
+    await nextTick()
+    pagination.currentPage.value = pagination.pageCount.value
+  }
 
-  return { id, descriptionId, entries, selectOptions, update, updateEntry, updateTarget, removeEntry }
+  return { id, descriptionId, entries, selectOptions, update, updateEntry, updateTarget, removeEntry, addEntry, ...pagination }
 }

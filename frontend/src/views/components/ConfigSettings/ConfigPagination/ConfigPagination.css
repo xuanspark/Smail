@@ -1,0 +1,18 @@
+.config-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+}
+
+.config-pagination > span {
+  margin-right: auto;
+}
+
+.config-pagination .el-button {
+  margin: 0;
+}

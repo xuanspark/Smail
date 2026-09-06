@@ -1,14 +1,13 @@
 .config-settings {
   display: grid;
-  gap: 20px;
-  padding-bottom: 16px;
+  gap: 12px;
   --config-accent: var(--pm-primary-color);
 }
 .config-page,
 .config-page-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 .config-navigation {
@@ -16,7 +15,7 @@
   position: sticky;
   top: 0;
   display: grid;
-  gap: 20px;
+  gap: 12px;
 }
 .config-navigation > .settings-submenu {
   grid-area: auto;
@@ -83,11 +82,11 @@
 .editor-panel,
 .maintenance-panel {
   border: 1px solid var(--pm-border-color);
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--pm-bg-secondary);
 }
 .editor-panel {
-  padding: 20px;
+  padding: 16px;
 }
 .tag-list {
   display: flex;
@@ -100,16 +99,16 @@
 }
 .config-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 152px;
+  grid-template-columns: minmax(0, 1fr) 196px;
   grid-template-areas: "main submenu";
   align-items: start;
-  gap: 20px;
+  gap: 16px;
 }
 .config-main {
   grid-area: main;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
   container: config-main / inline-size;
 }
@@ -138,9 +137,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr);
   align-items: center;
-  gap: 16px;
-  margin-top: 16px;
-  padding: 14px;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
   border: 1px solid var(--pm-border-color);
   border-radius: 10px;
   background: var(--pm-bg-primary);
@@ -163,8 +162,8 @@
   align-items: flex-start;
 }
 .editor-footer {
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--pm-border-color);
 }
 .editor-footer .confirmation-check {
@@ -183,7 +182,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 12px;
 }
 .action-row > .el-button,
 .audit-actions > .el-button {
@@ -263,7 +262,7 @@
   transform: rotate(225deg);
 }
 .maintenance-body {
-  padding: 18px 20px 20px;
+  padding: 14px 16px;
 }
 .backup-list {
   display: grid;
@@ -320,16 +319,13 @@
   display: grid;
   gap: 10px;
   margin-top: 18px;
-  max-height: 360px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .audit-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 14px;
+  padding: 8px 12px;
   border-radius: var(--pm-radius-sm);
   background: var(--pm-bg-primary);
 }
@@ -404,12 +400,12 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 10px;
 }
 .migration-source > div {
   display: grid;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 4px;
+  padding: 8px 12px;
   border-radius: var(--pm-radius-sm);
   background: var(--pm-bg-primary);
 }
@@ -423,12 +419,12 @@
 }
 .migration-form {
   max-width: 880px;
-  margin-top: 16px;
+  margin-top: 10px;
 }
 .migration-connection-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 0 20px;
+  gap: 6px 16px;
 }
 .migration-connection-grid :deep(.el-input-number) {
   width: 100%;
@@ -440,6 +436,40 @@
 }
 .migration-form :deep(.el-form-item) {
   margin-bottom: 0;
+}
+.migration-form :deep(.el-form-item__label) {
+  margin-bottom: 4px;
+  line-height: 20px;
+}
+.migration-form > * + * {
+  margin-top: 8px;
+}
+.maintenance-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+@container config-main (min-width: 700px) {
+  .editor-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+  .editor-footer .confirmation-check {
+    flex: 1 1 280px;
+  }
+  .editor-footer .action-row {
+    margin-top: 0;
+    flex: 0 1 auto;
+    gap: 8px;
+  }
+  .editor-footer > .el-alert,
+  .editor-footer .action-hint {
+    flex-basis: 100%;
+    margin-top: 0;
+  }
 }
 .migration-result-heading {
   display: flex;

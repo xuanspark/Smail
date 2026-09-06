@@ -1,9 +1,9 @@
 .mail-port-summary {
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 .summary-note {
-  margin: 0 0 14px;
+  margin: 0 0 8px;
   color: var(--pm-text-secondary);
   font-size: 12px;
   line-height: 1.7;
@@ -16,14 +16,14 @@
 }
 
 .protocol-card {
-  padding: 16px;
+  padding: 10px 12px;
   border: 1px solid var(--pm-border-color);
   border-radius: 10px;
   min-width: 0;
 }
 
 .protocol-card dl {
-  margin: 12px 0 0;
+  margin: 8px 0 0;
 }
 
 .port-row {
@@ -31,7 +31,7 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 6px 12px;
-  margin-top: 8px;
+  margin-top: 4px;
   font-size: 12px;
 }
 
@@ -45,7 +45,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-@container config-main (max-width: 680px) {
+@container config-main (max-width: 480px) {
   .summary-grid {
     grid-template-columns: minmax(0, 1fr);
   }

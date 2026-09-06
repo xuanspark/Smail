@@ -120,7 +120,7 @@
           <el-empty v-else-if="!backups.length && !backupsLoading" description="暂无可用配置备份" :image-size="72" />
           <div v-else class="backup-list">
             <button
-              v-for="backup in backups"
+              v-for="{ entry: backup } in backupRows"
               :key="backup.generation"
               type="button"
               class="backup-item"
@@ -133,6 +133,7 @@
               <small>{{ formatTime(backup.createdAt) }}</small>
             </button>
           </div>
+          <ConfigPagination v-model:current-page="backupPage" :page-count="backupPageCount" :total="backups.length" label="备份列表" />
           <el-checkbox v-model="rollbackConfirmed" :disabled="!!working || !rollbackPreview" class="confirmation-check">
             我已阅读回滚预览，并确认执行一次性回滚
           </el-checkbox>
@@ -161,7 +162,7 @@
           </div>
           <el-alert v-if="auditError" :title="auditError" type="warning" :closable="false" show-icon />
           <div v-else-if="auditItems.length" class="audit-list">
-            <div v-for="item in auditItems" :key="item.id || `${item.createdAt}-${item.operation}`" class="audit-item">
+                <div v-for="{ entry: item } in auditRows" :key="item.id || `${item.createdAt}-${item.operation}`" class="audit-item">
               <div>
                 <strong>{{ operationLabel(item.operation) }}</strong>
                 <span>{{ sectionLabel(item.section) }} · {{ item.actorId || '系统' }}</span>
@@ -170,6 +171,7 @@
             </div>
           </div>
           <el-empty v-else-if="!auditLoading" description="暂无配置审计记录" :image-size="72" />
+          <ConfigPagination v-model:current-page="auditPage" :page-count="auditPageCount" :total="auditItems.length" label="审计记录" />
         </div>
       </section>
       <el-empty v-else description="当前账号无权访问此页面" />
@@ -179,6 +181,7 @@
 
 <script setup>
 import { useMaintenance } from './ConfigMaintenance.js'
+import ConfigPagination from '../ConfigPagination/ConfigPagination.vue'
 
 const props = defineProps({
   pageKey: { type: String, required: true },
@@ -194,8 +197,10 @@ const {
   canRollback, backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed,
   rollbackPreview, loadBackups, selectBackup, previewRollback, executeRollback,
   canAudit, canExportAudit, auditLoading, auditError, auditItems, loadAudit, exportAudit,
-  formatTime, sectionLabel, operationLabel
+  formatTime, sectionLabel, operationLabel, auditPagination, backupPagination
 } = useMaintenance(props.pageKey)
+const { currentPage: auditPage, pageCount: auditPageCount, pageItems: auditRows } = auditPagination
+const { currentPage: backupPage, pageCount: backupPageCount, pageItems: backupRows } = backupPagination
 
 defineExpose({ beforeLeave })
 </script>

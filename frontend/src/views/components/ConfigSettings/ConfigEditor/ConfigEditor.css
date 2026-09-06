@@ -1,6 +1,6 @@
 .config-overview {
   min-width: 0;
-  padding-bottom: 18px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--pm-border-color);
 }
 
@@ -8,7 +8,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .overview-copy {
@@ -31,7 +31,7 @@
 }
 
 .overview-copy .settings-desc {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
 }
 
 .overview-actions {
@@ -47,7 +47,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px 0;
-  margin: 16px 0 0;
+  margin: 8px 0 0;
 }
 
 .overview-meta-item {
@@ -56,7 +56,7 @@
   flex-wrap: wrap;
   gap: 4px 8px;
   min-width: 0;
-  padding: 0 16px;
+  padding: 0 12px;
   border-left: 1px solid var(--pm-border-color);
   font-size: 12px;
   line-height: 1.7;

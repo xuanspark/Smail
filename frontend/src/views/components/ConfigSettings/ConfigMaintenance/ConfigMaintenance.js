@@ -1,4 +1,5 @@
 import { usePage } from '../ConfigSettings.js'
+import { usePagination } from '../ConfigPagination/ConfigPagination.js'
 
 export function useMaintenance(pageKey) {
   const page = usePage(pageKey)
@@ -8,5 +9,7 @@ export function useMaintenance(pageKey) {
     page.rollbackPreview.value = null
     page.rollbackConfirmed.value = false
   }
-  return { ...page, selectBackup }
+  const auditPagination = usePagination(page.auditItems, 6)
+  const backupPagination = usePagination(page.backups, 6)
+  return { ...page, selectBackup, auditPagination, backupPagination }
 }

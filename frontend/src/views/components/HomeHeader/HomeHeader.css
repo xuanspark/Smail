@@ -75,7 +75,7 @@
 /* 抽屉由 Teleport 挂载，使用专属类限定，不能依赖祖先的作用域属性。 */
 :global(.settings-drawer > .el-drawer__header) {
   margin-bottom: 0;
-  padding: 24px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--pm-border-color);
 }
 
@@ -108,14 +108,14 @@
 :global(.settings-drawer > .el-drawer__body) {
   display: flex;
   min-height: 0;
-  padding: 24px;
+  padding: 16px 20px;
   overflow: hidden;
 }
 
 .settings-tabs > :deep(.el-tabs__header) {
-  flex: 0 0 184px;
-  margin: 0 0 0 20px !important;
-  padding: 12px 8px;
+  flex: 0 0 168px;
+  margin: 0 0 0 16px !important;
+  padding: 8px;
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-lg);
   background: var(--pm-bg-primary);
@@ -136,10 +136,10 @@
 
 .settings-tabs > :deep(.el-tabs__header .el-tabs__item) {
   height: auto;
-  min-height: 64px;
+  min-height: 56px;
   justify-content: flex-start;
   margin: 3px 0;
-  padding: 12px !important;
+  padding: 10px !important;
   border: 1px solid transparent;
   border-radius: 12px;
   color: var(--pm-text-secondary);
@@ -200,7 +200,6 @@
   min-width: 0;
   padding-right: 4px;
   overflow: auto;
-  scrollbar-gutter: stable;
   container: settings-content / inline-size;
 }
 
