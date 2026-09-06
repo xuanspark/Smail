@@ -332,6 +332,7 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 	if err := db.Instance.Table("email").Select("*").Where(Eq{"id": emailIDs}).Find(&stored); err != nil {
 		return nil, fmt.Errorf("query mailbox messages: %w", err)
 	}
+	fmt.Printf("IMAP hydrate email_ids=%v stored=%d\n", emailIDs, len(stored))
 	messageByID := make(map[int]*response.EmailResponseData, len(stored))
 	for _, message := range stored {
 		if message != nil {
@@ -350,5 +351,6 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 		copyMessage.UeId = relation.ID
 		result = append(result, &copyMessage)
 	}
+	fmt.Printf("IMAP hydrate result=%d\n", len(result))
 	return result, nil
 }
