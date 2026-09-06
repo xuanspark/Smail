@@ -54,7 +54,7 @@ test('开关、数字、空数字和列表保持真实类型，代理 HTTPS 正�
   assert.match(modeField.hint, /邮件协议仍需有效的本地证书/)
   let text = JSON.stringify({ http: { tlsMode: 'direct', httpsEnabled: true, httpsPort: 443 } })
   text = updateFormConfig(text, 'base', ['http', 'tlsMode'], 'proxy')
-  assert.deepEqual(readFormConfig(text).http, { tlsMode: 'proxy', httpsEnabled: false, httpsPort: 0 })
+  assert.deepEqual(readFormConfig(text).http, { tlsMode: 'proxy', httpsEnabled: false, httpsPort: 0, port: 8080 })
   assert.equal(updateFormConfig(text, 'base', ['http', 'httpsEnabled'], true), text)
   text = updateFormConfig(text, 'base', ['security', 'externalEmailEnabled'], true)
   assert.equal(readFormConfig(text).security.externalEmailEnabled, true)
@@ -115,4 +115,67 @@ test('证书路径始终受管且引用成对，切回默认来源清除自定�
   const updated = readFormConfig(updateFormConfig(JSON.stringify({ tls }), 'ssl', ['tls', 'mode'], 'managed_default'))
   assert.equal(updated.tls.customDirectory, '')
   assert.equal(updated.tls.privateKeyRef, tls.privateKeyRef)
+})
+
+test('SMTP 加密方式自动匹配端口，手动端口和读取过程不改变原配置', () => {
+  for (const [security, expectedPort] of [['starttls', 587], ['implicit_tls', 465], ['tls', 465], ['plain', 25]]) {
+    const config = { generation: 9, relay: { relayHost: 'localhost', relayPort: 2525, future: true } }
+    let text = JSON.stringify(config)
+    getFieldGroups('smtp', config)
+    assert.equal(JSON.stringify(config), text)
+    text = updateFormConfig(text, 'smtp', ['relay', 'security'], security)
+    assert.deepEqual(readFormConfig(text), { ...config, relay: { ...config.relay, security, relayPort: expectedPort } })
+    const fields = getFieldGroups('smtp', readFormConfig(text)).flatMap(group => group.fields)
+    assert.equal(fields.find(field => field.path.at(-1) === 'relayPort').recommendedPort, expectedPort)
+    text = updateFormConfig(text, 'smtp', ['relay', 'relayPort'], 2526)
+    assert.equal(readFormConfig(text).relay.security, security)
+    text = updateFormConfig(text, 'smtp', ['relay', 'security'], security)
+    assert.equal(readFormConfig(text).relay.relayPort, 2526)
+  }
+  const fields = getFieldGroups('smtp', {}).flatMap(group => group.fields)
+  assert.ok(fields.findIndex(field => field.path.at(-1) === 'security') < fields.findIndex(field => field.path.at(-1) === 'relayPort'))
+  const unused = JSON.stringify({ relay: { relayPort: 2525, security: 'starttls' } })
+  assert.equal(readFormConfig(updateFormConfig(unused, 'smtp', ['relay', 'security'], '')).relay.relayPort, 2525)
+  for (const security of ['constructor', '__proto__', 'future']) {
+    const updated = readFormConfig(updateFormConfig(unused, 'smtp', ['relay', 'security'], security))
+    assert.equal(updated.relay.relayPort, 2525)
+    const fields = getFieldGroups('smtp', updated).flatMap(group => group.fields)
+    assert.equal(fields.find(field => field.path.at(-1) === 'relayPort').recommendedPort, undefined)
+  }
+})
+
+test('内置 HTTPS 自动补全端口，反代禁用内置监听，已有自定义 HTTP 端口保留', () => {
+  let text = updateFormConfig('{}', 'base', ['http', 'tlsMode'], 'direct')
+  assert.deepEqual(readFormConfig(text).http, { tlsMode: 'direct', port: 80, httpsEnabled: true, httpsPort: 443 })
+  text = updateFormConfig(text, 'base', ['http', 'httpsEnabled'], false)
+  assert.equal(readFormConfig(text).http.httpsPort, 0)
+  assert.ok(!getFieldGroups('base', readFormConfig(text)).flatMap(group => group.fields).some(field => field.path.at(-1) === 'httpsPort'))
+  text = updateFormConfig(text, 'base', ['http', 'httpsEnabled'], true)
+  assert.equal(readFormConfig(text).http.httpsPort, 443)
+  text = updateFormConfig(text, 'base', ['http', 'port'], 9080)
+  text = updateFormConfig(text, 'base', ['http', 'tlsMode'], 'proxy')
+  assert.deepEqual(readFormConfig(text).http, { tlsMode: 'proxy', port: 9080, httpsEnabled: false, httpsPort: 0 })
+  assert.equal(updateFormConfig(text, 'base', ['http', 'httpsPort'], 8443), text)
+  text = updateFormConfig(text, 'base', ['http', 'tlsMode'], 'direct')
+  assert.equal(readFormConfig(text).http.port, 9080)
+  assert.equal(readFormConfig(text).http.httpsPort, 443)
+  const custom = JSON.stringify({ http: { httpsEnabled: false, httpsPort: 8443, port: 9080 } })
+  assert.equal(readFormConfig(updateFormConfig(custom, 'base', ['http', 'tlsMode'], 'direct')).http.httpsPort, 8443)
+})
+
+test('加密配置校验拦截监听冲突、远程明文和已启用但未选择加密的中继', () => {
+  for (const port of [80, 0]) {
+    assert.ok(validateFormConfig('base', { http: { port, httpsEnabled: true, httpsPort: 80 } })['http.httpsPort'])
+  }
+  for (const relayHost of ['localhost', 'LOCALHOST', '127.0.0.1', '127.1.2.3', '::1', '0:0:0:0:0:0:0:1']) {
+    assert.deepEqual(validateFormConfig('smtp', { relay: { relayHost, security: 'plain', relayPort: 25 } }), {})
+  }
+  for (const relayHost of ['smtp.example.com', '127.0.0.999', '127.1', '127.0.0.1.evil.com', '192.168.1.1']) {
+    assert.ok(validateFormConfig('smtp', { relay: { relayHost, security: 'plain', relayPort: 25 } })['relay.relayHost'])
+  }
+  const errors = validateFormConfig('smtp', { relay: { verificationEnabled: true, relayHost: 'smtp.example.com', relayPort: 0 } })
+  assert.ok(errors['relay.security'])
+  assert.ok(errors['relay.relayPort'])
+  assert.deepEqual(validateFormConfig('smtp', { relay: {} }), {})
+  assert.deepEqual(validateFormConfig('smtp', { relay: { security: 'starttls', relayPort: 2525, relayHost: 'smtp.example.com' } }), {})
 })

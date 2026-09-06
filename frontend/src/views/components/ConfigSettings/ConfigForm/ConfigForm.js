@@ -5,6 +5,7 @@ const loginOptions = options([
 ])
 const port = (path, label, extra = {}) => field(path, label, 'number', { min: 0, max: 65535, integer: true, ...extra })
 const group = (id, title, description, fields) => ({ id, title, description, fields })
+const smtpPorts = new Map([['starttls', 587], ['implicit_tls', 465], ['tls', 465], ['plain', 25]])
 
 export function readFormConfig(text) {
   try {
@@ -21,6 +22,35 @@ export function getValue(config, path) {
 
 export function fieldKey(item) {
   return item.path.join('.')
+}
+
+// 推荐值只用于用户主动操作，不在读取配置时覆盖已有的自定义端口。
+export function getRecommendedPort(config, path) {
+  switch (path.join('.')) {
+    case 'http.port':
+      return config.http?.tlsMode === 'proxy' ? 8080 : 80
+    case 'http.httpsPort':
+      return 443
+    case 'relay.relayPort':
+      return smtpPorts.get(config.relay?.security)
+    default:
+      return undefined
+  }
+}
+
+const validPort = value => Number.isInteger(value) && value > 0 && value <= 65535
+const localSMTPHost = value => {
+  if (typeof value !== 'string') return false
+  const host = value.trim().toLowerCase().replace(/\.$/, '')
+  if (host === 'localhost') return true
+  if (/^127(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(host)) {
+    return host.split('.').every(part => Number(part) <= 255)
+  }
+  try {
+    return new URL(`http://[${host}]`).hostname === '[::1]'
+  } catch {
+    return false
+  }
 }
 
 const networkDatabase = config => config.database?.type !== 'sqlite'
@@ -50,11 +80,27 @@ const baseGroups = [
     field('database.username', '数据库用户名', 'text', { required: true, show: networkDatabase })
   ]),
   group('http', '网页访问服务', '端口和加密方式变更可能需要重启，并影响当前访问地址。', [
-    port('http.port', 'HTTP 端口', { hint: '填写 0 使用后端默认值。' }),
-    field('http.tlsMode', '加密连接方式', 'select', { options: options([['', '使用默认方式'], ['direct', '由 Smail 提供 HTTPS'], ['proxy', '由反向代理提供 HTTPS']]), hint: '选择反向代理后，Smail 不自动申请或续期 SSL 证书，由反代服务器负责；邮件协议仍需有效的本地证书。' }),
-    field('http.httpsEnabled', '启用内置 HTTPS', 'switch', { show: config => config.http?.tlsMode !== 'proxy' }),
-    port('http.httpsPort', 'HTTPS 端口', { show: config => config.http?.tlsMode !== 'proxy', hint: '启用内置 HTTPS 时需填写有效端口；关闭时 0 表示不使用。' }),
-    field('http.trustedProxyCidrs', '可信代理网段', 'list', { placeholder: '127.0.0.1/32', hint: '仅填写实际代理的 CIDR 网段，不要无条件信任所有来源。' })
+    field('http.tlsMode', '加密连接方式', 'select', {
+      options: options([['', '沿用当前设置'], ['direct', '由 Smail 提供 HTTPS'], ['proxy', '由反向代理提供 HTTPS']]),
+      hint: '选择内置 HTTPS 自动启用并补全端口；选择反向代理后，Smail 不自动申请或续期 SSL 证书，由反代服务器负责；邮件协议仍需有效的本地证书。'
+    }),
+    port('http.port', 'HTTP 监听端口', {
+      hint: '保留已有自定义端口；未设置时自动补全。反代请转发到此端口，外部 HTTPS 端口在反代服务器配置。'
+    }),
+    field('http.httpsEnabled', '启用内置 HTTPS', 'switch', {
+      show: config => config.http?.tlsMode !== 'proxy',
+      hint: '开启时自动补全 HTTPS 端口，关闭时清空端口；正式站点须由内置服务或反代提供 HTTPS。'
+    }),
+    port('http.httpsPort', 'HTTPS 监听端口', {
+      min: 1,
+      show: config => config.http?.tlsMode !== 'proxy' && !!config.http?.httpsEnabled,
+      hint: '默认使用 443；需要避开端口占用时可手动修改。'
+    }),
+    field('http.trustedProxyCidrs', '可信代理网段', 'list', {
+      show: config => config.http?.tlsMode === 'proxy',
+      placeholder: '127.0.0.1/32',
+      hint: '仅填写实际代理的 CIDR 网段，不要无条件信任所有来源。'
+    })
   ]),
   group('security', '全局安全选项', '只调整功能开关与站点信息，密码算法和加密密钥由系统维护。', [
     field('security.externalEmailEnabled', '启用外部邮箱功能', 'switch'),
@@ -68,8 +114,17 @@ const baseGroups = [
 const smtpGroups = [
   group('relay', 'SMTP 中继连接', '用于发送验证及通知邮件。未使用中继时可保留空值。', [
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
-    port('relay.relayPort', 'SMTP 端口', { hint: '常见端口：STARTTLS 使用 587，隐式 TLS 使用 465。' }),
-    field('relay.security', '连接加密', 'select', { options: options([['', '使用默认方式'], ['starttls', 'STARTTLS'], ['implicit_tls', '隐式 TLS'], ['tls', 'TLS（兼容模式）'], ['plain', '不加密（仅限本机）']]) }),
+    field('relay.security', '连接加密', 'select', {
+      options: options([
+        ['', '尚未配置'],
+        ['starttls', 'STARTTLS（推荐端口 587）'],
+        ['implicit_tls', '隐式 TLS（推荐端口 465）'],
+        ['tls', 'TLS 兼容模式（推荐端口 465）'],
+        ['plain', '不加密（仅限本机，端口 25）']
+      ]),
+      hint: '切换加密方式会自动匹配推荐端口，之后仍可手动填写服务商指定的端口。'
+    }),
+    port('relay.relayPort', 'SMTP 端口', { hint: '先选择加密方式，系统自动填写端口；自定义端口不会改变加密方式。' }),
     field('relay.username', '认证用户名', 'text', { placeholder: '需要认证时填写' }),
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
     field('relay.fromDomain', '发件域名', 'text', { placeholder: 'example.com' })
@@ -128,7 +183,12 @@ const pluginDefinitions = {
 export function getFieldGroups(section, config) {
   if (section !== 'plugins') {
     return ({ base: baseGroups, smtp: smtpGroups, email: emailGroups, ssl: sslGroups }[section] || [])
-      .map(item => ({ ...item, fields: item.fields.filter(input => !input.show || input.show(config)) }))
+      .map(item => ({
+        ...item,
+        fields: item.fields
+          .filter(input => !input.show || input.show(config))
+          .map(input => ({ ...input, recommendedPort: getRecommendedPort(config, input.path) }))
+      }))
   }
   return Object.entries(config.plugins || {}).map(([id, plugin]) => {
     const definition = pluginDefinitions[id]
@@ -158,15 +218,30 @@ export function updateFormConfig(text, section, path, value) {
   const key = path.join('.')
   const input = getFieldGroups(section, config).flatMap(item => item.fields).find(item => fieldKey(item) === key)
   if (!input || input.locked) return text
+  const previousValue = getValue(config, path)
   let parent = config
   for (const part of path.slice(0, -1)) {
     if (!parent[part] || typeof parent[part] !== 'object') parent[part] = {}
     parent = parent[part]
   }
   parent[path.at(-1)] = value ?? (input.type === 'number' ? null : '')
-  if (key === 'http.tlsMode' && value === 'proxy') {
-    config.http.httpsEnabled = false
-    config.http.httpsPort = 0
+  if (previousValue !== value) {
+    if (key === 'relay.security') {
+      const recommended = getRecommendedPort(config, ['relay', 'relayPort'])
+      if (recommended !== undefined) config.relay.relayPort = recommended
+    }
+    if (key === 'http.tlsMode' && ['direct', 'proxy'].includes(value)) {
+      if (!validPort(config.http.port)) {
+        config.http.port = getRecommendedPort(config, ['http', 'port'])
+      }
+      config.http.httpsEnabled = value === 'direct'
+      config.http.httpsPort = value === 'proxy' ? 0 : (
+        validPort(config.http.httpsPort) ? config.http.httpsPort : 443
+      )
+    }
+    if (key === 'http.httpsEnabled') {
+      config.http.httpsPort = value ? (validPort(config.http.httpsPort) ? config.http.httpsPort : 443) : 0
+    }
   }
   if (key === 'tls.mode' && ['managed_default', 'default'].includes(value)) config.tls.customDirectory = ''
   return JSON.stringify(config, null, 2)
@@ -203,6 +278,21 @@ export function validateFormConfig(section, config) {
       errors['domains.accepted'] = '请逐项填写有效的接收邮件域名'
     }
     if (config.http?.httpsEnabled && !config.http.httpsPort) errors['http.httpsPort'] = '启用内置 HTTPS 时请填写 1～65535 的端口'
+    if (config.http?.httpsEnabled && (config.http.port || 80) === config.http.httpsPort) {
+      errors['http.httpsPort'] = 'HTTP 与 HTTPS 监听端口不能相同'
+    }
+  }
+  if (section === 'smtp') {
+    const relay = config.relay || {}
+    if (relay.verificationEnabled || (relay.relayHost && relay.security)) {
+      if (!['starttls', 'implicit_tls', 'tls', 'plain'].includes(relay.security)) {
+        errors['relay.security'] = '请选择明确的连接加密方式，系统会自动匹配端口'
+      }
+      if (!validPort(relay.relayPort)) errors['relay.relayPort'] = '请填写 1～65535 的 SMTP 端口'
+    }
+    if (relay.security === 'plain' && !localSMTPHost(relay.relayHost)) {
+      errors['relay.relayHost'] = '不加密连接仅限本机地址；远程服务器请选择 STARTTLS 或隐式 TLS'
+    }
   }
   if (section === 'email') {
     const ports = ['smtpPort', 'imapPort', 'pop3Port']

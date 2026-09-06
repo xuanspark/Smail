@@ -112,6 +112,21 @@
       autocomplete="off"
       @update:model-value="update"
     />
+    <div v-if="field.recommendedPort !== undefined" class="field-port-guide">
+      <span :class="{ 'port-custom': value !== field.recommendedPort }">
+        {{ value === field.recommendedPort ? '已使用推荐端口' : '推荐端口' }}：{{ field.recommendedPort }}
+      </span>
+      <el-button
+        v-if="value !== field.recommendedPort"
+        link
+        type="primary"
+        :disabled="disabled || field.locked"
+        :aria-label="`将${field.label}恢复为推荐端口 ${field.recommendedPort}`"
+        @click="update(field.recommendedPort)"
+      >
+        使用推荐端口
+      </el-button>
+    </div>
     <p v-if="field.hint" :id="`${id}-hint`" class="field-hint">{{ field.hint }}</p>
     <p v-if="error" :id="`${id}-error`" class="field-error" role="alert">{{ error }}</p>
   </div>

@@ -72,6 +72,28 @@
   margin-left: 0;
 }
 
+.field-port-guide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 22px;
+  color: var(--el-color-success);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.field-port-guide .port-custom {
+  color: var(--pm-text-secondary);
+}
+
+.field-port-guide :deep(.el-button) {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
 .field-hint,
 .field-error {
   margin: 0;
