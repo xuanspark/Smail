@@ -136,38 +136,6 @@
   line-height: 1.5;
   white-space: nowrap;
 }
-.change-workflow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 18px 0;
-  padding: 0;
-  list-style: none;
-}
-.change-workflow li {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 8px 4px;
-  border-radius: 8px;
-  background: var(--pm-bg-primary);
-  color: var(--pm-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.step-number {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  color: var(--config-accent);
-  background: color-mix(in srgb, var(--config-accent) 10%, var(--pm-bg-secondary));
-  font-size: 11px;
-  font-weight: 700;
-}
 .editor-hint,
 .action-hint {
   margin: 8px 0 0;
@@ -410,11 +378,6 @@
   .audit-item {
     align-items: stretch;
     flex-direction: column;
-  }
-  .change-workflow li {
-    flex-direction: column;
-    gap: 5px;
-    font-size: 11px;
   }
   .action-row .el-button,
   .audit-actions .el-button {

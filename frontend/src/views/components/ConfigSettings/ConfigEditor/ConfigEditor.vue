@@ -83,12 +83,6 @@
             <span class="selected-section-label">{{ currentSection.label }}</span>
           </div>
 
-          <ol v-if="canWrite" class="change-workflow" aria-label="配置变更流程">
-            <li><span class="step-number">1</span><span>验证配置</span></li>
-            <li><span class="step-number">2</span><span>保存候选</span></li>
-            <li><span class="step-number">3</span><span>应用生效</span></li>
-          </ol>
-
           <el-alert
             v-if="sectionError"
             :title="sectionError"

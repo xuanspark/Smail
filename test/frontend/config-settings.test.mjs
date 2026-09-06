@@ -309,6 +309,22 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
   assert.doesNotMatch(template, /&#x[0-9a-f]+;/i)
 })
 
+test('配置编辑页移除步骤提示条和专用样式，保留实际操作及确认控件', () => {
+  const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
+  const template = readFileSync(new URL('ConfigEditor/ConfigEditor.vue', root), 'utf8')
+  const sharedCss = readFileSync(new URL('ConfigSettings.css', root), 'utf8')
+  const editorCss = readFileSync(new URL('ConfigEditor/ConfigEditor.css', root), 'utf8')
+  assert.doesNotMatch(template, /change-workflow|step-number|配置变更流程/)
+  assert.doesNotMatch(sharedCss + editorCss, /change-workflow|step-number/)
+  for (const action of ['validateConfig', 'saveConfig', 'applyConfig']) {
+    assert.match(template, new RegExp(`<el-button\\b[^>]*@click="${action}"[^>]*>`))
+  }
+  assert.match(template, /v-if="canWrite" class="editor-footer"/)
+  assert.match(template, /<el-checkbox\b[^>]*v-model="confirmed"/)
+  assert.match(template, /@click="managePending\('resume'\)"/)
+  assert.match(template, /@click="managePending\('cancel'\)"/)
+})
+
 test('离开、刷新和正在执行的变更受保护，取消时保留编辑内容', async () => {
   let cancel = true
   let prompts = 0
