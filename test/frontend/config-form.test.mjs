@@ -10,17 +10,16 @@ const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } =
   source.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
 )()
 
-test('站点安全配置不再依赖旧全局开关，用户权限仍由账号设置管理', () => {
-  const config = { security: { webAuthnEnabled: false, externalEmailEnabled: false } }
+test('基础配置不再展示冗余安全选项与开关，通行密钥由系统默认解析，用户权限仍由账号设置管理', () => {
+  const config = { domains: { web: 'mail.old.com' }, security: { webAuthnEnabled: false, externalEmailEnabled: false, webAuthnRpId: 'mail.old.com' } }
   const groups = getFieldGroups('base', config)
   const security = groups.find(group => group.id === 'security')
-  assert.ok(security)
-  const keys = security.fields.map(field => field.path.join('.'))
-  assert.deepEqual(keys, ['security.webAuthnRpId', 'security.webAuthnRpDisplayName', 'security.webAuthnRpOrigins'])
-  const updated = readFormConfig(updateFormConfig(JSON.stringify(config), 'base', ['security', 'webAuthnRpId'], 'mail.example.com'))
-  assert.equal(updated.security.webAuthnRpId, 'mail.example.com')
+  assert.equal(security, undefined)
+  const updated = readFormConfig(updateFormConfig(JSON.stringify(config), 'base', ['domains', 'web'], 'mail.example.com'))
+  assert.equal(updated.domains.web, 'mail.example.com')
   assert.equal(updated.security.webAuthnEnabled, false)
   assert.equal(updated.security.externalEmailEnabled, false)
+  assert.equal(updated.security.webAuthnRpId, 'mail.old.com')
 })
 
 test('七个页面使用分组表单，控件和样式能编译且不再提供 JSON 编辑器', () => {
