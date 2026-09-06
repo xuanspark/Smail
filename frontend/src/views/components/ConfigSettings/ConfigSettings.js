@@ -13,7 +13,7 @@ const sections = [
   { value: 'ssl', label: 'SSL 配置', description: '管理证书与加密连接，应用后请留意待重启提示。' },
   { value: 'plugins', label: '插件配置', description: '管理插件运行配置，敏感设置仅显示配置状态。' },
   { value: 'spam_block', label: '垃圾邮件拦截', description: '配置垃圾邮件检测服务、超时和拦截阈值，仅编辑当前插件。' },
-  { value: 'telegram_push', label: 'Telegram 推送', description: '配置 Telegram 推送的运行参数与网络权限，个人绑定在第三方授权中管理。' },
+  { value: 'telegram_push', label: 'Telegram 推送', description: '配置 Telegram 推送的运行参数与网络权限，个人绑定在扩展功能中管理。' },
   { value: 'wechat_push', label: '微信推送', description: '配置微信推送的应用、模板与接收用户，敏感凭据不回填。' }
 ]
 

@@ -204,8 +204,21 @@ func (s *Service) VerifyProtocolCode(userID int, protocol string, plain string) 
 		return false
 	}
 	now := s.now()
-	_, _ = s.engine.ID(item.ID).Cols("last_used_at", "updated_at").Update(&models.ProtocolCredential{LastUsedAt: &now})
-	return true
+	// 哈希计算期间可能发生关闭、撤销或换码，返回成功前必须再次原子确认凭据状态。
+	affected, err := s.engine.ID(item.ID).
+		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
+		Cols("last_used_at", "updated_at").Update(&models.ProtocolCredential{LastUsedAt: &now})
+	if err != nil {
+		return false
+	}
+	if affected == 1 {
+		return true
+	}
+	// MySQL 在时间字段未变化时可能报告零影响行，必须再次查询有效状态而不是误拒绝或直接放行。
+	valid, err := s.engine.ID(item.ID).
+		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
+		Exist(&models.ProtocolCredential{})
+	return err == nil && valid
 }
 
 func newProtocolCode() (string, error) {

@@ -29,11 +29,11 @@ export function usePage() {
     try {
       const response = await http.get('/api/v1/security/credentials/protocols')
       if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '读取第三方授权设置失败')
+        throw new Error(response.errorMsg || '读取邮件客户端协议设置失败')
       }
       protocolCredentials.value = Array.isArray(response.data) ? response.data : []
     } catch (error) {
-      notify(error?.message || '读取第三方授权设置失败')
+      notify(error?.message || '读取邮件客户端协议设置失败')
     } finally {
       protocolLoading.value = false
     }
@@ -52,7 +52,11 @@ export function usePage() {
       if (response.errorNo !== 0) {
         throw new Error(response.errorMsg || '协议设置失败')
       }
-      notify(`${protocolLabel(item.protocol)} 协议已${enabled ? '开启' : '关闭'}`, 'success')
+      if (!enabled && generatedProtocol.value === item.protocol) {
+        generatedProtocol.value = ''
+        generatedProtocolCode.value = ''
+      }
+      notify(`${protocolLabel(item.protocol)} 当前账号客户端访问已${enabled ? '开启' : '关闭'}`, 'success')
     } catch (error) {
       item.enabled = previous
       notify(error?.message || '协议设置失败')

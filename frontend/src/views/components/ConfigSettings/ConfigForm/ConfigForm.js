@@ -116,12 +116,12 @@ const baseGroups = [
 ]
 
 const smtpGroups = [
-  group('listener', 'SMTP 服务监听', '', [
+  group('listener', 'SMTP 服务监听', '本地邮件服务默认启动，不受中继配置或用户协议开关控制。', [
     port('listener.port', 'SMTP 收信端口', { min: 1, hint: '默认 25，用于接收其他邮件服务器投递，支持 STARTTLS；不是发信中继端口。' }),
     port('listener.starttlsPort', 'SMTP 提交端口（STARTTLS）', { min: 1, hint: '默认 587，客户端升级 TLS 后进行认证。' }),
     port('listener.tlsPort', 'SMTP 隐式 TLS 端口', { min: 1, hint: '默认 465，客户端建立连接时直接使用 TLS。' })
   ]),
-  group('relay', 'SMTP 中继连接', '用于发送验证及通知邮件。未使用中继时可保留空值。', [
+  group('relay', 'SMTP 中继连接（可选）', '仅用于验证及通知邮件外发，不负责启动本地邮件服务；未使用时可保留空值。', [
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
     field('relay.security', '连接加密', 'select', {
       options: options([

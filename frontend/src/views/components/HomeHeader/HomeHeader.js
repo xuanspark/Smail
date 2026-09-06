@@ -44,7 +44,7 @@ export function usePage() {
 
   const settingsMenu = computed(() => [
     { key: 'security', label: lang.security, hint: '账号与登录保护', icon: Lock, component: SecuritySettings, capability: 'password.change_own' },
-    { key: 'third-party', label: '第三方授权', hint: '邮件客户端接入', icon: Connection, component: ThirdPartyAuthorization, capability: 'plugin.write_own' },
+    { key: 'third-party', label: '邮件客户端', hint: '当前账号协议授权', icon: Connection, component: ThirdPartyAuthorization, capability: 'user.read' },
     { key: 'config', label: '配置管理', hint: '服务与运行配置', icon: Setting, component: ConfigSettings, capability: 'config.read' },
     { key: 'group', label: lang.group_settings, hint: '邮箱分组管理', icon: FolderOpened, component: GroupSettings, capability: 'user.read' },
     { key: 'rule', label: lang.rule_setting, hint: '邮件处理规则', icon: Filter, component: RuleSettings, capability: 'user.read' },

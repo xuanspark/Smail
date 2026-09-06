@@ -2,14 +2,14 @@
   <div class="third-party-authorization" v-loading="protocolLoading">
     <section class="authorization-section">
       <div class="authorization-header">
-        <h3>第三方邮件客户端登录</h3>
+        <h3>邮件客户端协议</h3>
         <p class="authorization-desc">
-          开启协议并生成授权码后，才能使用邮件客户端登录。登录名必须填写完整邮箱地址，密码必须填写授权码，不能填写网页登录密码。
+          本地邮件服务默认启动，不依赖 SMTP 中继。以下开关只控制当前账号的客户端访问权限，不影响其他用户或服务监听。
         </p>
       </div>
 
       <el-alert
-        title="授权码只在生成成功后显示一次，请立即保存；撤销授权码或关闭协议后，客户端会立即无法登录。"
+        title="登录名填写完整邮箱地址，密码填写本协议授权码，不能使用网页登录密码。授权码仅显示一次；关闭协议会暂停新登录，重新开启可继续使用未撤销的授权码。"
         type="warning"
         :closable="false"
         show-icon
@@ -36,6 +36,7 @@
               :loading="protocolLoading"
               active-text="开启"
               inactive-text="关闭"
+              :aria-label="`${protocolLabel(item.protocol)} 当前账号客户端访问`"
               @change="value => setProtocolEnabled(item, value)"
             />
             <el-button

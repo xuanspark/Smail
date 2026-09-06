@@ -1,4 +1,4 @@
-package integration_test
+package res_init_test
 
 import (
 	"bufio"
@@ -33,6 +33,8 @@ func TestConfiguredMailListenerPortsAcceptProtocolConnections(t *testing.T) {
 	smtp := config.SMTPSectionConfig{Meta: meta, Listener: config.SMTPListenerConfig{
 		Port: ports[0], STARTTLSPort: ports[1], TLSPort: ports[2],
 	}}
+	// 中继与 IMAP 共用数值端口也不冲突；不配置中继主机仍可启动全部本地监听。
+	smtp.Relay.RelayPort = ports[3]
 	email := config.EmailSectionConfig{Meta: meta, IMAP: config.IMAPListenerConfig{TLSPort: ports[3]}, POP3: config.POP3ListenerConfig{Port: ports[4], TLSPort: ports[5]}}
 	ssl := config.SSLSectionConfig{Meta: meta, TLS: config.SSLConfig{Mode: "default", DefaultDirectory: "config/ssl"}}
 	rootConfig := config.RootConfig{

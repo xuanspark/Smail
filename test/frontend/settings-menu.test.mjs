@@ -44,19 +44,20 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
       .replace(/export \{[\s\S]*?\}\s*$/, '') + '\nreturn usePage()',
     ['computed', 'ref', 'onMounted', 'onUnmounted', 'window', 'useGlobalStatusStore', 'lang', ...names]
   )
-  const capabilities = reactive(new Set(['password.change_own', 'plugin.write_own']))
+  const capabilities = reactive(new Set(['password.change_own', 'user.read']))
   const store = reactive({
     settingsActiveTab: 'security',
     hasCapability: value => capabilities.has(value)
   })
   const page = createPage(computed, ref, () => {}, () => {}, { innerWidth: 1440 }, () => store,
     { security: '安全' }, ...names.map(name => ({ name })))
-  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party'])
+  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'group', 'rule'])
+  assert.equal(page.settingsMenu.value.find(item => item.key === 'third-party').label, '邮件客户端')
   assert.equal(page.activeSettings.value.label, '安全')
   capabilities.add('config.read')
   store.settingsActiveTab = 'config'
   assert.equal(page.activeSettings.value.label, '配置管理')
-  assert.equal(page.settingsMenu.value.length, 3)
+  assert.equal(page.settingsMenu.value.length, 5)
   assert.ok(page.settingsMenu.value.every(item => item.icon && item.hint))
   capabilities.delete('config.read')
   assert.equal(page.activeSettings.value, undefined)

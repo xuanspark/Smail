@@ -2,7 +2,7 @@ package models
 
 import "time"
 
-// ProtocolCredential 保存单个用户的第三方邮件协议开关和授权码哈希。
+// ProtocolCredential 保存单个用户的邮件客户端协议开关和授权码哈希，不控制全局监听服务。
 type ProtocolCredential struct {
 	ID          int        `xorm:"id bigint unsigned not null pk autoincr" json:"-"`
 	UserID      int        `xorm:"user_id bigint not null" json:"-"`

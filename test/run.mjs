@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import { mkdir, readdir } from 'node:fs/promises'
+import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -40,7 +40,20 @@ if (suite !== 'backend') {
 }
 if (suite !== 'frontend' && result === 0) {
   const args = extra[0] === '--' ? extra.slice(1) : extra
-  result = await run('backend', 'go', ['test', ...(args.length ? args : ['./...'])], path.join(root, 'backend'))
+  // 独立回归源码集中放在 test/backend，通过 overlay 保留同包测试语义。
+  const replacements = {
+    'backend/services/credentials/client_regression_test.go': 'test/backend/protocol_credentials_test.go',
+    'backend/controllers/client_regression_test.go': 'test/backend/protocol_access_test.go',
+    'backend/res_init/client_listeners_test.go': 'test/backend/mail_listeners_test.go',
+  }
+  const overlay = path.join(directory, 'overlay.json')
+  const Replace = Object.fromEntries(Object.entries(replacements).map(([target, source]) => [
+    path.join(root, target), path.join(root, source),
+  ]))
+  await writeFile(overlay, JSON.stringify({ Replace }, null, 2) + '\n')
+  // 显式传入的审查 overlay 保持原有行为，默认入口自动包含本轮回归。
+  const overlayArgs = args.some(arg => arg === '-overlay' || arg.startsWith('-overlay=')) ? [] : [`-overlay=${overlay}`]
+  result = await run('backend', 'go', ['test', ...overlayArgs, ...(args.length ? args : ['./...'])], path.join(root, 'backend'))
 }
 console.log(`测试记录：${path.relative(root, directory)}`)
 process.exitCode = result

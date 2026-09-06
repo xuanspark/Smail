@@ -369,13 +369,13 @@ func ListProtocolCredentials(ctx *context.Context, w http.ResponseWriter, req *h
 	items, err := service.ListProtocolCredentials(ctx.UserID)
 	if err != nil {
 		log.WithError(err).Error("load protocol credentials failed")
-		writeSecurityError(w, response.ParamsError, "读取第三方协议设置失败")
+		writeSecurityError(w, response.ParamsError, "读取邮件客户端协议设置失败")
 		return
 	}
 	response.NewSuccessResponse(items).FPrint(w)
 }
 
-// SetProtocolCredentialEnabled 设置当前用户的第三方协议开关。
+// SetProtocolCredentialEnabled 设置当前用户的邮件客户端协议开关，不改变服务监听状态。
 func SetProtocolCredentialEnabled(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	service, ok := requireProtocolCredentialContext(ctx, w)
 	if !ok {
