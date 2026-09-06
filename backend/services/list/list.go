@@ -267,11 +267,9 @@ func getEmailListByUidList(ctx *context.Context, groupName string, req ImapListR
 	}
 	sql += " ORDER BY id"
 	var relations []*response.UserEmailUIDData
-	fmt.Printf("IMAP UID SQL=%s params=%v\n", sql, params)
 	if err := db.Instance.SQL(sql, params...).Find(&relations); err != nil {
 		return nil, fmt.Errorf("query mailbox UID list: %w", err)
 	}
-	fmt.Printf("IMAP UID SQL result=%d\n", len(relations))
 	return hydrateIMAPEmailResponses(relations)
 }
 
@@ -332,7 +330,6 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 	if err := db.Instance.Table("email").Select("*").Where(Eq{"id": emailIDs}).Find(&stored); err != nil {
 		return nil, fmt.Errorf("query mailbox messages: %w", err)
 	}
-	fmt.Printf("IMAP hydrate email_ids=%v stored=%d\n", emailIDs, len(stored))
 	messageByID := make(map[int]*response.EmailResponseData, len(stored))
 	for _, message := range stored {
 		if message != nil {
@@ -351,6 +348,5 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 		copyMessage.UeId = relation.ID
 		result = append(result, &copyMessage)
 	}
-	fmt.Printf("IMAP hydrate result=%d\n", len(result))
 	return result, nil
 }

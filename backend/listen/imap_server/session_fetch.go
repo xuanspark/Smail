@@ -289,7 +289,6 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 				return err
 			}
 		}
-		fmt.Printf("IMAP FETCH write sequence=%d uid=%d requested_uid=%t\n", sequence, uid, options.UID)
 		var htmlSize uint32
 		var textSize uint32
 		attachmentSizes := make([]uint32, len(traEmail.Attachments))

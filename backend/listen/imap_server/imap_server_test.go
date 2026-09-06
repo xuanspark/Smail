@@ -2,7 +2,6 @@ package imap_server
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -35,7 +34,6 @@ var clientUnLogin *imapclient.Client
 var clientLogin *imapclient.Client
 var imapTestAddr string
 var imapTestProtocolCode string
-var imapDebug bytes.Buffer
 
 func TestMain(m *testing.M) {
 	wd, err := os.Getwd()
@@ -87,7 +85,6 @@ func TestMain(m *testing.M) {
 	}()
 
 	options := &imapclient.Options{
-		DebugWriter: &imapDebug,
 		WordDecoder: &mime.WordDecoder{CharsetReader: charset.Reader},
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
