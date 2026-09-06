@@ -59,7 +59,7 @@ func auditCertificateChain(t *testing.T, domain string, extraDomains ...string) 
 		t.Fatal(err)
 	}
 	return certificate.Resource{
-		PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privateDER}),
+		PrivateKey:  pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privateDER}),
 		Certificate: append(leafPEM, issuerPEM...), IssuerCertificate: issuerPEM,
 	}
 }
@@ -126,6 +126,9 @@ func TestAuditFreshWildcardCertificateMustNotRequireRenewal(t *testing.T) {
 // 只在临时根目录建立受控证书和真实分区配置，不接触运行中的实例。
 func auditMigratedSSL(t *testing.T, mode string) (*config.Config, []byte) {
 	t.Helper()
+	oldManager := config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	t.Cleanup(func() { config.SetRuntimeManager(oldManager) })
 	auditSSLRoot(t)
 	resource := auditCertificateChain(t, "imap.example.test", "smtp.imap.example.test", "pop.imap.example.test", "imap.imap.example.test")
 	reference, err := config.ImportManagedSSL(config.ManagedSSLModeDefault, resource.PrivateKey, resource.Certificate, nil, nil)

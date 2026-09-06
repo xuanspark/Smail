@@ -251,15 +251,16 @@ func startService(serviceErrors chan<- error, name string, service func() error)
 
 func stopServices() error {
 	restart.SetCurrent(nil)
-	session.Stop()
 	stopAdminResetControl()
-	stopVerificationRuntime()
 	smtp_server.Stop()
 	http_server.HttpsStop()
 	http_server.HttpStop()
 	pop3_server.Stop()
 	imap_server.Stop()
 	hooks.Stop()
+	// 先关闭业务入口，再撤下安全服务及会话清理器，避免新请求读取停止中的依赖。
+	stopVerificationRuntime()
+	session.Stop()
 	// 关闭连接池后还要等待借出的连接归还，不能提前解除迁移源锁。
 	if db.Instance != nil {
 		_ = db.Instance.Close()
@@ -392,14 +393,14 @@ func startWebAuthnRuntime() error {
 }
 
 func stopVerificationRuntime() {
-	controllers.ConfigureWebAuthnRuntime(nil)
+	controllers.ClearSecurityRuntime()
 	webAuthnRuntimeService = nil
+	credentialService = nil
 	if verificationRuntime == nil {
 		return
 	}
 	verificationRuntime.Stop()
 	verificationRuntime = nil
-	credentialService = nil
 }
 
 // startAdminResetControl 启动受保护的本机超级管理员重置通道。

@@ -100,6 +100,8 @@ func (s *Service) SetWebAuthnVerifier(verifier WebAuthnVerifier) {
 	if s == nil {
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.webauthn = verifier
 }
 
@@ -107,14 +109,36 @@ func (s *Service) SetSecurityStateInvalidator(invalidator func(int, string)) {
 	if s == nil {
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.invalidate = invalidator
 }
 
+func (s *Service) currentWebAuthnVerifier() WebAuthnVerifier {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.webauthn
+}
+
+func (s *Service) invalidateSecurityState(userID int, account string) {
+	s.mu.Lock()
+	invalidator := s.invalidate
+	s.mu.Unlock()
+	// 回调可能重新进入本服务，必须在释放内部锁后调用。
+	if invalidator != nil {
+		invalidator(userID, account)
+	}
+}
+
 func (s *Service) BeginWebAuthn(identifier string) (*protocol.CredentialAssertion, string, error) {
-	if s == nil || s.engine == nil || s.webauthn == nil {
+	verifier := s.currentWebAuthnVerifier()
+	if s == nil || s.engine == nil || verifier == nil {
 		return nil, "", ErrUnavailable
 	}
-	options, sessionID, err := s.webauthn.BeginDiscoverableLogin()
+	options, sessionID, err := verifier.BeginDiscoverableLogin()
 	if err != nil {
 		return nil, "", ErrRecoveryDenied
 	}
@@ -122,10 +146,11 @@ func (s *Service) BeginWebAuthn(identifier string) (*protocol.CredentialAssertio
 }
 
 func (s *Service) VerifyWebAuthn(identifier, sessionID string, request *http.Request) (string, error) {
-	if s == nil || s.engine == nil || s.webauthn == nil || request == nil || strings.TrimSpace(sessionID) == "" {
+	verifier := s.currentWebAuthnVerifier()
+	if s == nil || s.engine == nil || verifier == nil || request == nil || strings.TrimSpace(sessionID) == "" {
 		return "", ErrInvalidRequest
 	}
-	user, _, err := s.webauthn.FinishDiscoverableLogin(sessionID, request)
+	user, _, err := verifier.FinishDiscoverableLogin(sessionID, request)
 	if err != nil || user == nil {
 		return "", ErrRecoveryDenied
 	}
@@ -137,10 +162,11 @@ func (s *Service) VerifyWebAuthn(identifier, sessionID string, request *http.Req
 }
 
 func (s *Service) VerifyWebAuthnWithContext(identifier, sessionID string, request *http.Request, browserContext string) (string, error) {
-	if s == nil || s.engine == nil || s.webauthn == nil || request == nil || strings.TrimSpace(sessionID) == "" {
+	verifier := s.currentWebAuthnVerifier()
+	if s == nil || s.engine == nil || verifier == nil || request == nil || strings.TrimSpace(sessionID) == "" {
 		return "", ErrInvalidRequest
 	}
-	user, credential, err := s.webauthn.FinishDiscoverableLogin(sessionID, request)
+	user, credential, err := verifier.FinishDiscoverableLogin(sessionID, request)
 	if err != nil || user == nil || credential == nil {
 		return "", ErrRecoveryDenied
 	}
@@ -314,7 +340,7 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	defer clearString(&hash)
 	var user models.User
 	has, err := s.engine.ID(item.UserID).Get(&user)
-	if err != nil || !has || user.EffectiveRole() == access.RoleSuperAdmin || user.SessionVersion != item.SessionVersion {
+	if err != nil || !has || user.Disabled != 0 || user.EffectiveRole() == access.RoleSuperAdmin || user.SessionVersion != item.SessionVersion {
 		return ErrRecoveryDenied
 	}
 	if item.Method == "email" {
@@ -350,7 +376,7 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if err := session.Begin(); err != nil {
 		return err
 	}
-	if _, err := session.ID(item.UserID).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&models.User{
+	if affected, err := session.ID(item.UserID).Where("session_version = ? AND security_version = ? AND disabled = 0", item.SessionVersion, user.SecurityVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&models.User{
 		Password:           hash,
 		SessionVersion:     version,
 		SecurityVersion:    securityVersion,
@@ -359,6 +385,9 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	}); err != nil {
 		_ = session.Rollback()
 		return err
+	} else if affected != 1 {
+		_ = session.Rollback()
+		return ErrRecoveryDenied
 	}
 	if err := s.credentials.RevokeAllWithSession(session, item.UserID); err != nil {
 		_ = session.Rollback()
@@ -371,9 +400,7 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if s.verification != nil && s.verification.Store != nil {
 		_ = s.verification.Store.InvalidateAccount(user.Account)
 	}
-	if s.invalidate != nil {
-		s.invalidate(item.UserID, user.Account)
-	}
+	s.invalidateSecurityState(item.UserID, user.Account)
 	return nil
 }
 

@@ -32,6 +32,11 @@ func loadPartitionedCompatibility() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return runtimeCompatibility(runtime)
+}
+
+// runtimeCompatibility 从同一已验证候选构造兼容快照，避免提交成功后再次读盘产生新失败窗口。
+func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 	vault, err := credential.NewVault(ROOT_PATH)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ package imap_server
 
 import (
 	"git.pcux.cn/xuans/Smail/services/group"
+	"git.pcux.cn/xuans/Smail/services/list"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
 	"strings"
@@ -22,10 +23,11 @@ func (s *serverSession) Select(mailbox string, options *imap.SelectOptions) (*im
 		log.WithContext(s.ctx).WithError(err).Error("query selected mailbox status failed")
 		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Select failed"}
 	}
-	s.currentMailbox = mailbox
-	s.readOnly = readOnly
-
-	numMessages, err := imapUint32(data["MESSAGES"])
+	relations, err := list.GetUEListByUID(s.ctx, mailbox, 0, 0, nil)
+	if err != nil {
+		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Select failed"}
+	}
+	numMessages, err := imapUint32(len(relations))
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +39,14 @@ func (s *serverSession) Select(mailbox string, options *imap.SelectOptions) (*im
 	if err != nil {
 		return nil, err
 	}
+	s.mailboxMu.Lock()
+	s.currentMailbox = mailbox
+	s.readOnly = readOnly
+	s.mailboxUIDs = make([]int, 0, len(relations))
+	for _, relation := range relations {
+		s.mailboxUIDs = append(s.mailboxUIDs, relation.ID)
+	}
+	s.mailboxMu.Unlock()
 
 	ret := &imap.SelectData{
 		Flags:          []imap.Flag{imap.FlagSeen, imap.FlagDeleted},
@@ -44,6 +54,9 @@ func (s *serverSession) Select(mailbox string, options *imap.SelectOptions) (*im
 		NumMessages:    numMessages,
 		UIDNext:        uidNext,
 		UIDValidity:    uidValidity,
+	}
+	if readOnly {
+		ret.PermanentFlags = nil
 	}
 
 	return ret, nil

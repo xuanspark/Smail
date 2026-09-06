@@ -6,7 +6,6 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/group"
-	"git.pcux.cn/xuans/Smail/services/list"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 	log "github.com/sirupsen/logrus"
@@ -14,35 +13,9 @@ import (
 )
 
 func (s *serverSession) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) {
-	var emailList []*response.EmailResponseData
-
-	switch numSet.(type) {
-	case imap.SeqSet:
-		seqSet := numSet.(imap.SeqSet)
-		for _, seq := range seqSet {
-			res, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
-				Star: cast.ToInt(seq.Start),
-				End:  cast.ToInt(seq.Stop),
-			}, false)
-			if err != nil {
-				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for copy failed")
-				return nil, copyFailedError()
-			}
-			emailList = append(emailList, res...)
-		}
-	case imap.UIDSet:
-		uidSet := numSet.(imap.UIDSet)
-		for _, uid := range uidSet {
-			res, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
-				Star: cast.ToInt(uint32(uid.Start)),
-				End:  cast.ToInt(uint32(uid.Stop)),
-			}, true)
-			if err != nil {
-				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for UID copy failed")
-				return nil, copyFailedError()
-			}
-			emailList = append(emailList, res...)
-		}
+	emailList, err := s.selectedMessages(numSet)
+	if err != nil {
+		return nil, copyFailedError()
 	}
 
 	if len(emailList) == 0 {
@@ -52,7 +25,6 @@ func (s *serverSession) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, e
 	var (
 		uidValidity int
 		destUIDs    []int
-		err         error
 	)
 	if group.IsDefaultBox(dest) {
 		uidValidity, destUIDs, err = copy2defaultbox(s.ctx, emailList, dest)

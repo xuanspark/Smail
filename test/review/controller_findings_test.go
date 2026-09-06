@@ -22,6 +22,12 @@ import (
 // 真实控制器约束对照：输错后绑定仍待验证，重新绑定失败，但原挑战可继续验证。
 func TestAuditPendingExternalBindingRequiresExistingChallenge(t *testing.T) {
 	_, _, engine, user, _ := newPublicSecurityFixture(t)
+	previousDB := db.Instance
+	db.Instance = engine
+	t.Cleanup(func() { db.Instance = previousDB })
+	if err := engine.Sync2(new(models.UserEmail)); err != nil {
+		t.Fatal(err)
+	}
 	previous := securityRuntime
 	t.Cleanup(func() { securityRuntime = previous })
 	vault := externalemail.NewVaultWithKeys([]byte("01234567890123456789012345678901"), []byte("abcdefabcdefabcdefabcdefabcdefab"))
@@ -122,6 +128,9 @@ func TestAuditAuthorizedRoleChangeMustSucceed(t *testing.T) {
 	t.Logf("policy_allows=true controller_error=%d stored_role=%s", result, stored.EffectiveRole())
 	if result != 0 || stored.EffectiveRole() != access.RoleAdmin {
 		t.Fatal("符合近期认证和目标恢复码条件的超级管理员仍无法修改用户角色")
+	}
+	if stored.SessionVersion <= user.SessionVersion || stored.SecurityVersion <= user.SecurityVersion {
+		t.Fatal("纯角色变更必须同时提升会话版本和安全版本")
 	}
 }
 

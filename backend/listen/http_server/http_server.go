@@ -146,6 +146,15 @@ func configRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
 	controllers.EnsureConfigRequestID(w, r)
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	switch {
+	case path == "/api/v1/config/pending":
+		switch r.Method {
+		case http.MethodGet:
+			controllers.GetPendingConfig(ctx, w, r)
+		case http.MethodPost:
+			controllers.ManagePendingConfig(ctx, w, r)
+		default:
+			allowRouteMethod(w, r, http.MethodGet, http.MethodPost)
+		}
 	case path == "/api/v1/config/status":
 		if !allowRouteMethod(w, r, http.MethodGet) {
 			return

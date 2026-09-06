@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -19,6 +20,9 @@ import (
 var IsInit bool
 var legacyInitState atomic.Bool
 var DevelopmentMode bool
+
+// 旧配置读取可能迁移凭据，因此读取、整份保存及 SSL 合并必须共用同一把锁。
+var legacyConfigMu sync.Mutex
 
 type Config struct {
 	LogLevel                string            `json:"logLevel"` // 日志级别
@@ -156,6 +160,8 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 	return b.Bytes(), nil
 }
 func Init() error {
+	legacyConfigMu.Lock()
+	defer legacyConfigMu.Unlock()
 	var cfgData []byte
 	var err error
 	args := os.Args
@@ -276,6 +282,12 @@ func ReadPrivateKey() (*ecdsa.PrivateKey, bool, error) {
 	return privateKey, created, nil
 }
 func WriteConfig(cfg *Config) error {
+	legacyConfigMu.Lock()
+	defer legacyConfigMu.Unlock()
+	return writeConfig(cfg)
+}
+
+func writeConfig(cfg *Config) error {
 	if err := writeProtectedConfigFile("config.json", cfg); err != nil {
 		return err
 	}
@@ -312,6 +324,12 @@ func writeProtectedConfigFile(name string, cfg *Config) error {
 }
 
 func ReadConfig() (*Config, error) {
+	legacyConfigMu.Lock()
+	defer legacyConfigMu.Unlock()
+	return readConfig()
+}
+
+func readConfig() (*Config, error) {
 	configData := Config{
 		DkimPrivateKeyPath: ROOT_PATH + "config/dkim/dkim.priv",
 		SSLPrivateKeyPath:  ROOT_PATH + "config/ssl/private.key",

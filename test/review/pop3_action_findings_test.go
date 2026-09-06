@@ -1,6 +1,7 @@
 package pop3_server
 
 import (
+	"slices"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -10,8 +11,40 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 )
 
+func TestAuditPOP3AdvertisesStandardReset(t *testing.T) {
+	commands, err := (action{}).Capa(&gopop.Session{InTls: true})
+	if err != nil || !slices.Contains(commands, "RSET") || slices.Contains(commands, "REST") {
+		t.Fatalf("必须公告标准 RSET 而非 REST：commands=%v err=%v", commands, err)
+	}
+}
+
+func TestAuditPOP3SnapshotKeepsHolesAndExcludesNewMail(t *testing.T) {
+	session, login := auditPOP3Session(t)
+	for _, id := range []int{101, 202, 303} {
+		auditPOP3Message(t, session, id, 0)
+	}
+	login()
+	if _, err := (action{}).List(session, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := (action{}).Delete(session, 2); err != nil {
+		t.Fatal(err)
+	}
+	auditPOP3Message(t, session, 404, 0)
+	rows, err := (action{}).List(session, "")
+	if err != nil || len(rows) != 2 || rows[0].Id != 1 || rows[1].Id != 3 {
+		t.Fatalf("会话序号变化: %v %v", rows, err)
+	}
+	if _, err := (action{}).List(session, "2"); err == nil {
+		t.Fatal("已删除编号仍可访问")
+	}
+	if _, err := (action{}).List(session, "4"); err == nil {
+		t.Fatal("新邮件进入了旧快照")
+	}
+}
+
 // 复用临时 SQLite 和协议授权码夹具，不访问用户运行库。
-func auditPOP3Session(t *testing.T) *gopop.Session {
+func auditPOP3Session(t *testing.T) (*gopop.Session, func()) {
 	t.Helper()
 	engine, user, code := newPOP3ProtocolAuthFixture(t)
 	oldDB, oldConfig := db.Instance, config.Instance
@@ -20,14 +53,16 @@ func auditPOP3Session(t *testing.T) *gopop.Session {
 	t.Cleanup(func() {
 		db.Instance, config.Instance = oldDB, oldConfig
 	})
-	session := &gopop.Session{User: "alice@example.com", InTls: true, Ctx: &context.Context{}}
-	if err := (action{}).Pass(session, code); err != nil {
-		t.Fatal(err)
+	session := &gopop.Session{User: "alice@example.com", InTls: true, Ctx: &context.Context{UserID: user.ID}}
+	return session, func() {
+		t.Helper()
+		if err := (action{}).Pass(session, code); err != nil {
+			t.Fatal(err)
+		}
+		if session.Ctx.(*context.Context).UserID != user.ID {
+			t.Fatal("临时会话未关联预期用户")
+		}
 	}
-	if session.Ctx.(*context.Context).UserID != user.ID {
-		t.Fatal("临时会话未关联预期用户")
-	}
-	return session
 }
 
 func auditPOP3Message(t *testing.T, session *gopop.Session, id int, status int8) {
@@ -43,9 +78,10 @@ func auditPOP3Message(t *testing.T, session *gopop.Session, id int, status int8)
 }
 
 func TestAuditPOP3MessageNumbersMustStartAtOne(t *testing.T) {
-	session := auditPOP3Session(t)
+	session, login := auditPOP3Session(t)
 	auditPOP3Message(t, session, 101, 0)
 	auditPOP3Message(t, session, 305, 0)
+	login()
 	rows, err := (action{}).List(session, "")
 	if err != nil || len(rows) != 2 {
 		t.Fatalf("列表前置条件失败: rows=%v err=%v", rows, err)
@@ -58,8 +94,9 @@ func TestAuditPOP3MessageNumbersMustStartAtOne(t *testing.T) {
 }
 
 func TestAuditPOP3MarkedDeletionMustHideMessage(t *testing.T) {
-	session := auditPOP3Session(t)
+	session, login := auditPOP3Session(t)
 	auditPOP3Message(t, session, 1, 0)
+	login()
 	if err := (action{}).Delete(session, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -81,9 +118,10 @@ func TestAuditPOP3MarkedDeletionMustHideMessage(t *testing.T) {
 }
 
 func TestAuditPOP3STATMustMatchVisibleMailbox(t *testing.T) {
-	session := auditPOP3Session(t)
+	session, login := auditPOP3Session(t)
 	auditPOP3Message(t, session, 1, 0)
 	auditPOP3Message(t, session, 2, 5)
+	login()
 	rows, err := (action{}).List(session, "")
 	if err != nil {
 		t.Fatal(err)
@@ -93,17 +131,18 @@ func TestAuditPOP3STATMustMatchVisibleMailbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("inbox_messages=1 junk_messages=1 list_count=%d stat_count=%d", len(rows), count)
-	if count != int64(len(rows)) {
+	if count != 1 || len(rows) != 1 {
 		t.Fatal("STAT 纳入垃圾箱邮件，但 LIST 排除了垃圾箱，邮箱视图不一致")
 	}
 }
 
 func TestAuditPOP3NegativeTOPMustNotPanic(t *testing.T) {
-	session := auditPOP3Session(t)
+	session, login := auditPOP3Session(t)
 	auditPOP3Message(t, session, 1, 0)
 	if _, err := db.Instance.ID(1).Cols("from_address").Update(&models.Email{FromAddress: "sender@example.com"}); err != nil {
 		t.Fatal(err)
 	}
+	login()
 	if _, err := (action{}).Top(session, 1, 0); err != nil {
 		t.Fatalf("正常 TOP 前置条件失败: %v", err)
 	}

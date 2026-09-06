@@ -8,11 +8,13 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"sync"
+	"time"
 )
 
 type idleConnection struct {
 	writer  *imapserver.UpdateWriter
 	mailbox string
+	session *serverSession
 }
 
 type idleConnections struct {
@@ -36,13 +38,11 @@ func (s *serverSession) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) e
 	connects := connectsAny.(*idleConnections)
 
 	connects.mu.Lock()
-	connects.writers[logId] = idleConnection{writer: w, mailbox: s.currentMailbox}
+	connects.writers[logId] = idleConnection{writer: w, mailbox: s.currentMailbox, session: s}
 	connects.mu.Unlock()
 	userConnectsMu.Unlock()
 
-	go func() {
-		<-stop
-
+	defer func() {
 		userConnectsMu.Lock()
 		connects.mu.Lock()
 		delete(connects.writers, logId)
@@ -52,8 +52,21 @@ func (s *serverSession) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) e
 		connects.mu.Unlock()
 		userConnectsMu.Unlock()
 	}()
-
-	return nil
+	if err := s.Poll(w, true); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return nil
+		case <-ticker.C:
+			if err := s.Poll(w, true); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func IdleNotice(ctx *context.Context, userId int, email *models.Email) error {
@@ -70,14 +83,17 @@ func IdleNotice(ctx *context.Context, userId int, email *models.Email) error {
 
 	connects := connectsAny.(*idleConnections)
 	connects.mu.Lock()
-	idleConnects := make([]idleConnection, 0, len(connects.writers))
-	for _, connect := range connects.writers {
-		idleConnects = append(idleConnects, connect)
-	}
-	connects.mu.Unlock()
 	userConnectsMu.Unlock()
+	defer connects.mu.Unlock()
 
-	for _, connect := range idleConnects {
+	for _, connect := range connects.writers {
+		if connect.session != nil {
+			// 同步变化和显式总数在同一锁内只写一次，避免投递时重复通知。
+			if err := connect.session.poll(connect.writer, true, true); err != nil {
+				return err
+			}
+			continue
+		}
 		numMessages, err := idleNumMessages(ctx, userId, connect.mailbox)
 		if err != nil {
 			return err

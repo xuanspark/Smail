@@ -19,7 +19,7 @@
           <template #default="scope">
             <div class="row-actions">
               <el-button size="small" type="primary" :icon="Edit" circle text @click="editRule(scope.row)"/>
-              <el-popconfirm confirm-button-text="Yes" cancel-button-text="No" :icon="InfoFilled"
+              <el-popconfirm confirm-button-text="确认" cancel-button-text="取消" :icon="InfoFilled"
                              @confirm="delRule(scope.row.id)" icon-color="#ef4444" :title="lang.del_rule_confirm">
                 <template #reference>
                   <el-button size="small" type="danger" :icon="Delete" circle text/>
@@ -32,17 +32,17 @@
     </div>
 
     <div class="form-actions">
-      <el-button type="primary" @click="dialogVisible = true" class="add-btn">
+      <el-button type="primary" @click="createRule" class="add-btn">
         <el-icon><Plus /></el-icon> {{ lang.new_rule }}
       </el-button>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="addRuleForm.id > 0 ? 'Edit Rule' : lang.new_rule" width="700px" class="premium-dialog">
+    <el-dialog v-model="dialogVisible" :title="addRuleForm.id > 0 ? '编辑规则' : lang.new_rule" width="700px" class="premium-dialog">
       <div class="dialog-content">
         <el-form :model="addRuleForm" label-position="top">
           <div class="form-row">
             <el-form-item :label="lang.rule_name" class="flex-grow">
-              <el-input v-model="addRuleForm.name" placeholder="Rule Name"/>
+              <el-input v-model="addRuleForm.name" placeholder="规则名称"/>
             </el-form-item>
             <el-form-item :label="lang.rule_priority" class="w-32">
               <el-input v-model="addRuleForm.sort" type="number" oninput="value=value.replace(/[^\-\d]/g, '')"/>
@@ -50,11 +50,11 @@
           </div>
           
           <el-divider class="custom-divider"/>
-          <div class="section-title">{{ lang.rule_desc }} (Conditions)</div>
+          <div class="section-title">{{ lang.rule_desc }}（匹配条件）</div>
           
           <div class="rules-list">
             <div v-for="(rule, index) in addRuleForm.rules" :key="index" class="rule-line">
-              <el-select v-model="rule.field" placeholder="Field" class="w-32">
+              <el-select v-model="rule.field" placeholder="邮件字段" class="w-32">
                 <el-option key="From" :label="lang.from" value="From"/>
                 <el-option key="Subject" :label="lang.subject" value="Subject"/>
                 <el-option key="To" :label="lang.to" value="To"/>
@@ -97,7 +97,7 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="dialogVisible = false">{{ lang.cancel }}</el-button>
+          <el-button @click="cancelRule">{{ lang.cancel }}</el-button>
           <el-button type="primary" @click="submitRule()">
             {{ lang.submit }}
           </el-button>
@@ -116,6 +116,8 @@ const {
   ActionName,
   Edit,
   editRule,
+  createRule,
+  cancelRule,
   InfoFilled,
   delRule,
   Delete,

@@ -342,6 +342,9 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 			continue
 		}
 		copyMessage := *message
+		if copyMessage.Type == consts.EmailTypeReceive {
+			copyMessage.Bcc = "[]"
+		}
 		copyMessage.IsRead = relation.IsRead
 		copyMessage.IsDeleted = relation.IsDeleted
 		copyMessage.SerialNumber = relation.SerialNumber

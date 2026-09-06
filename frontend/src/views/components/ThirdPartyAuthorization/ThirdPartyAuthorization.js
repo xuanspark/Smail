@@ -40,6 +40,7 @@ export function usePage() {
   }
 
   const setProtocolEnabled = async (item, enabled) => {
+    if (protocolLoading.value || item.enabled === enabled) return
     const previous = item.enabled
     item.enabled = enabled
     protocolLoading.value = true

@@ -60,7 +60,7 @@ func (a action) Capa(session *gopop.Session) ([]string, error) {
 		"LIST",
 		"RETR",
 		"DELE",
-		"REST",
+		"RSET",
 		"NOOP",
 		"QUIT",
 	}
@@ -109,13 +109,17 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 		return errors2.New("password error")
 	}
 
-	session.Status = gopop.TRANSACTION
 	ctx := session.Ctx.(*context.Context)
 	ctx.UserID = user.ID
 	ctx.UserName = user.Name
 	ctx.UserAccount = user.Account
 	ctx.Role = user.EffectiveRole()
 	ctx.IsAdmin = ctx.Role == access.RoleSuperAdmin || ctx.Role == access.RoleAdmin
+	if _, err := a.ensureMessageMap(session); err != nil {
+		ctx.UserID = 0
+		return errors2.New("mailbox unavailable")
+	}
+	session.Status = gopop.TRANSACTION
 	return nil
 }
 
@@ -164,8 +168,8 @@ func (a action) Uidl(session *gopop.Session, msg string) ([]gopop.UidlItem, erro
 		return nil, err
 	}
 	ret := make([]gopop.UidlItem, 0, len(emailList))
-	for number, info := range emailList {
-		ret = append(ret, gopop.UidlItem{Id: int64(number + 1), UnionId: cast.ToString(info.Id)})
+	for _, info := range emailList {
+		ret = append(ret, gopop.UidlItem{Id: int64(info.SerialNumber), UnionId: cast.ToString(info.Id)})
 	}
 
 	log.WithContext(session.Ctx).Debugf("Uidl \n %+v", ret)
@@ -207,13 +211,10 @@ func (a action) List(session *gopop.Session, msg string) ([]gopop.MailInfo, erro
 		emailList = filtered
 	}
 	ret := make([]gopop.MailInfo, 0, len(emailList))
-	for number, info := range emailList {
+	for _, info := range emailList {
 		size := int64(info.Size)
-		if size == 0 {
-			size = 9999
-		}
 		ret = append(ret, gopop.MailInfo{
-			Id:   int64(number + 1),
+			Id:   int64(info.SerialNumber),
 			Size: size,
 		})
 	}
@@ -268,7 +269,7 @@ func (a action) Delete(session *gopop.Session, id int64) error {
 }
 
 func (a action) Rest(session *gopop.Session) error {
-	log.WithContext(session.Ctx).Debugf("POP3 CMD: REST ")
+	log.WithContext(session.Ctx).Debugf("POP3 CMD: RSET ")
 	session.DeleteIds = []int64{}
 	return nil
 }
@@ -306,7 +307,8 @@ func (a action) Top(session *gopop.Session, id int64, n int) (string, error) {
 			break
 		}
 	}
-	if len(res) <= headerEndLine+n+1 {
+	// 先比较剩余行数，避免极大的合法整数在加法中溢出。
+	if n >= len(res)-headerEndLine-1 {
 		return string(ret), nil
 	}
 
@@ -333,10 +335,13 @@ func (a action) ensureMessageMap(session *gopop.Session) ([]*response.EmailRespo
 		return nil, err
 	}
 	session.MessageMap = make(map[int64]int64, len(emailList))
+	session.MessageSizes = make(map[int64]int, len(emailList))
 	session.MessageIDs = make([]int64, 0, len(emailList))
 	for number, info := range emailList {
 		id := cast.ToInt64(info.Id)
 		session.MessageMap[int64(number+1)] = id
+		session.MessageSizes[id] = info.Size
+		info.SerialNumber = number + 1
 		session.MessageIDs = append(session.MessageIDs, id)
 	}
 	return emailList, nil
@@ -362,19 +367,12 @@ func (a action) resolveMessageID(session *gopop.Session, number int64) (int64, e
 }
 
 func (a action) visibleMessages(session *gopop.Session) ([]*response.EmailResponseData, error) {
-	emailList, err := a.ensureMessageMap(session)
-	if err != nil {
+	if _, err := a.ensureMessageMap(session); err != nil {
 		return nil, err
 	}
-	if emailList == nil {
-		emailList, _, err = list.GetEmailList(session.Ctx.(*context.Context), dto.SearchTag{Type: consts.EmailTypeReceive, Status: -1, GroupId: -1}, "", true, 0, 99999)
-		if err != nil {
-			return nil, err
-		}
-	}
-	result := make([]*response.EmailResponseData, 0, len(emailList))
-	for _, info := range emailList {
-		id := cast.ToInt64(info.Id)
+	// 列表和单封命令使用同一会话快照，删除标记不能压缩消息编号。
+	result := make([]*response.EmailResponseData, 0, len(session.MessageIDs))
+	for number, id := range session.MessageIDs {
 		marked := false
 		for _, deletedID := range session.DeleteIds {
 			if deletedID == id {
@@ -383,6 +381,9 @@ func (a action) visibleMessages(session *gopop.Session) ([]*response.EmailRespon
 			}
 		}
 		if !marked {
+			info := &response.EmailResponseData{SerialNumber: number + 1}
+			info.Id = cast.ToInt(id)
+			info.Size = session.MessageSizes[id]
 			result = append(result, info)
 		}
 	}

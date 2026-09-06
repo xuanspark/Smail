@@ -20,7 +20,10 @@ function fixture(get, pageKey = 'base', options = {}) {
   let dispose = () => {}
   const page = createPageWithKey(computed, () => {}, reactive, ref,
     { error: message => messages.push(message), warning: message => messages.push(message), success: () => {} },
-    { confirm: options.confirm || (async () => {}) }, { get, ...options.http },
+    { confirm: options.confirm || (async () => {}) }, {
+      get: path => path.endsWith('/pending') && !options.pendingGet ? Promise.resolve({ errorNo: 0, data: null }) : get(path),
+      ...options.http
+    },
     () => ({ hasCapability: options.hasCapability || (() => true) }), pageKey, callback => { dispose = callback })
   return { page, messages, dispose: () => dispose() }
 }
@@ -30,6 +33,51 @@ function deferred() {
   let reject
   const promise = new Promise((success, failure) => { resolve = success; reject = failure })
   return { promise, resolve, reject }
+}
+
+for (const failedRequest of ['/status', '/pending']) {
+  test(`候选保存成功后 ${failedRequest} 读取失败不能重新保存，刷新后可恢复或取消`, async () => {
+    let pending = null
+    let fail = false
+    let saves = 0
+    const { page } = fixture(() => {}, 'smtp', { http: {
+      get: async path => {
+        if (fail && path.endsWith(failedRequest)) throw new Error('模拟读取失败')
+        return { errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 1 } : { relay: { relayHost: 'old.example.com' } } }
+      },
+      put: async (path, body) => {
+        saves++
+        pending = { generation: 2, candidateId: 'pending-recovery', section: 'smtp', sameSession: true, payload: body.payload }
+        fail = true
+        return { errorNo: 0, data: pending }
+      },
+      post: async (path, body) => {
+        assert.equal(body.candidateId, 'pending-recovery')
+        if (body.action === 'resume') pending.sameSession = true
+        if (body.action === 'cancel') pending = null
+        return { errorNo: 0 }
+      }
+    } })
+    await page.loadAll()
+    page.updateField(['relay', 'relayHost'], 'new.example.com')
+    await page.saveConfig()
+    assert.equal(saves, 1)
+    page.updateField(['relay', 'relayHost'], 'blocked.example.com')
+    await page.saveConfig()
+    assert.equal(saves, 1)
+    assert.equal(page.formConfig.value.relay.relayHost, 'new.example.com')
+    fail = false
+    pending.sameSession = false
+    await page.refreshPage()
+    assert.equal(page.savedGeneration.value, 0)
+    assert.equal(page.pendingCandidate.value.candidateId, 'pending-recovery')
+    await page.managePending('resume')
+    assert.equal(page.savedGeneration.value, 2)
+    await page.managePending('cancel')
+    assert.equal(page.pendingCandidate.value, null)
+    page.updateField(['relay', 'relayHost'], 'editable.example.com')
+    assert.equal(page.formConfig.value.relay.relayHost, 'editable.example.com')
+  })
 }
 
 test('旧版配置仅请求状态，不并发请求分区、备份和审计', async () => {
@@ -341,10 +389,16 @@ test('只读账号不得发送配置写入请求或读取无权限维护数据',
 
 test('独立页保持验证、保存、应用端点和代次协议，敏感值不串页', async () => {
   const requests = []
+  let pending = null
   const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 8 } : { relayPasswordStatus: 'configured' } }), 'smtp', {
     http: {
-      post: async (path, body) => { requests.push({ path, body }); return { errorNo: 0, data: { valid: true } } },
-      put: async (path, body) => { requests.push({ path, body }); return { errorNo: 0, data: { generation: 9 } } }
+      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 8 } : { relayPasswordStatus: 'configured' } }),
+      post: async (path, body) => { requests.push({ path, body }); if (path.endsWith('/apply')) pending = null; return { errorNo: 0, data: { valid: true } } },
+      put: async (path, body) => {
+        requests.push({ path, body })
+        pending = { generation: 9, candidateId: 'candidate-9', section: 'smtp', sameSession: true, payload: {} }
+        return { errorNo: 0, data: pending }
+      }
     }
   })
   await page.loadAll()
@@ -359,7 +413,7 @@ test('独立页保持验证、保存、应用端点和代次协议，敏感值�
   assert.deepEqual(requests[0].body.payload, {})
   assert.deepEqual(requests[0].body.secretChanges, { 'relay.password': { operation: 'replace', value: { plaintext: 'test-only-value' } } })
   assert.deepEqual(requests[0].body.confirmation, { confirmed: true, method: 'recent_auth' })
-  assert.deepEqual(requests[2].body, { generation: 9 })
+  assert.deepEqual(requests[2].body, { generation: 9, candidateId: 'candidate-9' })
   assert.equal(page.secretValue.value, '')
   assert.equal(page.confirmed.value, false)
   assert.equal(page.savedGeneration.value, 0)
@@ -381,6 +435,9 @@ test('可视化编辑按权限和工作状态保护，编辑会清除过期确�
   readonly.updateField(['relay', 'relayHost'], 'blocked.example.com')
   assert.equal(readonly.editorText.value, '')
   page.savedGeneration.value = 8
+  page.updateField(['relay', 'relayHost'], 'blocked.example.com')
+  assert.equal(page.editorText.value, original)
+  page.savedGeneration.value = 0
   page.confirmed.value = true
   page.validationResult.value = { valid: true }
   page.updateField(['relay', 'relayHost'], 'new.example.com')

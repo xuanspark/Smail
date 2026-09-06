@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	xhtml "golang.org/x/net/html"
+
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
 	"github.com/go-telegram/bot"
@@ -148,5 +150,43 @@ func TestAuditTelegramTruncationMustKeepUTF8(t *testing.T) {
 				t.Error("正常中文被截断为无效 UTF-8")
 			}
 		})
+	}
+}
+
+func TestAuditTelegramTruncationKeepsClosedMarkup(t *testing.T) {
+	hook, _ := auditTelegramHook(t)
+	for _, spoiler := range []bool{false, true} {
+		text := hook.buildSendText(&parsemail.Email{
+			Subject: strings.Repeat("<主题>&\"", 300),
+			To:      []*parsemail.User{nil, {EmailAddress: "<script>@example.com"}},
+			Text:    []byte(strings.Repeat("中文 & <正文> 😀", 1000)),
+		}, &model.TelegramPushSetting{ShowContent: true, SpoilerContent: spoiler})
+		if !utf8.ValidString(text) || len(text) > TELEGRAM_TEXT_MAX_SIZE {
+			t.Fatalf("通知长度或编码错误：%d", len(text))
+		}
+		parser := xhtml.NewTokenizer(strings.NewReader(text))
+		stack := []string{}
+		for {
+			switch parser.Next() {
+			case xhtml.ErrorToken:
+				if parser.Err() != io.EOF || len(stack) != 0 {
+					t.Fatalf("通知标签未完整闭合：%v %v", stack, parser.Err())
+				}
+				goto done
+			case xhtml.StartTagToken:
+				name, _ := parser.TagName()
+				if string(name) != "b" && string(name) != "tg-spoiler" {
+					t.Fatalf("外部内容被解释成标签：%s", name)
+				}
+				stack = append(stack, string(name))
+			case xhtml.EndTagToken:
+				name, _ := parser.TagName()
+				if len(stack) == 0 || stack[len(stack)-1] != string(name) {
+					t.Fatalf("标签不匹配：%s", name)
+				}
+				stack = stack[:len(stack)-1]
+			}
+		}
+	done:
 	}
 }

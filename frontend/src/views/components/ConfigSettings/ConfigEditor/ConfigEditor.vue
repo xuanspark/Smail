@@ -103,7 +103,7 @@
             :section="selectedSection"
             :config="formConfig"
             :errors="formErrors"
-            :disabled="!canWrite || !!working"
+            :disabled="!canWrite || !!working || !!pendingCandidate"
             @change="updateField"
           />
           <p id="config-sensitive-hint" class="editor-hint">{{ sensitiveHint }}。</p>
@@ -119,7 +119,7 @@
               type="password"
               show-password
               clearable
-              :disabled="!canWrite || sectionLoading || !!working || !!sectionError"
+              :disabled="!canWrite || sectionLoading || !!working || !!sectionError || !!pendingCandidate"
               :placeholder="secretField.placeholder"
               autocomplete="new-password"
               @update:model-value="updateSecret"
@@ -127,21 +127,34 @@
           </div>
 
           <div v-if="canWrite" class="editor-footer">
+            <el-alert
+              v-if="pendingCandidate"
+              :title="`服务器存在待应用候选，代次 ${pendingCandidate.generation}。已锁定编辑；如需修改，请先取消候选。刷新页面不会丢失候选。`"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
             <el-checkbox v-model="confirmed" class="confirmation-check" :disabled="sectionLoading || !!working || !!sectionError">
               我已确认这是受控变更，并允许使用最近认证完成高风险配置操作
             </el-checkbox>
             <div class="action-row">
-              <el-button :loading="working === 'validate'" :disabled="sectionLoading || !!working || !!sectionError" @click="validateConfig">
+              <el-button :loading="working === 'validate'" :disabled="sectionLoading || !!working || !!sectionError || !!pendingCandidate" @click="validateConfig">
                 只验证
               </el-button>
-              <el-button type="primary" :loading="working === 'save'" :disabled="sectionLoading || !!working || !!sectionError" @click="saveConfig">
+              <el-button type="primary" :loading="working === 'save'" :disabled="sectionLoading || !!working || !!sectionError || !!pendingCandidate" @click="saveConfig">
                 保存候选配置
+              </el-button>
+              <el-button v-if="pendingCandidate && !pendingCandidate.sameSession" :disabled="!!working || !confirmed" @click="managePending('resume')">
+                恢复候选到当前会话
+              </el-button>
+              <el-button v-if="pendingCandidate" type="warning" plain :disabled="!!working || pendingCandidate.committed" @click="managePending('cancel')">
+                取消候选配置
               </el-button>
               <el-button type="success" plain :loading="working === 'apply'" :disabled="sectionLoading || !!working || !savedGeneration" @click="applyConfig">
                 {{ savedGeneration ? `应用代次 ${savedGeneration}` : '应用配置' }}
               </el-button>
             </div>
-            <p class="action-hint">保存不会立即生效；保存后若继续修改内容，需要重新保存才能应用。</p>
+            <p class="action-hint">保存不会立即生效；需要继续修改时先取消候选。跨会话恢复或取消需要近期认证并勾选确认。</p>
           </div>
           <div v-if="validationResult" class="result-box" :class="validationResult.valid ? 'result-success' : 'result-error'" role="status">
             <strong>{{ validationResult.valid ? '验证通过' : '验证未通过' }}</strong>
@@ -182,6 +195,8 @@ const {
   secretValue,
   confirmed,
   savedGeneration,
+  pendingCandidate,
+  managePending,
   validationResult,
   canWrite,
   refreshPage,

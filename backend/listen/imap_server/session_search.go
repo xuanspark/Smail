@@ -17,7 +17,11 @@ func (s *serverSession) Search(kind imapserver.NumKind, criteria *imap.SearchCri
 	log.WithContext(s.ctx).Debugf("IMAP SEARCH started: kind=%v", kind)
 
 	// Use the new comprehensive search function
-	retList, err := list.SearchEmails(s.ctx, s.currentMailbox, criteria)
+	uids, err := s.selectedUIDs()
+	if err != nil {
+		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Search failed"}
+	}
+	retList, err := list.SearchEmails(s.ctx, s.currentMailbox, criteria, uids)
 	if err != nil {
 		log.WithContext(s.ctx).Errorf("IMAP SEARCH error: %v", err)
 		return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Search failed"}

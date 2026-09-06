@@ -98,6 +98,7 @@
 import { usePage, CircleCheck, Switch, Delete, View, Folder, EpArrowDownBold, EditPen, Warning } from './List.js'
 
 const {
+  taskTableDataRef,
   groupStore,
   selectAll,
   data,

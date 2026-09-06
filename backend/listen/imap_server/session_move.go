@@ -1,46 +1,20 @@
 package imap_server
 
 import (
-	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/group"
-	"git.pcux.cn/xuans/Smail/services/list"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cast"
 )
 
 func (s *serverSession) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
-	var emailList []*response.EmailResponseData
-
-	switch numSet.(type) {
-	case imap.SeqSet:
-		seqSet := numSet.(imap.SeqSet)
-		for _, seq := range seqSet {
-			res, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
-				Star: cast.ToInt(seq.Start),
-				End:  cast.ToInt(seq.Stop),
-			}, false)
-			if err != nil {
-				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for move failed")
-				return moveFailedError()
-			}
-			emailList = append(emailList, res...)
-		}
-	case imap.UIDSet:
-		uidSet := numSet.(imap.UIDSet)
-		for _, uid := range uidSet {
-			res, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
-				Star: cast.ToInt(uint32(uid.Start)),
-				End:  cast.ToInt(uint32(uid.Stop)),
-			}, true)
-			if err != nil {
-				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for UID move failed")
-				return moveFailedError()
-			}
-			emailList = append(emailList, res...)
-		}
+	if s.readOnly {
+		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Mailbox is read-only"}
+	}
+	emailList, err := s.selectedMessages(numSet)
+	if err != nil {
+		return moveFailedError()
 	}
 
 	relationIDs := make([]int, 0, len(emailList))

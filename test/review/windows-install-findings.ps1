@@ -25,7 +25,7 @@ foreach ($command in $commands) {
 # 只执行真实事务语句，所有文件和服务操作均为内存函数桩，不执行安装脚本主体。
 $transaction = [scriptblock]::Create($tries[0].Extent.Text)
 $results = @()
-foreach ($stage in @('stop', 'copy-main', 'copy-admin', 'backup-main', 'backup-admin', 'install-main')) {
+foreach ($stage in @('stop', 'copy-main', 'copy-admin', 'backup-main', 'backup-admin', 'install-main', 'install-admin', 'service')) {
     $results += & {
         param($failureStage, $body)
         $virtualRoot = [IO.Path]::GetFullPath((Join-Path $workspace 'test-log\virtual-install-audit'))
@@ -88,6 +88,7 @@ foreach ($stage in @('stop', 'copy-main', 'copy-admin', 'backup-main', 'backup-a
             if ($LiteralPath -eq $mainTarget) { Invoke-Failure 'backup-main' }
             if ($LiteralPath -eq $adminTarget) { Invoke-Failure 'backup-admin' }
             if ($Destination -eq $mainTarget -and $LiteralPath -ne $mainBackup) { Invoke-Failure 'install-main' }
+            if ($Destination -eq $adminTarget -and $LiteralPath -ne $adminBackup) { Invoke-Failure 'install-admin' }
             $state.Files[$Destination] = $state.Files[$LiteralPath]
             $state.Files.Remove($LiteralPath)
             $state.Operations.Add("move:$LiteralPath")
@@ -98,7 +99,7 @@ foreach ($stage in @('stop', 'copy-main', 'copy-admin', 'backup-main', 'backup-a
             $state.Files.Remove($LiteralPath)
             $state.Operations.Add("remove:$LiteralPath")
         }
-        function Get-Service { throw '不得调用真实系统服务' }
+        function Get-Service { Invoke-Failure 'service'; throw '不得调用真实系统服务' }
         function Invoke-Native { throw '不得调用原生系统工具' }
         function Set-RestrictedAcl { throw '不得修改真实权限' }
         function Start-Service { throw '不得启动真实服务' }

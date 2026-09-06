@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
@@ -68,27 +69,51 @@ func rejectUnavailableRecovery(w http.ResponseWriter) bool {
 	return true
 }
 
-var securityRuntime = struct {
+type securityRuntimeState struct {
 	verification *verification.Service
 	external     *externalemail.Repository
 	recovery     *recovery.Service
 	credentials  *credentials.Service
 	webauthn     *webauthnservice.Service
-}{}
+}
+
+var securityRuntime securityRuntimeState
+var securityRuntimeMu sync.RWMutex
+
+// 每个请求持有同一份服务快照，发布锁不跨越数据库、投递和失效回调。
+func currentSecurityRuntime() securityRuntimeState {
+	securityRuntimeMu.RLock()
+	defer securityRuntimeMu.RUnlock()
+	return securityRuntime
+}
 
 // ConfigureSecurityRuntime 由主程序在数据库和内存安全服务就绪后调用。
 func ConfigureSecurityRuntime(verify *verification.Service, external *externalemail.Repository, recover *recovery.Service, credential *credentials.Service) {
+	if recover != nil {
+		recover.SetSecurityStateInvalidator(InvalidateSecurityRuntimeUser)
+	}
+	securityRuntimeMu.Lock()
+	defer securityRuntimeMu.Unlock()
 	securityRuntime.verification = verify
 	securityRuntime.external = external
 	securityRuntime.recovery = recover
 	securityRuntime.credentials = credential
-	if recover != nil {
-		recover.SetSecurityStateInvalidator(InvalidateSecurityRuntimeUser)
-	}
 }
 
 func ConfigureWebAuthnRuntime(service *webauthnservice.Service) {
+	securityRuntimeMu.Lock()
+	defer securityRuntimeMu.Unlock()
 	securityRuntime.webauthn = service
+}
+
+// ClearSecurityRuntime 在停止入口后一次撤下全部安全服务，避免保留已停止的旧库依赖。
+func ClearSecurityRuntime() {
+	securityRuntimeMu.Lock()
+	securityRuntime = securityRuntimeState{}
+	securityRuntimeMu.Unlock()
+	loginVerificationState.Lock()
+	clear(loginVerificationState.items)
+	loginVerificationState.Unlock()
 }
 
 // InvalidateSecurityRuntimeUser 清除密码重置后仍驻留在内存中的安全流程状态。
@@ -96,14 +121,15 @@ func InvalidateSecurityRuntimeUser(userID int, account string) {
 	if userID <= 0 {
 		return
 	}
-	if securityRuntime.recovery != nil {
-		securityRuntime.recovery.InvalidateUser(userID)
+	runtime := currentSecurityRuntime()
+	if runtime.recovery != nil {
+		runtime.recovery.InvalidateUser(userID)
 	}
-	if securityRuntime.verification != nil && securityRuntime.verification.Store != nil {
-		securityRuntime.verification.Store.InvalidateAccount(account)
+	if runtime.verification != nil && runtime.verification.Store != nil {
+		runtime.verification.Store.InvalidateAccount(account)
 	}
-	if securityRuntime.webauthn != nil {
-		securityRuntime.webauthn.InvalidateUser(userID)
+	if runtime.webauthn != nil {
+		runtime.webauthn.InvalidateUser(userID)
 	}
 	loginVerificationState.Lock()
 	for id, item := range loginVerificationState.items {
@@ -122,7 +148,7 @@ func LoadSecurityContext(ctx *context.Context) {
 		ctx.RecoveryCodeConfigured = false
 		return
 	}
-	service := securityRuntime.credentials
+	service := currentSecurityRuntime().credentials
 	if service == nil && db.Instance != nil {
 		service, _ = credentials.NewService(db.Instance)
 	}
@@ -136,8 +162,8 @@ func LoadSecurityContext(ctx *context.Context) {
 }
 
 func credentialRuntime() *credentials.Service {
-	if securityRuntime.credentials != nil {
-		return securityRuntime.credentials
+	if service := currentSecurityRuntime().credentials; service != nil {
+		return service
 	}
 	if db.Instance == nil {
 		return nil
@@ -406,6 +432,7 @@ func RevokeProtocolCredential(ctx *context.Context, w http.ResponseWriter, req *
 	response.NewSuccessResponse(map[string]any{"protocol": protocol, "revoked": true}).FPrint(w)
 }
 func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
@@ -422,11 +449,11 @@ func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.ParamsError, "请求无效")
 		return
 	}
-	if input.Email == "" || strings.TrimSpace(input.Account) == "" || !verification.IsSupportedPurpose(input.Purpose) || securityRuntime.verification == nil {
+	if input.Email == "" || strings.TrimSpace(input.Account) == "" || !verification.IsSupportedPurpose(input.Purpose) || runtime.verification == nil {
 		writeSecurityError(w, response.ParamsError, "请求已受理")
 		return
 	}
-	challenge, err := securityRuntime.verification.Issue(verification.IssueRequest{Purpose: input.Purpose, UserID: ctx.UserID, Account: input.Account, Email: input.Email}, remoteIP(req))
+	challenge, err := runtime.verification.Issue(verification.IssueRequest{Purpose: input.Purpose, UserID: ctx.UserID, Account: input.Account, Email: input.Email}, remoteIP(req))
 	if err != nil {
 		writeSecurityError(w, response.ParamsError, "请求已受理")
 		return
@@ -436,12 +463,13 @@ func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.
 
 // VerifyVerification 消费一次性验证码，只返回后续流程所需的短时票据。
 func VerifyVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
 	var input verificationCheckRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || securityRuntime.verification == nil {
+	if err := decodeJSONRequest(w, req, &input); err != nil || runtime.verification == nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
@@ -452,7 +480,7 @@ func VerifyVerification(ctx *context.Context, w http.ResponseWriter, req *http.R
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
-	if err := securityRuntime.verification.Verify(input.ID, input.Account, input.Email, input.Code, input.Purpose, remoteIP(req)); err != nil {
+	if err := runtime.verification.Verify(input.ID, input.Account, input.Email, input.Code, input.Purpose, remoteIP(req)); err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
@@ -460,11 +488,12 @@ func VerifyVerification(ctx *context.Context, w http.ResponseWriter, req *http.R
 }
 
 func BeginPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	if rejectUnavailableRecovery(w) {
 		return
 	}
 	var input verificationRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || securityRuntime.recovery == nil {
+	if err := decodeJSONRequest(w, req, &input); err != nil || runtime.recovery == nil {
 		writeSecurityError(w, response.ParamsError, "请求已受理")
 		return
 	}
@@ -486,7 +515,7 @@ func BeginPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *htt
 		writeSecurityError(w, response.ParamsError, "\u8bf7\u6c42\u5df2\u53d7\u7406")
 		return
 	}
-	id, err := securityRuntime.recovery.Begin(recovery.BeginRequest{Identifier: input.Account, Email: input.Email, BrowserContext: browserContext}, remoteIP(req))
+	id, err := runtime.recovery.Begin(recovery.BeginRequest{Identifier: input.Account, Email: input.Email, BrowserContext: browserContext}, remoteIP(req))
 	if err != nil && id == "" {
 		emailRecoveryFailureIPAttempts.recordFailure(emailRecoveryFailureIPAttempts.ipKey(req))
 		writeSecurityError(w, response.ParamsError, "请求已受理")
@@ -497,6 +526,7 @@ func BeginPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *htt
 }
 
 func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	if rejectUnavailableRecovery(w) {
 		return
 	}
@@ -506,7 +536,7 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 		return
 	}
 	var input verificationCheckRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || securityRuntime.recovery == nil {
+	if err := decodeJSONRequest(w, req, &input); err != nil || runtime.recovery == nil {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
@@ -524,9 +554,9 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 		return
 	}
 	if methodOffline {
-		ticket, err = securityRuntime.recovery.VerifyOfflineWithContext(input.Account, input.Question, input.Answer, input.RecoveryCode, remoteIP(req), browserContext)
+		ticket, err = runtime.recovery.VerifyOfflineWithContext(input.Account, input.Question, input.Answer, input.RecoveryCode, remoteIP(req), browserContext)
 	} else {
-		ticket, err = securityRuntime.recovery.VerifyWithContext(input.ID, input.Account, input.Email, input.Code, input.RecoveryCode, remoteIP(req), browserContext)
+		ticket, err = runtime.recovery.VerifyWithContext(input.ID, input.Account, input.Email, input.Code, input.RecoveryCode, remoteIP(req), browserContext)
 	}
 	if err != nil {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
@@ -537,6 +567,7 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 }
 
 func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	if rejectUnavailableRecovery(w) {
 		return
 	}
@@ -546,7 +577,7 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 		return
 	}
 	var input recoveryCompleteRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || securityRuntime.recovery == nil || strings.TrimSpace(input.Ticket) == "" {
+	if err := decodeJSONRequest(w, req, &input); err != nil || runtime.recovery == nil || strings.TrimSpace(input.Ticket) == "" {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "重置失败")
 		return
@@ -557,7 +588,7 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 		writeSecurityError(w, response.ParamsError, "\u9a8c\u8bc1\u5931\u8d25")
 		return
 	}
-	if err := securityRuntime.recovery.CompleteWithContext(input.Ticket, input.NewPassword, browserContext); err != nil {
+	if err := runtime.recovery.CompleteWithContext(input.Ticket, input.NewPassword, browserContext); err != nil {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "重置失败")
 		return
@@ -609,11 +640,12 @@ func newOpaqueRecoveryChallengeID() (string, error) {
 }
 
 func ListExternalEmails(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if ctx == nil || ctx.UserID <= 0 || securityRuntime.external == nil {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
-	items, err := securityRuntime.external.List(ctx.UserID)
+	items, err := runtime.external.List(ctx.UserID)
 	if err != nil {
 		log.WithError(err).Error("list external email failed")
 		writeSecurityError(w, response.ServerError, "读取外部邮箱失败")
@@ -621,7 +653,7 @@ func ListExternalEmails(ctx *context.Context, w http.ResponseWriter, req *http.R
 	}
 	result := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		email, err := securityRuntime.external.Decrypt(item)
+		email, err := runtime.external.Decrypt(item)
 		if err != nil {
 			continue
 		}
@@ -631,7 +663,8 @@ func ListExternalEmails(ctx *context.Context, w http.ResponseWriter, req *http.R
 }
 
 func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if ctx == nil || ctx.UserID <= 0 || securityRuntime.external == nil || securityRuntime.verification == nil {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil || runtime.verification == nil {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
@@ -660,14 +693,14 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 		return
 	}
 	input.Email = normalizedEmail
-	item, err := securityRuntime.external.Bind(externalemail.BindRequest{UserID: ctx.UserID, Email: input.Email, Type: input.Type})
+	item, err := runtime.external.Bind(externalemail.BindRequest{UserID: ctx.UserID, Email: input.Email, Type: input.Type})
 	if err != nil {
 		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
 		return
 	}
-	challenge, err := securityRuntime.verification.Issue(verification.IssueRequest{Purpose: verification.PurposeExternalEmailBind, UserID: ctx.UserID, Account: ctx.UserAccount, Email: input.Email, ResourceID: item.ID}, remoteIP(req))
+	challenge, err := runtime.verification.Issue(verification.IssueRequest{Purpose: verification.PurposeExternalEmailBind, UserID: ctx.UserID, Account: ctx.UserAccount, Email: input.Email, ResourceID: item.ID}, remoteIP(req))
 	if err != nil {
-		_ = securityRuntime.external.AbandonPending(ctx.UserID, item.ID)
+		_ = runtime.external.AbandonPending(ctx.UserID, item.ID)
 		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
 		return
 	}
@@ -683,7 +716,8 @@ func currentUserPrimaryEmail(userID int, email string) (bool, error) {
 }
 
 func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if ctx == nil || ctx.UserID <= 0 || securityRuntime.external == nil || securityRuntime.verification == nil {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil || runtime.verification == nil {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
@@ -692,11 +726,11 @@ func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
-	if err := securityRuntime.verification.VerifyBound(input.ID, ctx.UserAccount, input.Email, input.Code, verification.PurposeExternalEmailBind, input.BindingID, remoteIP(req)); err != nil {
+	if err := runtime.verification.VerifyBound(input.ID, ctx.UserAccount, input.Email, input.Code, verification.PurposeExternalEmailBind, input.BindingID, remoteIP(req)); err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
-	if err := securityRuntime.external.Verify(ctx.UserID, input.BindingID); err != nil {
+	if err := runtime.external.Verify(ctx.UserID, input.BindingID); err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
@@ -704,7 +738,8 @@ func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.
 }
 
 func DisableExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if ctx == nil || ctx.UserID <= 0 || securityRuntime.external == nil {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
@@ -713,16 +748,16 @@ func DisableExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http
 		writeSecurityError(w, response.ParamsError, "请求无效")
 		return
 	}
-	if err := securityRuntime.external.Disable(ctx.UserID, input.ID); err != nil {
+	if err := runtime.external.Disable(ctx.UserID, input.ID); err != nil {
 		writeSecurityError(w, response.ParamsError, "外部邮箱停用失败")
 		return
 	}
-	if securityRuntime.verification != nil && securityRuntime.verification.Store != nil {
-		securityRuntime.verification.Store.InvalidateResource(input.ID, verification.PurposeExternalEmailBind)
-		securityRuntime.verification.Store.InvalidateAccount(ctx.UserAccount)
+	if runtime.verification != nil && runtime.verification.Store != nil {
+		runtime.verification.Store.InvalidateResource(input.ID, verification.PurposeExternalEmailBind)
+		runtime.verification.Store.InvalidateAccount(ctx.UserAccount)
 	}
-	if securityRuntime.recovery != nil {
-		securityRuntime.recovery.InvalidateUser(ctx.UserID)
+	if runtime.recovery != nil {
+		runtime.recovery.InvalidateUser(ctx.UserID)
 	}
 	loginVerificationState.Lock()
 	for id, item := range loginVerificationState.items {

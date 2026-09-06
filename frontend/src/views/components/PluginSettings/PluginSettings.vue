@@ -9,6 +9,7 @@
       <el-tabs class="custom-tabs">
         <el-tab-pane v-for="entry in pluginEntries" :key="entry.src" :label="entry.name">
           <SpamBlockSettings v-if="entry.logicalID === 'spam_block'" />
+          <TelegramSettings v-else-if="entry.logicalID === 'telegram_push'" />
           <div v-else class="iframe-wrapper">
             <iframe
               :src="entry.src"
@@ -33,6 +34,7 @@
 <script setup>
 import { usePage } from './PluginSettings.js'
 import SpamBlockSettings from './SpamBlockSettings/SpamBlockSettings.vue'
+import TelegramSettings from './TelegramSettings/TelegramSettings.vue'
 
 const {
   lang,

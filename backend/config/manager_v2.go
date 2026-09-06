@@ -73,9 +73,10 @@ type ValidationResult struct {
 }
 
 type UpdateResult struct {
-	Generation uint64
-	Candidate  RuntimeConfig
-	Pending    bool
+	CandidateID string
+	Generation  uint64
+	Candidate   RuntimeConfig
+	Pending     bool
 }
 
 type ApplyResult struct {
@@ -325,11 +326,15 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
+	id, err := newRollbackTicketID()
+	if err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
-	m.pending = &pendingConfig{Candidate: candidate, Section: req.Section, Actor: req.Actor, Confirmation: req.Confirmation}
-	m.status.PendingRestart = servicesForSection(req.Section)
+	m.pending = &pendingConfig{ID: id, Candidate: candidate, Section: req.Section, Actor: req.Actor, Confirmation: req.Confirmation, PreviousRestart: append([]ServiceName(nil), m.status.PendingRestart...)}
+	m.status.PendingRestart = mergeServices(m.status.PendingRestart, servicesForSection(req.Section))
 	m.mu.Unlock()
-	return &UpdateResult{Generation: candidate.Generation, Candidate: cloneRuntimeConfig(candidate), Pending: true}, nil
+	return &UpdateResult{CandidateID: id, Generation: candidate.Generation, Candidate: cloneRuntimeConfig(candidate), Pending: true}, nil
 }
 
 func (m *ConfigManager) Apply(ctx context.Context, generation uint64) (*ApplyResult, error) {
@@ -344,7 +349,15 @@ func (m *ConfigManager) ApplyAuthorized(ctx context.Context, generation uint64, 
 	return m.apply(ctx, generation, actor)
 }
 
-func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor AuditActor) (*ApplyResult, error) {
+// ApplyPendingAuthorized 同时校验候选标识和分区，避免取消后代次复用导致旧请求误应用。
+func (m *ConfigManager) ApplyPendingAuthorized(ctx context.Context, generation uint64, id string, section Section, actor AuditActor) (*ApplyResult, error) {
+	if id == "" || actor.UserID == "" || actor.SessionID == "" {
+		return nil, ErrAuthorizationRequired
+	}
+	return m.apply(ctx, generation, actor, id, string(section))
+}
+
+func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor AuditActor, identity ...string) (*ApplyResult, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -362,11 +375,19 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	}
 	m.mu.RUnlock()
 	candidate := pending.Candidate
+	if len(identity) > 0 && (len(identity) != 2 || identity[0] != pending.ID || identity[1] != string(pending.Section)) {
+		return nil, ErrGenerationConflict
+	}
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
 	if actor.UserID != "" && (pending.Actor.UserID != actor.UserID || pending.Actor.SessionID != actor.SessionID) {
 		return nil, ErrAuthorizationRequired
+	}
+	if actor.UserID != "" {
+		if err := m.authorize(ctx, actor, ConfigOperationUpdate, pending.Section); err != nil {
+			return nil, err
+		}
 	}
 	if generation != candidate.Generation || candidate.Generation != current.Generation+1 {
 		return nil, ErrGenerationConflict
@@ -386,14 +407,19 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
-		return nil, err
-	}
-	if err := contextError(ctx); err != nil {
-		return nil, err
-	}
-	if err := m.transactions.Commit(current, candidate); err != nil {
-		return nil, err
+	if !pending.Committed {
+		if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+			return nil, err
+		}
+		if err := contextError(ctx); err != nil {
+			return nil, err
+		}
+		if err := m.transactions.Commit(current, candidate); err != nil {
+			return nil, err
+		}
+		m.mu.Lock()
+		m.pending.Committed = true
+		m.mu.Unlock()
 	}
 	if err := m.publishSnapshot(candidate); err != nil {
 		return nil, err

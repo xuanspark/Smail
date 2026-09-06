@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 
+	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/del_email"
 	"git.pcux.cn/xuans/Smail/services/list"
 	"github.com/emersion/go-imap/v2"
@@ -23,19 +24,34 @@ func (s *serverSession) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) 
 	if s == nil || s.ctx == nil || s.ctx.UserID <= 0 {
 		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Expunge failed"}
 	}
+	// CLOSE 也会调用这里；只读会话正常关闭，但不能真正删除邮件。
+	if s.readOnly {
+		return nil
+	}
 
-	maxUID := 0
-	var err error
-	if uids != nil && uids.Dynamic() {
-		maxUID, err = list.GetMaxUIDByMailbox(s.ctx, s.currentMailbox)
-		if err != nil {
-			slog.Error("query IMAP maximum UID failed", "error", err)
-			return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Expunge failed"}
+	snapshot, err := s.selectedUIDs()
+	if err != nil {
+		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Expunge failed"}
+	}
+	// 只匹配会话内真实存在的 UID，不展开巨大或稀疏区间。
+	var maximum uint32
+	for _, uid := range snapshot {
+		maximum = max(maximum, uint32(uid))
+	}
+	requestedUIDs := make([]int, 0, len(snapshot))
+	for _, uid := range snapshot {
+		matched := uids == nil
+		if uids != nil {
+			for _, span := range *uids {
+				matched = matched || numberInRange(uint32(uid), uint32(span.Start), uint32(span.Stop), maximum)
+			}
+		}
+		if matched {
+			requestedUIDs = append(requestedUIDs, uid)
 		}
 	}
-	requestedUIDs, err := expandIMAPUIDSet(uids, maxUID)
-	if err != nil {
-		return &imap.Error{Type: imap.StatusResponseTypeBad, Text: err.Error()}
+	if len(requestedUIDs) == 0 {
+		return nil
 	}
 	targets, err := markedDeletedMessages(s, requestedUIDs)
 	if err != nil {
@@ -64,6 +80,14 @@ func (s *serverSession) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) 
 				return err
 			}
 		}
+		s.mailboxMu.Lock()
+		for index, uid := range s.mailboxUIDs {
+			if uid == target.uid {
+				s.mailboxUIDs = append(s.mailboxUIDs[:index], s.mailboxUIDs[index+1:]...)
+				break
+			}
+		}
+		s.mailboxMu.Unlock()
 	}
 	return nil
 }
@@ -132,16 +156,29 @@ func expandIMAPUIDSet(uids *imap.UIDSet, maxUID int) ([]int, error) {
 }
 
 func markedDeletedMessages(s *serverSession, requested []int) ([]imapExpungeTarget, error) {
-	relations, err := list.GetUEListByUID(s.ctx, s.currentMailbox, 0, 0, requested)
+	uids, err := s.selectedUIDs()
 	if err != nil {
 		return nil, err
 	}
+	sequences := make(map[int]int, len(uids))
+	for index, uid := range uids {
+		sequences[uid] = index + 1
+	}
+	var relations []*response.UserEmailUIDData
+	for start := 0; start < len(requested); start += imapUIDQueryBatchSize {
+		end := min(start+imapUIDQueryBatchSize, len(requested))
+		batch, err := list.GetUEListByUID(s.ctx, s.currentMailbox, 0, 0, requested[start:end])
+		if err != nil {
+			return nil, err
+		}
+		relations = append(relations, batch...)
+	}
 	targets := make([]imapExpungeTarget, 0, len(relations))
 	for _, relation := range relations {
-		if relation == nil || relation.ID <= 0 || relation.IsDeleted != 1 {
+		if relation == nil || relation.ID <= 0 || relation.IsDeleted != 1 || sequences[relation.ID] == 0 {
 			continue
 		}
-		sequence, err := imapUint32(relation.SerialNumber)
+		sequence, err := imapUint32(sequences[relation.ID])
 		if err != nil || sequence == 0 {
 			return nil, fmt.Errorf("invalid message sequence number")
 		}

@@ -82,8 +82,14 @@ test('邮件列表挂载后，表格选中项必须用于全选和批量操作',
     table.selectRow(rows[0])
     assert.equal(page.selectedRows.value.length, 1)
     requests.length = 0
+    assert.ok(page.taskTableDataRef.value, '真实模板必须连接组合函数返回的表格引用')
     page.selectAll()
+    assert.equal(page.selectedRows.value.length, 2)
     page.invertSelection()
+    assert.equal(page.selectedRows.value.length, 0)
+    assert.equal(cleared, 1)
+    assert.equal(toggled, 4)
+    page.selectAll()
     page.markRead()
     page.move(0, '归档')
     page.del()
@@ -91,20 +97,11 @@ test('邮件列表挂载后，表格选中项必须用于全选和批量操作',
     await Promise.resolve()
     const actual = { connected: !!page.taskTableDataRef.value, cleared, toggled, requests: [...requests], warnings: [...messages] }
     console.log(`list_actual=${JSON.stringify(actual)}`)
-    // 只在测试内连接缺失引用，证明操作函数和模拟表格本身可用，不修改页面源码。
-    page.taskTableDataRef.value = table
-    page.selectAll()
-    page.markRead()
-    page.move(0, '归档')
-    page.del()
-    await Promise.resolve()
-    await Promise.resolve()
-    assert.equal(cleared, 1)
-    assert.equal(toggled, 2)
+    assert.equal(cleared, 2)
+    assert.equal(toggled, 6)
     for (const action of ['read', 'move', 'del']) assert.ok(requests.includes(`/api/v1/email/${action}`))
-    console.log('list_reference_control=true batch_requests_control=true')
     assert.equal(actual.connected, true, '真实模板必须连接组合函数返回的表格引用')
-    assert.equal(actual.cleared, 1)
+    assert.equal(actual.cleared, 2)
     assert.equal(actual.requests.filter(url => !url.endsWith('/list')).length, 3)
   } finally {
     app.unmount()
@@ -117,19 +114,22 @@ for (const action of ['edit', 'refresh']) {
     const source = read('src/views/components/ConfigSettings/ConfigSettings.js')
       .replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
     const initial = { generation: 1, policy: { smtpPort: 25, imapPort: 993, pop3Port: 995, maxMessageBytes: 0 } }
-    let pending = false
+    let pending = null
     let applied = false
     const errors = []
     const transport = {
-      get: async url => ({ errorNo: 0, data: url.endsWith('/status') ? { activeGeneration: 1, setupState: 'ready' } : initial }),
-      put: async () => {
+      get: async url => ({ errorNo: 0, data: url.endsWith('/pending') ? pending : url.endsWith('/status') ? { activeGeneration: 1, setupState: 'ready' } : initial }),
+      put: async (url, body) => {
         if (pending) return { errorNo: 409, errorMsg: '配置代次冲突' }
-        pending = true
-        return { errorNo: 0, data: { generation: 2, pending: true } }
+        pending = { generation: 2, candidateId: 'audit-candidate', sameSession: true, section: 'email', payload: body.payload }
+        return { errorNo: 0, data: pending }
       },
-      post: async url => {
+      post: async (url, body) => {
         assert.ok(url.endsWith('/apply'))
+        assert.equal(body.candidateId, pending.candidateId)
+        assert.equal(body.generation, pending.generation)
         applied = true
+        pending = null
         return { errorNo: 0, data: { generation: 2 } }
       }
     }
@@ -170,7 +170,7 @@ test('外部邮箱验证码输入错误后必须能够再次输入，而不是�
     Vue.computed, () => {}, Vue.reactive, Vue.ref, () => {},
     { prompt: async () => { prompts++; return { value: prompts === 1 ? 'incorrect' : 'correct' } } },
     notification => notifications.push(notification.message), {},
-    { post: async url => {
+    { get: async () => ({ errorNo: 0, data: [] }), post: async url => {
       if (url.endsWith('/bind')) {
         if (bound) return { errorNo: 400, errorMsg: '外部邮箱绑定失败' }
         bound = true
@@ -237,6 +237,42 @@ test('审计导出必须保存服务端返回的 Blob 内容', async () => {
   }
   for (const { actual, payload } of results) assert.equal(actual, payload, '下载文件必须保留真实审计记录，而不是 undefined')
 })
+
+for (const format of ['csv', 'json']) {
+  test(`审计 ${format} 导出的错误 Blob 不应下载，失败后允许重试`, async () => {
+    const source = read('src/views/components/ConfigSettings/ConfigSettings.js')
+      .replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
+    const errors = []
+    const downloads = []
+    let clicked = 0
+    let requests = 0
+    const payload = format === 'csv' ? 'id,operation\n1,update\n' : '[{"id":1}]'
+    const page = compileFunction(source + '\nreturn usePage("audit")', [
+      'computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'ElMessageBox',
+      'http', 'useGlobalStatusStore', 'readFormConfig', 'updateFormConfig', 'validateFormConfig', 'URL', 'document'
+    ])(
+      Vue.computed, () => {}, () => {}, Vue.reactive, Vue.ref,
+      { success() {}, error: message => errors.push(message) }, {},
+      { post: async () => ++requests === 1
+        ? new Blob([JSON.stringify({ errorNo: 403, errorMsg: '无权导出审计记录' })], { type: 'application/json' })
+        : new Blob([payload], { type: format === 'csv' ? 'text/csv' : 'application/json' }) },
+      () => ({ hasCapability: () => true }), () => ({}), () => '', () => ({}),
+      { createObjectURL: blob => { downloads.push(blob); return 'blob:audit' }, revokeObjectURL() {} },
+      { createElement: () => ({ click: () => { clicked++ } }) }
+    )
+    await page.exportAudit(format)
+    assert.deepEqual(errors, ['无权导出审计记录'])
+    assert.equal(downloads.length, 0)
+    assert.equal(clicked, 0)
+    assert.equal(page.working.value, '')
+    await page.exportAudit(format)
+    assert.equal(requests, 2)
+    assert.equal(downloads.length, 1)
+    assert.equal(clicked, 1)
+    assert.equal(await downloads[0].text(), payload)
+    assert.equal(page.working.value, '')
+  })
+}
 
 // 挂载真实 SFC 的编译结果和真实组合函数，使用 Vue 自定义渲染器代替浏览器 DOM。
 test('写信页挂载后，附件按钮必须连接到文件输入框', async () => {

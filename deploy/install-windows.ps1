@@ -129,13 +129,17 @@ $adminBackup = Join-Path $backupRoot "smail-admin.exe"
 $serviceCreated = $false
 
 try {
+    $mainInstalled = $false
+    $adminInstalled = $false
     Stop-SmailService
     Copy-Item -LiteralPath $mainSource -Destination (Join-Path $transactionRoot "smail.exe")
     Copy-Item -LiteralPath $adminSource -Destination (Join-Path $transactionRoot "smail-admin.exe")
     if (Test-Path -LiteralPath $mainTarget) { Move-Item -LiteralPath $mainTarget -Destination $mainBackup }
     if (Test-Path -LiteralPath $adminTarget) { Move-Item -LiteralPath $adminTarget -Destination $adminBackup }
     Move-Item -LiteralPath (Join-Path $transactionRoot "smail.exe") -Destination $mainTarget
+    $mainInstalled = $true
     Move-Item -LiteralPath (Join-Path $transactionRoot "smail-admin.exe") -Destination $adminTarget
+    $adminInstalled = $true
     $service = Get-Service -Name "Smail" -ErrorAction SilentlyContinue
     if ($null -eq $service) {
         $binaryPath = '"' + $mainTarget + '"'
@@ -169,10 +173,10 @@ try {
         Write-Output "主服务保持停止状态，请完成配置后再手动启动。"
     }
 } catch {
-    if (Test-Path -LiteralPath $mainTarget) {
+    if ($mainInstalled -and (Test-Path -LiteralPath $mainTarget)) {
         Remove-Item -LiteralPath $mainTarget -Force
     }
-    if (Test-Path -LiteralPath $adminTarget) {
+    if ($adminInstalled -and (Test-Path -LiteralPath $adminTarget)) {
         Remove-Item -LiteralPath $adminTarget -Force
     }
     if (Test-Path -LiteralPath $mainBackup) {
@@ -185,18 +189,19 @@ try {
         $deleteArguments = @("delete", "Smail")
         Invoke-Native -FilePath "sc.exe" -Arguments $deleteArguments
     }
-    if (Test-Path -LiteralPath $transactionRoot) {
-        Remove-Item -LiteralPath $transactionRoot -Recurse -Force
-    }
-    if (Test-Path -LiteralPath $backupRoot) {
-        Remove-Item -LiteralPath $backupRoot -Recurse -Force
-    }
+    # 失败时保留事务目录和备份，回滚再次失败时也不能丢失唯一恢复材料。
     throw
 }
 
-if (Test-Path -LiteralPath $transactionRoot) {
-    Remove-Item -LiteralPath $transactionRoot -Recurse -Force
-}
-if (Test-Path -LiteralPath $backupRoot) {
-    Remove-Item -LiteralPath $backupRoot -Recurse -Force
+foreach ($temporaryRoot in @($transactionRoot, $backupRoot)) {
+    if (Test-Path -LiteralPath $temporaryRoot) {
+        $resolvedTemporaryRoot = (Resolve-Path -LiteralPath $temporaryRoot).Path
+        if ([IO.Path]::GetDirectoryName($resolvedTemporaryRoot) -ne $resolvedInstallRoot.TrimEnd('\')) {
+            throw "事务目录超出安装目录，拒绝清理：$resolvedTemporaryRoot"
+        }
+        if ((Get-Item -LiteralPath $resolvedTemporaryRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "事务目录不能是重解析点，拒绝清理：$resolvedTemporaryRoot"
+        }
+        Remove-Item -LiteralPath $resolvedTemporaryRoot -Recurse -Force
+    }
 }

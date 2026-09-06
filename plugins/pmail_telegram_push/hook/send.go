@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,6 +14,37 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/ydzydzydz/pmail_telegram_push/model"
 )
+
+// escapeTelegramText 在完整字符和实体边界裁剪，再返回可安全嵌入 Telegram HTML 的文本。
+func escapeTelegramText(text string, limit int) string {
+	if limit < 3 {
+		return ""
+	}
+	var result strings.Builder
+	for _, char := range text {
+		escaped := html.EscapeString(string(char))
+		if result.Len()+len(escaped) > limit-3 {
+			return result.String() + "..."
+		}
+		result.WriteString(escaped)
+	}
+	return result.String()
+}
+
+func telegramAddresses(users []*parsemail.User) string {
+	var result strings.Builder
+	for _, user := range users {
+		if user == nil || user.EmailAddress == "" {
+			continue
+		}
+		remaining := 480 - result.Len()
+		if remaining < 12 {
+			break
+		}
+		result.WriteString("&lt;" + escapeTelegramText(user.EmailAddress, remaining-9) + "&gt; ")
+	}
+	return result.String()
+}
 
 const (
 	TELEGRAM_TEXT_MAX_SIZE        = 4096             // TELEGRAM_TEXT_MAX_SIZE Telegram 文本最大长度
@@ -25,15 +57,15 @@ func (h *PmailTelegramPushHook) getSubjectText(email *parsemail.Email) string {
 	if len(email.Subject) <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("🔖 主题：<b>%s</b>\n", email.Subject)
+	return fmt.Sprintf("🔖 主题：<b>%s</b>\n", escapeTelegramText(email.Subject, 600))
 }
 
 // getFromText 获取发件人文本
 func (h *PmailTelegramPushHook) getFromText(email *parsemail.Email) string {
-	if len(email.From.EmailAddress) <= 0 {
+	if email.From == nil || len(email.From.EmailAddress) <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("📤 发件：&#60;%s&#62;\n", email.From.EmailAddress)
+	return fmt.Sprintf("📤 发件：&lt;%s&gt;\n", escapeTelegramText(email.From.EmailAddress, 256))
 }
 
 // getToText 获取收件人文本
@@ -41,12 +73,7 @@ func (h *PmailTelegramPushHook) getToText(email *parsemail.Email) string {
 	if len(email.To) <= 0 {
 		return ""
 	}
-	text := "📥 收件："
-	for _, to := range email.To {
-		text += fmt.Sprintf("&#60;%s&#62; ", to.EmailAddress)
-	}
-	text += "\n"
-	return text
+	return "📥 收件：" + telegramAddresses(email.To) + "\n"
 }
 
 // getCcText 获取抄送人文本
@@ -54,12 +81,7 @@ func (h *PmailTelegramPushHook) getCcText(email *parsemail.Email) string {
 	if len(email.Cc) <= 0 {
 		return ""
 	}
-	text := "📋 抄送："
-	for _, cc := range email.Cc {
-		text += fmt.Sprintf("&#60;%s&#62; ", cc.EmailAddress)
-	}
-	text += "\n"
-	return text
+	return "📋 抄送：" + telegramAddresses(email.Cc) + "\n"
 }
 
 // getBccText 获取密送人文本
@@ -67,12 +89,7 @@ func (h *PmailTelegramPushHook) getBccText(email *parsemail.Email) string {
 	if len(email.Bcc) <= 0 {
 		return ""
 	}
-	text := "🕵️ 密送："
-	for _, bcc := range email.Bcc {
-		text += fmt.Sprintf("&#60;%s&#62; ", bcc.EmailAddress)
-	}
-	text += "\n"
-	return text
+	return "🕵️ 密送：" + telegramAddresses(email.Bcc) + "\n"
 }
 
 // getAttachmentsText 获取附件文本
@@ -114,20 +131,13 @@ func (h *PmailTelegramPushHook) buildSendText(email *parsemail.Email, setting *m
 	text += h.getCcText(email)
 	text += h.getBccText(email)
 	text += h.getAttachmentsText(email)
-	text += h.getSpoilerText(h.getContentText(email, setting), setting)
-	text = removeExtraSpace(text)
-
-	// 预留 20 个字符
-	maxSizeWithPadding := TELEGRAM_TEXT_MAX_SIZE - 20
-	if len(text) > maxSizeWithPadding {
-		// 如果在预留长度内没有 spoiler 起始标签，直接截取
-		if !strings.Contains(text[:maxSizeWithPadding], "<tg-spoiler>") {
-			return text[:maxSizeWithPadding] + "..."
-		}
-		// 如果在预留长度内有 spoiler 起始标签，末尾添加结束标签
-		return text[:maxSizeWithPadding] + "..." + "</tg-spoiler>"
+	// 按更保守的 UTF-8 字节预算分配正文，标签与实体不参与截断。
+	remaining := TELEGRAM_TEXT_MAX_SIZE - len(text) - 20
+	if setting.SpoilerContent {
+		remaining -= len("<tg-spoiler></tg-spoiler>")
 	}
-	return text
+	content := escapeTelegramText(h.getContentText(email, setting), remaining)
+	return removeExtraSpace(text + h.getSpoilerText(content, setting))
 }
 
 // buildPamilLinkButton 创建邮件页面链接按钮
@@ -179,6 +189,9 @@ func (h *PmailTelegramPushHook) sendNotification(email *parsemail.Email, setting
 
 // sendAttachmentsBatch 批量发送附件消息
 func (h *PmailTelegramPushHook) sendAttachmentsBatch(id int, email *parsemail.Email, setting *model.TelegramPushSetting) (err error) {
+	if !setting.SendAttachments {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(h.pluginConfig.Timeout)*time.Second)
 	defer cancel()
 

@@ -120,16 +120,17 @@ func UpdateConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Requ
 		writeConfigError(w, err)
 		return
 	}
-	response.NewSuccessResponse(map[string]any{"generation": result.Generation, "pending": result.Pending}).FPrint(w)
+	response.NewSuccessResponse(map[string]any{"generation": result.Generation, "pending": result.Pending, "candidateId": result.CandidateID}).FPrint(w)
 }
 
 type configApplyRequest struct {
-	Generation uint64 `json:"generation"`
+	Generation  uint64 `json:"generation"`
+	CandidateID string `json:"candidateId"`
 }
 
 // ApplyConfig 应用已保存的候选配置代次。
 func ApplyConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
-	manager, _, ok := configRequestManager(w, req)
+	manager, section, ok := configRequestManager(w, req)
 	if !ok {
 		return
 	}
@@ -142,7 +143,7 @@ func ApplyConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Reque
 		writeConfigError(w, errors.New("invalid configuration generation"))
 		return
 	}
-	result, err := manager.ApplyAuthorized(req.Context(), input.Generation, configActor(ctx, req))
+	result, err := manager.ApplyPendingAuthorized(req.Context(), input.Generation, input.CandidateID, section, configActor(ctx, req))
 	if err != nil {
 		writeConfigError(w, err)
 		return

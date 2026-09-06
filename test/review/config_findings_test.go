@@ -8,9 +8,136 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestAuditPendingIdentityAndRecovery(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := authorizedConfigActor()
+	payload, _ := json.Marshal(manager.Snapshot().Email)
+	req := UpdateRequest{Section: SectionEmail, ExpectedGeneration: 1, Payload: payload, Actor: actor}
+	first, err := manager.Update(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation := StepUpConfirmation{Confirmed: true, Method: "recent_auth"}
+	if err := manager.ManagePending(context.Background(), first.Generation, first.CandidateID, actor, confirmation, true); err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.Update(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.CandidateID == second.CandidateID {
+		t.Fatal("不同候选不能复用标识")
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), first.Generation, first.CandidateID, SectionEmail, actor); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("旧候选应用未拒绝: %v", err)
+	}
+	if err := manager.ManagePending(context.Background(), first.Generation, first.CandidateID, actor, confirmation, true); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("旧候选取消未拒绝: %v", err)
+	}
+	actor.SessionID = "renewed-session"
+	actor.RecentAuth = false
+	if err := manager.ManagePending(context.Background(), second.Generation, second.CandidateID, actor, confirmation, false); err == nil {
+		t.Fatal("跨会话恢复缺少近期认证")
+	}
+	actor.RecentAuth = true
+	if err := manager.ManagePending(context.Background(), second.Generation, second.CandidateID, actor, confirmation, false); err != nil {
+		t.Fatal(err)
+	}
+	if !manager.Pending(actor).SameSession {
+		t.Fatal("恢复没有绑定新会话")
+	}
+	manager.snapshots = &flakyRuntimeSnapshotStore{current: manager.Snapshot(), failures: 1}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), second.Generation, second.CandidateID, SectionEmail, actor); !errors.Is(err, ErrRuntimeSnapshotUnavailable) {
+		t.Fatal(err)
+	}
+	if err := manager.ManagePending(context.Background(), second.Generation, second.CandidateID, actor, confirmation, true); !errors.Is(err, ErrRuntimeSnapshotUnavailable) {
+		t.Fatalf("已落盘候选不应取消: %v", err)
+	}
+	manager.transactions.WithHooks(TransactionHooks{BeforePhase: func(TransactionPhase) error { return errors.New("不能再次提交") }})
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), second.Generation, second.CandidateID, SectionEmail, actor); err != nil {
+		t.Fatalf("快照重试重新写盘: %v", err)
+	}
+}
+
+func TestAuditStagedSSLDoesNotReplaceCurrent(t *testing.T) {
+	previous := ROOT_PATH
+	ROOT_PATH = t.TempDir()
+	t.Cleanup(func() { ROOT_PATH = previous })
+	key, cert := testManagedCertificate(t, "mail.example.com", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 2048)
+	active, err := ImportManagedSSL(ManagedSSLModeDefault, key, cert, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextKey, nextCert := testManagedCertificate(t, "mail.example.com", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 2048)
+	staged, err := StageManagedSSL(ManagedSSLModeDefault, nextKey, nextCert, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := os.ReadFile(active.CertificatePath)
+	if err != nil || string(actual) != string(cert) {
+		t.Fatal("暂存替换了现用证书")
+	}
+	if _, err := ResolveManagedSSLReferences(SSLConfig{Mode: staged.Mode, CertificateRef: staged.CertificateRef, PrivateKeyRef: active.PrivateKeyRef}); !errors.Is(err, ErrInvalidSSLReference) {
+		t.Fatalf("跨版本配对未拒绝: %v", err)
+	}
+	if _, err := ResolveManagedSSLReferences(SSLConfig{Mode: staged.Mode, CertificateRef: staged.CertificateRef, PrivateKeyRef: staged.PrivateKeyRef}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuditLegacySSLCommitPreservesLatestUnrelatedSettings(t *testing.T) {
+	previousRoot, previousSnapshot := ROOT_PATH, CurrentConfig()
+	ROOT_PATH = t.TempDir()
+	t.Cleanup(func() {
+		ROOT_PATH = previousRoot
+		PublishConfigSnapshot(previousSnapshot)
+	})
+	writeLegacyMigrationFixture(t, ROOT_PATH, map[string]any{
+		"domain": "example.test", "webDomain": "mail.example.test",
+		"sslType": SSLTypeAutoDNS, "httpsEnabled": 1, "httpPort": 8080,
+	})
+	expected, err := ReadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := *expected
+	next.SSL = SSLConfig{Mode: ManagedSSLModeDefault, Challenge: SSLChallengeDNS, DefaultDirectory: "config/ssl"}
+	// 模拟签发期间另一项设置先保存成功，续期不得用旧快照覆盖它。
+	live := *expected
+	live.HttpPort = 9080
+	if err := WriteConfig(&live); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSSLConfig(expected, &next); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ReadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.HttpPort != 9080 || next.HttpPort != 9080 || CurrentConfig().HttpPort != 9080 || stored.SSL != next.SSL {
+		t.Fatalf("SSL 提交覆盖了其他设置：disk=%d next=%d runtime=%d", stored.HttpPort, next.HttpPort, CurrentConfig().HttpPort)
+	}
+	stale := *stored
+	live = *stored
+	live.WebDomain = "changed.example.test"
+	if err := WriteConfig(&live); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSSLConfig(&stale, &stale); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("签发期间域名变化必须拒绝旧结果：%v", err)
+	}
+}
 
 // 审查专用：模拟配置落盘中断，只操作测试创建的临时配置根目录。
 func TestAuditSuccessfulConfigRetryMustSurviveRestart(t *testing.T) {

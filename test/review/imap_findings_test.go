@@ -1,6 +1,7 @@
 package imap_server
 
 import (
+	"reflect"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/db"
@@ -10,6 +11,140 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-imap/v2"
 )
+
+func TestAuditLargeSelectedMailboxMustBatchUIDQueries(t *testing.T) {
+	user := models.User{Account: t.Name()}
+	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+	message := models.Email{Subject: t.Name()}
+	if _, err := db.Instance.Insert(&message); err != nil {
+		t.Fatal(err)
+	}
+	const count = 10001
+	uids := make([]int, 0, count)
+	deleted := make(map[int]bool)
+	// 独立账户及共享邮件内容限制夹具体积，同时保留每个副本的真实 UID。
+	for start := 0; start < count; start += 400 {
+		batch := make([]models.UserEmail, min(400, count-start))
+		for index := range batch {
+			batch[index] = models.UserEmail{UserID: user.ID, EmailID: message.Id}
+			if position := start + index; position == 0 || position == 500 || position == count-1 {
+				batch[index].IsDeleted = 1
+			}
+		}
+		if _, err := db.Instance.Insert(&batch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	relations, err := list.GetUEListByUID(&context.Context{UserID: user.ID}, "INBOX", 0, 0, nil)
+	if err != nil || len(relations) != count {
+		t.Fatalf("大邮箱夹具不完整：count=%d err=%v", len(relations), err)
+	}
+	for _, relation := range relations {
+		uids = append(uids, relation.ID)
+		if relation.IsDeleted == 1 {
+			deleted[relation.ID] = true
+		}
+	}
+	session := &serverSession{ctx: &context.Context{UserID: user.ID}, currentMailbox: "INBOX", mailboxUIDs: uids}
+	for _, numbers := range []imap.NumSet{
+		imap.SeqSet{{Start: 1, Stop: 0}},
+		imap.UIDSet{{Start: imap.UID(uids[0]), Stop: 0}},
+	} {
+		rows, err := session.selectedMessages(numbers)
+		if err != nil || len(rows) != count {
+			t.Fatalf("范围读取必须分批保留全部副本：count=%d err=%v", len(rows), err)
+		}
+		for index, row := range rows {
+			if row.UeId != uids[index] || row.SerialNumber != index+1 {
+				t.Fatalf("分批读取改变了 UID 或会话序号：index=%d uid=%d sequence=%d", index, row.UeId, row.SerialNumber)
+			}
+		}
+	}
+	if err := session.Expunge(nil, nil); err != nil {
+		t.Fatalf("大邮箱 EXPUNGE 不能被查询参数上限拒绝：%v", err)
+	}
+	if len(session.mailboxUIDs) != count-len(deleted) {
+		t.Fatalf("删除后快照数量错误：%d", len(session.mailboxUIDs))
+	}
+	for _, uid := range session.mailboxUIDs {
+		if deleted[uid] {
+			t.Fatalf("已清除的 UID 仍留在会话快照：%d", uid)
+		}
+	}
+	remaining, err := db.Instance.Where("user_id = ?", user.ID).Count(&models.UserEmail{})
+	if err != nil || remaining != int64(count-len(deleted)) {
+		t.Fatalf("大邮箱只能清除标记邮件：remaining=%d err=%v", remaining, err)
+	}
+}
+
+func TestAuditSnapshotSearchAndExpungeBoundaries(t *testing.T) {
+	first, last := auditIMAPMessage(t), auditIMAPMessage(t)
+	ctx := &context.Context{UserID: first.UserID}
+	snapshot := []int{first.ID, last.ID}
+	starUID := imap.UIDSet{{Start: 0, Stop: 0}}
+	starSequence := imap.SeqSet{{Start: 0, Stop: 0}}
+	for _, criteria := range []*imap.SearchCriteria{
+		{UID: []imap.UIDSet{starUID}},
+		{SeqNum: []imap.SeqSet{starSequence}},
+	} {
+		rows, err := list.SearchEmails(ctx, "INBOX", criteria, snapshot)
+		if err != nil || len(rows) != 1 || rows[0].ID != last.ID {
+			t.Fatalf("通配应选择快照最后一封：rows=%v err=%v", rows, err)
+		}
+	}
+	rows, err := list.SearchEmails(ctx, "INBOX", &imap.SearchCriteria{
+		UID: []imap.UIDSet{imap.UIDSetNum(imap.UID(first.ID))}, SeqNum: []imap.SeqSet{starSequence},
+	}, snapshot)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("UID 筛选不能缩小序号通配上界：rows=%v err=%v", rows, err)
+	}
+	session := &serverSession{ctx: ctx, currentMailbox: "INBOX", mailboxUIDs: append([]int{}, snapshot...)}
+	if _, err := db.Instance.ID(last.ID).Delete(&models.UserEmail{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, criteria := range []*imap.SearchCriteria{
+		{UID: []imap.UIDSet{starUID}}, {SeqNum: []imap.SeqSet{starSequence}},
+		{Or: [][2]imap.SearchCriteria{{{UID: []imap.UIDSet{starUID}}, {SeqNum: []imap.SeqSet{starSequence}}}}},
+	} {
+		rows, err := list.SearchEmails(ctx, "INBOX", criteria, snapshot)
+		if err != nil || len(rows) != 0 {
+			t.Fatalf("未通知删除不能把通配目标前移：rows=%v err=%v", rows, err)
+		}
+	}
+	rows, err = list.SearchEmails(ctx, "INBOX", &imap.SearchCriteria{Not: []imap.SearchCriteria{{UID: []imap.UIDSet{starUID}}}}, snapshot)
+	if err != nil || len(rows) != 1 || rows[0].ID != first.ID {
+		t.Fatalf("NOT 必须使用同一快照：rows=%v err=%v", rows, err)
+	}
+	selected, err := session.selectedMessages(imap.SeqSetNum(2))
+	if err != nil || len(selected) != 0 {
+		t.Fatalf("FETCH/STORE 共用目标解析不能改变已删除序号：rows=%v err=%v", selected, err)
+	}
+	if _, err := db.Instance.ID(first.ID).Cols("is_deleted").Update(&models.UserEmail{IsDeleted: 1}); err != nil {
+		t.Fatal(err)
+	}
+	empty := imap.UIDSet{}
+	for _, set := range []*imap.UIDSet{&empty, &starUID} {
+		if err := session.Expunge(nil, set); err != nil {
+			t.Fatal(err)
+		}
+		if found, err := db.Instance.ID(first.ID).Exist(&models.UserEmail{}); err != nil || !found {
+			t.Fatalf("空集合或尾部通配不得删除其他邮件：found=%v err=%v", found, err)
+		}
+	}
+	// 极大反向区间按快照过滤，不能按数值展开或错误拒绝。
+	wide := imap.UIDSet{{Start: imap.UID(^uint32(0)), Stop: 1}}
+	if err := session.Expunge(nil, &wide); err != nil {
+		t.Fatal(err)
+	}
+	if found, err := db.Instance.ID(first.ID).Exist(&models.UserEmail{}); err != nil || found {
+		t.Fatalf("反向范围应删除匹配标记：found=%v err=%v", found, err)
+	}
+	if !reflect.DeepEqual(session.mailboxUIDs, []int{last.ID}) {
+		t.Fatalf("只移除已经通知删除的序号：%v", session.mailboxUIDs)
+	}
+}
 
 // 使用现有 TestMain 创建的临时 SQLite 和随机本地 TLS 端口，不连接开发服务。
 func TestAuditCopyThenMoveMustKeepMailboxIdentity(t *testing.T) {
@@ -43,7 +178,12 @@ func TestAuditCopyThenMoveMustKeepMailboxIdentity(t *testing.T) {
 	if webMoveErr != nil {
 		t.Errorf("IMAP 复制后网页移动不应把自己的邮件判断为不属于自己: %v", webMoveErr)
 	}
-	_, err = clientLogin.Move(uid, "Deleted Messages").Wait()
+	// 网页移动已经移走原 UID；另建独立样本验证客户端回退，不能重复移动旧 UID。
+	moveRelation := auditIMAPMessage(t)
+	if _, err := clientLogin.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = clientLogin.Move(imap.UIDSetNum(imap.UID(moveRelation.ID)), "Deleted Messages").Wait()
 	t.Logf("copy_relation_count=%d move_error=%v", count, err)
 	if err != nil {
 		t.Fatalf("同一用户复制邮件后，移动原文件夹中的 UID 不应失败: %v", err)

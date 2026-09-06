@@ -82,21 +82,22 @@ func loginVerificationPolicyEnabled(enabled bool, policy string) bool {
 }
 
 func beginLoginVerification(user *models.User, remoteIP string) (map[string]any, error) {
+	runtime := currentSecurityRuntime()
 	if !loginVerificationEnabled() {
 		return nil, nil
 	}
-	if user == nil || user.ID <= 0 || securityRuntime.verification == nil || securityRuntime.external == nil {
+	if user == nil || user.ID <= 0 || runtime.verification == nil || runtime.external == nil {
 		return nil, errLoginVerificationUnavailable
 	}
-	binding, err := securityRuntime.external.FindVerifiedPrimaryByUser(user.ID)
+	binding, err := runtime.external.FindVerifiedPrimaryByUser(user.ID)
 	if err != nil {
 		return nil, errLoginVerificationUnavailable
 	}
-	email, err := securityRuntime.external.Decrypt(*binding)
+	email, err := runtime.external.Decrypt(*binding)
 	if err != nil {
 		return nil, errLoginVerificationUnavailable
 	}
-	challenge, err := securityRuntime.verification.Issue(verification.IssueRequest{
+	challenge, err := runtime.verification.Issue(verification.IssueRequest{
 		Purpose: verification.PurposeLogin,
 		Account: user.Account,
 		Email:   email,
@@ -109,7 +110,7 @@ func beginLoginVerification(user *models.User, remoteIP string) (map[string]any,
 	cleanupLoginVerificationLocked(time.Now())
 	if len(loginVerificationState.items) >= loginVerificationMaxEntries {
 		loginVerificationState.Unlock()
-		securityRuntime.verification.Store.InvalidateChallenge(challenge.ID)
+		runtime.verification.Store.InvalidateChallenge(challenge.ID)
 		return nil, errLoginVerificationUnavailable
 	}
 	loginVerificationState.items[challenge.ID] = loginVerificationItem{
@@ -128,6 +129,7 @@ func beginLoginVerification(user *models.User, remoteIP string) (map[string]any,
 
 // ResendLoginVerification 使旧登录验证码失效后重新发送新验证码。
 func ResendLoginVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	var input resendLoginVerificationRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.ID) == "" {
 		writeSecurityError(w, response.ParamsError, "验证码请求无效")
@@ -145,12 +147,12 @@ func ResendLoginVerification(ctx *context.Context, w http.ResponseWriter, req *h
 		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
 		return
 	}
-	if securityRuntime.verification == nil || securityRuntime.verification.Store == nil {
+	if runtime.verification == nil || runtime.verification.Store == nil {
 		writeSecurityError(w, response.ParamsError, "验证码服务暂不可用")
 		return
 	}
-	securityRuntime.verification.Store.InvalidateChallenge(input.ID)
-	challenge, err := securityRuntime.verification.Issue(verification.IssueRequest{
+	runtime.verification.Store.InvalidateChallenge(input.ID)
+	challenge, err := runtime.verification.Issue(verification.IssueRequest{
 		Purpose: verification.PurposeLogin,
 		UserID:  item.UserID,
 		Account: item.Account,
@@ -180,8 +182,9 @@ func ResendLoginVerification(ctx *context.Context, w http.ResponseWriter, req *h
 
 // CompleteLoginVerification 只有验证码成功后才创建完整 Session。
 func CompleteLoginVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
 	var input loginVerificationRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || securityRuntime.verification == nil {
+	if err := decodeJSONRequest(w, req, &input); err != nil || runtime.verification == nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
@@ -196,7 +199,7 @@ func CompleteLoginVerification(ctx *context.Context, w http.ResponseWriter, req 
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
-	if err := securityRuntime.verification.Verify(input.ID, item.Account, item.Email, input.Code, verification.PurposeLogin, remoteIP(req)); err != nil {
+	if err := runtime.verification.Verify(input.ID, item.Account, item.Email, input.Code, verification.PurposeLogin, remoteIP(req)); err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}

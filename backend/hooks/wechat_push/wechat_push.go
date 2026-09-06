@@ -273,7 +273,26 @@ func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, conten
 		log.WithContext(ctx).Error("wechat push request was rejected")
 		return
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxWeChatResponseBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxWeChatResponseBytes+1))
+	var result struct {
+		ErrorCode *int `json:"errcode"`
+	}
+	if err != nil || len(body) > maxWeChatResponseBytes || json.Unmarshal(body, &result) != nil || result.ErrorCode == nil {
+		log.WithContext(ctx).Error("微信推送响应无效或超过大小限制")
+		return
+	}
+	if *result.ErrorCode != 0 {
+		// 只记录业务码，不能输出可能含凭据或收件人信息的响应正文。
+		log.WithContext(ctx).WithField("errcode", *result.ErrorCode).Error("微信推送业务请求失败")
+		switch *result.ErrorCode {
+		case 40001, 40014, 42001:
+			w.tokenMu.Lock()
+			if w.token == token {
+				w.token, w.tokenExpires = "", 0
+			}
+			w.tokenMu.Unlock()
+		}
+	}
 }
 
 func buildWeChatMessage(email *parsemail.Email) string {

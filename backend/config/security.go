@@ -50,10 +50,13 @@ type ConfigSecurity struct {
 }
 
 type pendingConfig struct {
-	Candidate    RuntimeConfig
-	Section      Section
-	Actor        AuditActor
-	Confirmation StepUpConfirmation
+	ID              string
+	Candidate       RuntimeConfig
+	Section         Section
+	Actor           AuditActor
+	Confirmation    StepUpConfirmation
+	Committed       bool
+	PreviousRestart []ServiceName
 }
 
 type MemoryAuditWriter struct {

@@ -60,6 +60,7 @@ export function usePage(pageKey = 'base') {
   const secretValue = ref('')
   const confirmed = ref(false)
   const savedGeneration = ref(0)
+  const pendingCandidate = ref(null)
   let savedInput = null
   const validationResult = ref(null)
   const backups = ref([])
@@ -134,7 +135,8 @@ export function usePage(pageKey = 'base') {
     validationResult.value = null
     confirmed.value = false
   }
-  const canEdit = () => !disposed && canWrite.value && !loading.value && !working.value && !sectionLoading.value && !sectionError.value
+  const canOperate = () => !disposed && canWrite.value && !loading.value && !working.value && !sectionLoading.value && !sectionError.value && !availabilityError.value
+  const canEdit = () => canOperate() && !pendingCandidate.value && !savedGeneration.value
   const updateField = (path, value) => {
     if (!canEdit()) return
     const updated = updateFormConfig(editorText.value, selectedSection.value, path, value)
@@ -183,6 +185,50 @@ export function usePage(pageKey = 'base') {
     const response = await http.get('/api/v1/config/status')
     notifyResponseError(response, '配置状态读取失败')
     Object.assign(status, response.data || {})
+  }
+
+  const loadPending = async () => {
+    const response = await http.get('/api/v1/config/pending')
+    if (disposed) return
+    notifyResponseError(response, '候选配置读取失败')
+    pendingCandidate.value = response.data || null
+    savedGeneration.value = 0
+    savedInput = null
+    const pending = pendingCandidate.value
+    const section = pending?.section === 'root' ? 'base' : pending?.section
+    if (pending && section === selectedSection.value) {
+      editorText.value = JSON.stringify(pending.payload, null, 2)
+      secretValue.value = ''
+      savedInput = { text: editorText.value, secret: '' }
+      savedGeneration.value = pending.sameSession ? Number(pending.generation) : 0
+    }
+  }
+
+  const managePending = async action => {
+    if (!canOperate() || !pendingCandidate.value) return
+    working.value = action
+    try {
+      await ElMessageBox.confirm(
+        action === 'cancel' ? '取消后保留当前生效配置，候选修改不会应用。确认取消吗？' : '恢复后将候选配置绑定到当前会话，请确认已核对候选内容。',
+        action === 'cancel' ? '取消候选配置' : '恢复候选配置',
+        { type: 'warning', confirmButtonText: '确认', cancelButtonText: '返回' }
+      )
+      const response = await http.post('/api/v1/config/pending', {
+        generation: pendingCandidate.value.generation,
+        candidateId: pendingCandidate.value.candidateId,
+        action,
+        confirmation: { confirmed: confirmed.value, method: 'recent_auth' }
+      })
+      notifyResponseError(response, '候选配置操作失败')
+      await loadStatus()
+      await loadSection()
+      await loadPending()
+      ElMessage.success(action === 'cancel' ? '候选已取消，可以继续编辑' : '候选已恢复，请核对后应用')
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '候选配置操作失败')
+    } finally {
+      working.value = ''
+    }
   }
 
   const loadSection = async () => {
@@ -388,6 +434,7 @@ export function usePage(pageKey = 'base') {
         return
       }
       if (isConfigPage || (pageKey === 'migration' && canMigrate.value)) await loadSection()
+      if (isConfigPage) await loadPending()
       if (pageKey === 'backups') await loadBackups()
       if (pageKey === 'audit') await loadAudit()
     } catch (error) {
@@ -473,9 +520,11 @@ export function usePage(pageKey = 'base') {
       const response = await http.put(`/api/v1/config/${selectedSection.value}`, request)
       notifyResponseError(response, '配置保存失败')
       savedGeneration.value = response.data?.generation || 0
+      pendingCandidate.value = { ...response.data, section: selectedSection.value, sameSession: true }
       savedInput = { text: editorText.value, secret: secretValue.value }
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await loadStatus()
+      await loadPending()
       ElMessage.success(`候选配置已保存，代次 ${savedGeneration.value} 等待应用`)
     } catch (error) {
       ElMessage.error(error.message || '配置保存失败')
@@ -485,7 +534,7 @@ export function usePage(pageKey = 'base') {
   }
 
   const applyConfig = async () => {
-    if (!canEdit() || !savedGeneration.value) return
+    if (!canOperate() || !savedGeneration.value) return
     if (!savedInput || savedInput.text !== editorText.value || savedInput.secret !== secretValue.value) {
       invalidateCandidate()
       ElMessage.warning('填写内容已变更，请重新保存候选配置后再应用')
@@ -493,10 +542,14 @@ export function usePage(pageKey = 'base') {
     }
     working.value = 'apply'
     try {
-      const response = await http.post(`/api/v1/config/${selectedSection.value}/apply`, { generation: savedGeneration.value })
+      const response = await http.post(`/api/v1/config/${selectedSection.value}/apply`, {
+        generation: savedGeneration.value,
+        candidateId: pendingCandidate.value?.candidateId
+      })
       notifyResponseError(response, '配置应用失败')
       savedGeneration.value = 0
       await Promise.all([loadStatus(), loadSection()])
+      await loadPending()
       ElMessage.success('配置已应用')
     } catch (error) {
       ElMessage.error(error.message || '配置应用失败')
@@ -551,7 +604,17 @@ export function usePage(pageKey = 'base') {
     working.value = format === 'csv' ? 'export-csv' : 'export'
     try {
       const response = await http.post('/api/v1/audits/config', { format, limit: 500 }, { responseType: 'blob' })
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: format === 'csv' ? 'text/csv' : 'application/json' })
+      if (!(response instanceof Blob)) {
+        throw new Error(response?.errorMsg || '审计导出响应格式不正确')
+      }
+      // Blob 请求也可能返回 JSON 业务错误，不能把错误响应当作审计文件下载。
+      if (response.type.includes('json') || format === 'json') {
+        const payload = JSON.parse(await response.text())
+        if (payload && !Array.isArray(payload) && Object.hasOwn(payload, 'errorNo') && payload.errorNo !== 0) {
+          throw new Error(payload.errorMsg || '审计导出失败')
+        }
+      }
+      const blob = response
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
@@ -604,7 +667,7 @@ export function usePage(pageKey = 'base') {
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
     selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,
     sectionError, sensitiveHint, secretField, secretValue,
-    confirmed, savedGeneration, validationResult, canWrite, canRollback, canAudit, canExportAudit,
+    confirmed, savedGeneration, pendingCandidate, managePending, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig,
     loadBackups, previewRollback, executeRollback, loadAudit, exportAudit, formatTime,

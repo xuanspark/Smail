@@ -197,6 +197,9 @@ func ResolveManagedSSLReferences(ssl SSLConfig) (ManagedSSLReference, error) {
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
+	if filepath.Dir(certificatePath) != filepath.Dir(privateKeyPath) {
+		return ManagedSSLReference{}, ErrInvalidSSLReference
+	}
 	if err := validateManagedSSLFiles(certificatePath, privateKeyPath); err != nil {
 		return ManagedSSLReference{}, err
 	}
@@ -379,10 +382,78 @@ func resolveManagedReference(rootPath, reference, expectedName string) (string, 
 	if err != nil || filepath.Base(target) != expectedName || !pathWithin(rootPath, target) {
 		return "", ErrInvalidSSLReference
 	}
-	if filepath.Dir(target) != filepath.Join(rootPath, "current") {
+	directory := filepath.Dir(target)
+	version := filepath.Base(directory)
+	if filepath.Dir(directory) != rootPath || (version != "current" && !validSSLVersion(version)) {
 		return "", ErrInvalidSSLReference
 	}
+	resolved, err := filepath.EvalSymlinks(directory)
+	if err != nil || filepath.Clean(resolved) != filepath.Clean(directory) {
+		return "", ErrUnsafeSSLFile
+	}
 	return target, nil
+}
+
+func validSSLVersion(version string) bool {
+	if !strings.HasPrefix(version, "version-") || len(version) != len("version-")+32 {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(version, "version-"))
+	return err == nil
+}
+
+// StageManagedSSL 只写入独立版本，不替换现用文件；配置事务成功后引用才生效。
+func StageManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
+	if err := validateSSLMaterial(privateKeyPEM, certificatePEM, issuerPEM, domains); err != nil {
+		return ManagedSSLReference{}, err
+	}
+	root, err := managedSSLRootPath(mode)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	if err := ensureManagedDirectory(root); err != nil {
+		return ManagedSSLReference{}, err
+	}
+	token, err := randomStorageToken()
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	directory := filepath.Join(root, "version-"+token)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		return ManagedSSLReference{}, err
+	}
+	storage, err := os.OpenRoot(directory)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	defer storage.Close()
+	for _, file := range []struct {
+		name string
+		data []byte
+	}{{"private.key", privateKeyPEM}, {"public.crt", certificatePEM}, {"issuer.crt", issuerPEM}} {
+		if len(file.data) > 0 {
+			if err := atomicfile.WriteRoot(storage, file.name, file.data, 0600); err != nil {
+				return ManagedSSLReference{}, err
+			}
+		}
+	}
+	publicPath, privatePath := filepath.Join(directory, "public.crt"), filepath.Join(directory, "private.key")
+	if err := validateManagedSSLFiles(publicPath, privatePath); err != nil {
+		return ManagedSSLReference{}, err
+	}
+	rootPath, err := filepath.Abs(ROOT_PATH)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	publicRef, err := filepath.Rel(rootPath, publicPath)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	privateRef, err := filepath.Rel(rootPath, privatePath)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	return ManagedSSLReference{Mode: mode, CertificateRef: filepath.ToSlash(publicRef), PrivateKeyRef: filepath.ToSlash(privateRef), CertificatePath: publicPath, PrivateKeyPath: privatePath}, nil
 }
 
 func validateManagedSSLFiles(certificatePath, privateKeyPath string) error {

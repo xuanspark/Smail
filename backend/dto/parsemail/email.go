@@ -381,13 +381,20 @@ func NewEmailFromReader(to []string, r io.Reader, size int) (*Email, error) {
 	smtpTo := buildUsers(to)
 
 	ret.To = buildUsers(m.Header.Values("To"))
+	ret.Cc = buildUsers(m.Header.Values("Cc"))
 
 	ret.Bcc = []*User{}
 
 	for _, user := range smtpTo {
 		in := false
 		for _, u := range ret.To {
-			if u.EmailAddress == user.EmailAddress {
+			if strings.EqualFold(u.EmailAddress, user.EmailAddress) {
+				in = true
+				break
+			}
+		}
+		for _, u := range ret.Cc {
+			if strings.EqualFold(u.EmailAddress, user.EmailAddress) {
 				in = true
 				break
 			}
@@ -398,7 +405,6 @@ func NewEmailFromReader(to []string, r io.Reader, size int) (*Email, error) {
 
 	}
 
-	ret.Cc = buildUsers(m.Header.Values("Cc"))
 	ret.ReplyTo = buildUsers(m.Header.Values("Reply-To"))
 	ret.Sender = buildUser(m.Header.Get("Sender"))
 	if ret.Sender == nil || strings.TrimSpace(ret.Sender.EmailAddress) == "" {

@@ -1,0 +1,43 @@
+.telegram-settings {
+  max-width: 760px;
+  padding: 16px;
+}
+
+.telegram-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.telegram-header h4 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.telegram-header p,
+.telegram-hint {
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+
+.telegram-header a {
+  color: var(--el-color-primary);
+}
+
+.telegram-settings .el-alert {
+  margin-bottom: 20px;
+}
+
+.telegram-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.telegram-actions .el-button {
+  margin-left: 0;
+}

@@ -56,6 +56,7 @@ export function usePage() {
   let lastNotificationKey = ''
   let lastNotificationAt = 0
   const bindForm = reactive({ email: '', type: 'backup', challengeId: '', bindingId: 0, code: '' })
+  let bindingChallenge = null
 
   const ruleForm = reactive({ current_pwd: '', new_pwd: '', new_pwd2: '' })
   const rules = reactive({
@@ -210,32 +211,45 @@ export function usePage() {
   }
 
   const bindExternalEmail = async () => {
+    if (externalLoading.value) return
     if (!bindForm.email.trim()) {
       notify('请输入外部安全邮箱')
       return
     }
     externalLoading.value = true
     try {
-      const res = await http.post('/api/v1/security/external-email/bind', { email: bindForm.email.trim(), type: bindForm.type })
-      if (res.errorNo !== 0) throw new Error(res.errorMsg || '外部邮箱绑定失败')
-      bindForm.challengeId = res.data.challenge_id
-      bindForm.bindingId = res.data.id
-      const prompt = await ElMessageBox.prompt(`验证码已发送到 ${res.data.email}，请输入验证码`, '验证外部邮箱', {
+      const email = bindForm.email.trim()
+      const type = bindForm.type
+      if (!bindingChallenge || bindingChallenge.email !== email || bindingChallenge.type !== type) {
+        bindingChallenge = null
+        bindForm.challengeId = ''
+        bindForm.bindingId = 0
+        const res = await http.post('/api/v1/security/external-email/bind', { email, type })
+        if (res.errorNo !== 0) throw new Error(res.errorMsg || '外部邮箱绑定失败')
+        if (!res.data?.challenge_id || !res.data?.id) throw new Error('外部邮箱验证信息不完整')
+        bindingChallenge = { email, type, maskedEmail: res.data.email, id: res.data.id, challengeId: res.data.challenge_id }
+        bindForm.challengeId = bindingChallenge.challengeId
+        bindForm.bindingId = bindingChallenge.id
+      }
+      const challenge = bindingChallenge
+      const prompt = await ElMessageBox.prompt(`验证码已发送到 ${challenge.maskedEmail}，请输入验证码`, '验证外部邮箱', {
         confirmButtonText: '验证', cancelButtonText: '取消', inputPlaceholder: '请输入验证码',
       })
       bindForm.code = String(prompt.value).trim()
       const verified = await http.post('/api/v1/security/external-email/verify', {
-        id: bindForm.challengeId, binding_id: bindForm.bindingId, email: bindForm.email.trim(), code: bindForm.code,
+        id: challenge.challengeId, binding_id: challenge.id, email: challenge.email, code: bindForm.code,
       })
       if (verified.errorNo !== 0) throw new Error(verified.errorMsg || '外部邮箱验证失败')
       bindForm.email = ''
       bindForm.challengeId = ''
       bindForm.bindingId = 0
+      bindingChallenge = null
       await loadSecurityData()
       notify('外部安全邮箱绑定成功', 'success')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '外部邮箱绑定失败')
     } finally {
+      bindForm.code = ''
       externalLoading.value = false
     }
   }

@@ -60,7 +60,7 @@ var (
 )
 
 func webAuthnRuntime() *webauthnservice.Service {
-	return securityRuntime.webauthn
+	return currentSecurityRuntime().webauthn
 }
 
 // BeginWebAuthnRegistration 开始当前用户的安全密钥注册流程。
@@ -218,7 +218,8 @@ func BeginWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.R
 
 // FinishWebAuthnLogin 完成安全密钥登录并创建普通业务会话。
 func FinishWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	service := webAuthnRuntime()
+	runtime := currentSecurityRuntime()
+	service := runtime.webauthn
 	if service == nil {
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u4e0d\u53ef\u7528")
 		return
@@ -259,8 +260,8 @@ func FinishWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
 		return
 	}
-	if securityRuntime.verification != nil && securityRuntime.verification.Store != nil {
-		securityRuntime.verification.Store.InvalidateChallenge(input.ChallengeID)
+	if runtime.verification != nil && runtime.verification.Store != nil {
+		runtime.verification.Store.InvalidateChallenge(input.ChallengeID)
 	}
 	consumePendingLoginVerification(input.ChallengeID, item)
 	completeLoginSession(ctx, w, req, &user)
@@ -270,7 +271,7 @@ func BeginWebAuthnRecovery(ctx *context.Context, w http.ResponseWriter, req *htt
 	if rejectUnavailableRecovery(w) {
 		return
 	}
-	service := securityRuntime.recovery
+	service := currentSecurityRuntime().recovery
 	if service == nil {
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u4e0d\u53ef\u7528")
 		return
@@ -304,7 +305,7 @@ func VerifyWebAuthnRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 	if rejectUnavailableRecovery(w) {
 		return
 	}
-	service := securityRuntime.recovery
+	service := currentSecurityRuntime().recovery
 	if service == nil {
 		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u4e0d\u53ef\u7528")
 		return

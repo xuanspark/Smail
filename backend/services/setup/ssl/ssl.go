@@ -98,6 +98,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	expected := *cfg
 	if sslType == config.SSLTypeAutoHTTP || sslType == config.SSLTypeUser || sslType == config.SSLTypeAutoDNS {
 		cfg.SSLType = sslType
 	} else {
@@ -109,6 +110,14 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		cfg.SSL = config.SSLConfig{
 			Mode:             config.ManagedSSLModeDefault,
 			DefaultDirectory: "config/ssl",
+		}
+		if cfg.SSLType == config.SSLTypeAutoDNS {
+			cfg.SSL.Challenge = config.SSLChallengeDNS
+			if err := validateWildcardConfiguration(cfg); err != nil {
+				return err
+			}
+		} else {
+			cfg.SSL.Challenge = config.SSLChallengeHTTP
 		}
 	}
 	if cfg.SSLType == config.SSLTypeUser {
@@ -124,7 +133,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		if err != nil {
 			return newUserCertificateError("SSL 证书无法读取，请确认文件路径和 smail 用户权限")
 		}
-		reference, err := config.ImportManagedSSL(config.ManagedSSLModeUpload, privatePEM, publicPEM, nil, sslDomains(cfg))
+		reference, err := config.StageManagedSSL(config.ManagedSSLModeUpload, privatePEM, publicPEM, nil, sslDomains(cfg))
 		if err != nil {
 			return normalizeUserCertificateImportError(err)
 		}
@@ -133,7 +142,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		cfg.HttpsEnabled = 1
 	}
 
-	err = config.WriteConfig(cfg)
+	err = config.WriteSSLConfig(&expected, cfg)
 	if err != nil {
 		return errors.Wrap(err)
 	}
@@ -164,6 +173,10 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
 		cfg.SSL.CustomDirectory = "config/ssl/managed/upload"
+	} else if cfg.SSLType == config.SSLTypeAutoDNS {
+		cfg.SSL.Challenge = config.SSLChallengeDNS
+	} else {
+		cfg.SSL.Challenge = config.SSLChallengeHTTP
 	}
 }
 
@@ -257,14 +270,19 @@ func writeCertificateFiles(cfg *config.Config, privateKey, certificate, issuer [
 	if cfg == nil {
 		return errors.New("SSL 配置不能为空")
 	}
-	reference, err := config.ImportManagedSSL(config.ManagedSSLModeDefault, privateKey, certificate, issuer, certificateDomains(cfg))
+	if err := validateWildcardConfiguration(cfg); err != nil {
+		return err
+	}
+	next := *cfg
+	reference, err := config.StageManagedSSL(config.ManagedSSLModeDefault, privateKey, certificate, issuer, certificateDomains(cfg))
 	if err != nil {
 		return err
 	}
-	applyManagedSSLReference(cfg, reference)
-	if err := config.WriteConfig(cfg); err != nil {
+	applyManagedSSLReference(&next, reference)
+	if err := config.WriteSSLConfig(cfg, &next); err != nil {
 		return errors.Wrap(err)
 	}
+	*cfg = next
 	return nil
 }
 
@@ -300,12 +318,42 @@ func certificateMatchesConfiguredDomains(cert *x509.Certificate, cfg *config.Con
 	if cert == nil || cfg == nil {
 		return false
 	}
-	for _, domain := range sslDomains(cfg) {
+	if validateWildcardConfiguration(cfg) != nil {
+		return false
+	}
+	for _, domain := range certificateDomains(cfg) {
 		if err := cert.VerifyHostname(domain); err != nil {
 			return false
 		}
 	}
 	return true
+}
+
+// 自动 DNS 只申请主域泛域名；不覆盖的服务地址是配置错误，不能靠重复续期修复。
+func validateWildcardConfiguration(cfg *config.Config) error {
+	if cfg == nil || cfg.SSLType != config.SSLTypeAutoDNS {
+		return nil
+	}
+	domains := wildcardCertificateDomains(cfg)
+	if len(domains) != 1 {
+		return newUserCertificateError("自动 DNS 证书需要有效的主域名")
+	}
+	base := strings.TrimPrefix(domains[0], "*.")
+	covered := func(host string) bool {
+		host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+		suffix := "." + strings.ToLower(base)
+		label := strings.TrimSuffix(host, suffix)
+		return strings.HasSuffix(host, suffix) && label != "" && !strings.Contains(label, ".")
+	}
+	if cfg.WebDomain != "" && !covered(cfg.WebDomain) {
+		return newUserCertificateError("Web 域名必须是主域名的一级子域名，泛域名证书不覆盖根域名或多级子域名")
+	}
+	for _, domain := range cfg.Domains {
+		if !covered("smtp."+domain) || !covered("imap."+domain) || !covered("pop."+domain) {
+			return newUserCertificateError("附加邮箱域名的服务地址不在主域泛域名证书覆盖范围内")
+		}
+	}
+	return nil
 }
 func wildcardCertificateDomains(cfg *config.Config) []string {
 	if cfg == nil {
@@ -474,6 +522,9 @@ func GenSSL(update bool) error {
 	cfg, err := config.ReadConfig()
 	if err != nil {
 		return errors.Wrap(err)
+	}
+	if err := validateWildcardConfiguration(cfg); err != nil {
+		return err
 	}
 
 	if !update {

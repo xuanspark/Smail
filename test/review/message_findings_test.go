@@ -10,6 +10,30 @@ import (
 	"github.com/emersion/go-msgauth/dkim"
 )
 
+func TestAuditStableIMAPBytesAndCcPrivacy(t *testing.T) {
+	raw := auditRawMessage("Cc: Copy <copy@example.com>\r\n", "recipient@example.com")
+	parsed, err := NewEmailFromReader([]string{"recipient@example.com", "COPY@example.com", "hidden@example.com"}, strings.NewReader(raw), len(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Bcc) != 1 || parsed.Bcc[0].EmailAddress != "hidden@example.com" {
+		t.Fatal("抄送地址被错误归类为密送")
+	}
+	first, err := parsed.BuildIMAPBytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 8; index++ {
+		next, err := parsed.BuildIMAPBytes(nil)
+		if err != nil || !bytes.Equal(first, next) {
+			t.Fatalf("同一封邮件 MIME 不稳定: %v", err)
+		}
+	}
+	if _, err := message.Read(bytes.NewReader(first)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func auditRawMessage(extraHeaders, to string) string {
 	return "From: sender@example.com\r\n" +
 		"To: " + to + "\r\n" +
@@ -81,8 +105,8 @@ func TestAuditQuotedRecipientNameMustNotSplitAddress(t *testing.T) {
 
 func TestAuditInlineAttachmentMustPreserveContentID(t *testing.T) {
 	email := &Email{
-		From: &User{EmailAddress: "sender@example.com"},
-		To: []*User{{EmailAddress: "recipient@example.com"}},
+		From:  &User{EmailAddress: "sender@example.com"},
+		To:    []*User{{EmailAddress: "recipient@example.com"}},
 		MsgID: "audit-cid@example.com", HTML: []byte(`<img src="cid:audit-inline">`),
 		Attachments: []*Attachment{{Filename: "inline.png", ContentType: "image/png", ContentID: "audit-inline", Content: []byte{1, 2, 3}}},
 	}

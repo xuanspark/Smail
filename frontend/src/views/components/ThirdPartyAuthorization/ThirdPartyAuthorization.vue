@@ -32,7 +32,7 @@
 
           <div class="protocol-actions">
             <el-switch
-              v-model="item.enabled"
+              :model-value="item.enabled"
               :loading="protocolLoading"
               active-text="开启"
               inactive-text="关闭"

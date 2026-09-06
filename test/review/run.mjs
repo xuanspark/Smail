@@ -8,6 +8,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const directory = path.join(root, 'test-log', `audit-${stamp}-${process.pid}`)
 await mkdir(directory, { recursive: true })
 const replacements = {
+  'backend/res_init/audit_findings_test.go': 'test/review/lifecycle_findings_test.go',
+  'backend/hooks/wechat_push/audit_findings_test.go': 'test/review/wechat_findings_test.go',
   'backend/hooks/framework/audit_findings_test.go': 'test/review/plugin_framework_findings_test.go',
   'backend/utils/async/audit_findings_test.go': 'test/review/async_findings_test.go',
   'backend/utils/address/audit_findings_test.go': 'test/review/address_findings_test.go',
@@ -22,6 +24,7 @@ const replacements = {
   'backend/services/list/audit_findings_test.go': 'test/review/list_findings_test.go',
   'backend/services/recovery/audit_findings_test.go': 'test/review/recovery_findings_test.go',
   'backend/listen/imap_server/audit_findings_test.go': 'test/review/imap_findings_test.go',
+  'backend/listen/imap_server/audit_wire_findings_test.go': 'test/review/imap_wire_findings_test.go',
   'backend/controllers/audit_findings_test.go': 'test/review/runtime_findings_test.go',
   'backend/controllers/audit_controller_findings_test.go': 'test/review/controller_findings_test.go',
   'backend/internal/gopop/audit_findings_test.go': 'test/review/pop3_parser_findings_test.go',
@@ -51,6 +54,8 @@ const addressOnly = process.argv.includes('--address-only')
 const packages = frameworkOnly ? ['./hooks/framework'] : asyncOnly ? ['./utils/async'] : addressOnly ? ['./utils/address'] : totpOnly ? ['./services/totp'] : sslOnly ? ['./services/setup/ssl'] : setupOnly ? ['./services/setup'] : httpOnly ? ['./listen/http_server'] : controllersOnly ? ['./controllers'] : configOnly ? ['./config'] : migrationOnly ? ['./services/dbmigration'] : pop3Only ? ['./internal/gopop', './listen/pop3_server'] : messageOnly ? [
   './dto/parsemail', './listen/smtp_server'
 ] : [
+  './res_init',
+  './hooks/wechat_push',
   './services/dbmigration', './listen/http_server', './services/list', './services/recovery',
   './listen/imap_server', './controllers', './internal/gopop', './listen/pop3_server',
   './dto/parsemail', './listen/smtp_server', './config', './services/setup', './services/setup/ssl', './services/totp', './hooks/framework'

@@ -62,11 +62,25 @@ type IMAPSearchResult struct {
 }
 
 // SearchEmails performs IMAP search based on criteria
-func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
+func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchCriteria, snapshot ...[]int) ([]*response.UserEmailUIDData, error) {
 	// First get the base list for the mailbox
 	baseList, err := GetUEListByUID(ctx, groupName, 0, 0, nil)
 	if err != nil {
 		return nil, err
+	}
+	if len(snapshot) > 0 {
+		sequences := make(map[int]int, len(snapshot[0]))
+		for index, uid := range snapshot[0] {
+			sequences[uid] = index + 1
+		}
+		filtered := make([]*response.UserEmailUIDData, 0, len(baseList))
+		for _, item := range baseList {
+			if sequence := sequences[item.ID]; sequence > 0 {
+				item.SerialNumber = sequence
+				filtered = append(filtered, item)
+			}
+		}
+		baseList = filtered
 	}
 	if len(baseList) == 0 {
 		return baseList, nil
@@ -77,22 +91,34 @@ func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchC
 		return baseList, nil
 	}
 
-	// Build UID to sequence number mapping
-	uidToSeq := make(map[int]int)
-	seqToUID := make(map[int]int)
+	// 通配上界来自完整会话快照，不能随其他搜索条件缩小。
+	var maxUID, maxSequence uint32
 	for _, item := range baseList {
-		uidToSeq[item.ID] = item.SerialNumber
-		seqToUID[item.SerialNumber] = item.ID
+		if number, ok := validIMAPNumber(item.ID); ok {
+			maxUID = max(maxUID, number)
+		}
+		if number, ok := validIMAPNumber(item.SerialNumber); ok {
+			maxSequence = max(maxSequence, number)
+		}
+	}
+	if len(snapshot) > 0 {
+		maxUID = 0
+		maxSequence = uint32(len(snapshot[0]))
+		for _, uid := range snapshot[0] {
+			if number, ok := validIMAPNumber(uid); ok {
+				maxUID = max(maxUID, number)
+			}
+		}
 	}
 
 	// Filter by UID sets
 	if len(criteria.UID) > 0 {
-		baseList = filterByUIDSets(baseList, criteria.UID)
+		baseList = filterByUIDSets(baseList, criteria.UID, maxUID)
 	}
 
 	// Filter by sequence number sets
 	if len(criteria.SeqNum) > 0 {
-		baseList = filterBySeqNumSets(baseList, criteria.SeqNum)
+		baseList = filterBySeqNumSets(baseList, criteria.SeqNum, maxSequence)
 	}
 
 	// For more complex filters, we need to fetch email data
@@ -111,7 +137,7 @@ func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchC
 	// Handle NOT criteria
 	if len(criteria.Not) > 0 {
 		for _, notCriteria := range criteria.Not {
-			baseList, err = applyNotCriteria(ctx, groupName, baseList, &notCriteria)
+			baseList, err = applyNotCriteria(ctx, groupName, baseList, &notCriteria, snapshot...)
 			if err != nil {
 				return nil, fmt.Errorf("apply NOT criteria: %w", err)
 			}
@@ -120,7 +146,7 @@ func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchC
 
 	// Handle OR criteria
 	if len(criteria.Or) > 0 {
-		baseList, err = applyOrCriteria(ctx, groupName, baseList, criteria.Or)
+		baseList, err = applyOrCriteria(ctx, groupName, baseList, criteria.Or, snapshot...)
 		if err != nil {
 			return nil, fmt.Errorf("apply OR criteria: %w", err)
 		}
@@ -169,14 +195,26 @@ func validIMAPNumber(value int) (uint32, bool) {
 }
 
 // filterByUIDSets filters the list by UID sets
-func filterByUIDSets(list []*response.UserEmailUIDData, uidSets []imap.UIDSet) []*response.UserEmailUIDData {
+func filterByUIDSets(list []*response.UserEmailUIDData, uidSets []imap.UIDSet, upper ...uint32) []*response.UserEmailUIDData {
+	var maximum uint32
+	for _, item := range list {
+		if number, ok := validIMAPNumber(item.ID); ok {
+			maximum = max(maximum, number)
+		}
+	}
+	if len(upper) > 0 {
+		maximum = upper[0]
+	}
 	result := list
 	for _, uidSet := range uidSets {
 		filtered := make([]*response.UserEmailUIDData, 0, len(result))
 		for _, item := range result {
 			number, ok := validIMAPNumber(item.ID)
-			if ok && uidSet.Contains(imap.UID(number)) {
-				filtered = append(filtered, item)
+			for _, span := range uidSet {
+				if ok && searchNumberInRange(number, uint32(span.Start), uint32(span.Stop), maximum) {
+					filtered = append(filtered, item)
+					break
+				}
 			}
 		}
 		result = filtered
@@ -185,19 +223,44 @@ func filterByUIDSets(list []*response.UserEmailUIDData, uidSets []imap.UIDSet) [
 }
 
 // filterBySeqNumSets filters the list by sequence number sets
-func filterBySeqNumSets(list []*response.UserEmailUIDData, seqSets []imap.SeqSet) []*response.UserEmailUIDData {
+func filterBySeqNumSets(list []*response.UserEmailUIDData, seqSets []imap.SeqSet, upper ...uint32) []*response.UserEmailUIDData {
+	var maximum uint32
+	for _, item := range list {
+		if number, ok := validIMAPNumber(item.SerialNumber); ok {
+			maximum = max(maximum, number)
+		}
+	}
+	if len(upper) > 0 {
+		maximum = upper[0]
+	}
 	result := list
 	for _, seqSet := range seqSets {
 		filtered := make([]*response.UserEmailUIDData, 0, len(result))
 		for _, item := range result {
 			number, ok := validIMAPNumber(item.SerialNumber)
-			if ok && seqSet.Contains(number) {
-				filtered = append(filtered, item)
+			for _, span := range seqSet {
+				if ok && searchNumberInRange(number, span.Start, span.Stop, maximum) {
+					filtered = append(filtered, item)
+					break
+				}
 			}
 		}
 		result = filtered
 	}
 	return result
+}
+
+func searchNumberInRange(number, start, stop, maximum uint32) bool {
+	if start == 0 {
+		start = maximum
+	}
+	if stop == 0 {
+		stop = maximum
+	}
+	if start > stop {
+		start, stop = stop, start
+	}
+	return number >= start && number <= stop
 }
 
 // filterByFlags filters by message flags
@@ -285,7 +348,11 @@ func filterWithEmailData(ctx *context.Context, list []*response.UserEmailUIDData
 			continue
 		}
 
-		if matchesEmailCriteria(email, criteria) {
+		visible := *email
+		if visible.Type == 0 {
+			visible.Bcc = ""
+		}
+		if matchesEmailCriteria(&visible, criteria) {
 			result = append(result, item)
 		}
 	}
@@ -433,9 +500,9 @@ func matchesText(email *models.Email, pattern string) bool {
 }
 
 // applyNotCriteria applies NOT criteria
-func applyNotCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, notCriteria *imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
+func applyNotCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, notCriteria *imap.SearchCriteria, snapshot ...[]int) ([]*response.UserEmailUIDData, error) {
 	// Get the list of items that match the NOT criteria
-	matchedList, err := SearchEmails(ctx, groupName, notCriteria)
+	matchedList, err := SearchEmails(ctx, groupName, notCriteria, snapshot...)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +525,7 @@ func applyNotCriteria(ctx *context.Context, groupName string, list []*response.U
 }
 
 // applyOrCriteria applies OR criteria
-func applyOrCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, orCriteria [][2]imap.SearchCriteria) ([]*response.UserEmailUIDData, error) {
+func applyOrCriteria(ctx *context.Context, groupName string, list []*response.UserEmailUIDData, orCriteria [][2]imap.SearchCriteria, snapshot ...[]int) ([]*response.UserEmailUIDData, error) {
 	if len(orCriteria) == 0 {
 		return list, nil
 	}
@@ -472,7 +539,7 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 	for _, pair := range orCriteria {
 		pairUIDs := make(map[int]bool)
 		// Get matches for first condition
-		matches1, err := SearchEmails(ctx, groupName, &pair[0])
+		matches1, err := SearchEmails(ctx, groupName, &pair[0], snapshot...)
 		if err != nil {
 			return nil, err
 		}
@@ -483,7 +550,7 @@ func applyOrCriteria(ctx *context.Context, groupName string, list []*response.Us
 		}
 
 		// Get matches for second condition
-		matches2, err := SearchEmails(ctx, groupName, &pair[1])
+		matches2, err := SearchEmails(ctx, groupName, &pair[1], snapshot...)
 		if err != nil {
 			return nil, err
 		}

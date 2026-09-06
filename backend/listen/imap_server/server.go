@@ -56,6 +56,8 @@ type serverSession struct {
 	connectTime    time.Time
 	deleteUidList  []int
 	remoteAddress  string
+	mailboxMu      sync.Mutex
+	mailboxUIDs    []int
 }
 
 // NewSession creates a new IMAP session.
@@ -277,7 +279,10 @@ func appendTooBigError() error {
 }
 
 func (s *serverSession) Unselect() error {
+	s.mailboxMu.Lock()
+	defer s.mailboxMu.Unlock()
 	s.currentMailbox = ""
 	s.readOnly = false
+	s.mailboxUIDs = nil
 	return nil
 }

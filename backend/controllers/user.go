@@ -215,7 +215,10 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	roleChanged := false
+	originalDisabled := user.Disabled
+	originalRole := user.EffectiveRole()
+	originalSessionVersion := user.SessionVersion
+	originalSecurityVersion := user.SecurityVersion
 	if reqData.Role != "" && access.Role(reqData.Role) != targetRole {
 		newRole := access.Role(reqData.Role)
 		if !newRole.Valid() {
@@ -237,7 +240,6 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		user.ApplyRole(newRole)
-		roleChanged = true
 	}
 	if user.IsAdmin == 1 && reqData.Disabled != 0 {
 		response.NewErrorResponse(response.ParamsError, "\u4e0d\u5141\u8bb8\u7981\u7528\u7ba1\u7406\u5458\u8d26\u6237", "").FPrint(w)
@@ -247,10 +249,6 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		response.NewErrorResponse(response.ParamsError, "\u8bf7\u901a\u8fc7\u5b89\u5168\u8bbe\u7f6e\u4fee\u6539\u5f53\u524d\u8d26\u6237\u5bc6\u7801", "").FPrint(w)
 		return
 	}
-	originalDisabled := user.Disabled
-	originalRole := user.EffectiveRole()
-	originalSessionVersion := user.SessionVersion
-	originalSecurityVersion := user.SecurityVersion
 	if reqData.Username != "" {
 		username, validationErr := validation.NormalizeDisplayName(reqData.Username)
 		if validationErr != nil {
@@ -308,7 +306,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole {
 		updateColumns = append(updateColumns, "session_version", "security_version")
 	}
-	if num, err := tx.ID(user.ID).Where("session_version = ?", originalSessionVersion).Cols(updateColumns...).Update(&user); err != nil {
+	if num, err := tx.ID(user.ID).Where("session_version = ? AND security_version = ?", originalSessionVersion, originalSecurityVersion).Cols(updateColumns...).Update(&user); err != nil {
 		log.WithContext(ctx).WithError(err).Error("update user failed")
 		response.NewErrorResponse(response.ServerError, "更新用户失败", "").FPrint(w)
 		return
@@ -329,9 +327,8 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	committed = true
-	if reqData.Password != "" {
+	if user.SessionVersion != originalSessionVersion {
 		InvalidateSecurityRuntimeUser(user.ID, user.Account)
 	}
-	_ = roleChanged
 	response.NewSuccessResponse(user).FPrint(w)
 }

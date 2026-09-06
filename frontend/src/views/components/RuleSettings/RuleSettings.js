@@ -53,7 +53,7 @@ export function usePage() {
   
   reflushGroupInfos()
   
-  const addRuleForm = reactive({
+  const newRuleForm = () => ({
     "id": 0,
     "name": "",
     "sort": 0,
@@ -61,6 +61,15 @@ export function usePage() {
     "action": "",
     "params": ""
   })
+  const addRuleForm = reactive(newRuleForm())
+  const createRule = () => {
+    Object.assign(addRuleForm, newRuleForm())
+    dialogVisible.value = true
+  }
+  const cancelRule = () => {
+    dialogVisible.value = false
+    Object.assign(addRuleForm, newRuleForm())
+  }
   
   const delRule = function (id) {
     http.post("/api/v1/rule/del", {"id": id}).then((res) => {
@@ -76,7 +85,7 @@ export function usePage() {
   const editRule = function (ruleInfo) {
     addRuleForm.id = ruleInfo.id
     addRuleForm.name = ruleInfo.name
-    addRuleForm.rules = ruleInfo.rules || []
+    addRuleForm.rules = (ruleInfo.rules || []).map(rule => ({ ...rule }))
     addRuleForm.action = ruleInfo.action
     addRuleForm.params = ruleInfo.params
     addRuleForm.sort = ruleInfo.sort
@@ -108,13 +117,7 @@ export function usePage() {
         })
       } else {
         init()
-        dialogVisible.value = false
-        addRuleForm.id = 0
-        addRuleForm.name = ""
-        addRuleForm.sort = 0
-        addRuleForm.rules = [{"field": "", "type": "", "rule": ""}]
-        addRuleForm.action = ""
-        addRuleForm.params = ""
+        cancelRule()
       }
     })
   }
@@ -146,6 +149,8 @@ export function usePage() {
     addRuleForm,
     delRule,
     editRule,
+    createRule,
+    cancelRule,
     removeRuleLine,
     addRule,
     submitRule,

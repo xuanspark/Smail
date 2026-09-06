@@ -118,6 +118,7 @@ const {
   upload,
   send,
   ruleFormRef,
+  fileRef,
   fileChange,
   rules,
   ruleForm,
