@@ -13,8 +13,32 @@
 }
 
 .form-group + .form-group {
-  padding-top: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--pm-border-color);
+}
+
+.form-group-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 10px;
+}
+
+.form-group-heading h4 {
+  margin: 0;
+  color: var(--pm-text-primary);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.form-group-description {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .credential-status,
@@ -69,6 +93,10 @@
   outline-offset: 2px;
 }
 
+.form-sections {
+  display: none;
+}
+
 .section-error {
   margin-left: 6px;
   color: var(--el-color-danger);
@@ -78,6 +106,12 @@
 .config-form[data-form-section="base"] .form-group {
   padding-top: 0;
   border-top: 0;
+}
+
+.config-form[data-form-section="base"] .form-group + .form-group {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--pm-border-color);
 }
 
 @container config-main (min-width: 640px) {
@@ -99,7 +133,13 @@
   }
 
   .form-group + .form-group {
+    margin-top: 8px;
     padding-top: 8px;
+  }
+
+  .config-form[data-form-section="base"] .form-group + .form-group {
+    margin-top: 12px;
+    padding-top: 12px;
   }
 }
 

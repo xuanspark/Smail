@@ -16,12 +16,16 @@
     </nav>
     <section
       v-for="group in groups"
-      v-show="section !== 'base' || activeGroup === group.id"
       :key="group.id"
       class="form-group"
       :data-group="group.id"
       :aria-label="group.title"
     >
+      <div class="form-group-heading">
+        <h4>{{ group.title }}</h4>
+        <p v-if="group.description" class="form-group-description">{{ group.description }}</p>
+        <span v-if="group.fields.some(field => errors[fieldKey(field)])" class="section-error">待修正</span>
+      </div>
       <p v-if="group.secretConfigured !== undefined" class="credential-status">{{ group.secretConfigured ? '凭据已配置' : '未配置凭据' }}</p>
       <p v-if="group.note" class="form-group-note" role="note">{{ group.note }}</p>
       <div class="form-grid" :class="{ 'site-grid': section === 'base' && group.id === 'site' }">
