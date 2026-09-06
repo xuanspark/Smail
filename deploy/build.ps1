@@ -20,4 +20,6 @@ try {
     & go build -o (Join-Path $output 'smail-config.exe') ./cmd/smail-config
     if ($LASTEXITCODE -ne 0) { throw '配置工具构建失败' }
 } finally { Pop-Location }
-Write-Output '构建完成：out/frontend 和 out/backend。正式发行请使用 Makefile 的跨平台构建目标。'
+& node (Join-Path $PSScriptRoot 'build-plugins.mjs') --dev
+if ($LASTEXITCODE -ne 0) { throw '插件构建失败' }
+Write-Output '构建完成：out/frontend、out/backend 和 out/plugins，包含三个内置插件。正式发行请使用 Makefile 的跨平台构建目标。'

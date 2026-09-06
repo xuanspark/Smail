@@ -18,10 +18,20 @@ function fixture(capabilities = ['config.read']) {
   return { page, allowed }
 }
 
-test('七个菜单对应七个不同页面组件，无权限的维护入口不可打开', async () => {
+test('配置菜单包含三个独立插件三级页面，无权限的维护入口不可打开', async () => {
   const { page, allowed } = fixture()
   assert.equal(new Set(page.sectionOptions.value.map(item => item.component)).size, 7)
   assert.deepEqual(page.sectionOptions.value.map(item => item.value), ['base', 'smtp', 'imap', 'pop3', 'email', 'ssl', 'plugins'])
+  const children = page.sectionOptions.value.find(item => item.value === 'plugins').children
+  assert.deepEqual(children.map(item => item.value), ['spam_block', 'telegram_push', 'wechat_push'])
+  await page.selectSection('plugins')
+  assert.equal(page.selectedSection.value, 'spam_block')
+  assert.equal(page.activePage.value.label, '垃圾邮件拦截')
+  await page.selectSection('telegram_push')
+  assert.equal(page.activePage.value.label, 'Telegram 推送')
+  await page.selectSection('plugins')
+  assert.equal(page.selectedSection.value, 'telegram_push')
+  await page.selectSection('base')
   assert.equal(page.maintenanceOptions.value.length, 0)
   await page.selectSection('audit')
   await page.selectSection('invalid')
@@ -31,6 +41,18 @@ test('七个菜单对应七个不同页面组件，无权限的维护入口不�
   await page.selectSection('audit')
   assert.equal(page.activePage.value.component.name, 'ConfigMaintenance')
   allowed.delete('config.read')
+  assert.equal(page.activePage.value, undefined)
+})
+
+test('插件三级菜单切换保留离开确认及权限检查', async () => {
+  const { page, allowed } = fixture()
+  await page.selectSection('wechat_push')
+  page.currentPage.value = { beforeLeave: async () => false }
+  await page.selectSection('spam_block')
+  assert.equal(page.selectedSection.value, 'wechat_push')
+  page.currentPage.value = { beforeLeave: async () => { allowed.delete('config.read'); return true } }
+  await page.selectSection('telegram_push')
+  assert.equal(page.selectedSection.value, 'wechat_push')
   assert.equal(page.activePage.value, undefined)
 })
 

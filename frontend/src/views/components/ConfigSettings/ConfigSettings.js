@@ -11,7 +11,10 @@ const sections = [
   { value: 'pop3', label: 'POP3 配置', description: '管理 POP3 的 STLS 与隐式 TLS 监听；端口变更需应用配置并重启后端。' },
   { value: 'email', label: '邮箱策略', description: '自动汇总三个协议的配置端口，管理邮件与账号恢复策略。' },
   { value: 'ssl', label: 'SSL 配置', description: '管理证书与加密连接，应用后请留意待重启提示。' },
-  { value: 'plugins', label: '插件配置', description: '管理插件运行配置，敏感设置仅显示配置状态。' }
+  { value: 'plugins', label: '插件配置', description: '管理插件运行配置，敏感设置仅显示配置状态。' },
+  { value: 'spam_block', label: '垃圾邮件拦截', description: '配置垃圾邮件检测服务、超时和拦截阈值，仅编辑当前插件。' },
+  { value: 'telegram_push', label: 'Telegram 推送', description: '配置 Telegram 推送的运行参数与网络权限，个人绑定在第三方授权中管理。' },
+  { value: 'wechat_push', label: '微信推送', description: '配置微信推送的应用、模板与接收用户，敏感凭据不回填。' }
 ]
 
 const serviceLabels = {
@@ -51,8 +54,10 @@ export function usePage(pageKey = 'base') {
     degradedReasons: []
   })
   const selectedSection = ref(isConfigPage ? pageKey : 'base')
-  // 页面与存储分区分离，IMAP、POP3 复用邮箱分区的原子保存与候选保护。
-  const apiSection = () => ['imap', 'pop3'].includes(selectedSection.value) ? 'email' : selectedSection.value
+  // 独立页面复用原配置分区的原子保存与候选保护，不丢弃其他页面的字段。
+  const pluginPages = ['spam_block', 'telegram_push', 'wechat_push']
+  const apiSection = () => pluginPages.includes(selectedSection.value) ? 'plugins'
+    : ['imap', 'pop3'].includes(selectedSection.value) ? 'email' : selectedSection.value
   const currentSection = computed(() => sections.find(item => item.value === selectedSection.value) || sections[0])
   const sectionLoading = ref(false)
   let sectionRequestId = 0
@@ -85,6 +90,18 @@ export function usePage(pageKey = 'base') {
   const pendingCandidate = ref(null)
   const pendingScopeHint = computed(() => {
     const pending = pendingCandidate.value
+    if (pending?.section === 'plugins' && apiSection() === 'plugins') {
+      const active = readFormConfig(loadedText.value).plugins || {}
+      const candidate = pending.payload?.plugins || {}
+      const changed = Object.keys({ ...active, ...candidate }).filter(id =>
+        ['enabled', 'executable', 'permissions', 'settings'].some(key =>
+          JSON.stringify(active[id]?.[key]) !== JSON.stringify(candidate[id]?.[key]))
+      ).map(id => sections.find(item => item.value === id)?.label || id)
+      const scope = pending.payload && loadedText.value
+        ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的插件运行配置未变化。')
+        : '候选内容尚未完整读取，请刷新后核对。'
+      return `${scope}三个插件共用一个配置分区，请在对应三级菜单核对；应用时整个候选一起生效，其他插件的原有配置会保留。`
+    }
     if (pending?.section !== 'email' || apiSection() !== 'email') return ''
     const active = readFormConfig(loadedText.value)
     const candidate = pending.payload || {}
@@ -508,7 +525,7 @@ export function usePage(pageKey = 'base') {
       if (selectedSection.value === 'smtp') {
         delete payload.relayPasswordStatus
       }
-      if (selectedSection.value === 'plugins' && payload.plugins && typeof payload.plugins === 'object') {
+      if (apiSection() === 'plugins' && payload.plugins && typeof payload.plugins === 'object') {
         Object.values(payload.plugins).forEach(plugin => {
           if (plugin && typeof plugin === 'object') {
             delete plugin.settingsConfigured

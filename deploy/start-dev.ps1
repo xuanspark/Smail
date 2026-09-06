@@ -21,8 +21,13 @@ try {
         # SMAIL_ROOT 是 config 的父目录，不能指向 config 本身或编译输出目录。
         $env:SMAIL_ROOT = $root
         $arguments = @('--dev-disable-admin-reset')
-        # 插件工作目录保持不变；配置、数据库和密钥统一通过 SMAIL_ROOT 定位。
-        $workingDirectory = Join-Path $root 'backend'
+        # 插件从 out/plugins 加载；账号、配置和密钥仍通过 SMAIL_ROOT 定位到根目录 config。
+        foreach ($name in @('spam_block.exe', 'pmail_telegram_push.exe', 'wechat_push.exe')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root "out\plugins\$name") -PathType Leaf)) {
+                throw '内置插件产物不完整，请先运行 deploy/build.ps1'
+            }
+        }
+        $workingDirectory = Join-Path $root 'out'
     } else {
         if (Get-NetTCPConnection -State Listen -LocalPort 15173 -ErrorAction SilentlyContinue) { throw '15173 端口已占用，请先确认并停止旧前端' }
         $binary = (Get-Command node -ErrorAction Stop).Source

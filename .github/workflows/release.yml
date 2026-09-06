@@ -63,13 +63,17 @@ jobs:
           BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
           go build -ldflags "$BUILD_FLAGS" -o ../out/release/${{ env.FILENAME }} ./cmd/smail
           go build -ldflags "$BUILD_FLAGS" -o ../out/release/${{ env.ADMINFILENAME }} ./cmd/smail-admin
-          go build -ldflags "-s -w" -o ../out/release/plugins/${{ env.WCFILENAME }} hooks/wechat_push/wechat_push.go
-          go build -ldflags "-s -w" -o ../out/release/plugins/${{ env.SPAMBLOCKFILENAME }} hooks/spam_block/spam_block.go
           cd ../plugins/pmail_telegram_push
           npm ci
-          npm run build-only
-          go build -ldflags "-s -w" -o ../../out/release/plugins/${{ env.TELEGRAMFILENAME }} .
-          cd ../../out/release
+          npm run type-check
+          cd ../..
+          node deploy/build-plugins.mjs --target=${{ matrix.goos }}_${{ matrix.goarch }}
+          for name in spam_block pmail_telegram_push wechat_push; do
+            extension=""
+            if [ "${{ matrix.goos }}" = "windows" ]; then extension=".exe"; fi
+            cp "out/plugins/${{ matrix.goos }}_${{ matrix.goarch }}/$name$extension" "out/release/plugins/$name$extension"
+          done
+          cd out/release
           cat > release.json <<EOF
           {
             "version": "${{ env.VERSION }}",

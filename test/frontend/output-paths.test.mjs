@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { buildPlan, hostTarget, plugins, targets } from '../../deploy/build-plugins.mjs'
+import { packagePlan } from '../../deploy/package.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const read = relative => readFile(path.join(root, relative), 'utf8')
@@ -10,7 +12,7 @@ const read = relative => readFile(path.join(root, relative), 'utf8')
 test('跨平台构建输出不得越过项目 out 目录', async () => {
   const content = await read('Makefile')
   const commands = [...content.matchAll(/cd ([^\s]+) && [^\n]*go build [^\n]* -o ([^\s]+) /g)]
-  assert.equal(commands.length, 30)
+  assert.equal(commands.length, 12)
   for (const [, directory, output] of commands) {
     const relative = path.relative(path.join(root, 'out'), path.resolve(root, directory, output))
     assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative), output)
@@ -31,11 +33,36 @@ test('开发启动必须固定运行配置根目录并集中保存日志', async
   assert.match(content, /\$env:SMAIL_ROOT = \$root\r?\n/)
   assert.match(content, /\$legacyConfig = Join-Path \$root 'backend\\config'/)
   assert.match(content, /Test-Path -LiteralPath \(Join-Path \$legacyConfig \$name\)/)
-  assert.match(content, /\$workingDirectory = Join-Path \$root 'backend'/)
+  assert.match(content, /\$workingDirectory = Join-Path \$root 'out'/)
+  for (const name of ['spam_block.exe', 'pmail_telegram_push.exe', 'wechat_push.exe']) assert.ok(content.includes(name))
   assert.match(content, /out\\backend\\smail-dev\.exe/)
   assert.match(content, /test-log\\runtime/)
   assert.match(content, /-WindowStyle Hidden/)
   assert.ok(content.charCodeAt(0) === 0xfeff, 'Windows PowerShell 5 脚本应有 UTF-8 BOM')
+})
+
+test('六个平台默认包含三个插件，构建和发布名称与后端目录完全匹配', async () => {
+  const catalog = await read('backend/plugins/catalog/catalog.go')
+  for (const target of targets) {
+    const plan = buildPlan({ target })
+    assert.equal(plan.length, 3)
+    assert.deepEqual(plan.map(item => item.id), plugins.map(item => item.id))
+    for (const item of plan) {
+      assert.equal(path.dirname(item.output), path.join(root, 'out', 'plugins', target))
+      assert.ok(catalog.includes(`"${path.basename(item.output)}"`))
+    }
+    const files = packagePlan(target)
+    assert.equal(files.length, 6)
+    assert.equal(files.filter(file => path.basename(path.dirname(file.target)) === 'plugins').length, 3)
+    assert.ok(files.every(file => file.target.startsWith(path.join(root, 'out', 'package', target))))
+  }
+  assert.ok(buildPlan({ development: true }).every(item => path.dirname(item.output) === path.join(root, 'out', 'plugins')))
+  assert.throws(() => buildPlan({ target: '../invalid' }))
+  assert.throws(() => buildPlan({ plugin: 'unknown' }))
+  assert.throws(() => buildPlan({ development: true, target: targets.find(target => target !== hostTarget()) }))
+  assert.match(await read('deploy/build.ps1'), /build-plugins\.mjs'\) --dev/)
+  assert.match(await read('Makefile'), /package: build_server plugin/)
+  assert.match(await read('.github/workflows/release.yml'), /node deploy\/build-plugins\.mjs --target=/)
 })
 
 test('安全工作流必须先构建嵌入资源再执行 Go 测试', async () => {

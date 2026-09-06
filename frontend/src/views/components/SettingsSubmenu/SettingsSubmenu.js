@@ -7,7 +7,8 @@ export const submenuProps = {
 
 export function useSubmenu(props, emit) {
   function select(value) {
-    if (value !== props.modelValue && props.items.some(item => item.value === value)) {
+    const visible = props.items.some(item => item.value === value || item.children?.some(child => child.value === value))
+    if (value !== props.modelValue && visible) {
       emit('select', value)
     }
   }

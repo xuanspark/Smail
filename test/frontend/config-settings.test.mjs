@@ -684,3 +684,69 @@ test('共用邮箱分区的候选明确提示其他页面的改动，忽略代�
   const template = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigEditor/ConfigEditor.vue', import.meta.url), 'utf8')
   assert.match(template, /:title="pendingScopeHint"/)
 })
+
+for (const key of ['spam_block', 'telegram_push', 'wechat_push']) {
+  test(`${key} 独立页面保留整个插件分区，验证、候选恢复和应用使用统一接口`, async () => {
+    let active = { meta: { generation: 1 }, plugins: {
+      spam_block: { enabled: false, executable: 'spam_block.exe', permissions: { network: [] }, settings: { threshold: 20 } },
+      telegram_push: { enabled: false, executable: 'pmail_telegram_push.exe', settings: { timeout: 30 }, secretStatus: { configured: true }, settingsConfigured: true },
+      wechat_push: { enabled: false, executable: 'wechat_push.exe', settings: { appId: 'test-only', future: 'preserved' } }
+    } }
+    const original = structuredClone(active)
+    let pending = null
+    const requests = []
+    const http = {
+      get: async path => {
+        requests.push(path)
+        return { errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: active.meta.generation }
+          : path.endsWith('/pending') ? pending : active }
+      },
+      put: async (path, body) => {
+        assert.equal(path, '/api/v1/config/plugins')
+        assert.equal(body.expectedGeneration, 1)
+        assert.deepEqual(body.secretChanges, {})
+        assert.equal(body.payload.plugins.telegram_push.secretStatus, undefined)
+        assert.equal(body.payload.plugins.telegram_push.settingsConfigured, undefined)
+        for (const id of Object.keys(original.plugins)) {
+          assert.deepEqual(body.payload.plugins[id].settings, original.plugins[id].settings)
+          assert.equal(body.payload.plugins[id].enabled, id === key)
+        }
+        pending = { generation: 2, section: 'plugins', sameSession: true, candidateId: 'plugin-test', payload: body.payload }
+        return { errorNo: 0, data: pending }
+      },
+      post: async (path, body) => {
+        requests.push(path)
+        if (path.endsWith('/apply')) {
+          assert.equal(body.generation, 2)
+          assert.equal(body.candidateId, 'plugin-test')
+          active = pending.payload
+          active.meta.generation = 2
+          pending = null
+        }
+        return { errorNo: 0, data: { valid: true } }
+      }
+    }
+    const { page, messages, dispose } = fixture(() => {}, key, { http })
+    await page.loadAll()
+    assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/plugins', '/api/v1/config/pending'])
+    assert.equal(page.selectedSection.value, key)
+    page.updateField(['plugins', key, 'enabled'], true)
+    await page.validateConfig()
+    await page.saveConfig()
+    assert.ok(requests.includes('/api/v1/config/plugins/validate'))
+    assert.match(page.pendingScopeHint.value, new RegExp(`本次候选涉及：${page.currentSection.value.label}。`))
+    const other = Object.keys(original.plugins).find(id => id !== key)
+    page.updateField(['plugins', other, 'enabled'], true)
+    assert.equal(page.formConfig.value.plugins[other].enabled, false)
+    dispose()
+    const restored = fixture(() => {}, other, { http }).page
+    await restored.loadAll()
+    assert.equal(restored.savedGeneration.value, 2)
+    assert.match(restored.pendingScopeHint.value, /三个插件共用一个配置分区/)
+    assert.ok(restored.pendingScopeHint.value.includes(page.currentSection.value.label))
+    await restored.applyConfig()
+    assert.ok(requests.includes('/api/v1/config/plugins/apply'))
+    assert.equal(restored.savedGeneration.value, 0)
+    assert.deepEqual(messages, [])
+  })
+}

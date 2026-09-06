@@ -62,6 +62,22 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   assert.equal(page.activeSettings.value, undefined)
 })
 
+test('三级菜单只发送当前分组的可见子项，选中状态仍由父页面确认', () => {
+  const props = reactive({ modelValue: 'spam_block', items: [{ value: 'plugins', children: [{ value: 'spam_block' }, { value: 'telegram_push' }] }] })
+  const events = []
+  const { select } = useSubmenu(props, (...event) => events.push(event))
+  select('unknown')
+  select('spam_block')
+  select('telegram_push')
+  assert.deepEqual(events, [['select', 'telegram_push']])
+  assert.equal(props.modelValue, 'spam_block')
+  props.items = []
+  select('telegram_push')
+  assert.equal(events.length, 1)
+  assert.match(read('SettingsSubmenu/SettingsSubmenu.vue'), /settings-tertiary-list/)
+  assert.match(read('SettingsSubmenu/SettingsSubmenu.css'), /\.settings-tertiary-item:focus-visible/)
+})
+
 test('菜单模板可编译并保留按钮、当前项语义及原有选区处理器', () => {
   for (const name of ['HomeHeader', 'SettingsSubmenu', 'SecuritySettings', 'ConfigSettings']) {
     const source = read(`${name}/${name}.vue`)

@@ -22,7 +22,11 @@ export function useNavigation() {
     { value: 'pop3', label: 'POP3 配置', component: Pop3Config },
     { value: 'email', label: '邮箱策略', component: EmailConfig },
     { value: 'ssl', label: 'SSL 配置', component: SslConfig },
-    { value: 'plugins', label: '插件配置', component: PluginsConfig }
+    { value: 'plugins', label: '插件配置', children: [
+      { value: 'spam_block', label: '垃圾邮件拦截', component: PluginsConfig },
+      { value: 'telegram_push', label: 'Telegram 推送', component: PluginsConfig },
+      { value: 'wechat_push', label: '微信推送', component: PluginsConfig }
+    ] }
   ]
   const tools = [
     { value: 'migration', label: '数据库迁移', capability: 'database.migrate' },
@@ -35,12 +39,15 @@ export function useNavigation() {
     ? tools.filter(item => store.hasCapability(item.capability))
       .map(item => ({ ...item, component: ConfigMaintenance }))
     : [])
-  const activePage = computed(() => [...sectionOptions.value, ...maintenanceOptions.value]
+  const visiblePages = () => [...sectionOptions.value.flatMap(item => item.children || [item]), ...maintenanceOptions.value]
+  const activePage = computed(() => visiblePages()
     .find(item => item.value === selectedSection.value))
 
   const beforeLeave = () => currentPage.value?.beforeLeave?.() ?? true
   const selectSection = async value => {
-    const visible = () => [...sectionOptions.value, ...maintenanceOptions.value].some(item => item.value === value)
+    const parent = sectionOptions.value.find(item => item.value === value && item.children)
+    if (parent) value = parent.children.find(item => item.value === selectedSection.value)?.value || parent.children[0].value
+    const visible = () => visiblePages().some(item => item.value === value)
     if (switching.value || value === selectedSection.value || !visible()) return
     switching.value = true
     try {

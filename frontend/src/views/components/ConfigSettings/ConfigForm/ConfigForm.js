@@ -198,7 +198,8 @@ const pluginDefinitions = {
 }
 
 export function getFieldGroups(section, config) {
-  if (section !== 'plugins') {
+  const pluginId = Object.hasOwn(pluginDefinitions, section) ? section : ''
+  if (section !== 'plugins' && !pluginId) {
     return ({ base: baseGroups, smtp: smtpGroups, imap: imapGroups, pop3: pop3Groups, email: emailGroups, ssl: sslGroups }[section] || [])
       .map(item => ({
         ...item,
@@ -208,7 +209,7 @@ export function getFieldGroups(section, config) {
       }))
       .filter(item => item.fields.length > 0)
   }
-  return Object.entries(config.plugins || {}).map(([id, plugin]) => {
+  return Object.entries(config.plugins || {}).filter(([id]) => !pluginId || id === pluginId).map(([id, plugin]) => {
     const definition = pluginDefinitions[id]
     const prefix = ['plugins', id]
     const input = (name, label, type, extra = {}) => ({ path: [...prefix, name], label, type, ...extra })

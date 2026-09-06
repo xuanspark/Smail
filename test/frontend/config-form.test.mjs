@@ -45,6 +45,34 @@ test('各协议仅编辑自己的监听端口，邮箱策略没有重复端口�
   assert.ok(validateFormConfig('smtp', { ...config, listener: { ...config.listener, tlsPort: 587 } })['listener.tlsPort'])
 })
 
+test('三个插件页面只展示和编辑自身字段，完整保留其他插件和未知字段', () => {
+  const config = { meta: { generation: 9 }, plugins: {
+    spam_block: { enabled: false, settings: { threshold: 20 }, secretStatus: { configured: true } },
+    telegram_push: { enabled: false, settings: { timeout: 30, futureField: '保留值' } },
+    wechat_push: { enabled: true, settings: { appId: 'test-only' } },
+    future_plugin: { enabled: false, settings: ['原样保留'] }
+  } }
+  const text = JSON.stringify(config)
+  for (const id of ['spam_block', 'telegram_push', 'wechat_push']) {
+    const groups = getFieldGroups(id, config)
+    assert.equal(groups.length, 1)
+    assert.equal(groups[0].id, id)
+    assert.ok(groups[0].fields.every(field => field.path[1] === id))
+    const edited = readFormConfig(updateFormConfig(text, id, ['plugins', id, 'enabled'], true))
+    for (const other of Object.keys(config.plugins).filter(key => key !== id)) {
+      assert.deepEqual(edited.plugins[other], config.plugins[other])
+      assert.equal(updateFormConfig(text, id, ['plugins', other, 'enabled'], true), text)
+    }
+    assert.deepEqual(edited.meta, config.meta)
+    assert.deepEqual(edited.plugins[id].settings, config.plugins[id].settings)
+  }
+  assert.deepEqual(getFieldGroups('wechat_push', { plugins: {} }), [])
+  const invalidOther = structuredClone(config)
+  invalidOther.plugins.telegram_push.settings.timeout = 999
+  assert.deepEqual(validateFormConfig('spam_block', invalidOther), {})
+  assert.ok(validateFormConfig('telegram_push', invalidOther)['plugins.telegram_push.settings.timeout'])
+})
+
 test('文本输入的左右留白属于原生输入框，不影响数字、选择和开关控件', () => {
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileStyle } = require('@vue/compiler-sfc')
@@ -85,7 +113,7 @@ test('分组不显示重复标题和介绍，保留无障碍名称、凭据状�
   assert.doesNotMatch(template, /<h[1-6]\b|form-group-heading|form-group-description|group\.description/)
   assert.doesNotMatch(template, /aria-labelledby/)
   assert.match(template, /<section\b[^>]*:aria-label="group.title"/)
-  assert.match(template, /v-if="section === 'plugins'" class="credential-status"/)
+  assert.match(template, /v-if="group.secretConfigured !== undefined" class="credential-status"/)
   assert.match(template, /group.secretConfigured \? '凭据已配置' : '未配置凭据'/)
   assert.match(template, /v-if="group.note" class="form-group-note" role="note"/)
   assert.match(template, /v-if="!groups.length" class="form-empty"/)

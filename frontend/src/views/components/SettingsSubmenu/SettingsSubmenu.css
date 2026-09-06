@@ -75,6 +75,54 @@
   outline-offset: -2px;
 }
 
+.settings-submenu-count {
+  float: right;
+  min-width: 18px;
+  border-radius: 5px;
+  background: var(--pm-bg-primary);
+  text-align: center;
+  font-size: 11px;
+}
+
+.settings-tertiary-list {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 8px 12px;
+  padding-left: 8px;
+  border-left: 1px solid var(--pm-border-color);
+}
+
+.settings-tertiary-item {
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pm-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-tertiary-item.active {
+  color: var(--submenu-accent);
+  background: color-mix(in srgb, var(--submenu-accent) 8%, var(--pm-bg-secondary));
+  font-weight: 600;
+}
+
+.settings-tertiary-item:hover:not(.active) {
+  color: var(--pm-text-primary);
+  background: var(--pm-bg-hover);
+}
+
+.settings-tertiary-item:focus-visible {
+  outline: 2px solid var(--submenu-accent);
+  outline-offset: -2px;
+}
+
 @media (prefers-color-scheme: dark) {
   .settings-submenu {
     --submenu-accent: var(--pm-primary-light-3);
@@ -107,6 +155,14 @@
     flex: 0 0 auto;
     width: auto;
     white-space: nowrap;
+  }
+
+  .settings-submenu-entry {
+    flex: 0 0 auto;
+  }
+
+  .settings-tertiary-list {
+    margin-left: 4px;
   }
 
   .settings-submenu-item.active::before {
