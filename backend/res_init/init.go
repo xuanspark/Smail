@@ -297,43 +297,26 @@ func startVerificationRuntime() error {
 		runtime.Stop()
 		return fmt.Errorf("start external email repository: %w", err)
 	}
-	smtpSettings, err := config.CurrentSMTPRuntimeSettings()
-	if err != nil {
-		runtime.Stop()
-		return err
-	}
-	if !smtpSettings.VerificationEnabled && !smtpSettings.ExternalRecoveryEnabled {
-		recover, recoverErr := recovery.NewService(db.Instance, nil, external, credential)
-		if recoverErr != nil {
-			runtime.Stop()
-			return fmt.Errorf("start recovery service: %w", recoverErr)
+	delivery := verification.NewLazySMTPDelivery(func() (verification.SMTPSettings, error) {
+		smtpSettings, err := config.CurrentSMTPRuntimeSettings()
+		if err != nil {
+			return verification.SMTPSettings{}, err
 		}
-		recover.SetWebAuthnVerifier(webAuthnRuntimeService)
-		controllers.ConfigureSecurityRuntime(nil, external, recover, credential)
-		credentialService = credential
-		verificationRuntime = runtime
-		log.Info("邮箱验证码服务已禁用")
-		return nil
-	}
-	security, err := smtpSecurityMode(smtpSettings.Relay.Security)
-	if err != nil {
-		runtime.Stop()
-		return err
-	}
-	delivery, err := verification.NewSMTPDelivery(verification.SMTPSettings{
-		Host:       smtpSettings.Relay.RelayHost,
-		Port:       smtpSettings.Relay.RelayPort,
-		Username:   smtpSettings.Relay.Username,
-		Password:   smtpSettings.Password,
-		Security:   security,
-		From:       smtpSettings.Relay.From,
-		FromDomain: smtpSettings.Relay.FromDomain,
+		security, err := smtpSecurityMode(smtpSettings.Relay.Security)
+		if err != nil {
+			return verification.SMTPSettings{}, err
+		}
+		return verification.SMTPSettings{
+			Host:       smtpSettings.Relay.RelayHost,
+			Port:       smtpSettings.Relay.RelayPort,
+			Username:   smtpSettings.Relay.Username,
+			Password:   smtpSettings.Password,
+			Security:   security,
+			From:       smtpSettings.Relay.From,
+			FromDomain: smtpSettings.Relay.FromDomain,
+		}, nil
 	})
-	if err != nil {
-		runtime.Stop()
-		return fmt.Errorf("SMTP 投递服务初始化失败: %w", err)
-	}
-	service, err := verification.NewService(runtime.Store, delivery.Delivery(), runtime.Events)
+	service, err := verification.NewService(runtime.Store, delivery, runtime.Events)
 	if err != nil {
 		runtime.Stop()
 		return fmt.Errorf("start verification service: %w", err)
@@ -348,7 +331,7 @@ func startVerificationRuntime() error {
 	controllers.ConfigureSecurityRuntime(service, external, recover, credential)
 	credentialService = credential
 	verificationRuntime = runtime
-	log.Info("邮箱验证码服务已启动")
+	log.Info("安全验证码服务已启动，外发邮件将在实际使用时检查 SMTP 中继配置")
 	return nil
 }
 
@@ -374,9 +357,6 @@ func startWebAuthnRuntime() error {
 	}
 	snapshot := manager.Snapshot()
 	security := snapshot.Root.Security
-	if !security.WebAuthnEnabled {
-		return nil
-	}
 	service, err := webauthnservice.NewService(db.Instance, webauthnservice.Config{
 		RPID:          security.WebAuthnRPID,
 		RPDisplayName: security.WebAuthnRPDisplayName,

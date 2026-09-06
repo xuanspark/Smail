@@ -25,7 +25,7 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 			t.Fatalf("table %s was not created", table)
 		}
 	}
-	for _, column := range []string{"role", "session_version", "security_version", "must_change_password", "password_changed_at", "security_setup_acknowledged"} {
+	for _, column := range []string{"role", "session_version", "security_version", "must_change_password", "password_changed_at", "security_setup_acknowledged", "external_email_enabled", "webauthn_enabled"} {
 		exists, err := columnExists(context.Background(), db, DialectSQLite, "user", column)
 		if err != nil {
 			t.Fatal(err)
@@ -85,11 +85,13 @@ func TestDefaultMigrationsUpgradeLegacyUserSchema(t *testing.T) {
 	var securityVersion int
 	var mustChangePassword int
 	var passwordChangedAt any
-	if err := db.QueryRow(`SELECT "role", "session_version", "security_version", "must_change_password", "password_changed_at" FROM "user" WHERE "account" = 'root'`).Scan(&role, &sessionVersion, &securityVersion, &mustChangePassword, &passwordChangedAt); err != nil {
+	var externalEmailEnabled int
+	var webAuthnEnabled int
+	if err := db.QueryRow(`SELECT "role", "session_version", "security_version", "must_change_password", "password_changed_at", "external_email_enabled", "webauthn_enabled" FROM "user" WHERE "account" = 'root'`).Scan(&role, &sessionVersion, &securityVersion, &mustChangePassword, &passwordChangedAt, &externalEmailEnabled, &webAuthnEnabled); err != nil {
 		t.Fatal(err)
 	}
-	if role != "super_admin" || sessionVersion != 1 || securityVersion != 1 || mustChangePassword != 0 || passwordChangedAt != nil {
-		t.Fatalf("role = %q, session version = %d, security version = %d, must change password = %d, password changed at = %v", role, sessionVersion, securityVersion, mustChangePassword, passwordChangedAt)
+	if role != "super_admin" || sessionVersion != 1 || securityVersion != 1 || mustChangePassword != 0 || passwordChangedAt != nil || externalEmailEnabled != 1 || webAuthnEnabled != 1 {
+		t.Fatalf("role = %q, session version = %d, security version = %d, must change password = %d, password changed at = %v, external email enabled = %d, webauthn enabled = %d", role, sessionVersion, securityVersion, mustChangePassword, passwordChangedAt, externalEmailEnabled, webAuthnEnabled)
 	}
 }
 
@@ -217,6 +219,7 @@ func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
 		13: "c51604f27347d0a1b93acad1e33af53463fceb7b6573960f881f95f29c5628ed",
 		14: "531398c2b8fc83a65753fae08666946bb253ac3da6596829e71cc8ccc4ddf62f",
 		15: "59f0ff9acfed3619c17f078d21a1362ddd5f1feacb9a2d77626f69040d25de65",
+		16: "",
 	}
 	migrations := DefaultMigrations()
 	if len(migrations) != len(expected) {

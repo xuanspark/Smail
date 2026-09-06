@@ -19,6 +19,8 @@ type User struct {
 	MustChangePassword int    `xorm:"must_change_password unsigned int not null default(0)" json:"must_change_password"`
 	PasswordChangedAt  *time.Time `xorm:"password_changed_at datetime null" json:"-"`
 	SecuritySetupAcknowledged int `xorm:"security_setup_acknowledged not null default(0)" json:"-"`
+	ExternalEmailEnabled     int `xorm:"external_email_enabled unsigned int not null default(1)" json:"-"`
+	WebAuthnEnabled          int `xorm:"webauthn_enabled unsigned int not null default(1)" json:"-"`
 }
 
 // EffectiveRole 返回新角色字段，兼容旧版本只保存 IsAdmin 的账户。

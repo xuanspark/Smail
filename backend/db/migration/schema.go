@@ -73,6 +73,30 @@ func applyUserLifecycleSchema(ctx context.Context, exec executor, dialect Dialec
 	return nil
 }
 
+func applyUserSecurityPreferencesSchema(ctx context.Context, exec executor, dialect Dialect) error {
+	columns := []struct {
+		name       string
+		definition map[Dialect]string
+	}{
+		{name: "external_email_enabled", definition: map[Dialect]string{
+			DialectSQLite:   `INTEGER NOT NULL DEFAULT 1`,
+			DialectMySQL:    `INT UNSIGNED NOT NULL DEFAULT 1`,
+			DialectPostgres: `INTEGER NOT NULL DEFAULT 1`,
+		}},
+		{name: "webauthn_enabled", definition: map[Dialect]string{
+			DialectSQLite:   `INTEGER NOT NULL DEFAULT 1`,
+			DialectMySQL:    `INT UNSIGNED NOT NULL DEFAULT 1`,
+			DialectPostgres: `INTEGER NOT NULL DEFAULT 1`,
+		}},
+	}
+	for _, column := range columns {
+		if err := ensureColumn(ctx, exec, dialect, "user", column.name, column.definition[dialect]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func verificationOperationsStatements() map[Dialect][]string {
 	return map[Dialect][]string{
 		DialectSQLite: {

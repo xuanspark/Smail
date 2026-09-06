@@ -24,6 +24,7 @@ const (
 var (
 	ErrInvalidSMTPConfig = errors.New("invalid SMTP configuration")
 	ErrUnsupportedSMTP   = errors.New("unsupported SMTP security mode")
+	ErrSMTPRelayUnavailable = errors.New("SMTP relay is unavailable")
 )
 
 type SMTPSettings struct {
@@ -56,6 +57,24 @@ func (d *SMTPDelivery) Delivery() Delivery {
 		message := buildCodeMessage(d.settings.From, challenge.Email, code, challenge.Purpose)
 		defer clearBytes(message)
 		return d.send(d.settings, challenge.Email, message)
+	}
+}
+
+// NewLazySMTPDelivery 延迟读取 SMTP 中继配置，避免中继未配置时阻塞本地邮件服务启动。
+func NewLazySMTPDelivery(load func() (SMTPSettings, error)) Delivery {
+	return func(challenge Challenge, code string) error {
+		if load == nil || challenge.Email == "" || code == "" {
+			return ErrSMTPRelayUnavailable
+		}
+		settings, err := load()
+		if err != nil {
+			return fmt.Errorf("load SMTP relay settings: %w", err)
+		}
+		delivery, err := NewSMTPDelivery(settings)
+		if err != nil {
+			return fmt.Errorf("SMTP relay is unavailable: %w", err)
+		}
+		return delivery.Delivery()(challenge, code)
 	}
 }
 
