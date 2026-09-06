@@ -203,6 +203,14 @@ func TestValidateSSLMaterialRejectsDomainExpiryAndWeakKeys(t *testing.T) {
 	}
 }
 
+func TestValidateSSLMaterialAcceptsBundledIssuerWithoutDuplicateChainEntry(t *testing.T) {
+	privateKeyPEM, certificatePEM, issuerPEM := testChainedCertificate(t)
+	certificateBundle := append(append([]byte{}, certificatePEM...), issuerPEM...)
+	if err := ValidateSSLMaterial(privateKeyPEM, certificateBundle, issuerPEM, []string{"mail.example.com"}); err != nil {
+		t.Fatalf("bundled issuer was rejected as a duplicate chain entry: %v", err)
+	}
+}
+
 func testManagedCertificate(t *testing.T, domain string, notBefore, notAfter time.Time, bits int) ([]byte, []byte) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, bits)
@@ -225,4 +233,47 @@ func testManagedCertificate(t *testing.T, domain string, notBefore, notAfter tim
 		t.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+func testChainedCertificate(t *testing.T) ([]byte, []byte, []byte) {
+	t.Helper()
+	issuerKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	issuerTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(100),
+		Subject:               pkix.Name{CommonName: "Smail Test Issuer"},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(24 * time.Hour),
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+	}
+	issuerDER, err := x509.CreateCertificate(rand.Reader, issuerTemplate, issuerTemplate, &issuerKey.PublicKey, issuerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(101),
+		Subject:               pkix.Name{CommonName: "mail.example.com"},
+		DNSNames:              []string{"mail.example.com"},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(24 * time.Hour),
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTemplate, issuerTemplate, &leafKey.PublicKey, issuerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(leafKey)}),
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}),
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: issuerDER})
 }

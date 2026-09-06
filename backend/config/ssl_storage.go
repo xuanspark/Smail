@@ -227,7 +227,7 @@ func validateSSLMaterial(privateKeyPEM, certificatePEM, issuerPEM []byte, domain
 		if issuerErr != nil {
 			return ErrInvalidSSLMaterial
 		}
-		certificates = append(certificates, issuerCertificates...)
+		certificates = appendUniqueCertificates(certificates, issuerCertificates...)
 	}
 	if _, err := tls.X509KeyPair(certificatePEM, privateKeyPEM); err != nil {
 		return ErrSSLCertificateMismatch
@@ -253,6 +253,28 @@ func validateSSLMaterial(privateKeyPEM, certificatePEM, issuerPEM []byte, domain
 		}
 	}
 	return nil
+}
+
+func appendUniqueCertificates(certificates []*x509.Certificate, additions ...*x509.Certificate) []*x509.Certificate {
+	seen := make(map[string]struct{}, len(certificates)+len(additions))
+	for _, certificate := range certificates {
+		if certificate == nil {
+			continue
+		}
+		seen[string(certificate.Raw)] = struct{}{}
+	}
+	for _, certificate := range additions {
+		if certificate == nil {
+			continue
+		}
+		key := string(certificate.Raw)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		certificates = append(certificates, certificate)
+	}
+	return certificates
 }
 
 func parseCertificatePEM(data []byte) ([]*x509.Certificate, error) {
