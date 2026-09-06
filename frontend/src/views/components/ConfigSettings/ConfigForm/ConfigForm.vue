@@ -1,19 +1,6 @@
 <template>
   <div class="config-form" :data-form-section="section">
     <p v-if="!groups.length" class="form-empty">当前插件配置不存在，请刷新配置或检查初始化状态。</p>
-    <nav v-if="section === 'base' && groups.length > 1" class="form-sections" aria-label="基础配置分区">
-      <button
-        v-for="group in groups"
-        :key="group.id"
-        type="button"
-        :class="{ active: activeGroup === group.id }"
-        :aria-pressed="activeGroup === group.id"
-        @click="activeGroup = group.id"
-      >
-        {{ group.title }}
-        <span v-if="group.fields.some(field => errors[fieldKey(field)])" class="section-error">待修正</span>
-      </button>
-    </nav>
     <section
       v-for="group in groups"
       :key="group.id"

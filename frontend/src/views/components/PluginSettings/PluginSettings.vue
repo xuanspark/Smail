@@ -6,27 +6,42 @@
     </div>
 
     <div class="plugin-container">
-      <el-tabs class="custom-tabs">
-        <el-tab-pane v-for="entry in pluginEntries" :key="entry.src" :label="entry.name">
-          <SpamBlockSettings v-if="entry.logicalID === 'spam_block'" />
-          <TelegramSettings v-else-if="entry.logicalID === 'telegram_push'" />
-          <div v-else class="iframe-wrapper">
-            <iframe
-              :src="entry.src"
-              sandbox="allow-scripts"
-              referrerpolicy="no-referrer"
-              ref="pluginFrames"
-              :data-plugin="entry.name"
-              :title="entry.name"
-            />
+      <div v-if="pluginEntries.length" class="plugin-list">
+        <section
+          v-for="(entry, index) in pluginEntries"
+          :key="entry.src"
+          class="plugin-section"
+        >
+          <header class="plugin-section-header">
+            <div class="plugin-section-title">
+              <span class="plugin-section-index">{{ String(index + 1).padStart(2, '0') }}</span>
+              <div>
+                <h4>{{ entry.label }}</h4>
+                <p>{{ entry.description }}</p>
+              </div>
+            </div>
+            <span class="plugin-section-status is-active">已启用</span>
+          </header>
+
+          <div class="plugin-section-content">
+            <SpamBlockSettings v-if="entry.logicalID === 'spam_block'" />
+            <TelegramSettings v-else-if="entry.logicalID === 'telegram_push'" />
+            <div v-else class="iframe-wrapper">
+              <iframe
+                :src="entry.src"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+                ref="pluginFrames"
+                :data-plugin="entry.name"
+                :title="entry.name"
+              />
+            </div>
           </div>
-        </el-tab-pane>
-        <el-tab-pane v-if="pluginEntries.length === 0" :label="lang.no_plugins">
-          <div class="empty-state">
-            <el-empty :description="lang.no_plugins_installed" :image-size="120" />
-          </div>
-        </el-tab-pane>
-      </el-tabs>
+        </section>
+      </div>
+      <div v-else class="empty-state">
+        <el-empty :description="lang.no_plugins_installed" :image-size="120" />
+      </div>
     </div>
   </div>
 </template>
