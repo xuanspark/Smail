@@ -78,6 +78,34 @@ func TestSQLiteExecutorCopiesDatabaseAndSwitchesConfiguration(t *testing.T) {
 	}
 }
 
+func TestSQLiteExecutorSupportsNestedReferences(t *testing.T) {
+	var switched config.DatabaseConfig
+	service, root := newSQLiteMigrationFixture(t, func(_ context.Context, candidate config.DatabaseConfig) error {
+		switched = candidate
+		return nil
+	})
+	if err := os.MkdirAll(filepath.Join(root, "config", "archive"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(root, "config", "smail.db"), filepath.Join(root, "config", "archive", "review.db")); err != nil {
+		t.Fatal(err)
+	}
+	record, token, err := service.Preview(context.Background(), config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "archive/review.db"}, 1, "archive/next.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := service.Execute(context.Background(), record.ID, token)
+	if err != nil || completed.Status != StatusSucceeded {
+		t.Fatalf("nested migration result = %+v, error = %v", completed, err)
+	}
+	if switched.LocalRef != "archive/next.db" {
+		t.Fatalf("switched localRef = %q, want archive/next.db", switched.LocalRef)
+	}
+	if _, err := os.Stat(filepath.Join(root, "config", "archive", "next.db")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSQLiteExecutorRejectsExistingTarget(t *testing.T) {
 	service, root := newSQLiteMigrationFixture(t, func(context.Context, config.DatabaseConfig) error { return nil })
 	if err := os.WriteFile(filepath.Join(root, "config", "smail-next.db"), []byte("existing"), 0600); err != nil {

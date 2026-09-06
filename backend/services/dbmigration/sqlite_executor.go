@@ -172,7 +172,7 @@ func (e *SQLiteExecutor) resolveReference(reference string) (string, error) {
 
 func validSQLiteReference(value string) bool {
 	value = filepath.ToSlash(strings.TrimSpace(value))
-	if value == "" || filepath.IsAbs(value) || isWindowsAbsoluteReference(value) || strings.ContainsAny(value, `\\:`) {
+	if value == "" || filepath.IsAbs(value) || isWindowsAbsoluteReference(value) || strings.HasPrefix(value, "config/") || strings.ContainsAny(value, `\\:`) {
 		return false
 	}
 	for _, part := range strings.Split(value, "/") {

@@ -78,7 +78,7 @@ func validateDatabase(database DatabaseConfig) error {
 		if !validSQLiteLocalRef(database.LocalRef) ||
 			filepath.IsAbs(database.LocalRef) ||
 			isWindowsAbsolute(database.LocalRef) ||
-			strings.ContainsAny(database.LocalRef, `/\\:`) ||
+			strings.ContainsAny(database.LocalRef, `\\:`) ||
 			database.Host != "" || database.Port != 0 || database.Username != "" ||
 			database.Password.Configured() || database.Password.Ciphertext != "" || database.Password.Version != 0 || !database.Password.UpdatedAt.IsZero() || database.Name != "" {
 			return ErrInvalidDatabase

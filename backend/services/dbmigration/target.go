@@ -64,7 +64,7 @@ func buildTargetPlan(source, target config.DatabaseConfig) (Plan, error) {
 		return Plan{}, ErrInvalidRequest
 	}
 	if target.Type == config.DatabaseTypeSQLite {
-		if !sqliteTargetNamePattern.MatchString(target.LocalRef) {
+		if !validSQLiteReference(target.LocalRef) {
 			return Plan{}, ErrInvalidTargetName
 		}
 	} else if !targetNamePattern.MatchString(target.Name) {

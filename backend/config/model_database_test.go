@@ -48,8 +48,22 @@ func TestSQLiteLocalRefIsBackendReferenceOnly(t *testing.T) {
 		t.Fatalf("valid SQLite database rejected: %v", err)
 	}
 	for _, localRef := range []string{
+		"archive/review.db",
+		"data/2026/smail.db",
+	} {
+		t.Run("nested/"+localRef, func(t *testing.T) {
+			candidate := valid
+			candidate.LocalRef = localRef
+			if err := ValidateDatabaseConfig(candidate); err != nil {
+				t.Fatalf("nested SQLite localRef %q was rejected: %v", localRef, err)
+			}
+		})
+	}
+	for _, localRef := range []string{
 		"../smail.db",
 		"config/smail.db",
+		"archive/../smail.db",
+		"archive//smail.db",
 		"C:\\data\\smail.db",
 		"/var/lib/smail/smail.db",
 		"\\\\server\\share\\smail.db",
