@@ -147,7 +147,6 @@ func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, opt
 		if uidSet.Dynamic() {
 			var err error
 			maxUID, err = list.GetMaxUIDByMailbox(s.ctx, s.currentMailbox)
-			log.WithContext(s.ctx).Infof("IMAP FETCH UID set=%s dynamic=%t max_uid=%d", uidSet.String(), uidSet.Dynamic(), maxUID)
 			if err != nil {
 				log.WithContext(s.ctx).WithError(err).Error("query IMAP maximum UID for fetch failed")
 				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
@@ -166,7 +165,6 @@ func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, opt
 					end = maxUID
 				}
 			}
-			log.WithContext(s.ctx).Infof("IMAP FETCH UID range start=%d end=%d mailbox=%s", start, end, s.currentMailbox)
 			emailList, err := list.GetEmailListByGroup(s.ctx, s.currentMailbox, list.ImapListReq{
 				Star: start,
 				End:  end,
@@ -175,7 +173,6 @@ func (s *serverSession) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, opt
 				log.WithContext(s.ctx).WithError(err).Error("query IMAP messages for UID fetch failed")
 				return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Fetch failed"}
 			}
-			log.WithContext(s.ctx).Infof("IMAP FETCH UID result count=%d", len(emailList))
 			if err := write(s.ctx, w, emailList, options); err != nil {
 				return err
 			}
@@ -321,7 +318,6 @@ func write(ctx *context.Context, w *imapserver.FetchWriter, emailList []*respons
 		if options.UID {
 			writer.WriteUID(uid)
 		}
-		log.WithContext(ctx).Infof("IMAP FETCH write sequence=%d uid=%d ue_id=%d", sequence, uid, email.UeId)
 		if options.Envelope {
 			env := buildEnvelope(email, traEmail)
 			writer.WriteEnvelope(env)

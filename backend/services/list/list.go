@@ -140,23 +140,23 @@ func buildIMAPMailboxRelationQuery(ctx *context.Context, groupName string) (stri
 	if ctx == nil || ctx.UserID <= 0 {
 		return "", nil, fmt.Errorf("invalid mailbox user")
 	}
-	inner := "SELECT id,email_id,is_read,is_deleted,status,ROW_NUMBER() OVER (ORDER BY id) AS serial_number FROM user_email WHERE user_id = ? AND email_id > 0"
+	relations := "SELECT * FROM user_email WHERE user_id = ? AND email_id > 0"
 	params := []any{ctx.UserID}
 	switch groupName {
 	case "INBOX":
-		inner += " and status = ? and group_id = 0"
+		relations += " and status = ? and group_id = 0"
 		params = append(params, 0)
 	case "Sent Messages":
-		inner += " and status = ? and group_id = 0"
+		relations += " and status = ? and group_id = 0"
 		params = append(params, 1)
 	case "Drafts":
-		inner += " and status = ? and group_id = 0"
+		relations += " and status = ? and group_id = 0"
 		params = append(params, 4)
 	case "Deleted Messages":
-		inner += " and status = ? and group_id = 0"
+		relations += " and status = ? and group_id = 0"
 		params = append(params, 3)
 	case "Junk":
-		inner += " and status = ? and group_id = 0"
+		relations += " and status = ? and group_id = 0"
 		params = append(params, 5)
 	default:
 		var mailbox models.Group
@@ -167,10 +167,10 @@ func buildIMAPMailboxRelationQuery(ctx *context.Context, groupName string) (stri
 		if !found || mailbox.ID == 0 {
 			return "", nil, fmt.Errorf("mailbox not found")
 		}
-		inner += " and group_id = ?"
+		relations += " and group_id = ?"
 		params = append(params, mailbox.ID)
 	}
-	return inner, params, nil
+	return "SELECT mailbox_rel.*, ROW_NUMBER() OVER (ORDER BY mailbox_rel.id) AS serial_number FROM (" + relations + ") mailbox_rel", params, nil
 }
 
 func GetUEListByUID(ctx *context.Context, groupName string, star, end int, uidList []int) ([]*response.UserEmailUIDData, error) {
@@ -270,13 +270,6 @@ func getEmailListByUidList(ctx *context.Context, groupName string, req ImapListR
 	if err := db.Instance.SQL(sql, params...).Find(&relations); err != nil {
 		return nil, fmt.Errorf("query mailbox UID list: %w", err)
 	}
-	if len(relations) > 0 {
-		for _, relation := range relations {
-			if relation != nil {
-				fmt.Printf("IMAP UID relation id=%d email_id=%d status=%d group_id=%d\n", relation.ID, relation.EmailID, relation.Status, relation.GroupId)
-			}
-		}
-	}
 	return hydrateIMAPEmailResponses(relations)
 }
 
@@ -337,7 +330,6 @@ func hydrateIMAPEmailResponses(relations []*response.UserEmailUIDData) ([]*respo
 	if err := db.Instance.Table("email").Select("*").Where(Eq{"id": emailIDs}).Find(&stored); err != nil {
 		return nil, fmt.Errorf("query mailbox messages: %w", err)
 	}
-	fmt.Printf("IMAP hydrate email_ids=%v stored=%d\n", emailIDs, len(stored))
 	messageByID := make(map[int]*response.EmailResponseData, len(stored))
 	for _, message := range stored {
 		if message != nil {
