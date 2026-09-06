@@ -34,28 +34,72 @@
   gap: 12px 16px;
 }
 
+.form-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--pm-border-color);
+}
+
+.form-sections button {
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pm-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.form-sections button.active {
+  color: var(--pm-primary-color);
+  border-color: color-mix(in srgb, var(--pm-primary-color) 20%, transparent);
+  background: color-mix(in srgb, var(--pm-primary-color) 8%, transparent);
+  font-weight: 600;
+}
+
+.form-sections button:hover:not(.active) {
+  background: var(--pm-bg-hover);
+}
+
+.form-sections button:focus-visible {
+  outline: 2px solid var(--pm-primary-color);
+  outline-offset: 2px;
+}
+
+.section-error {
+  margin-left: 6px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+
+.config-form[data-form-section="base"] .form-group {
+  padding-top: 0;
+  border-top: 0;
+}
+
 @container config-main (min-width: 640px) {
   .form-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .config-form[data-form-section="base"] {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .config-form[data-form-section="base"] .form-group {
-    align-self: start;
-    padding: 12px;
-    border: 1px solid var(--pm-border-color);
-    border-radius: 10px;
-    background: var(--pm-bg-primary);
   }
 
   .config-form[data-form-section="base"] .form-grid,
   .config-form[data-form-section="email"] .form-grid,
   .form-group[data-group="verification"] .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 769px) and (max-height: 800px) {
+  .config-form,
+  .form-grid {
+    gap: 8px 12px;
+  }
+
+  .form-group + .form-group {
+    padding-top: 8px;
   }
 }
 

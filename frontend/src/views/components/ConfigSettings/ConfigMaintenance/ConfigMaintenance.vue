@@ -162,7 +162,7 @@
           </div>
           <el-alert v-if="auditError" :title="auditError" type="warning" :closable="false" show-icon />
           <div v-else-if="auditItems.length" class="audit-list">
-                <div v-for="{ entry: item } in auditRows" :key="item.id || `${item.createdAt}-${item.operation}`" class="audit-item">
+            <div v-for="{ entry: item } in auditRows" :key="item.id || `${item.createdAt}-${item.operation}`" class="audit-item">
               <div>
                 <strong>{{ operationLabel(item.operation) }}</strong>
                 <span>{{ sectionLabel(item.section) }} · {{ item.actorId || '系统' }}</span>

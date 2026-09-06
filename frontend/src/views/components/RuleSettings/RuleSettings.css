@@ -50,6 +50,7 @@
 .form-actions {
   display: flex;
   justify-content: flex-start;
+  margin-top: 12px;
 }
 
 .add-btn {

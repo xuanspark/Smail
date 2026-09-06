@@ -29,7 +29,7 @@ export function usePage() {
   const title = ref(lang.editUser)
   
   const reflushList = function () {
-    http.post('/api/v1/user/list', {"current_page": currentPage.value, "page_size": 10}).then(res => {
+    http.post('/api/v1/user/list', {"current_page": currentPage.value, "page_size": 6}).then(res => {
       userList.length = 0
       totalPage.value = res.data.total_page
       if (res.data["list"]) {

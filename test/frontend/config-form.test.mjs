@@ -124,7 +124,7 @@ test('分组不显示重复标题和介绍，保留无障碍名称、凭据状�
   assert.doesNotMatch(css, /form-group-heading|form-group-description/)
   const formStyle = css.match(/\.config-form\s*\{([^}]+)\}/)?.[1] || ''
   assert.doesNotMatch(formStyle, /margin-top|padding-top/)
-  assert.match(css, /\.config-form:not\(:first-child\)\s*\{\s*margin-top: 16px;/)
+  assert.match(css, /\.config-form:not\(:first-child\)\s*\{\s*margin-top: 10px;/)
   assert.match(css, /\.form-group \+ \.form-group\s*\{[^}]*border-top:/)
 })
 

@@ -6,7 +6,7 @@
     </div>
 
     <div class="table-container">
-      <el-table :data="data" class="modern-table" style="width: 100%">
+      <el-table :data="pageItems.map(item => item.entry)" class="modern-table" style="width: 100%" empty-text="暂无邮件规则">
         <el-table-column prop="name" :label="lang.rule_name" min-width="150" show-overflow-tooltip/>
         <el-table-column prop="action" :label="lang.rule_do" width="120">
           <template #default="scope">
@@ -30,6 +30,8 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <ConfigPagination v-model:current-page="currentPage" :page-count="pageCount" :total="data.length" label="邮件规则" />
 
     <div class="form-actions">
       <el-button type="primary" @click="createRule" class="add-btn">
@@ -109,6 +111,8 @@
 
 <script setup>
 import { usePage, Plus } from './RuleSettings.js'
+import { usePagination } from '../ConfigSettings/ConfigPagination/ConfigPagination.js'
+import ConfigPagination from '../ConfigSettings/ConfigPagination/ConfigPagination.vue'
 
 const {
   lang,
@@ -134,6 +138,7 @@ const {
   reflushGroupInfos,
   groupData
 } = usePage()
+const { currentPage, pageCount, pageItems } = usePagination(data, 6)
 </script>
 
 <style scoped src="./RuleSettings.css"></style>

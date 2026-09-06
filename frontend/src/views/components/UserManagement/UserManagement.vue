@@ -6,7 +6,7 @@
     </div>
 
     <div class="table-container">
-      <el-table :data="userList" class="modern-table" style="width: 100%">
+      <el-table :data="userList" class="modern-table" style="width: 100%" empty-text="暂无用户">
         <el-table-column label="ID" prop="ID" width="80" />
         <el-table-column :label="lang.account" prop="Account" min-width="150" show-overflow-tooltip />
         <el-table-column :label="lang.user_name" prop="Name" min-width="120" show-overflow-tooltip />

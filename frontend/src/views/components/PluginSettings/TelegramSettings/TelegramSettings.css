@@ -41,3 +41,23 @@
 .telegram-actions .el-button {
   margin-left: 0;
 }
+.telegram-settings :deep(.el-form) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 20px;
+}
+
+.telegram-settings :deep(.el-form-item) {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.telegram-settings :deep(.el-form-item:first-child) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .telegram-settings :deep(.el-form) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
