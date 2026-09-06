@@ -116,20 +116,23 @@ test('单字段更新完整保留内部数据，锁定字段和污染路径无�
   assert.equal({}.polluted, undefined)
 })
 
-test('基础配置隐藏代理网段和数据库只读信息，不留下空分组且保留内部值', () => {
+test('基础配置隐藏额外访问主机、代理网段和数据库只读信息，保留内部值且无空分组', () => {
   for (const type of ['sqlite', 'mysql', 'postgresql']) {
     for (const tlsMode of ['direct', 'proxy']) {
       const config = {
         database: { type, localRef: 'preserved.db', name: 'smail', host: 'db.example.com', port: type === 'postgresql' ? 5432 : 3306, username: 'smail', password: null },
+        domains: { primary: 'example.com', web: 'mail.example.com', accepted: ['example.com'], accessHosts: ['alternate.example.com', '192.0.2.10'] },
         http: { tlsMode, port: 8080, trustedProxyCidrs: ['127.0.0.1/32', '192.0.2.10/32'] },
         security: { externalEmailEnabled: false, webAuthnEnabled: false }
       }
       const text = JSON.stringify(config)
       const groups = getFieldGroups('base', config)
       const keys = groups.flatMap(item => item.fields.map(input => input.path.join('.')))
-      const hidden = ['database.type', 'database.localRef', 'http.trustedProxyCidrs']
+      const hidden = ['database.type', 'database.localRef', 'http.trustedProxyCidrs', 'domains.accessHosts']
       assert.ok(groups.every(item => item.fields.length > 0))
       assert.ok(hidden.every(key => !keys.includes(key)))
+      assert.doesNotMatch(JSON.stringify(groups), /额外允许的访问主机|按需填写域名或 IP 地址/)
+      assert.ok(keys.includes('domains.accepted'))
       assert.equal(groups.some(item => item.id === 'database'), type !== 'sqlite')
       for (const key of hidden) {
         assert.equal(updateFormConfig(text, 'base', key.split('.'), 'changed'), text)

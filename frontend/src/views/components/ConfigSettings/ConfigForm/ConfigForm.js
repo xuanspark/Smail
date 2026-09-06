@@ -80,7 +80,6 @@ const baseGroups = [
     field('domains.primary', '主邮件域名', 'text', { required: true, placeholder: 'example.com' }),
     field('domains.web', '网页访问域名', 'text', { required: true, placeholder: 'mail.example.com' }),
     field('domains.accepted', '接收邮件的域名', 'list', { required: true, hint: '需包含主邮件域名，每个域名单独填写。', placeholder: 'example.com' }),
-    field('domains.accessHosts', '额外允许的访问主机', 'list', { hint: '按需填写域名或 IP 地址，不填写则保持默认访问范围。', placeholder: 'mail.example.com' }),
     field('logLevel', '日志级别', 'select', { options: options([['', '默认级别'], ['debug', '调试'], ['info', '信息'], ['warn', '警告'], ['error', '错误']]) })
   ]),
   group('database', '数据库连接', '修改数据库类型、名称或文件请使用右侧“数据库迁移”，支持 SQLite、MySQL、PostgreSQL，避免切换到空数据库。', [
