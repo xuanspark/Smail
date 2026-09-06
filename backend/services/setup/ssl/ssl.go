@@ -295,6 +295,18 @@ func sslDomains(cfg *config.Config) []string {
 	}
 	return domains
 }
+
+func certificateMatchesConfiguredDomains(cert *x509.Certificate, cfg *config.Config) bool {
+	if cert == nil || cfg == nil {
+		return false
+	}
+	for _, domain := range sslDomains(cfg) {
+		if err := cert.VerifyHostname(domain); err != nil {
+			return false
+		}
+	}
+	return true
+}
 func wildcardCertificateDomains(cfg *config.Config) []string {
 	if cfg == nil {
 		return nil
@@ -509,13 +521,7 @@ func CheckSSLCrtInfo() (int, time.Time, bool, error) {
 		return -1, time.Now(), true, errors.Wrap(err)
 	}
 
-	nameMatchFail := true
-	for _, name := range cert.DNSNames {
-		if strings.Contains(name, "imap") {
-			nameMatchFail = false
-			break
-		}
-	}
+	nameMatchFail := !certificateMatchesConfiguredDomains(cert, cfg)
 
 	// 检查过期时间
 	hours := cert.NotAfter.Sub(time.Now()).Hours()
