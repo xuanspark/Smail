@@ -44,7 +44,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { fieldKey, getFieldGroups, getValue } from './ConfigForm.js'
 import ConfigField from '../ConfigField/ConfigField.vue'
 
@@ -56,16 +56,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['change'])
 const groups = computed(() => getFieldGroups(props.section, props.config))
-const activeGroup = ref(groups.value[0]?.id)
 
 // 切换分区只改变展示，不卸载字段或丢弃尚未保存的配置。
 watch(groups, value => {
-  if (!value.some(group => group.id === activeGroup.value)) activeGroup.value = value[0]?.id
-})
-watch(() => props.errors, errors => {
-  const invalid = groups.value.find(group => group.fields.some(field => errors[fieldKey(field)]))
-  if (invalid) activeGroup.value = invalid.id
-})
 </script>
 
 <style scoped src="./ConfigForm.css"></style>
