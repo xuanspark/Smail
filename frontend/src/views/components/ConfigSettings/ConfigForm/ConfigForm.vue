@@ -24,7 +24,7 @@
     >
       <p v-if="group.secretConfigured !== undefined" class="credential-status">{{ group.secretConfigured ? '凭据已配置' : '未配置凭据' }}</p>
       <p v-if="group.note" class="form-group-note" role="note">{{ group.note }}</p>
-      <div class="form-grid">
+      <div class="form-grid" :class="{ 'site-grid': section === 'base' && group.id === 'site' }">
         <ConfigField
           v-for="field in group.fields"
           :key="fieldKey(field)"

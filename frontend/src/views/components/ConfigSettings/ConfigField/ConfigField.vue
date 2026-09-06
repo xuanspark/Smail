@@ -1,5 +1,9 @@
 <template>
-  <div class="config-field" :class="{ 'field-wide': ['list', 'network'].includes(field.type) }" :data-field="fieldKey(field)">
+  <div
+    class="config-field"
+    :class="{ 'field-wide': ['list', 'network'].includes(field.type) && field.wide !== false }"
+    :data-field="fieldKey(field)"
+  >
     <label :id="`${id}-label`" :for="id" class="field-label">
       {{ field.label }}
       <span v-if="field.required" class="field-required" aria-hidden="true">*</span>

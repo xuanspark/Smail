@@ -109,3 +109,11 @@
     gap: 12px;
   }
 }
+
+/* 基础配置的站点字段在桌面半屏抽屉中保持两行两列，窄手机容器回退为单列。 */
+@container config-main (min-width: 441px) {
+  .form-grid.site-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 14px;
+  }
+}
