@@ -103,7 +103,14 @@
   }
 }
 
-@container config-main (max-width: 440px) {
+@container config-main (max-width: 360px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
   .form-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
