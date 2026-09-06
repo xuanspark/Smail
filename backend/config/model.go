@@ -107,6 +107,7 @@ type SSLConfig struct {
 	Mode             string `json:"mode"`
 	DefaultDirectory string `json:"defaultDirectory"`
 	CustomDirectory  string `json:"customDirectory,omitempty"`
+	Challenge        string `json:"challenge,omitempty"`
 	CertificateRef   string `json:"certificateRef,omitempty"`
 	PrivateKeyRef    string `json:"privateKeyRef,omitempty"`
 }

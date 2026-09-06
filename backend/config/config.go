@@ -121,6 +121,11 @@ func (c *Config) SetSetupPort(setupPort int) {
 const DBTypeMySQL = "mysql"
 const DBTypeSQLite = "sqlite"
 const DBTypePostgres = "postgres"
+
+const (
+	SSLChallengeHTTP = "http"
+	SSLChallengeDNS  = "dns"
+)
 const SSLTypeAutoHTTP = "0" //自动生成证书
 const SSLTypeAutoDNS = "2"  //自动生成证书，DNS api验证
 const SSLTypeUser = "1"     //用户上传证书

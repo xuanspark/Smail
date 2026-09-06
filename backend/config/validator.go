@@ -186,6 +186,9 @@ func validateSSL(ssl SSLConfig) error {
 	if !isControlledRelativePath(ssl.DefaultDirectory) {
 		return ErrInvalidSSL
 	}
+	if ssl.Challenge != "" && ssl.Challenge != SSLChallengeHTTP && ssl.Challenge != SSLChallengeDNS {
+		return ErrInvalidSSL
+	}
 	activeDirectory := ssl.DefaultDirectory
 	switch ssl.Mode {
 	case ManagedSSLModeDefault, "default":

@@ -74,7 +74,11 @@ func loadPartitionedCompatibility() (*Config, error) {
 	}
 	tls := runtime.SSL.TLS
 	if tls.Mode == ManagedSSLModeDefault {
-		cfg.SSLType = SSLTypeAutoHTTP
+		if tls.Challenge == SSLChallengeDNS {
+			cfg.SSLType = SSLTypeAutoDNS
+		} else {
+			cfg.SSLType = SSLTypeAutoHTTP
+		}
 	}
 	// 迁移器保留的旧证书引用仍走严格的只读文件校验；新托管引用沿用托管解析器。
 	if strings.HasPrefix(tls.CertificateRef, managedSSLRelativeRoot+"/") {

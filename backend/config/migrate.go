@@ -737,6 +737,12 @@ func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 	certificateRef, certificateOK := legacyControlledReference(legacy.SSLPublicKeyPath)
 	privateKeyRef, privateKeyOK := legacyControlledReference(legacy.SSLPrivateKeyPath)
 	ssl := SSLConfig{Mode: ManagedSSLModeDefault, DefaultDirectory: "config/ssl"}
+	switch legacy.SSLType {
+	case SSLTypeAutoDNS:
+		ssl.Challenge = SSLChallengeDNS
+	case SSLTypeAutoHTTP:
+		ssl.Challenge = SSLChallengeHTTP
+	}
 	if legacy.SSLType == SSLTypeUser {
 		ssl.Mode = ManagedSSLModeUpload
 		ssl.CustomDirectory = "config/ssl"
