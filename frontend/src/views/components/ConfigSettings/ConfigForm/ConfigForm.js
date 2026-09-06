@@ -106,12 +106,16 @@ const baseGroups = [
       hint: '默认使用 443；需要避开端口占用时可手动修改。'
     })
   ]),
-  group('security', '全局安全选项', '只调整功能开关与站点信息，密码算法和加密密钥由系统维护。', [
-    field('security.externalEmailEnabled', '启用外部邮箱功能', 'switch'),
-    field('security.webAuthnEnabled', '启用通行密钥', 'switch'),
-    field('security.webAuthnRpId', '通行密钥站点域名', 'text', { show: config => config.security?.webAuthnEnabled, placeholder: 'mail.example.com' }),
-    field('security.webAuthnRpDisplayName', '通行密钥显示名称', 'text', { show: config => config.security?.webAuthnEnabled, placeholder: 'Smail' }),
-    field('security.webAuthnRpOrigins', '通行密钥允许的来源', 'list', { show: config => config.security?.webAuthnEnabled, placeholder: 'https://mail.example.com' })
+  group('security', '通行密钥站点信息', '外部邮箱与通行密钥服务默认可用，由用户在安全设置中自行选择。留空时使用当前站点的安全默认值；密码算法和加密密钥由系统维护。', [
+    field('security.webAuthnRpId', '通行密钥站点域名', 'text', {
+      placeholder: '默认使用网页访问域名',
+      hint: '已绑定通行密钥后不要随意更换域名，否则原密钥可能无法使用。'
+    }),
+    field('security.webAuthnRpDisplayName', '通行密钥显示名称', 'text', { placeholder: 'Smail' }),
+    field('security.webAuthnRpOrigins', '通行密钥允许的来源', 'list', {
+      placeholder: 'https://mail.example.com',
+      hint: '每项填写不含路径的完整 HTTPS 来源；反代使用非标准外部端口时，请显式填写端口。'
+    })
   ])
 ]
 

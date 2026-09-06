@@ -356,7 +356,10 @@ func startWebAuthnRuntime() error {
 		return nil
 	}
 	snapshot := manager.Snapshot()
-	security := snapshot.Root.Security
+	security, err := config.ResolveWebAuthnSecurity(snapshot.Root)
+	if err != nil {
+		return fmt.Errorf("加载安全密钥站点配置失败: %w", err)
+	}
 	service, err := webauthnservice.NewService(db.Instance, webauthnservice.Config{
 		RPID:          security.WebAuthnRPID,
 		RPDisplayName: security.WebAuthnRPDisplayName,

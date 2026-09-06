@@ -10,6 +10,19 @@ const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } =
   source.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
 )()
 
+test('站点安全配置不再依赖旧全局开关，用户权限仍由账号设置管理', () => {
+  const config = { security: { webAuthnEnabled: false, externalEmailEnabled: false } }
+  const groups = getFieldGroups('base', config)
+  const security = groups.find(group => group.id === 'security')
+  assert.ok(security)
+  const keys = security.fields.map(field => field.path.join('.'))
+  assert.deepEqual(keys, ['security.webAuthnRpId', 'security.webAuthnRpDisplayName', 'security.webAuthnRpOrigins'])
+  const updated = readFormConfig(updateFormConfig(JSON.stringify(config), 'base', ['security', 'webAuthnRpId'], 'mail.example.com'))
+  assert.equal(updated.security.webAuthnRpId, 'mail.example.com')
+  assert.equal(updated.security.webAuthnEnabled, false)
+  assert.equal(updated.security.externalEmailEnabled, false)
+})
+
 test('七个页面使用分组表单，控件和样式能编译且不再提供 JSON 编辑器', () => {
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
@@ -167,7 +180,8 @@ test('基础配置隐藏额外访问主机、代理网段和数据库只读信�
         assert.equal(updateFormConfig(text, 'base', key.split('.'), 'changed'), text)
       }
       for (const key of ['security.externalEmailEnabled', 'security.webAuthnEnabled']) {
-        assert.ok(keys.includes(key))
+        assert.ok(!keys.includes(key))
+        assert.equal(updateFormConfig(text, 'base', key.split('.'), true), text)
       }
       const updated = readFormConfig(updateFormConfig(text, 'base', ['http', 'port'], 9080))
       assert.deepEqual(updated, { ...config, http: { ...config.http, port: 9080 } })
@@ -188,8 +202,10 @@ test('开关、数字、空数字和列表保持真实类型，代理 HTTPS 正�
   text = updateFormConfig(text, 'base', ['http', 'tlsMode'], 'proxy')
   assert.deepEqual(readFormConfig(text).http, { tlsMode: 'proxy', httpsEnabled: false, httpsPort: 0, port: 8080 })
   assert.equal(updateFormConfig(text, 'base', ['http', 'httpsEnabled'], true), text)
-  text = updateFormConfig(text, 'base', ['security', 'externalEmailEnabled'], true)
-  assert.equal(readFormConfig(text).security.externalEmailEnabled, true)
+  const direct = updateFormConfig(text, 'base', ['http', 'tlsMode'], 'direct')
+  const disabled = readFormConfig(updateFormConfig(direct, 'base', ['http', 'httpsEnabled'], false))
+  assert.equal(disabled.http.httpsEnabled, false)
+  assert.equal(disabled.http.httpsPort, 0)
   text = updateFormConfig(text, 'base', ['http', 'port'], 8080)
   assert.equal(readFormConfig(text).http.port, 8080)
   text = updateFormConfig(text, 'base', ['http', 'port'], undefined)

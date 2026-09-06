@@ -42,6 +42,8 @@ if (suite !== 'frontend' && result === 0) {
   const args = extra[0] === '--' ? extra.slice(1) : extra
   // 独立回归源码集中放在 test/backend，通过 overlay 保留同包测试语义。
   const replacements = {
+    'backend/config/webauthn_defaults_test.go': 'test/backend/webauthn_config_test.go',
+    'backend/res_init/webauthn_runtime_test.go': 'test/backend/webauthn_runtime_test.go',
     'backend/services/credentials/client_regression_test.go': 'test/backend/protocol_credentials_test.go',
     'backend/controllers/client_regression_test.go': 'test/backend/protocol_access_test.go',
     'backend/res_init/client_listeners_test.go': 'test/backend/mail_listeners_test.go',

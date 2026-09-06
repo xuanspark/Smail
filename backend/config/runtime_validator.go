@@ -71,6 +71,10 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 		if runtime.Root.HTTP.HTTPSEnabled && runtime.Root.HTTP.HTTPSPort == 0 {
 			return ErrInvalidRuntimeConfig
 		}
+		// 在保存候选配置时拒绝无效的安全密钥来源，避免保存成功却在重启时失败。
+		if _, err := ResolveWebAuthnSecurity(runtime.Root); err != nil {
+			return err
+		}
 	}
 	if options.Production && runtime.SetupState == SetupStateDegraded && !runtime.Root.HTTP.HTTPSEnabled && runtime.Root.HTTP.TLSMode != HTTPSTLSModeProxy {
 		return ErrInvalidRuntimeConfig
