@@ -32,6 +32,40 @@ test('五个分区使用分组表单，控件和样式能编译且不再提供 J
   }
 })
 
+test('文本输入的左右留白属于原生输入框，不影响数字、选择和开关控件', () => {
+  const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
+  const { parse, compileStyle } = require('@vue/compiler-sfc')
+  const postcss = require('postcss')
+  const template = readFileSync(new URL('ConfigField/ConfigField.vue', root), 'utf8')
+  const css = readFileSync(new URL('ConfigField/ConfigField.css', root), 'utf8')
+  const { descriptor } = parse(template)
+  const ast = require('@vue/compiler-dom').parse(descriptor.template.content)
+  const inputs = []
+  const otherControls = []
+  const visit = node => {
+    if (node.tag === 'el-input') inputs.push(node)
+    if (['el-input-number', 'el-select', 'el-switch'].includes(node.tag)) otherControls.push(node)
+    for (const child of node.children || []) visit(child)
+  }
+  visit(ast)
+  const classes = node => node.props.find(prop => prop.type === 6 && prop.name === 'class')?.value?.content || ''
+  assert.equal(inputs.length, 3)
+  assert.ok(inputs.every(node => classes(node).split(/\s+/).includes('field-text-input')))
+  assert.ok(otherControls.every(node => !classes(node).includes('field-text-input')))
+  const compiled = compileStyle({ source: css, id: 'data-v-caret-test', scoped: true })
+  assert.deepEqual(compiled.errors, [])
+  const rules = new Map()
+  postcss.parse(compiled.code).walkRules(rule => {
+    if (rule.selector.startsWith('.field-text-input[data-v-caret-test] ')) {
+      const declarations = {}
+      rule.walkDecls(declaration => { declarations[declaration.prop] = declaration.value })
+      rules.set(rule.selector, declarations)
+    }
+  })
+  assert.deepEqual(rules.get('.field-text-input[data-v-caret-test] .el-input__wrapper'), { 'padding-inline': '0' })
+  assert.deepEqual(rules.get('.field-text-input[data-v-caret-test] .el-input__inner'), { 'padding-inline': '11px' })
+})
+
 test('分组不显示重复标题和介绍，保留无障碍名称、凭据状态及异常提示', () => {
   const template = readFileSync(new URL('ConfigForm/ConfigForm.vue', root), 'utf8')
   const css = readFileSync(new URL('ConfigForm/ConfigForm.css', root), 'utf8')

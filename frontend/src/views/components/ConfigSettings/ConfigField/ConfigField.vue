@@ -48,6 +48,7 @@
     <div v-else-if="field.type === 'list'" class="field-list" role="group" :aria-labelledby="`${id}-label`">
       <div v-for="(entry, index) in entries" :key="index" class="field-list-row">
         <el-input
+          class="field-text-input"
           :id="index === 0 ? id : `${id}-${index}`"
           :model-value="entry"
           :disabled="disabled || field.locked"
@@ -77,6 +78,7 @@
           <el-option label="WSS" value="wss" />
         </el-select>
         <el-input
+          class="field-text-input"
           :model-value="entry.host"
           :disabled="disabled || field.locked"
           placeholder="api.example.com"
@@ -103,6 +105,7 @@
     </div>
     <el-input
       v-else
+      class="field-text-input"
       :id="id"
       :model-value="value ?? ''"
       :disabled="disabled || field.locked"

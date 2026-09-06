@@ -36,6 +36,15 @@
   width: 100%;
 }
 
+/* 留白属于原生输入框，点击文字两侧时才能定位光标，而不是只聚焦外层容器。 */
+.field-text-input :deep(.el-input__wrapper) {
+  padding-inline: 0;
+}
+
+.field-text-input :deep(.el-input__inner) {
+  padding-inline: 11px;
+}
+
 .config-field :deep(.el-input-number .el-input__inner) {
   text-align: left;
 }
