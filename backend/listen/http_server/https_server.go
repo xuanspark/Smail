@@ -118,7 +118,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 				return
 			}
 
-			if stateChangingMethod(r.Method) && hasSessionCookie(r) && (!sameOriginRequest(r) || !csrf.Valid(r)) {
+			if stateChangingMethod(r.Method) && !csrfExemptPath(r.URL.Path) && hasSessionCookie(r) && (!sameOriginRequest(r) || !csrf.Valid(r)) {
 				response.NewErrorResponse(response.ParamsError, "请求来源校验失败", "").FPrint(w)
 				return
 			}
@@ -260,6 +260,15 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func stateChangingMethod(method string) bool {
 	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
+}
+
+func csrfExemptPath(path string) bool {
+	switch normalizedAPIPath(path) {
+	case "/api/user/info":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasSessionCookie(r *http.Request) bool {

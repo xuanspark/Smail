@@ -30,6 +30,15 @@ func TestRouterRejectsGetForPostOnlyReadStateEndpoints(t *testing.T) {
 	}
 }
 
+func TestCSRFExemptsReadOnlyUserInfoEndpoint(t *testing.T) {
+	if !csrfExemptPath("/api/v1/user/info") {
+		t.Fatal("user info endpoint must be exempt from CSRF token validation")
+	}
+	if csrfExemptPath("/api/v1/user/edit") {
+		t.Fatal("user edit endpoint must keep CSRF token validation")
+	}
+}
+
 func configureProductionOriginTest(t *testing.T) {
 	t.Helper()
 	oldConfig := config.Instance

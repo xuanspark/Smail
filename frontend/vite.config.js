@@ -12,6 +12,19 @@ export default defineConfig(({ mode }) => {
   const backendUrl = (env.VITE_DEV_BACKEND_URL || 'https://127.0.0.1:443').replace(/\/$/, '')
   const backendOrigin = (env.VITE_DEV_BACKEND_ORIGIN || 'https://xuans.com').replace(/\/$/, '')
 
+  const rewriteDevelopmentCookies = (proxyResponse) => {
+    const setCookies = proxyResponse.headers['set-cookie']
+    if (!Array.isArray(setCookies)) {
+      return
+    }
+
+    proxyResponse.headers['set-cookie'] = setCookies.map((cookie) => (
+      cookie
+        .replace(/;\s*Secure/gi, '')
+        .replace(/;\s*Domain=[^;]*/gi, '')
+    ))
+  }
+
   return {
     plugins: [
       vue(),
@@ -42,6 +55,7 @@ export default defineConfig(({ mode }) => {
               proxyRequest.setHeader('x-forwarded-proto', originURL.protocol.replace(':', ''))
               proxyRequest.removeHeader('referer')
             })
+            proxy.on('proxyRes', rewriteDevelopmentCookies)
           }
         },
         "/attachments": {
