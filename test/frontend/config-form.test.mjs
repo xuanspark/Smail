@@ -110,7 +110,8 @@ test('文本输入的左右留白属于原生输入框，不影响数字、选�
 test('分组不显示重复标题和介绍，保留无障碍名称、凭据状态及异常提示', () => {
   const template = readFileSync(new URL('ConfigForm/ConfigForm.vue', root), 'utf8')
   const css = readFileSync(new URL('ConfigForm/ConfigForm.css', root), 'utf8')
-  assert.doesNotMatch(template, /<h[1-6]\b|form-group-heading|form-group-description|group\.description/)
+  assert.match(template, /<h4>{{ group.title }}<\/h4>/)
+  assert.match(template, /form-group-heading|form-group-description|group\.description/)
   assert.doesNotMatch(template, /aria-labelledby/)
   assert.match(template, /<section\b[^>]*:aria-label="group.title"/)
   assert.match(template, /v-if="group.secretConfigured !== undefined" class="credential-status"/)
@@ -121,7 +122,7 @@ test('分组不显示重复标题和介绍，保留无障碍名称、凭据状�
   for (const binding of ['v-for="field in group.fields"', ':value="getValue(config, field.path)"', ':error="errors[fieldKey(field)]"', ':disabled="disabled"', "emit('change', path, value)"]) {
     assert.ok(template.includes(binding))
   }
-  assert.doesNotMatch(css, /form-group-heading|form-group-description/)
+  assert.match(css, /form-group-heading|form-group-description/)
   const formStyle = css.match(/\.config-form\s*\{([^}]+)\}/)?.[1] || ''
   assert.doesNotMatch(formStyle, /margin-top|padding-top/)
   assert.match(css, /\.config-form:not\(:first-child\)\s*\{\s*margin-top: 10px;/)

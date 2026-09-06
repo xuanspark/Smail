@@ -59,41 +59,6 @@
 }
 
 .form-sections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--pm-border-color);
-}
-
-.form-sections button {
-  padding: 8px 12px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--pm-text-secondary);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.form-sections button.active {
-  color: var(--pm-primary-color);
-  border-color: color-mix(in srgb, var(--pm-primary-color) 20%, transparent);
-  background: color-mix(in srgb, var(--pm-primary-color) 8%, transparent);
-  font-weight: 600;
-}
-
-.form-sections button:hover:not(.active) {
-  background: var(--pm-bg-hover);
-}
-
-.form-sections button:focus-visible {
-  outline: 2px solid var(--pm-primary-color);
-  outline-offset: 2px;
-}
-
-.form-sections {
   display: none;
 }
 

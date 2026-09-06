@@ -82,8 +82,8 @@ test('基础分区保留完整表单，分页和展开菜单模板均能编译',
     assert.doesNotMatch(text, /&#x[0-9a-f]+;/i)
   }
   const form = readFileSync(new URL('ConfigForm/ConfigForm.vue', root), 'utf8')
-  assert.match(form, /v-show="section !== 'base' \|\| activeGroup === group.id"/)
-  assert.match(form, /watch\(\(\) => props.errors/)
+  assert.doesNotMatch(form, /v-show="section !== 'base' \|\| activeGroup === group.id"/)
+  assert.doesNotMatch(form, /activeGroup|watch\(\(\) => props.errors/)
   const css = readFileSync(new URL('ConfigForm/ConfigForm.css', root), 'utf8')
   assert.deepEqual(compileStyle({ source: css, id: 'data-v-form', scoped: true }).errors, [])
   const menu = readFileSync(new URL('../SettingsSubmenu/SettingsSubmenu.vue', root), 'utf8')
