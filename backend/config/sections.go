@@ -54,13 +54,16 @@ const (
 )
 
 type SMTPSectionConfig struct {
-	Meta  SectionMeta `json:"meta"`
-	Relay SMTPConfig  `json:"relay"`
+	Meta     SectionMeta        `json:"meta"`
+	Relay    SMTPConfig         `json:"relay"`
+	Listener SMTPListenerConfig `json:"listener,omitempty"`
 }
 
 type EmailSectionConfig struct {
-	Meta   SectionMeta `json:"meta"`
-	Policy EmailConfig `json:"policy"`
+	Meta   SectionMeta        `json:"meta"`
+	Policy EmailConfig        `json:"policy"`
+	IMAP   IMAPListenerConfig `json:"imap,omitempty"`
+	POP3   POP3ListenerConfig `json:"pop3,omitempty"`
 }
 
 type SSLSectionConfig struct {

@@ -55,7 +55,10 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 	if err := validateDomains(runtime.Root.Domains); err != nil {
 		return err
 	}
-	if err := validateRuntimePorts(runtime.Root.HTTP, runtime.Email.Policy); err != nil {
+	if err := validateMailListeners(runtime.SMTP, runtime.Email); err != nil {
+		return err
+	}
+	if err := validateRuntimePorts(runtime.Root.HTTP, ResolveMailPorts(runtime.SMTP, runtime.Email)); err != nil {
 		return err
 	}
 	if err := validatePluginSection(runtime.Plugins); err != nil {
@@ -63,9 +66,6 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 	}
 	if runtime.SetupState == SetupStateReady {
 		if !options.HasSuperAdmin || runtime.Root.Domains.Primary == "" || len(runtime.Root.Domains.Accepted) == 0 || runtime.Root.Domains.Web == "" || !runtime.Root.Database.IsStructured() {
-			return ErrInvalidRuntimeConfig
-		}
-		if runtime.Email.Policy.SMTPPort == 0 || runtime.Email.Policy.IMAPPort == 0 || runtime.Email.Policy.POP3Port == 0 {
 			return ErrInvalidRuntimeConfig
 		}
 		if runtime.Root.HTTP.HTTPSEnabled && runtime.Root.HTTP.HTTPSPort == 0 {
@@ -126,8 +126,10 @@ func normalizeConfigAccessHost(value string) (string, error) {
 	return normalizeConfigDomain(value)
 }
 
-func validateRuntimePorts(http HTTPConfig, email EmailConfig) error {
-	ports := []int{http.Port, email.SMTPPort, email.IMAPPort, email.POP3Port}
+func validateRuntimePorts(http HTTPConfig, mail MailPorts) error {
+	// 与实际 Web 监听使用相同的环境变量、启动端口及反代默认值。
+	http = ResolveHTTPPortDefaults(http, RuntimeSetupPort())
+	ports := []int{http.Port, mail.SMTP, mail.SMTPSTARTTLS, mail.SMTPTLS, mail.IMAP, mail.POP3, mail.POP3TLS}
 	if http.HTTPSEnabled || http.HTTPSPort != 0 {
 		ports = append(ports, http.HTTPSPort)
 	}

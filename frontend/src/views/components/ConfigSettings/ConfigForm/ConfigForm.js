@@ -33,6 +33,18 @@ export function getRecommendedPort(config, path) {
       return 443
     case 'relay.relayPort':
       return smtpPorts.get(config.relay?.security)
+    case 'listener.port':
+      return 25
+    case 'listener.starttlsPort':
+      return 587
+    case 'listener.tlsPort':
+      return 465
+    case 'imap.tlsPort':
+      return 993
+    case 'pop3.port':
+      return 110
+    case 'pop3.tlsPort':
+      return 995
     default:
       return undefined
   }
@@ -105,6 +117,11 @@ const baseGroups = [
 ]
 
 const smtpGroups = [
+  group('listener', 'SMTP 服务监听', '', [
+    port('listener.port', 'SMTP 收信端口', { min: 1, hint: '默认 25，用于接收其他邮件服务器投递，支持 STARTTLS；不是发信中继端口。' }),
+    port('listener.starttlsPort', 'SMTP 提交端口（STARTTLS）', { min: 1, hint: '默认 587，客户端升级 TLS 后进行认证。' }),
+    port('listener.tlsPort', 'SMTP 隐式 TLS 端口', { min: 1, hint: '默认 465，客户端建立连接时直接使用 TLS。' })
+  ]),
   group('relay', 'SMTP 中继连接', '用于发送验证及通知邮件。未使用中继时可保留空值。', [
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
     field('relay.security', '连接加密', 'select', {
@@ -117,7 +134,7 @@ const smtpGroups = [
       ]),
       hint: '切换加密方式会自动匹配推荐端口，之后仍可手动填写服务商指定的端口。'
     }),
-    port('relay.relayPort', 'SMTP 端口', { hint: '先选择加密方式，系统自动填写端口；自定义端口不会改变加密方式。' }),
+    port('relay.relayPort', 'SMTP 发信中继端口', { hint: '外部 SMTP 服务器端口，与本机监听无关；选择加密方式后自动填写。' }),
     field('relay.username', '认证用户名', 'text', { placeholder: '需要认证时填写' }),
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
     field('relay.fromDomain', '发件域名', 'text', { placeholder: 'example.com' })
@@ -128,12 +145,20 @@ const smtpGroups = [
   ])
 ]
 
+const imapGroups = [
+  group('imap', 'IMAP 服务监听', '', [
+    port('imap.tlsPort', 'IMAP 隐式 TLS 端口', { min: 1, required: true, hint: '默认 993。当前仅支持隐式 TLS，不提供明文或 STARTTLS 监听。' })
+  ])
+]
+
+const pop3Groups = [
+  group('pop3', 'POP3 服务监听', '', [
+    port('pop3.port', 'POP3 端口（STLS）', { min: 1, required: true, hint: '默认 110，客户端使用 STLS 升级加密后认证。' }),
+    port('pop3.tlsPort', 'POP3 隐式 TLS 端口', { min: 1, required: true, hint: '默认 995，客户端建立连接时直接使用 TLS。' })
+  ])
+]
+
 const emailGroups = [
-  group('ports', '邮件服务端口', '各服务端口不能重复，最终可用性由后端统一校验。', [
-    port('policy.smtpPort', 'SMTP 收信端口', { min: 1, required: true }),
-    port('policy.imapPort', 'IMAP 端口', { min: 1, required: true }),
-    port('policy.pop3Port', 'POP3 端口', { min: 1, required: true })
-  ]),
   group('policy', '邮件与账号策略', '设置邮件大小、垃圾邮件过滤和账号恢复方式。', [
     field('policy.maxMessageBytes', '最大邮件大小（字节）', 'number', { min: 0, max: Number.MAX_SAFE_INTEGER, integer: true, hint: '0 使用后端默认限制；1 MiB = 1048576 字节。' }),
     field('policy.spamFilterLevel', '垃圾邮件过滤级别', 'select', { fallback: 0, options: options([[0, '不过滤'], [1, 'SPF 与 DKIM 均失败时过滤'], [2, 'SPF 失败时过滤'], [3, 'DKIM 失败时过滤']]) }),
@@ -175,7 +200,7 @@ const pluginDefinitions = {
 
 export function getFieldGroups(section, config) {
   if (section !== 'plugins') {
-    return ({ base: baseGroups, smtp: smtpGroups, email: emailGroups, ssl: sslGroups }[section] || [])
+    return ({ base: baseGroups, smtp: smtpGroups, imap: imapGroups, pop3: pop3Groups, email: emailGroups, ssl: sslGroups }[section] || [])
       .map(item => ({
         ...item,
         fields: item.fields
@@ -288,11 +313,13 @@ export function validateFormConfig(section, config) {
       errors['relay.relayHost'] = '不加密连接仅限本机地址；远程服务器请选择 STARTTLS 或隐式 TLS'
     }
   }
-  if (section === 'email') {
-    const ports = ['smtpPort', 'imapPort', 'pop3Port']
-    for (const name of ports) {
-      const value = config.policy?.[name]
-      if (value > 0 && ports.some(other => other !== name && config.policy?.[other] === value)) errors[`policy.${name}`] = '邮件服务端口不能重复'
+  if (['smtp', 'imap', 'pop3'].includes(section)) {
+    const paths = section === 'smtp'
+      ? ['listener.port', 'listener.starttlsPort', 'listener.tlsPort']
+      : ['imap.tlsPort', 'pop3.port', 'pop3.tlsPort']
+    for (const path of paths) {
+      const value = getValue(config, path.split('.'))
+      if (value > 0 && paths.some(other => other !== path && getValue(config, other.split('.')) === value)) errors[path] = '邮件服务监听端口不能重复'
     }
   }
   if (section === 'ssl') {

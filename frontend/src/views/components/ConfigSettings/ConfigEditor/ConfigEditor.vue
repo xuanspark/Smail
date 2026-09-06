@@ -88,6 +88,7 @@
             class="config-alert"
           />
 
+          <MailPortSummary v-if="mailPortSummary && !sectionLoading && !sectionError" :services="mailPortSummary" />
           <ConfigForm
             v-if="!sectionLoading && !sectionError"
             :section="selectedSection"
@@ -120,6 +121,13 @@
             <el-alert
               v-if="pendingCandidate"
               :title="`服务器存在待应用候选，代次 ${pendingCandidate.generation}。已锁定编辑；如需修改，请先取消候选。刷新页面不会丢失候选。`"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+            <el-alert
+              v-if="pendingScopeHint"
+              :title="pendingScopeHint"
               type="warning"
               :closable="false"
               show-icon
@@ -164,8 +172,10 @@
 <script setup>
 import { inject } from 'vue'
 import ConfigForm from '../ConfigForm/ConfigForm.vue'
+import MailPortSummary from '../MailPortSummary/MailPortSummary.vue'
 
 const {
+  mailPortSummary,
   availabilityError,
   loading,
   working,
@@ -186,6 +196,7 @@ const {
   confirmed,
   savedGeneration,
   pendingCandidate,
+  pendingScopeHint,
   managePending,
   validationResult,
   canWrite,

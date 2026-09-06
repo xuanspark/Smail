@@ -6,8 +6,10 @@ import { readFormConfig, updateFormConfig, validateFormConfig } from './ConfigFo
 
 const sections = [
   { value: 'base', label: '基础配置', description: '管理站点与数据库连接，敏感凭据单独填写。' },
-  { value: 'smtp', label: 'SMTP 配置', description: '管理邮件发送与中继连接，密码留空时保持原值。' },
-  { value: 'email', label: '邮箱策略', description: '管理邮件协议端口与账号恢复策略。' },
+  { value: 'smtp', label: 'SMTP 配置', description: '管理本机监听与发信中继；监听端口变更需应用配置并重启后端。' },
+  { value: 'imap', label: 'IMAP 配置', description: '管理 IMAP 隐式 TLS 监听；端口变更需应用配置并重启后端。' },
+  { value: 'pop3', label: 'POP3 配置', description: '管理 POP3 的 STLS 与隐式 TLS 监听；端口变更需应用配置并重启后端。' },
+  { value: 'email', label: '邮箱策略', description: '自动汇总三个协议的配置端口，管理邮件与账号恢复策略。' },
   { value: 'ssl', label: 'SSL 配置', description: '管理证书与加密连接，应用后请留意待重启提示。' },
   { value: 'plugins', label: '插件配置', description: '管理插件运行配置，敏感设置仅显示配置状态。' }
 ]
@@ -49,6 +51,8 @@ export function usePage(pageKey = 'base') {
     degradedReasons: []
   })
   const selectedSection = ref(isConfigPage ? pageKey : 'base')
+  // 页面与存储分区分离，IMAP、POP3 复用邮箱分区的原子保存与候选保护。
+  const apiSection = () => ['imap', 'pop3'].includes(selectedSection.value) ? 'email' : selectedSection.value
   const currentSection = computed(() => sections.find(item => item.value === selectedSection.value) || sections[0])
   const sectionLoading = ref(false)
   let sectionRequestId = 0
@@ -57,11 +61,47 @@ export function usePage(pageKey = 'base') {
   const formConfig = computed(() => readFormConfig(editorText.value))
   const formErrors = ref({})
   const loadedText = ref('')
+  const smtpListener = ref(null)
+  const mailPortSummary = computed(() => {
+    if (selectedSection.value !== 'email' || !loadedText.value || !smtpListener.value) return null
+    const email = readFormConfig(loadedText.value)
+    return [
+      { name: 'SMTP', ports: [
+        { label: '收信 / STARTTLS', value: smtpListener.value.port },
+        { label: '提交 / STARTTLS', value: smtpListener.value.starttlsPort },
+        { label: '隐式 TLS', value: smtpListener.value.tlsPort }
+      ] },
+      { name: 'IMAP', ports: [{ label: '隐式 TLS', value: email.imap?.tlsPort }] },
+      { name: 'POP3', ports: [
+        { label: 'STLS', value: email.pop3?.port },
+        { label: '隐式 TLS', value: email.pop3?.tlsPort }
+      ] }
+    ]
+  })
   const sectionError = ref('')
   const secretValue = ref('')
   const confirmed = ref(false)
   const savedGeneration = ref(0)
   const pendingCandidate = ref(null)
+  const pendingScopeHint = computed(() => {
+    const pending = pendingCandidate.value
+    if (pending?.section !== 'email' || apiSection() !== 'email') return ''
+    const active = readFormConfig(loadedText.value)
+    const candidate = pending.payload || {}
+    const changed = [
+      ['imap', 'IMAP 配置'],
+      ['pop3', 'POP3 配置'],
+      ['policy', '邮箱策略']
+    ].filter(([key]) => {
+      const before = active[key] || {}
+      const after = candidate[key] || {}
+      return Object.keys({ ...before, ...after }).some(field => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
+    }).map(([, label]) => label)
+    const scope = pending.payload && loadedText.value
+      ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的协议端口和邮箱策略未变化。')
+      : '候选内容尚未完整读取，请刷新后核对。'
+    return `${scope}IMAP、POP3 和邮箱策略共用一个配置分区，请逐页核对；应用时会一起生效，监听端口仍需重启后端。`
+  })
   let savedInput = null
   const validationResult = ref(null)
   const backups = ref([])
@@ -197,7 +237,7 @@ export function usePage(pageKey = 'base') {
     savedInput = null
     const pending = pendingCandidate.value
     const section = pending?.section === 'root' ? 'base' : pending?.section
-    if (pending && section === selectedSection.value) {
+    if (pending && section === apiSection()) {
       editorText.value = JSON.stringify(pending.payload, null, 2)
       secretValue.value = ''
       savedInput = { text: editorText.value, secret: '' }
@@ -234,12 +274,13 @@ export function usePage(pageKey = 'base') {
 
   const loadSection = async () => {
     const requestId = ++sectionRequestId
-    const section = selectedSection.value
+    const section = apiSection()
     sectionLoading.value = true
     sectionError.value = ''
     formErrors.value = {}
     editorText.value = ''
     loadedText.value = ''
+    smtpListener.value = null
     secretValue.value = ''
     confirmed.value = false
     validationResult.value = null
@@ -250,6 +291,16 @@ export function usePage(pageKey = 'base') {
       if (requestId !== sectionRequestId) return
       notifyResponseError(response, '配置分区读取失败')
       const publicConfig = response.data || {}
+      if (selectedSection.value === 'email') {
+        const smtpResponse = await http.get('/api/v1/config/smtp')
+        if (requestId !== sectionRequestId) return
+        notifyResponseError(smtpResponse, 'SMTP 监听配置读取失败')
+        // 不拼接不同代次的配置，也不在读取失败时显示旧端口。
+        if (smtpResponse.data?.meta?.generation !== publicConfig.meta?.generation) {
+          throw new Error('配置代次已变化，请刷新后查看最新端口')
+        }
+        smtpListener.value = smtpResponse.data?.listener || null
+      }
       editorText.value = JSON.stringify(publicConfig, null, 2)
       loadedText.value = editorText.value
       if (section === 'base') {
@@ -502,7 +553,7 @@ export function usePage(pageKey = 'base') {
     working.value = 'validate'
     try {
       const request = buildRequest()
-      const response = await http.post(`/api/v1/config/${selectedSection.value}/validate`, request)
+      const response = await http.post(`/api/v1/config/${apiSection()}/validate`, request)
       notifyResponseError(response, '配置验证失败')
       validationResult.value = response.data || null
       ElMessage[validationResult.value?.valid ? 'success' : 'warning'](validationResult.value?.valid ? '配置验证通过' : '配置验证未通过')
@@ -518,10 +569,10 @@ export function usePage(pageKey = 'base') {
     working.value = 'save'
     try {
       const request = buildRequest()
-      const response = await http.put(`/api/v1/config/${selectedSection.value}`, request)
+      const response = await http.put(`/api/v1/config/${apiSection()}`, request)
       notifyResponseError(response, '配置保存失败')
       savedGeneration.value = response.data?.generation || 0
-      pendingCandidate.value = { ...response.data, section: selectedSection.value, sameSession: true }
+      pendingCandidate.value = { ...response.data, section: apiSection(), sameSession: true }
       savedInput = { text: editorText.value, secret: secretValue.value }
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await loadStatus()
@@ -543,7 +594,7 @@ export function usePage(pageKey = 'base') {
     }
     working.value = 'apply'
     try {
-      const response = await http.post(`/api/v1/config/${selectedSection.value}/apply`, {
+      const response = await http.post(`/api/v1/config/${apiSection()}/apply`, {
         generation: savedGeneration.value,
         candidateId: pendingCandidate.value?.candidateId
       })
@@ -665,6 +716,8 @@ export function usePage(pageKey = 'base') {
   })
 
   return {
+    mailPortSummary,
+    pendingScopeHint,
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
     selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,
     sectionError, sensitiveHint, secretField, secretValue,

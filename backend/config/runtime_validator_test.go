@@ -61,7 +61,7 @@ func TestValidateRuntimeConfigRejectsCrossSectionViolations(t *testing.T) {
 		mutate func(*RuntimeConfig, *RuntimeValidationOptions)
 		want   error
 	}{
-		{name: "port_conflict", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) { runtime.Email.Policy.IMAPPort = 443 }, want: ErrPortConflict},
+		{name: "port_conflict", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) { runtime.Email.IMAP.TLSPort = 443 }, want: ErrPortConflict},
 		{name: "primary_domain_missing", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) {
 			runtime.Root.Domains.Accepted = []string{"example.com"}
 		}, want: ErrInvalidDomainConfig},

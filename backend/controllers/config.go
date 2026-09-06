@@ -444,8 +444,10 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 			"security":               runtime.Root.Security,
 		}, nil
 	case config.SectionSMTP:
+		ports := config.ResolveMailPorts(runtime.SMTP, runtime.Email)
 		return map[string]any{
-			"meta": runtime.SMTP.Meta,
+			"meta":     runtime.SMTP.Meta,
+			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS},
 			"relay": map[string]any{
 				"relayHost":           runtime.SMTP.Relay.RelayHost,
 				"relayPort":           runtime.SMTP.Relay.RelayPort,
@@ -460,7 +462,11 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 			"relayPasswordStatus": publicSecret(runtime.SMTP.Relay.Password),
 		}, nil
 	case config.SectionEmail:
-		return runtime.Email, nil
+		ports := config.ResolveMailPorts(runtime.SMTP, runtime.Email)
+		value := runtime.Email
+		value.IMAP = config.IMAPListenerConfig{TLSPort: ports.IMAP}
+		value.POP3 = config.POP3ListenerConfig{Port: ports.POP3, TLSPort: ports.POP3TLS}
+		return value, nil
 	case config.SectionSSL:
 		return runtime.SSL, nil
 	case config.SectionPlugins:

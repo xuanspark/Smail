@@ -162,9 +162,12 @@ func cloneConfig(source *Config) *Config {
 }
 
 type MailPorts struct {
-	SMTP int
-	IMAP int
-	POP3 int
+	SMTP         int
+	SMTPSTARTTLS int
+	SMTPTLS      int
+	IMAP         int
+	POP3         int
+	POP3TLS      int
 }
 
 type MailDomains struct {
@@ -273,18 +276,13 @@ func CurrentSMTPRuntimeSettings() (SMTPRuntimeSettings, error) {
 }
 
 func CurrentMailPorts() MailPorts {
-	ports := MailPorts{SMTP: 25, IMAP: 143, POP3: 110}
-	policy := CurrentEmailPolicy()
-	if policy.SMTPPort > 0 && policy.SMTPPort <= 65535 {
-		ports.SMTP = policy.SMTPPort
+	if manager := CurrentManager(); manager != nil {
+		if runtime := manager.Snapshot(); runtime.Generation != 0 {
+			return ResolveMailPorts(runtime.SMTP, runtime.Email)
+		}
 	}
-	if policy.IMAPPort > 0 && policy.IMAPPort <= 65535 {
-		ports.IMAP = policy.IMAPPort
-	}
-	if policy.POP3Port > 0 && policy.POP3Port <= 65535 {
-		ports.POP3 = policy.POP3Port
-	}
-	return ports
+	// 旧版 SMTPPort 属于发信中继，不能用作本机监听端口。
+	return ResolveMailPorts(SMTPSectionConfig{}, EmailSectionConfig{})
 }
 func cloneHTTPConfig(source HTTPConfig) HTTPConfig {
 	clone := source

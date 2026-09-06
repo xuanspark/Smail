@@ -70,7 +70,7 @@ func TestCurrentMailPortsUsesSafeDefaultsWithoutRuntimeManager(t *testing.T) {
 	defer SetRuntimeManager(previousManager)
 	SetRuntimeManager(nil)
 
-	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, IMAP: 143, POP3: 110}) {
+	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 110, POP3TLS: 995}) {
 		t.Fatalf("mail ports = %+v, want safe defaults", got)
 	}
 }
@@ -131,7 +131,7 @@ func TestCurrentMailPortsReadsEmailPolicySnapshot(t *testing.T) {
 	runtime.Email.Policy.POP3Port = 1110
 	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
 
-	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 2525, IMAP: 1143, POP3: 1110}) {
+	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 2525, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 1110, POP3TLS: 995}) {
 		t.Fatalf("mail ports = %+v, want policy ports", got)
 	}
 }
@@ -146,7 +146,7 @@ func TestCurrentMailPortsFallsBackForInvalidPolicyValues(t *testing.T) {
 	runtime.Email.Policy.POP3Port = -1
 	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
 
-	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, IMAP: 143, POP3: 110}) {
+	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 110, POP3TLS: 995}) {
 		t.Fatalf("mail ports = %+v, want defaults for invalid policy values", got)
 	}
 }
@@ -160,7 +160,7 @@ func TestCurrentMailPortsDoesNotReadLegacyRelayPort(t *testing.T) {
 	runtime.Email.Policy = EmailConfig{}
 	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
 
-	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, IMAP: 143, POP3: 110}) {
+	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 110, POP3TLS: 995}) {
 		t.Fatalf("mail ports = %+v, legacy relay port leaked into listener ports", got)
 	}
 }
@@ -170,7 +170,7 @@ func TestCurrentMailPortsUsesDefaultsForUnavailableSnapshot(t *testing.T) {
 	defer SetRuntimeManager(previousManager)
 	SetRuntimeManager(&ConfigManager{})
 
-	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, IMAP: 143, POP3: 110}) {
+	if got := CurrentMailPorts(); got != (MailPorts{SMTP: 25, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 110, POP3TLS: 995}) {
 		t.Fatalf("mail ports = %+v, want defaults for unavailable snapshot", got)
 	}
 }

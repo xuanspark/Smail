@@ -20,14 +20,14 @@ func Stop() {
 	}
 }
 
-// StarTLS 启动TLS端口监听，不加密的代码就懒得写了
+// StarTLS 启动隐式 TLS 监听，不提供明文认证入口。
 func StarTLS() error {
 	server, err := newIMAPServer()
 	if err != nil {
 		return err
 	}
 	instanceTLS = server
-	const imapTLSPort = 993
+	imapTLSPort := config.CurrentMailPorts().IMAP
 	log.Infof("IMAP With TLS Server Start On Port :%d", imapTLSPort)
 	if err := instanceTLS.ListenAndServeTLS(fmt.Sprintf(":%d", imapTLSPort)); err != nil {
 		return fmt.Errorf("serve IMAP TLS: %w", err)

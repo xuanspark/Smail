@@ -30,10 +30,11 @@ func StartWithTls() error {
 	tlsConfig.Certificates = []tls.Certificate{crt}
 	tlsConfig.Time = time.Now
 	tlsConfig.Rand = rand.Reader
-	instanceTls = gopop.NewPop3Server(995, "pop."+domains.Primary, true, tlsConfig, action{})
+	port := config.CurrentMailPorts().POP3TLS
+	instanceTls = gopop.NewPop3Server(port, "pop."+domains.Primary, true, tlsConfig, action{})
 	instanceTls.ConnectAliveTime = 5 * time.Minute
 
-	log.Infof("POP3 With TLS Server Start On Port :995")
+	log.Infof("POP3 With TLS Server Start On Port :%d", port)
 
 	err = instanceTls.Start()
 	if err != nil {

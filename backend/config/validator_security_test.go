@@ -180,7 +180,7 @@ func TestSnapshotStoreRejectsInvalidCandidateWithoutChangingSnapshot(t *testing.
 	}
 
 	invalid := cloneRuntimeConfig(initial)
-	invalid.Email.Policy.IMAPPort = invalid.Root.HTTP.HTTPSPort
+	invalid.Email.IMAP.TLSPort = invalid.Root.HTTP.HTTPSPort
 	if err := store.Publish(invalid); !errors.Is(err, ErrPortConflict) {
 		t.Fatalf("publish error = %v, want %v", err, ErrPortConflict)
 	}
@@ -191,8 +191,8 @@ func TestSnapshotStoreRejectsInvalidCandidateWithoutChangingSnapshot(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Email.Policy.IMAPPort != before.Email.Policy.IMAPPort {
-		t.Fatalf("snapshot changed after rejection: before=%d after=%d", before.Email.Policy.IMAPPort, after.Email.Policy.IMAPPort)
+	if after.Email.IMAP.TLSPort != before.Email.IMAP.TLSPort {
+		t.Fatalf("snapshot changed after rejection: before=%d after=%d", before.Email.IMAP.TLSPort, after.Email.IMAP.TLSPort)
 	}
 }
 
@@ -216,7 +216,7 @@ func TestConfigManagerRejectsInvalidUpdateWithoutDiskOrStatusMutation(t *testing
 	beforeStatus := manager.Status()
 	current := manager.Snapshot()
 	invalidEmail := current.Email
-	invalidEmail.Policy.IMAPPort = current.Root.HTTP.HTTPSPort
+	invalidEmail.IMAP.TLSPort = current.Root.HTTP.HTTPSPort
 	payload, err := json.Marshal(invalidEmail)
 	if err != nil {
 		t.Fatal(err)

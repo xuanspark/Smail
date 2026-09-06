@@ -34,7 +34,7 @@ func StartWithTLSNew() error {
 
 	instanceTlsNew = smtp.NewServer(be)
 
-	instanceTlsNew.Addr = ":587"
+	instanceTlsNew.Addr = fmt.Sprintf(":%d", config.CurrentMailPorts().SMTPSTARTTLS)
 	instanceTlsNew.Domain = domains.Primary
 	instanceTlsNew.ReadTimeout = 10 * time.Second
 	instanceTlsNew.WriteTimeout = 10 * time.Second
@@ -51,7 +51,7 @@ func StartWithTLSNew() error {
 	instanceTlsNew.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
 
 	log.Println("Starting Smtp With STARTTLS Server Port:", instanceTlsNew.Addr)
-	// 587端口使用STARTTLS（先明文连接，再升级TLS），而非隐式TLS
+	// 提交端口使用 STARTTLS（先连接，再升级 TLS），而非隐式 TLS。
 	if err := instanceTlsNew.ListenAndServe(); err != nil && !errors.Is(err, smtp.ErrServerClosed) {
 		return fmt.Errorf("serve SMTP STARTTLS: %w", err)
 	}
@@ -71,7 +71,7 @@ func StartWithTLS() error {
 
 	instanceTls = smtp.NewServer(be)
 
-	instanceTls.Addr = ":465"
+	instanceTls.Addr = fmt.Sprintf(":%d", config.CurrentMailPorts().SMTPTLS)
 	instanceTls.Domain = domains.Primary
 	instanceTls.ReadTimeout = 10 * time.Second
 	instanceTls.WriteTimeout = 10 * time.Second

@@ -15,7 +15,7 @@ func TestSnapshotStoreRejectsInvalidCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	invalid := validRuntimeConfig()
-	invalid.Email.Policy.IMAPPort = invalid.Root.HTTP.HTTPSPort
+	invalid.Email.IMAP.TLSPort = invalid.Root.HTTP.HTTPSPort
 	if err := store.Publish(invalid); err == nil {
 		t.Fatal("invalid runtime configuration was published")
 	}

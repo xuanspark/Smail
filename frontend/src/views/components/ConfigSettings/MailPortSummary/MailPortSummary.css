@@ -1,0 +1,52 @@
+.mail-port-summary {
+  margin-bottom: 24px;
+}
+
+.summary-note {
+  margin: 0 0 14px;
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.protocol-card {
+  padding: 16px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.protocol-card dl {
+  margin: 12px 0 0;
+}
+
+.port-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.port-row dt {
+  color: var(--pm-text-secondary);
+}
+
+.port-row dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@container config-main (max-width: 680px) {
+  .summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

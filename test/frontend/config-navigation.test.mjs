@@ -5,7 +5,7 @@ import { compileFunction } from 'node:vm'
 import { computed, reactive, ref } from './vue.mjs'
 
 const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigNavigation.js', import.meta.url), 'utf8')
-const components = ['BaseConfig', 'SmtpConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']
+const components = ['BaseConfig', 'SmtpConfig', 'ImapConfig', 'Pop3Config', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']
 const createNavigation = compileFunction(
   source.replace(/^import .*$/gm, '').replace('export function useNavigation', 'function useNavigation') + '\nreturn useNavigation()',
   ['computed', 'nextTick', 'ref', 'useGlobalStatusStore', ...components]
@@ -18,9 +18,10 @@ function fixture(capabilities = ['config.read']) {
   return { page, allowed }
 }
 
-test('五个菜单对应五个不同页面组件，无权限的维护入口不可打开', async () => {
+test('七个菜单对应七个不同页面组件，无权限的维护入口不可打开', async () => {
   const { page, allowed } = fixture()
-  assert.equal(new Set(page.sectionOptions.value.map(item => item.component)).size, 5)
+  assert.equal(new Set(page.sectionOptions.value.map(item => item.component)).size, 7)
+  assert.deepEqual(page.sectionOptions.value.map(item => item.value), ['base', 'smtp', 'imap', 'pop3', 'email', 'ssl', 'plugins'])
   assert.equal(page.maintenanceOptions.value.length, 0)
   await page.selectSection('audit')
   await page.selectSection('invalid')

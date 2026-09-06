@@ -10,7 +10,7 @@ const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } =
   source.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
 )()
 
-test('五个分区使用分组表单，控件和样式能编译且不再提供 JSON 编辑器', () => {
+test('七个页面使用分组表单，控件和样式能编译且不再提供 JSON 编辑器', () => {
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
   for (const name of ['ConfigForm', 'ConfigField', 'ConfigEditor']) {
@@ -22,7 +22,7 @@ test('五个分区使用分组表单，控件和样式能编译且不再提供 J
     assert.deepEqual(compileStyle({ source: css, id: `data-v-${name}`, scoped: true }).errors, [])
     assert.doesNotMatch(template, /&#x[0-9a-f]+;|type="textarea"|配置 JSON 编辑器/i)
   }
-  for (const section of ['base', 'smtp', 'email', 'ssl', 'plugins']) {
+  for (const section of ['base', 'smtp', 'imap', 'pop3', 'email', 'ssl', 'plugins']) {
     const groups = getFieldGroups(section, { plugins: { spam_block: { settings: null } } })
     assert.ok(groups.length)
     const keys = groups.flatMap(group => group.fields.map(field => field.path.join('.')))
@@ -30,6 +30,19 @@ test('五个分区使用分组表单，控件和样式能编译且不再提供 J
     assert.ok(groups.every(group => /[\u4e00-\u9fff]/.test(group.title)))
     assert.ok(!keys.some(key => /generation|password|encryptionKey|capabilities/.test(key)))
   }
+})
+
+test('各协议仅编辑自己的监听端口，邮箱策略没有重复端口输入项', () => {
+  const config = { listener: { port: 25, starttlsPort: 587, tlsPort: 465 }, relay: { relayPort: 465 }, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: { smtpPort: 25, imapPort: 143, pop3Port: 110 } }
+  const text = JSON.stringify(config)
+  assert.equal(updateFormConfig(text, 'email', ['policy', 'smtpPort'], 2525), text)
+  assert.equal(updateFormConfig(text, 'imap', ['pop3', 'port'], 1110), text)
+  assert.equal(updateFormConfig(text, 'pop3', ['imap', 'tlsPort'], 1993), text)
+  const edited = readFormConfig(updateFormConfig(text, 'smtp', ['listener', 'tlsPort'], 2465))
+  assert.equal(edited.listener.tlsPort, 2465)
+  assert.equal(edited.relay.relayPort, 465)
+  assert.deepEqual(getFieldGroups('email', config).flatMap(group => group.fields).filter(field => /port/i.test(field.path.join('.'))), [])
+  assert.ok(validateFormConfig('smtp', { ...config, listener: { ...config.listener, tlsPort: 587 } })['listener.tlsPort'])
 })
 
 test('文本输入的左右留白属于原生输入框，不影响数字、选择和开关控件', () => {
@@ -151,9 +164,9 @@ test('开关、数字、空数字和列表保持真实类型，代理 HTTPS 正�
   assert.equal(readFormConfig(text).http.port, null)
   assert.ok(validateFormConfig('base', readFormConfig(text))['http.port'])
   for (const value of ['25', 0, -1, 65536, 1.5, null]) {
-    assert.ok(validateFormConfig('email', { policy: { smtpPort: value, imapPort: 143, pop3Port: 110 } })['policy.smtpPort'])
+    assert.ok(validateFormConfig('imap', { imap: { tlsPort: value } })['imap.tlsPort'])
   }
-  assert.ok(validateFormConfig('email', { policy: { smtpPort: 143, imapPort: 143, pop3Port: 110 } })['policy.imapPort'])
+  assert.ok(validateFormConfig('pop3', { imap: { tlsPort: 993 }, pop3: { port: 993, tlsPort: 995 } })['pop3.port'])
   assert.deepEqual(validateFormConfig('email', { policy: { smtpPort: 25, imapPort: 143, pop3Port: 110 } }), {})
 })
 
