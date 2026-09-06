@@ -267,9 +267,11 @@ func getEmailListByUidList(ctx *context.Context, groupName string, req ImapListR
 	}
 	sql += " ORDER BY id"
 	var relations []*response.UserEmailUIDData
+	fmt.Printf("IMAP UID SQL=%s params=%v\n", sql, params)
 	if err := db.Instance.SQL(sql, params...).Find(&relations); err != nil {
 		return nil, fmt.Errorf("query mailbox UID list: %w", err)
 	}
+	fmt.Printf("IMAP UID SQL result=%d\n", len(relations))
 	return hydrateIMAPEmailResponses(relations)
 }
 
