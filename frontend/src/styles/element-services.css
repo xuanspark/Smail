@@ -1,0 +1,8 @@
+/* 模板组件和指令由解析器按需加载；显式调用的服务需要独立补齐样式。 */
+@import 'element-plus/theme-chalk/base.css';
+@import 'element-plus/theme-chalk/el-message.css';
+@import 'element-plus/theme-chalk/el-message-box.css';
+@import 'element-plus/theme-chalk/el-notification.css';
+@import 'element-plus/theme-chalk/el-overlay.css';
+@import 'element-plus/theme-chalk/el-button.css';
+@import 'element-plus/theme-chalk/el-input.css';

@@ -4,8 +4,7 @@ import App from './App.vue'
 import {router} from './router'
 import {useGlobalStatusStore} from './stores/useGlobalStatusStore'
 
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+import './styles/element-services.css'
 import './assets/main.css'
 
 const isReservedResetPath = (pathname) => {
@@ -41,5 +40,4 @@ router.onError((error) => {
 })
 
 app.use(router)
-app.use(ElementPlus)
 app.mount('#app')

@@ -28,6 +28,18 @@ test('前端构建必须自动同步 Go 嵌入资源', async () => {
   assert.match(await read('plugins/pmail_telegram_push/vite.config.ts'), /\.\.\/\.\.\/out\/plugins\/telegram-ui/)
 })
 
+test('前端入口按需加载 Element Plus，并延迟设置页和写信编辑器', async () => {
+  const main = await read('frontend/src/main.js')
+  const vite = await read('frontend/vite.config.js')
+  const header = await read('frontend/src/views/components/HomeHeader/HomeHeader.js')
+  assert.doesNotMatch(main, /app\.use\(ElementPlus\)/)
+  assert.doesNotMatch(main, /element-plus\/dist\/index\.css/)
+  assert.match(main, /element-services\.css/)
+  assert.match(vite, /manualChunks\(id\)/)
+  assert.match(header, /defineAsyncComponent/)
+  assert.match(header, /import\('\.\.\/ConfigSettings\/ConfigSettings\.vue'\)/)
+})
+
 test('开发启动必须固定运行配置根目录并集中保存日志', async () => {
   const content = await read('deploy/start-dev.ps1')
   assert.match(content, /\$env:SMAIL_ROOT = \$root\r?\n/)
@@ -38,6 +50,9 @@ test('开发启动必须固定运行配置根目录并集中保存日志', async
   assert.match(content, /out\\backend\\smail-dev\.exe/)
   assert.match(content, /test-log\\runtime/)
   assert.match(content, /-WindowStyle Hidden/)
+  assert.match(content, /\[switch\]\$SkipBuild/)
+  assert.match(content, /--dev-disable-admin-reset/)
+  assert.match(content, /默认先编译当前工作区/)
   assert.ok(content.charCodeAt(0) === 0xfeff, 'Windows PowerShell 5 脚本应有 UTF-8 BOM')
 })
 

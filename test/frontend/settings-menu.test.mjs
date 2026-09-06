@@ -36,13 +36,12 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   const source = read('HomeHeader/HomeHeader.js')
   const names = [
     'EpMenu', 'Lock', 'Connection', 'Setting', 'FolderOpened', 'Filter', 'User', 'Grid',
-    'SecuritySettings', 'ThirdPartyAuthorization', 'ConfigSettings', 'GroupSettings',
-    'RuleSettings', 'UserManagement', 'PluginSettings', 'BrandLogo'
+    'SettingsPageStatus', 'BrandLogo'
   ]
   const createPage = compileFunction(
     source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
       .replace(/export \{[\s\S]*?\}\s*$/, '') + '\nreturn usePage()',
-    ['computed', 'ref', 'onMounted', 'onUnmounted', 'window', 'useGlobalStatusStore', 'lang', ...names]
+    ['computed', 'ref', 'onMounted', 'onUnmounted', 'window', 'useGlobalStatusStore', 'lang', 'defineAsyncComponent', ...names]
   )
   const capabilities = reactive(new Set(['password.change_own', 'user.read']))
   const store = reactive({
@@ -50,7 +49,7 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
     hasCapability: value => capabilities.has(value)
   })
   const page = createPage(computed, ref, () => {}, () => {}, { innerWidth: 1440 }, () => store,
-    { security: '安全' }, ...names.map(name => ({ name })))
+    { security: '安全' }, () => ({}), ...names.map(name => ({ name })))
   assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'group', 'rule'])
   assert.equal(page.settingsMenu.value.find(item => item.key === 'third-party').label, '邮件客户端')
   assert.equal(page.activeSettings.value.label, '安全')

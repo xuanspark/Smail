@@ -1,27 +1,30 @@
 import {EpMenu} from "vue-icons-plus/ep";
 import { Lock, Connection, Setting, FolderOpened, Filter, User, Grid } from '@element-plus/icons-vue';
 
-import {computed, ref, onMounted, onUnmounted} from 'vue'
-
-import SecuritySettings from '@/views/components/SecuritySettings/SecuritySettings.vue'
-
-import ThirdPartyAuthorization from '@/views/components/ThirdPartyAuthorization/ThirdPartyAuthorization.vue'
-
-import ConfigSettings from '@/views/components/ConfigSettings/ConfigSettings.vue'
+import {computed, ref, onMounted, onUnmounted, defineAsyncComponent} from 'vue'
+import SettingsPageStatus from '../SettingsPageStatus/SettingsPageStatus.vue'
 
 import lang from '../../../i18n/i18n';
-
-import GroupSettings from '../GroupSettings/GroupSettings.vue';
-
-import RuleSettings from '../RuleSettings/RuleSettings.vue';
-
-import UserManagement from '../UserManagement/UserManagement.vue';
-
-import PluginSettings from '../PluginSettings/PluginSettings.vue';
 
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 import BrandLogo from '../BrandLogo/BrandLogo.vue';
+
+// 分类首次打开时才下载页面，失败时保留可读提示，不能显示空白面板。
+const lazySettings = loader => defineAsyncComponent({
+  loader,
+  loadingComponent: SettingsPageStatus,
+  errorComponent: SettingsPageStatus,
+  delay: 150,
+  timeout: 30000
+})
+const SecuritySettings = lazySettings(() => import('../SecuritySettings/SecuritySettings.vue'))
+const ThirdPartyAuthorization = lazySettings(() => import('../ThirdPartyAuthorization/ThirdPartyAuthorization.vue'))
+const ConfigSettings = lazySettings(() => import('../ConfigSettings/ConfigSettings.vue'))
+const GroupSettings = lazySettings(() => import('../GroupSettings/GroupSettings.vue'))
+const RuleSettings = lazySettings(() => import('../RuleSettings/RuleSettings.vue'))
+const UserManagement = lazySettings(() => import('../UserManagement/UserManagement.vue'))
+const PluginSettings = lazySettings(() => import('../PluginSettings/PluginSettings.vue'))
 
 export function usePage() {
   const globalStatus = useGlobalStatusStore();

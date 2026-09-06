@@ -1,0 +1,9 @@
+.settings-page-status {
+  padding: 24px;
+  color: var(--pm-text-secondary);
+  text-align: center;
+}
+
+.settings-page-status[role='alert'] {
+  color: var(--el-color-danger);
+}

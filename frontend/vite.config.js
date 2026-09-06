@@ -74,13 +74,27 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: fileURLToPath(new URL('../out/frontend', import.meta.url)),
       emptyOutDir: false,
+      manifest: true,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vue-core': ['vue', 'vue-router', 'pinia'],
-            'element-plus': ['element-plus'],
-            'editor': ['@wangeditor/editor', '@wangeditor/editor-for-vue'],
-            'icons': ['@element-plus/icons-vue', 'vue-icons-plus']
+          manualChunks(id) {
+            const modulePath = id.replaceAll('\\', '/')
+            if (!modulePath.includes('/node_modules/')) return
+            if (/\/node_modules\/(?:@vue\/|vue\/|vue-router\/|pinia\/)/.test(modulePath)) {
+              return 'vue-core'
+            }
+            // 编辑器仅在写信页面加载；按包拆分其依赖，避免单个异步块超过浏览器缓存阈值。
+            const packagePath = modulePath.split('/node_modules/')[1]
+            const packageParts = packagePath.split('/')
+            const packageName = packageParts[0].startsWith('@')
+              ? `${packageParts[0]}-${packageParts[1]}`
+              : packageParts[0]
+            if (packageName.startsWith('@wangeditor-')) {
+              return `editor-${packageName.slice('@wangeditor-'.length)}`
+            }
+            if (['@uppy-core', '@uppy-xhr-upload', 'slate', 'snabbdom'].includes(packageName)) {
+              return `editor-${packageName.replace(/^@uppy-/, '')}`
+            }
           }
         }
       }
