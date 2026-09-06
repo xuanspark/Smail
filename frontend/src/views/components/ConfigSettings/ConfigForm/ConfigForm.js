@@ -72,8 +72,6 @@ const baseGroups = [
     field('logLevel', '日志级别', 'select', { options: options([['', '默认级别'], ['debug', '调试'], ['info', '信息'], ['warn', '警告'], ['error', '错误']]) })
   ]),
   group('database', '数据库连接', '修改数据库类型、名称或文件请使用右侧“数据库迁移”，支持 SQLite、MySQL、PostgreSQL，避免切换到空数据库。', [
-    field('database.type', '数据库类型', 'select', { locked: true, options: options([['sqlite', 'SQLite（本地文件）'], ['mysql', 'MySQL'], ['postgresql', 'PostgreSQL']]) }),
-    field('database.localRef', '数据库文件', 'text', { locked: true, show: config => !networkDatabase(config) }),
     field('database.name', '数据库名称', 'text', { locked: true, show: networkDatabase }),
     field('database.host', '数据库主机', 'text', { required: true, show: networkDatabase, placeholder: '127.0.0.1' }),
     port('database.port', '数据库端口', { min: 1, show: networkDatabase }),
@@ -95,11 +93,6 @@ const baseGroups = [
       min: 1,
       show: config => config.http?.tlsMode !== 'proxy' && !!config.http?.httpsEnabled,
       hint: '默认使用 443；需要避开端口占用时可手动修改。'
-    }),
-    field('http.trustedProxyCidrs', '可信代理网段', 'list', {
-      show: config => config.http?.tlsMode === 'proxy',
-      placeholder: '127.0.0.1/32',
-      hint: '仅填写实际代理的 CIDR 网段，不要无条件信任所有来源。'
     })
   ]),
   group('security', '全局安全选项', '只调整功能开关与站点信息，密码算法和加密密钥由系统维护。', [
@@ -189,6 +182,7 @@ export function getFieldGroups(section, config) {
           .filter(input => !input.show || input.show(config))
           .map(input => ({ ...input, recommendedPort: getRecommendedPort(config, input.path) }))
       }))
+      .filter(item => item.fields.length > 0)
   }
   return Object.entries(config.plugins || {}).map(([id, plugin]) => {
     const definition = pluginDefinitions[id]

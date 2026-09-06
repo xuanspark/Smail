@@ -69,6 +69,38 @@ test('单字段更新完整保留内部数据，锁定字段和污染路径无�
   assert.equal({}.polluted, undefined)
 })
 
+test('基础配置隐藏代理网段和数据库只读信息，不留下空分组且保留内部值', () => {
+  for (const type of ['sqlite', 'mysql', 'postgresql']) {
+    for (const tlsMode of ['direct', 'proxy']) {
+      const config = {
+        database: { type, localRef: 'preserved.db', name: 'smail', host: 'db.example.com', port: type === 'postgresql' ? 5432 : 3306, username: 'smail', password: null },
+        http: { tlsMode, port: 8080, trustedProxyCidrs: ['127.0.0.1/32', '192.0.2.10/32'] },
+        security: { externalEmailEnabled: false, webAuthnEnabled: false }
+      }
+      const text = JSON.stringify(config)
+      const groups = getFieldGroups('base', config)
+      const keys = groups.flatMap(item => item.fields.map(input => input.path.join('.')))
+      const hidden = ['database.type', 'database.localRef', 'http.trustedProxyCidrs']
+      assert.ok(groups.every(item => item.fields.length > 0))
+      assert.ok(hidden.every(key => !keys.includes(key)))
+      assert.equal(groups.some(item => item.id === 'database'), type !== 'sqlite')
+      for (const key of hidden) {
+        assert.equal(updateFormConfig(text, 'base', key.split('.'), 'changed'), text)
+      }
+      for (const key of ['security.externalEmailEnabled', 'security.webAuthnEnabled']) {
+        assert.ok(keys.includes(key))
+      }
+      const updated = readFormConfig(updateFormConfig(text, 'base', ['http', 'port'], 9080))
+      assert.deepEqual(updated, { ...config, http: { ...config.http, port: 9080 } })
+      if (type !== 'sqlite') {
+        for (const key of ['database.name', 'database.host', 'database.port', 'database.username']) {
+          assert.ok(keys.includes(key))
+        }
+      }
+    }
+  }
+})
+
 test('开关、数字、空数字和列表保持真实类型，代理 HTTPS 正确联动', () => {
   const modeField = getFieldGroups('base', {}).flatMap(group => group.fields).find(field => field.path.join('.') === 'http.tlsMode')
   assert.match(modeField.hint, /不自动申请或续期 SSL 证书/)

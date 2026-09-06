@@ -557,6 +557,25 @@ test('SQLite 不显示或发送密码，网络数据库和中继密码留空保�
   assert.equal(request.secretChanges['relay.password'].value.plaintext, ' smtp-test-only ')
 })
 
+test('基础配置保存完整保留隐藏的数据库和代理信任配置', async () => {
+  const config = {
+    database: { type: 'sqlite', localRef: 'preserved.db' },
+    domains: { primary: 'example.com', web: 'mail.example.com', accepted: ['example.com'] },
+    http: { tlsMode: 'proxy', port: 8080, httpsEnabled: false, trustedProxyCidrs: ['127.0.0.1/32', '192.0.2.10/32'] },
+    security: { externalEmailEnabled: false, webAuthnEnabled: false }
+  }
+  let request
+  const { page } = fixture(async () => ({ errorNo: 0, data: config }), 'base', {
+    http: { put: async (path, body) => { request = { path, body }; return { errorNo: 0, data: { generation: 2 } } } }
+  })
+  await page.loadSection()
+  page.updateField(['http', 'port'], 9080)
+  await page.saveConfig()
+  assert.equal(request.path, '/api/v1/config/base')
+  assert.deepEqual(request.body.payload, { ...config, http: { ...config.http, port: 9080 } })
+  assert.deepEqual(request.body.secretChanges, {})
+})
+
 test('保存后更改密码或填写内容不能应用旧候选', async () => {
   const requests = []
   const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
