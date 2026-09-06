@@ -31,6 +31,7 @@ type PublicIssue struct {
 
 type ConfigStatus struct {
 	SetupState       SetupState    `json:"setupState"`
+	TLSMode          string        `json:"tlsMode"`
 	ActiveGeneration uint64        `json:"activeGeneration"`
 	LastValidAt      *time.Time    `json:"lastValidAt,omitempty"`
 	PendingRestart   []ServiceName `json:"pendingRestart,omitempty"`
@@ -248,6 +249,7 @@ func (m *ConfigManager) Status() ConfigStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	status := m.status
+	status.TLSMode = m.current.Root.HTTP.TLSMode
 	status.PendingRestart = append([]ServiceName(nil), status.PendingRestart...)
 	status.DegradedReasons = append([]PublicIssue(nil), status.DegradedReasons...)
 	if status.LastValidAt != nil {

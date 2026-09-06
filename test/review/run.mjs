@@ -15,6 +15,8 @@ const replacements = {
   'backend/utils/address/audit_findings_test.go': 'test/review/address_findings_test.go',
   'backend/services/totp/audit_findings_test.go': 'test/review/totp_findings_test.go',
   'backend/services/setup/ssl/audit_findings_test.go': 'test/review/ssl_findings_test.go',
+  'backend/services/setup/ssl/audit_proxy_test.go': 'test/review/ssl_proxy_test.go',
+  'backend/listen/cron_server/audit_ssl_test.go': 'test/review/cron_ssl_test.go',
   'backend/services/setup/audit_findings_test.go': 'test/review/setup_findings_test.go',
   'backend/config/audit_findings_test.go': 'test/review/config_findings_test.go',
   'backend/services/dbmigration/audit_findings_test.go': 'test/review/dbmigration_findings_test.go',
@@ -27,6 +29,7 @@ const replacements = {
   'backend/listen/imap_server/audit_wire_findings_test.go': 'test/review/imap_wire_findings_test.go',
   'backend/controllers/audit_findings_test.go': 'test/review/runtime_findings_test.go',
   'backend/controllers/audit_controller_findings_test.go': 'test/review/controller_findings_test.go',
+  'backend/controllers/audit_proxy_test.go': 'test/review/proxy_controller_test.go',
   'backend/internal/gopop/audit_findings_test.go': 'test/review/pop3_parser_findings_test.go',
   'backend/listen/pop3_server/audit_findings_test.go': 'test/review/pop3_action_findings_test.go',
   'backend/dto/parsemail/audit_findings_test.go': 'test/review/message_findings_test.go',
@@ -51,10 +54,11 @@ const totpOnly = process.argv.includes('--totp-only')
 const frameworkOnly = process.argv.includes('--framework-only')
 const asyncOnly = process.argv.includes('--async-only')
 const addressOnly = process.argv.includes('--address-only')
-const packages = frameworkOnly ? ['./hooks/framework'] : asyncOnly ? ['./utils/async'] : addressOnly ? ['./utils/address'] : totpOnly ? ['./services/totp'] : sslOnly ? ['./services/setup/ssl'] : setupOnly ? ['./services/setup'] : httpOnly ? ['./listen/http_server'] : controllersOnly ? ['./controllers'] : configOnly ? ['./config'] : migrationOnly ? ['./services/dbmigration'] : pop3Only ? ['./internal/gopop', './listen/pop3_server'] : messageOnly ? [
+const packages = frameworkOnly ? ['./hooks/framework'] : asyncOnly ? ['./utils/async'] : addressOnly ? ['./utils/address'] : totpOnly ? ['./services/totp'] : sslOnly ? ['./services/setup/ssl', './listen/cron_server'] : setupOnly ? ['./services/setup'] : httpOnly ? ['./listen/http_server'] : controllersOnly ? ['./controllers'] : configOnly ? ['./config'] : migrationOnly ? ['./services/dbmigration'] : pop3Only ? ['./internal/gopop', './listen/pop3_server'] : messageOnly ? [
   './dto/parsemail', './listen/smtp_server'
 ] : [
   './res_init',
+  './listen/cron_server',
   './hooks/wechat_push',
   './services/dbmigration', './listen/http_server', './services/list', './services/recovery',
   './listen/imap_server', './controllers', './internal/gopop', './listen/pop3_server',

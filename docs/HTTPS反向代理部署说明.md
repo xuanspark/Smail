@@ -30,13 +30,21 @@
 
 配置含义：
 
-- `tlsMode: proxy`：启用反向代理 HTTPS 终止模式。
+- `tlsMode: proxy`：启用反向代理 HTTPS 终止模式，同时停止 Smail 的自动证书申请和续期。
 - `httpsEnabled: false`：Smail 不启动内部 HTTPS。
 - `httpsPort: 0`：避免遗留 HTTPS 端口配置造成误解或端口冲突。
 - `trustedProxyCidrs`：只允许这些来源提交 `X-Forwarded-Proto`。Nginx 与 Smail 同机时，默认使用回环地址即可。
 - 不要把 `0.0.0.0/0` 或 `::/0` 配置为可信代理网段。
 
 修改配置后需要重启 Smail，使监听模式生效。
+
+## 证书申请与续期职责
+
+- Web HTTPS 的证书申请、续期和加载由反代服务器上的证书管理工具负责，Smail 不再发起 ACME 请求，也不需要把 ACME 验证路径转发给 Smail。
+- 反代模式下，初始化 SSL 步骤只提供外部证书导入，不再提供自动 HTTP 或 DNS 验证。仅切换反代模式不会删除已有证书或自动模式配置；切回直接 HTTPS 时，仍保留自动类型的证书可继续由 Smail 维护。若已主动导入外部证书，则仍由外部维护，不会自动恢复签发。
+- HTTP 反代不等于邮件协议代理。SMTP、IMAP、POP3 仍使用 Smail 本地受管证书，必须保留有效证书和匹配私钥，不能改成明文认证。
+- 外部工具续期后，需要将邮件服务使用的新证书和私钥重新导入 Smail 受管存储、应用引用并重启相关服务。导入是受验证的副本，不会自动跟随反代服务器上的源文件变化。
+- 仅仅在 Nginx 上更换证书，不会更新 Smail 的邮件服务证书。本次调整没有增加跨服务器证书同步或自动重新导入功能。
 
 ## Nginx 配置示例
 
@@ -49,11 +57,9 @@ server {
     server_name xuans.com;
 
     location /.well-known/acme-challenge/ {
-        proxy_pass http://127.0.0.1:15184;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto http;
+        # 由反代服务器上的 ACME 客户端写入此目录，不转发到 Smail。
+        root /var/www/acme;
+        try_files $uri =404;
     }
 
     location / {
@@ -81,6 +87,8 @@ server {
     }
 }
 ```
+
+上面的 ACME 目录仅适用于反代服务器使用 HTTP 验证的情况，需与外部 ACME 客户端的网页根目录一致；使用 DNS 验证时无需该路径。
 
 如果 Nginx 配置使用了 `$connection_upgrade`，请在 `http` 配置块中增加：
 
@@ -122,4 +130,6 @@ Nginx 对公网提供 Web 服务时通常开放 `80/tcp` 和 `443/tcp`。Smail �
 - [ ] 登录请求的 `Origin` 为 `https://xuans.com` 时可以通过校验。
 - [ ] 非可信来源伪造 `X-Forwarded-Proto` 不会被信任。
 - [ ] 浏览器收到的会话 Cookie 仍带有 `Secure` 和 `HttpOnly` 属性。
-- [ ] 80 端口的 ACME challenge 可以正常转发，其他 HTTP 路径跳转到 HTTPS。
+- [ ] 证书续期由反代服务器完成，Smail 不再发出 ACME 申请或续期请求。
+- [ ] 使用 HTTP 验证时，ACME 路径由反代服务器提供，其他 HTTP 路径跳转到 HTTPS。
+- [ ] 本地邮件服务证书保持有效；外部续期后已重新导入、应用并重启相关服务。

@@ -51,7 +51,7 @@ const baseGroups = [
   ]),
   group('http', '网页访问服务', '端口和加密方式变更可能需要重启，并影响当前访问地址。', [
     port('http.port', 'HTTP 端口', { hint: '填写 0 使用后端默认值。' }),
-    field('http.tlsMode', '加密连接方式', 'select', { options: options([['', '使用默认方式'], ['direct', '由 Smail 提供 HTTPS'], ['proxy', '由反向代理提供 HTTPS']]) }),
+    field('http.tlsMode', '加密连接方式', 'select', { options: options([['', '使用默认方式'], ['direct', '由 Smail 提供 HTTPS'], ['proxy', '由反向代理提供 HTTPS']]), hint: '选择反向代理后，Smail 不自动申请或续期 SSL 证书，由反代服务器负责；邮件协议仍需有效的本地证书。' }),
     field('http.httpsEnabled', '启用内置 HTTPS', 'switch', { show: config => config.http?.tlsMode !== 'proxy' }),
     port('http.httpsPort', 'HTTPS 端口', { show: config => config.http?.tlsMode !== 'proxy', hint: '启用内置 HTTPS 时需填写有效端口；关闭时 0 表示不使用。' }),
     field('http.trustedProxyCidrs', '可信代理网段', 'list', { placeholder: '127.0.0.1/32', hint: '仅填写实际代理的 CIDR 网段，不要无条件信任所有来源。' })

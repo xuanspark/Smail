@@ -83,6 +83,10 @@
             <span class="selected-section-label">{{ currentSection.label }}</span>
           </div>
 
+          <p v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'" class="heading-note" role="note">
+            当前由反向代理提供 HTTPS，Smail 不自动申请或续期 SSL 证书。下方配置仅用于本地邮件服务证书；外部续期后请重新导入并应用，不能仅更新反代服务器上的证书。
+          </p>
+
           <el-alert
             v-if="sectionError"
             :title="sectionError"

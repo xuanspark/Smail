@@ -278,7 +278,7 @@
       <div class="desc">
         <div class="ssl-title-row">
           <h2>{{ lang.setSSL }}</h2>
-          <div v-if="sslSettings.type === '0' && sslSettings.challenge === 'http' && port !== 80"
+          <div v-if="!proxyHTTPS && sslSettings.type === '0' && sslSettings.challenge === 'http' && port !== 80"
                class="ssl-port-warning" role="alert">
             <strong>{{ lang.warning }}</strong>
             <span>{{ lang.autoSSLWarn }}</span>
@@ -287,16 +287,19 @@
         <div class="ssl-title-description">{{ lang.setSSL }}</div>
       </div>
       <div class="form ssl-form">
+        <p v-if="proxyHTTPS" class="ssl-manual-desc" role="note">
+          HTTPS 证书的申请和续期由反向代理负责，Smail 不再自动处理。SMTP、IMAP、POP3 仍需本地证书，请导入由外部维护的证书与私钥；外部续期后也需重新导入并应用。
+        </p>
         <el-form label-position="top">
           <el-form-item :label="lang.type">
-            <el-select class="ssl-type-select" :placeholder="lang.ssl_auto" v-model="sslSettings.type"
+            <el-select class="ssl-type-select" :placeholder="proxyHTTPS ? lang.ssl_manuallyf : lang.ssl_auto" v-model="sslSettings.type"
                        :disabled="fullscreenLoading" @change="handleSSLTypeChange">
-              <el-option :label="lang.ssl_auto" value="0"/>
+              <el-option v-if="!proxyHTTPS" :label="lang.ssl_auto" value="0"/>
               <el-option :label="lang.ssl_manuallyf" value="1"/>
             </el-select>
           </el-form-item>
 
-          <el-form-item :label="lang.ssl_challenge_type" v-if="sslSettings.type === '0'">
+          <el-form-item :label="lang.ssl_challenge_type" v-if="!proxyHTTPS && sslSettings.type === '0'">
             <div class="ssl-challenge-select-row">
               <el-select class="ssl-type-select" :placeholder="lang.ssl_challenge_type" v-model="sslSettings.challenge"
                          :disabled="fullscreenLoading" @change="handleSSLChallengeChange">
@@ -311,7 +314,7 @@
             </div>
           </el-form-item>
 
-          <div v-if="sslSettings.type === '0'" class="ssl-storage-card">
+          <div v-if="!proxyHTTPS && sslSettings.type === '0'" class="ssl-storage-card">
             <div class="ssl-storage-title">{{ lang.ssl_auto_storage_title }}</div>
             <div class="ssl-storage-desc">{{ lang.ssl_auto_storage_desc }}</div>
             <div v-if="sslSettings.challenge === 'dns'" class="ssl-dns-intro">
@@ -413,6 +416,7 @@ const {
   sslSettings,
   dnsChecking,
   port,
+  proxyHTTPS,
   dnsChallengeNotice,
   waitDesc,
   next,

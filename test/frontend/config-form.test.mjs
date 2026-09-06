@@ -49,6 +49,9 @@ test('单字段更新完整保留内部数据，锁定字段和污染路径无�
 })
 
 test('开关、数字、空数字和列表保持真实类型，代理 HTTPS 正确联动', () => {
+  const modeField = getFieldGroups('base', {}).flatMap(group => group.fields).find(field => field.path.join('.') === 'http.tlsMode')
+  assert.match(modeField.hint, /不自动申请或续期 SSL 证书/)
+  assert.match(modeField.hint, /邮件协议仍需有效的本地证书/)
   let text = JSON.stringify({ http: { tlsMode: 'direct', httpsEnabled: true, httpsPort: 443 } })
   text = updateFormConfig(text, 'base', ['http', 'tlsMode'], 'proxy')
   assert.deepEqual(readFormConfig(text).http, { tlsMode: 'proxy', httpsEnabled: false, httpsPort: 0 })

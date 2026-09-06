@@ -35,6 +35,20 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+test('证书页从状态接口读取生效反代模式，不额外加载基础配置', async () => {
+  const requests = []
+  const { page } = fixture(async path => {
+    requests.push(path)
+    return { errorNo: 0, data: path.endsWith('/status') ? { available: true, tlsMode: 'proxy', activeGeneration: 2 } : { tls: { mode: 'managed_upload' } } }
+  }, 'ssl')
+  await page.loadAll()
+  assert.equal(page.status.tlsMode, 'proxy')
+  assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/ssl'])
+  const template = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigEditor/ConfigEditor.vue', import.meta.url), 'utf8')
+  assert.match(template, /v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'"/)
+  assert.match(template, /Smail 不自动申请或续期 SSL 证书/)
+})
+
 for (const failedRequest of ['/status', '/pending']) {
   test(`候选保存成功后 ${failedRequest} 读取失败不能重新保存，刷新后可恢复或取消`, async () => {
     let pending = null

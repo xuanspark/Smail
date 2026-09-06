@@ -145,7 +145,8 @@ func sameSSLPolicy(left, right *Config) bool {
 	return reflect.DeepEqual(left.SSL, right.SSL) && left.SSLType == right.SSLType &&
 		left.SSLPrivateKeyPath == right.SSLPrivateKeyPath && left.SSLPublicKeyPath == right.SSLPublicKeyPath &&
 		left.Domain == right.Domain && left.WebDomain == right.WebDomain &&
-		reflect.DeepEqual(left.Domains, right.Domains) && left.HttpsEnabled == right.HttpsEnabled
+		reflect.DeepEqual(left.Domains, right.Domains) && left.HttpsEnabled == right.HttpsEnabled &&
+		left.TLSMode == right.TLSMode
 }
 
 func mergeServices(previous, next []ServiceName) []ServiceName {

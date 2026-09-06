@@ -28,64 +28,63 @@ func Start() {
 		}
 	}
 
-	cfg := config.CurrentConfig()
-	if cfg != nil && (cfg.SSLType == config.SSLTypeAutoHTTP || cfg.SSLType == config.SSLTypeAutoDNS) {
-		go sslUpdateLoop()
-	} else {
-		go sslCheck()
-	}
+	go sslUpdateLoop()
 
 }
 
-// 每天检查一遍SSL证书是否更新，更新就重启
+// 只检查外部维护的本地邮件证书是否更新，不触发 ACME。
 func sslCheck() {
-	var err error
-	_, expiredTime, _, err = ssl.CheckSSLCrtInfo()
+	_, newExpTime, _, err := ssl.CheckSSLCrtInfo()
 	if err != nil {
 		log.Errorf("SSL Check Error! %+v", err)
-		expiredTime = time.Time{}
+		return
 	}
-
-	for {
-		time.Sleep(24 * time.Hour)
-		_, newExpTime, _, err := ssl.CheckSSLCrtInfo()
-		if err != nil {
-			log.Errorf("SSL Check Error! %+v", err)
-			continue
-		}
-		if expiredTime.IsZero() {
-			expiredTime = newExpTime
-			continue
-		}
-		if newExpTime != expiredTime {
-			expiredTime = newExpTime
-			log.Infoln("SSL certificate had update! restarting")
-			signal.RestartChan <- true
-		}
-
+	if expiredTime.IsZero() {
+		expiredTime = newExpTime
+		return
+	}
+	if newExpTime != expiredTime {
+		expiredTime = newExpTime
+		log.Infoln("SSL certificate had update! restarting")
+		signal.RestartChan <- true
 	}
 }
 
-// 每天检查一遍SSL证书是否即将过期，即将过期就重新生成
+// 每轮读取最新策略，切换反代模式后不再等待 HTTP 挑战或执行自动续期。
+func maintainSSL() {
+	cfg := config.CurrentConfig()
+	if cfg == nil || !cfg.IsSetupReady() {
+		return
+	}
+	if !cfg.AutomaticSSLEnabled() {
+		sslCheck()
+		return
+	}
+	expiredTime = time.Time{}
+	if cfg.SSLType == config.SSLTypeAutoHTTP && !waitHTTPReady() {
+		return
+	}
+	ssl.Update(true)
+}
+
+// 每天检查证书，外部管理模式仅保留本地证书变更检查。
 func sslUpdateLoop() {
 	for {
-		// 等待 HTTP 就绪后再执行 ACME 续期，避免挑战失败
-		waitHTTPReady()
-		ssl.Update(true)
+		maintainSSL()
 		// 每24小时检测一次证书有效期
 		time.Sleep(24 * time.Hour)
 	}
 }
 
 // 新增：HTTP 就绪探测（最多等待 ~90 秒）
-func waitHTTPReady() {
+func waitHTTPReady() bool {
 	port := 80
 	if cfg := config.CurrentConfig(); cfg != nil && cfg.HttpPort > 0 {
 		port = cfg.HttpPort
 	}
 	if port < 1 || port > 65535 {
 		log.Warnf("invalid HTTP port %d, skipping SSL update this round", port)
-		return
+		return false
 	}
 
 	target := &url.URL{
@@ -96,6 +95,9 @@ func waitHTTPReady() {
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for i := 0; i < 90; i++ {
+		if !config.CurrentConfig().AutomaticSSLEnabled() {
+			return false
+		}
 		requestContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		request := (&http.Request{
 			Method: http.MethodGet,
@@ -112,9 +114,10 @@ func waitHTTPReady() {
 		cancel()
 		if statusOK {
 			log.Infof("HTTP ready: %s", target.String())
-			return
+			return true
 		}
 		time.Sleep(1 * time.Second)
 	}
 	log.Warnf("HTTP not ready after 90s, skipping SSL update this round")
+	return false
 }

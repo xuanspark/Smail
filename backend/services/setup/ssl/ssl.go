@@ -86,6 +86,9 @@ func GetSSL() (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err)
 	}
+	if cfg.UsesProxyHTTPS() {
+		return config.SSLTypeUser, nil
+	}
 	if cfg.SSLType == "" {
 		return config.SSLTypeAutoHTTP, nil
 	}
@@ -103,6 +106,9 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		cfg.SSLType = sslType
 	} else {
 		return errors.New("SSL 类型错误")
+	}
+	if cfg.UsesProxyHTTPS() && cfg.SSLType != config.SSLTypeUser {
+		return newUserCertificateError("HTTPS 反代模式由反向代理管理证书，Smail 不自动申请或续期；邮件服务请导入外部维护的证书")
 	}
 
 	if cfg.SSLType != config.SSLTypeUser {
@@ -138,8 +144,12 @@ func SetSSL(sslType, priKey, crtKey string) error {
 			return normalizeUserCertificateImportError(err)
 		}
 		applyManagedSSLReference(cfg, reference)
-		// 手动设置证书的情况下后台地址默认不启用https
-		cfg.HttpsEnabled = 1
+		// 导入邮件服务证书不能重新启用反代模式下的内置 HTTPS。
+		if cfg.UsesProxyHTTPS() {
+			cfg.HttpsEnabled = 2
+		} else {
+			cfg.HttpsEnabled = 1
+		}
 	}
 
 	err = config.WriteSSLConfig(&expected, cfg)
@@ -523,6 +533,12 @@ func GenSSL(update bool) error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	if cfg.UsesProxyHTTPS() {
+		return newUserCertificateError("HTTPS 反代模式由反向代理管理证书，Smail 不自动申请或续期；邮件服务请导入外部维护的证书")
+	}
+	if !cfg.AutomaticSSLEnabled() {
+		return newUserCertificateError("当前证书由外部维护，不能自动申请或续期")
+	}
 	if err := validateWildcardConfiguration(cfg); err != nil {
 		return err
 	}
@@ -586,7 +602,7 @@ func CheckSSLCrtInfo() (int, time.Time, bool, error) {
 
 func Update(needRestart bool) {
 	cfg := config.CurrentConfig()
-	if cfg != nil && cfg.IsSetupReady() && (cfg.SSLType == config.SSLTypeAutoHTTP || cfg.SSLType == config.SSLTypeAutoDNS) {
+	if cfg.AutomaticSSLEnabled() && cfg.IsSetupReady() {
 		days, _, nameMatchFail, err := CheckSSLCrtInfo()
 
 		if days < 30 || err != nil || nameMatchFail {

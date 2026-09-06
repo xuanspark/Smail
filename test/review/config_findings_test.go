@@ -13,6 +13,91 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestAuditAutomaticSSLPolicy(t *testing.T) {
+	var empty *Config
+	if empty.UsesProxyHTTPS() || empty.AutomaticSSLEnabled() {
+		t.Fatal("空配置不能启用自动证书")
+	}
+	for _, mode := range []string{"", HTTPSTLSModeDirect, HTTPSTLSModeProxy, " PROXY "} {
+		for _, sslType := range []string{"", SSLTypeUser, SSLTypeAutoHTTP, SSLTypeAutoDNS} {
+			cfg := &Config{TLSMode: mode, SSLType: sslType}
+			want := (mode == "" || mode == HTTPSTLSModeDirect) && (sslType == SSLTypeAutoHTTP || sslType == SSLTypeAutoDNS)
+			if cfg.AutomaticSSLEnabled() != want {
+				t.Fatalf("自动证书策略错误: mode=%q type=%q", mode, sslType)
+			}
+		}
+	}
+}
+
+func TestAuditProxySwitchRejectsStaleSSLCommit(t *testing.T) {
+	previousRoot, previousSnapshot := ROOT_PATH, CurrentConfig()
+	ROOT_PATH = t.TempDir()
+	t.Cleanup(func() {
+		ROOT_PATH = previousRoot
+		PublishConfigSnapshot(previousSnapshot)
+	})
+	expected := &Config{TLSMode: HTTPSTLSModeDirect, SSLType: SSLTypeAutoDNS, HttpsEnabled: 2}
+	if err := WriteConfig(expected); err != nil {
+		t.Fatal(err)
+	}
+	live := *expected
+	// 只修改 TLSMode，确保拒绝不是由 HTTPS 开关或域名变化引起。
+	live.TLSMode = HTTPSTLSModeProxy
+	if err := WriteConfig(&live); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSSLConfig(expected, expected); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("切换反代后未拒绝旧签发结果: %v", err)
+	}
+	stored, err := ReadConfig()
+	if err != nil || !stored.UsesProxyHTTPS() {
+		t.Fatal("过期签发改变了反代策略")
+	}
+}
+
+func TestAuditTLSStatusTracksAppliedPolicy(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	runtime.Root.HTTP.TLSMode = HTTPSTLSModeDirect
+	writeRuntimeFixture(t, root, runtime)
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := authorizedConfigActor()
+	for _, mode := range []string{HTTPSTLSModeProxy, HTTPSTLSModeDirect} {
+		current := manager.Snapshot()
+		next := current.Root
+		next.HTTP.TLSMode = mode
+		next.HTTP.HTTPSEnabled = mode == HTTPSTLSModeDirect
+		next.HTTP.HTTPSPort = 0
+		if next.HTTP.HTTPSEnabled {
+			next.HTTP.HTTPSPort = 443
+		}
+		next.HTTP.TrustedProxyCIDRs = []string{"127.0.0.1/32"}
+		payload, err := json.Marshal(next)
+		if err != nil {
+			t.Fatal(err)
+		}
+		updated, err := manager.Update(context.Background(), UpdateRequest{
+			Section: SectionRoot, ExpectedGeneration: current.Generation, Payload: payload, Actor: actor,
+			Confirmation: StepUpConfirmation{Confirmed: true, Method: "recent_auth"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if manager.Status().TLSMode != current.Root.HTTP.TLSMode {
+			t.Fatal("未应用的候选不能改变生效模式提示")
+		}
+		if _, err := manager.ApplyAuthorized(context.Background(), updated.Generation, actor); err != nil {
+			t.Fatal(err)
+		}
+		if manager.Status().TLSMode != mode {
+			t.Fatal("状态没有跟随已应用的 HTTPS 模式")
+		}
+	}
+}
+
 func TestAuditPendingIdentityAndRecovery(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())

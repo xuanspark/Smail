@@ -33,6 +33,7 @@ func ConfigStatus(ctx *appcontext.Context, w http.ResponseWriter, req *http.Requ
 	response.NewSuccessResponse(map[string]any{
 		"available":        true,
 		"setupState":       status.SetupState,
+		"tlsMode":          status.TLSMode,
 		"activeGeneration": status.ActiveGeneration,
 		"lastValidAt":      status.LastValidAt,
 		"pendingRestart":   status.PendingRestart,

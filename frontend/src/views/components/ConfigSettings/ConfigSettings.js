@@ -42,6 +42,7 @@ export function usePage(pageKey = 'base') {
   const auditError = ref('')
   const status = reactive({
     setupState: '',
+    tlsMode: '',
     activeGeneration: 0,
     lastValidAt: '',
     pendingRestart: [],

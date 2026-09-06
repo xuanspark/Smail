@@ -125,6 +125,7 @@ export function usePage() {
 
   const port = ref(80)
   const sslRuntime = ref({})
+  const proxyHTTPS = computed(() => sslRuntime.value.tlsMode === 'proxy')
 
   const addDomain = () => {
     domainSettings.multi_domain.push([])
@@ -350,7 +351,7 @@ export function usePage() {
   const getSSLConfig = () => {
     return setupRequest({"action": "get", "step": "ssl"}).then((res) => {
       assertSetupSuccess(res)
-      sslSettings.type = res.data.type
+      sslSettings.type = res.data.tlsMode === 'proxy' ? '1' : res.data.type
       if (sslSettings.type === "2") {
         sslSettings.type = "0"
         sslSettings.challenge = "dns"
@@ -370,7 +371,7 @@ export function usePage() {
   const setSSLConfig = () => {
     fullscreenLoading.value = true;
 
-    let sslType = sslSettings.type;
+    let sslType = proxyHTTPS.value ? '1' : sslSettings.type;
     if (sslType === "0" && sslSettings.challenge === "dns") {
       sslType = "2"
     }
@@ -610,6 +611,9 @@ export function usePage() {
   }
 
   const handleSSLTypeChange = () => {
+    if (proxyHTTPS.value) {
+      sslSettings.type = '1'
+    }
     if (dnsChecking.value) {
       resetDNSChallenge()
     }
@@ -619,7 +623,7 @@ export function usePage() {
   }
 
   const handleSSLChallengeChange = (challenge) => {
-    if (fullscreenLoading.value) {
+    if (fullscreenLoading.value || proxyHTTPS.value) {
       return
     }
 
@@ -722,6 +726,7 @@ export function usePage() {
     dnsChecking,
     dnsChallengeNotice,
     port,
+    proxyHTTPS,
     dnsInfos,
     hasDNSIPv6,
     addDomain,
