@@ -108,16 +108,16 @@
 :global(.settings-drawer > .el-drawer__body) {
   display: flex;
   min-height: 0;
-  padding: 16px 20px;
+  padding: 14px 16px;
   overflow: hidden;
 }
 
 .settings-tabs > :deep(.el-tabs__header) {
-  flex: 0 0 168px;
-  margin: 0 0 0 16px !important;
-  padding: 8px;
+  flex: 0 0 154px;
+  margin: 0 0 0 12px !important;
+  padding: 6px;
   border: 1px solid var(--pm-border-color);
-  border-radius: var(--pm-radius-lg);
+  border-radius: var(--pm-radius-md);
   background: var(--pm-bg-primary);
 }
 
@@ -136,10 +136,10 @@
 
 .settings-tabs > :deep(.el-tabs__header .el-tabs__item) {
   height: auto;
-  min-height: 56px;
+  min-height: 52px;
   justify-content: flex-start;
-  margin: 3px 0;
-  padding: 10px !important;
+  margin: 2px 0;
+  padding: 8px !important;
   border: 1px solid transparent;
   border-radius: 12px;
   color: var(--pm-text-secondary);
@@ -168,18 +168,18 @@
 .settings-category {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
 .settings-category-icon {
   flex: none;
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .settings-category-copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .settings-category-label {
