@@ -352,6 +352,8 @@ func configSectionFromPath(path string) (config.Section, bool) {
 	switch parts[3] {
 	case "base":
 		return config.SectionRoot, true
+	case "mail":
+		return config.SectionMail, true
 	case "smtp":
 		return config.SectionSMTP, true
 	case "email":
@@ -459,6 +461,27 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 				"loginPolicy":         runtime.SMTP.Relay.LoginPolicy,
 				"password":            nil,
 			},
+			"relayPasswordStatus": publicSecret(runtime.SMTP.Relay.Password),
+		}, nil
+	case config.SectionMail:
+		ports := config.ResolveMailPorts(runtime.SMTP, runtime.Email)
+		return map[string]any{
+			"meta":     runtime.SMTP.Meta,
+			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS},
+			"relay": map[string]any{
+				"relayHost":           runtime.SMTP.Relay.RelayHost,
+				"relayPort":           runtime.SMTP.Relay.RelayPort,
+				"username":            runtime.SMTP.Relay.Username,
+				"security":            runtime.SMTP.Relay.Security,
+				"from":                runtime.SMTP.Relay.From,
+				"fromDomain":          runtime.SMTP.Relay.FromDomain,
+				"verificationEnabled": runtime.SMTP.Relay.VerificationEnabled,
+				"loginPolicy":         runtime.SMTP.Relay.LoginPolicy,
+				"password":            nil,
+			},
+			"imap":                config.IMAPListenerConfig{TLSPort: ports.IMAP},
+			"pop3":                config.POP3ListenerConfig{Port: ports.POP3, TLSPort: ports.POP3TLS},
+			"policy":              runtime.Email.Policy,
 			"relayPasswordStatus": publicSecret(runtime.SMTP.Relay.Password),
 		}, nil
 	case config.SectionEmail:

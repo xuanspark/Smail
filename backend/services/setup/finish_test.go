@@ -33,6 +33,33 @@ func TestFinishPersistsServicePorts(t *testing.T) {
 	if loaded.SetupState != config.SetupStateReady || !loaded.IsInit {
 		t.Fatalf("setup state = %q, isInit = %t", loaded.SetupState, loaded.IsInit)
 	}
+	if !loaded.VerificationEnabled || !loaded.ExternalRecoveryEnabled || loaded.LoginPolicy != "new_device" {
+		t.Fatalf("security defaults = verification %t, recovery %t, policy %q", loaded.VerificationEnabled, loaded.ExternalRecoveryEnabled, loaded.LoginPolicy)
+	}
+}
+
+func TestFinishPreservesExplicitlyDisabledSecurityOptions(t *testing.T) {
+	prepareFinishConfigTest(t)
+	if err := config.WriteConfig(&config.Config{
+		SetupState:              config.SetupStateReady,
+		IsInit:                  true,
+		VerificationEnabled:     false,
+		ExternalRecoveryEnabled: false,
+		LoginPolicy:             "off",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Finish(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.ReadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.VerificationEnabled || loaded.ExternalRecoveryEnabled || loaded.LoginPolicy != "off" {
+		t.Fatalf("explicit security options changed: verification %t, recovery %t, policy %q", loaded.VerificationEnabled, loaded.ExternalRecoveryEnabled, loaded.LoginPolicy)
+	}
 }
 
 func TestFinishRepairsReadyConfigWithMissingPorts(t *testing.T) {

@@ -108,11 +108,14 @@ const baseGroups = [
   ])
 ]
 
-const smtpGroups = [
-  group('listener', 'SMTP 服务监听', '', [
+const mailGroups = [
+  group('listener', '邮件服务监听', '', [
     port('listener.port', 'SMTP 收信端口', { min: 1, hint: '默认 25，用于接收其他邮件服务器投递，支持 STARTTLS；不是发信中继端口。' }),
     port('listener.starttlsPort', 'SMTP 提交端口（STARTTLS）', { min: 1, hint: '默认 587，客户端升级 TLS 后进行认证。' }),
-    port('listener.tlsPort', 'SMTP 隐式 TLS 端口', { min: 1, hint: '默认 465，客户端建立连接时直接使用 TLS。' })
+    port('listener.tlsPort', 'SMTP 隐式 TLS 端口', { min: 1, hint: '默认 465，客户端建立连接时直接使用 TLS。' }),
+    port('imap.tlsPort', 'IMAP 隐式 TLS 端口', { min: 1, required: true, hint: '默认 993。客户端建立连接时直接使用 TLS。' }),
+    port('pop3.port', 'POP3 端口（STLS）', { min: 1, required: true, hint: '默认 110，客户端使用 STLS 升级加密后认证。' }),
+    port('pop3.tlsPort', 'POP3 隐式 TLS 端口', { min: 1, required: true, hint: '默认 995，客户端建立连接时直接使用 TLS。' })
   ]),
   group('relay', 'SMTP 中继连接（可选）', '', [
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
@@ -131,27 +134,17 @@ const smtpGroups = [
     field('relay.password', '中继密码', 'password', { placeholder: '留空保持原值' }),
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
     field('relay.fromDomain', '发件域名', 'text', { placeholder: 'example.com' })
-  ])
-]
-
-const imapGroups = [
-  group('imap', 'IMAP 服务监听', '', [
-    port('imap.tlsPort', 'IMAP 隐式 TLS 端口', { min: 1, required: true, hint: '默认 993。当前仅支持隐式 TLS，不提供明文或 STARTTLS 监听。' })
-  ])
-]
-
-const pop3Groups = [
-  group('pop3', 'POP3 服务监听', '', [
-    port('pop3.port', 'POP3 端口（STLS）', { min: 1, required: true, hint: '默认 110，客户端使用 STLS 升级加密后认证。' }),
-    port('pop3.tlsPort', 'POP3 隐式 TLS 端口', { min: 1, required: true, hint: '默认 995，客户端建立连接时直接使用 TLS。' })
-  ])
-]
-
-const emailGroups = [
-  group('policy', '邮件与账号策略', '', [
+  ]),
+  group('policy', '邮件策略', '', [
     field('policy.maxMessageBytes', '最大邮件大小（字节）', 'number', { min: 0, max: Number.MAX_SAFE_INTEGER, integer: true, hint: '0 使用后端默认限制；1 MiB = 1048576 字节。' }),
-    field('policy.spamFilterLevel', '垃圾邮件过滤级别', 'select', { fallback: 0, options: options([[0, '不过滤'], [1, 'SPF 与 DKIM 均失败时过滤'], [2, 'SPF 失败时过滤'], [3, 'DKIM 失败时过滤']]) }),
-    field('policy.loginVerificationPolicy', '账号登录验证策略', 'select', { options: loginOptions }),
+    field('policy.spamFilterLevel', '垃圾邮件过滤级别', 'select', { fallback: 0, options: options([[0, '不过滤'], [1, 'SPF 与 DKIM 均失败时过滤'], [2, 'SPF 失败时过滤'], [3, 'DKIM 失败时过滤']]) })
+  ])
+]
+
+const securityPolicyGroups = [
+  group('verification', '登录与账号恢复', '', [
+    field('relay.verificationEnabled', '启用账号登录验证', 'switch'),
+    field('relay.loginPolicy', '账号登录验证策略', 'select', { options: loginOptions }),
     field('policy.externalRecoveryEnabled', '允许外部邮箱恢复账号', 'switch')
   ])
 ]
@@ -190,7 +183,7 @@ const pluginDefinitions = {
 export function getFieldGroups(section, config) {
   const pluginId = Object.hasOwn(pluginDefinitions, section) ? section : ''
   if (section !== 'plugins' && !pluginId) {
-    return ({ base: baseGroups, smtp: smtpGroups, imap: imapGroups, pop3: pop3Groups, email: emailGroups, ssl: sslGroups }[section] || [])
+    return ({ base: baseGroups, mail: mailGroups, security_policy: securityPolicyGroups, ssl: sslGroups }[section] || [])
       .map(item => ({
         ...item,
         fields: item.fields
@@ -207,14 +200,14 @@ export function getFieldGroups(section, config) {
     return {
       id,
       title: definition?.label || `插件：${id}`,
-      description: `插件标识：${id}。程序与权限由安装目录维护；凭据请在专用插件设置中管理。`,
+      description: '',
       fields: [
         input('enabled', '启用插件', 'switch', { locked: !definition }),
         input('executable', '运行程序', 'text', { locked: true }),
         { path: [...prefix, 'permissions', 'network'], label: '允许访问的网络目标', type: 'network', hint: '仅允许 HTTPS 或 WSS；填写域名和端口，不接受 IP 地址。', locked: !definition },
         ...(definition && settingsEditable ? definition.fields.map(item => ({ ...item, path: [...prefix, 'settings', ...item.path] })) : [])
       ],
-      note: !settingsEditable ? '当前插件使用非标准设置格式，已保留原值；请在专用插件页面调整。' : '',
+      note: '',
       secretConfigured: !!plugin.secretStatus?.configured
     }
   })
@@ -291,22 +284,24 @@ export function validateFormConfig(section, config) {
       errors['http.httpsPort'] = 'HTTP 与 HTTPS 监听端口不能相同'
     }
   }
-  if (section === 'smtp') {
+  if (section === 'mail') {
     const relay = config.relay || {}
-    if (relay.relayHost && relay.security) {
-      if (!['starttls', 'implicit_tls', 'tls', 'plain'].includes(relay.security)) {
-        errors['relay.security'] = '请选择明确的连接加密方式，系统会自动匹配端口'
-      }
+    const relayConfigured = !!(
+      relay.relayHost || relay.relayPort || relay.username || relay.password || relay.security || relay.from
+    )
+    if (relayConfigured) {
+      if (!relay.relayHost) errors['relay.relayHost'] = '请填写 SMTP 服务器'
+      if (!['starttls', 'implicit_tls', 'tls', 'plain'].includes(relay.security)) errors['relay.security'] = '请选择连接加密方式'
       if (!validPort(relay.relayPort)) errors['relay.relayPort'] = '请填写 1～65535 的 SMTP 端口'
+      if (!relay.from) errors['relay.from'] = '请填写发件邮箱'
+      if (!relay.fromDomain) errors['relay.fromDomain'] = '请填写发件域名'
     }
     if (relay.security === 'plain' && !localSMTPHost(relay.relayHost)) {
       errors['relay.relayHost'] = '不加密连接仅限本机地址；远程服务器请选择 STARTTLS 或隐式 TLS'
     }
   }
-  if (['smtp', 'imap', 'pop3'].includes(section)) {
-    const paths = section === 'smtp'
-      ? ['listener.port', 'listener.starttlsPort', 'listener.tlsPort']
-      : ['imap.tlsPort', 'pop3.port', 'pop3.tlsPort']
+  if (section === 'mail') {
+    const paths = ['listener.port', 'listener.starttlsPort', 'listener.tlsPort', 'imap.tlsPort', 'pop3.port', 'pop3.tlsPort']
     for (const path of paths) {
       const value = getValue(config, path.split('.'))
       if (value > 0 && paths.some(other => other !== path && getValue(config, other.split('.')) === value)) errors[path] = '邮件服务监听端口不能重复'

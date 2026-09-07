@@ -199,7 +199,7 @@ func Init() error {
 		if err = json.Unmarshal(cfgData, loaded); err != nil {
 			return errors.Wrap(err)
 		}
-		applyLegacyLoginPolicy(cfgData, loaded)
+		applyLegacySecurityDefaults(cfgData, loaded)
 		migrated, err := unprotectCredentials(loaded)
 		if err != nil {
 			return errors.Wrap(err)
@@ -331,9 +331,12 @@ func ReadConfig() (*Config, error) {
 
 func readConfig() (*Config, error) {
 	configData := Config{
-		DkimPrivateKeyPath: ROOT_PATH + "config/dkim/dkim.priv",
-		SSLPrivateKeyPath:  ROOT_PATH + "config/ssl/private.key",
-		SSLPublicKeyPath:   ROOT_PATH + "config/ssl/public.crt",
+		DkimPrivateKeyPath:      ROOT_PATH + "config/dkim/dkim.priv",
+		SSLPrivateKeyPath:       ROOT_PATH + "config/ssl/private.key",
+		SSLPublicKeyPath:        ROOT_PATH + "config/ssl/public.crt",
+		VerificationEnabled:     true,
+		ExternalRecoveryEnabled: true,
+		LoginPolicy:             "new_device",
 	}
 	cfgData, err := readConfigFile("config.json")
 	if os.IsNotExist(err) {
@@ -362,7 +365,7 @@ func readConfig() (*Config, error) {
 		log.Error("Read Config Unmarshal Error")
 		return nil, errors.Wrap(err)
 	}
-	applyLegacyLoginPolicy(cfgData, &configData)
+	applyLegacySecurityDefaults(cfgData, &configData)
 	migrated, err := unprotectCredentials(&configData)
 	if err != nil {
 		log.Error("Read Config Credential Error")
@@ -378,16 +381,34 @@ func readConfig() (*Config, error) {
 	return &configData, nil
 }
 
-func applyLegacyLoginPolicy(data []byte, cfg *Config) {
-	if cfg == nil || strings.TrimSpace(cfg.LoginPolicy) != "" {
+func applyLegacySecurityDefaults(data []byte, cfg *Config) {
+	if cfg == nil {
 		return
 	}
 	var legacy struct {
-		VerificationLoginPolicy string `json:"verificationLoginPolicy"`
+		VerificationEnabled     *bool   `json:"verificationEnabled"`
+		ExternalRecoveryEnabled *bool   `json:"externalRecoveryEnabled"`
+		LoginPolicy             *string `json:"loginPolicy"`
+		VerificationLoginPolicy string  `json:"verificationLoginPolicy"`
 	}
-	if json.Unmarshal(data, &legacy) == nil {
-		cfg.LoginPolicy = strings.TrimSpace(legacy.VerificationLoginPolicy)
+	if json.Unmarshal(data, &legacy) != nil {
+		return
 	}
+	if legacy.VerificationEnabled == nil {
+		cfg.VerificationEnabled = true
+	}
+	if legacy.ExternalRecoveryEnabled == nil {
+		cfg.ExternalRecoveryEnabled = true
+	}
+	if legacy.LoginPolicy != nil && strings.TrimSpace(*legacy.LoginPolicy) != "" {
+		cfg.LoginPolicy = strings.TrimSpace(*legacy.LoginPolicy)
+		return
+	}
+	if policy := strings.TrimSpace(legacy.VerificationLoginPolicy); policy != "" {
+		cfg.LoginPolicy = policy
+		return
+	}
+	cfg.LoginPolicy = "new_device"
 }
 
 func (c *Config) fixPath() {

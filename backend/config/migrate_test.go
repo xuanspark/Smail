@@ -100,6 +100,65 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 	}
 }
 
+func TestLegacySecurityDefaultsPreserveExplicitValues(t *testing.T) {
+	falseValue := false
+	tests := []struct {
+		name         string
+		legacy       legacyMigrationConfig
+		verification bool
+		recovery     bool
+		policy       string
+	}{
+		{
+			name:         "missing values use secure defaults",
+			verification: true,
+			recovery:     true,
+			policy:       "new_device",
+		},
+		{
+			name: "explicit false values are preserved",
+			legacy: legacyMigrationConfig{
+				VerificationEnabled:     &falseValue,
+				ExternalRecoveryEnabled: &falseValue,
+				LoginPolicy:             "off",
+			},
+			policy: "off",
+		},
+		{
+			name: "legacy policy is preserved",
+			legacy: legacyMigrationConfig{
+				VerificationLoginPolicy: "always",
+			},
+			verification: true,
+			recovery:     true,
+			policy:       "always",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runtime, manualFields, err := legacyRuntimeConfig(t.TempDir(), test.legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(manualFields) != 0 {
+				t.Fatalf("unexpected manual fields: %+v", manualFields)
+			}
+			if runtime.SMTP.Relay.VerificationEnabled != test.verification ||
+				runtime.Email.Policy.ExternalRecoveryEnabled != test.recovery ||
+				runtime.SMTP.Relay.LoginPolicy != test.policy ||
+				runtime.Email.Policy.LoginVerificationPolicy != test.policy {
+				t.Fatalf("security migration = verification %t, recovery %t, smtp policy %q, email policy %q",
+					runtime.SMTP.Relay.VerificationEnabled,
+					runtime.Email.Policy.ExternalRecoveryEnabled,
+					runtime.SMTP.Relay.LoginPolicy,
+					runtime.Email.Policy.LoginVerificationPolicy,
+				)
+			}
+		})
+	}
+}
+
 func TestMigrateLegacyConfigResumesAfterNonSecretPartitionWrite(t *testing.T) {
 	root := t.TempDir()
 	original := writeLegacyMigrationFixture(t, root, map[string]any{

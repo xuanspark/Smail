@@ -33,8 +33,14 @@ func TestConfiguredMailListenerPortsAcceptProtocolConnections(t *testing.T) {
 	smtp := config.SMTPSectionConfig{Meta: meta, Listener: config.SMTPListenerConfig{
 		Port: ports[0], STARTTLSPort: ports[1], TLSPort: ports[2],
 	}}
-	// 中继与 IMAP 共用数值端口也不冲突；不配置中继主机仍可启动全部本地监听。
-	smtp.Relay.RelayPort = ports[3]
+	// 中继与 IMAP 共用数值端口也不冲突；中继是外部连接，不参与本地监听端口占用。
+	smtp.Relay = config.SMTPConfig{
+		RelayHost:  "127.0.0.1",
+		RelayPort:  ports[3],
+		Security:   "plain",
+		From:       "no-reply@example.com",
+		FromDomain: "example.com",
+	}
 	email := config.EmailSectionConfig{Meta: meta, IMAP: config.IMAPListenerConfig{TLSPort: ports[3]}, POP3: config.POP3ListenerConfig{Port: ports[4], TLSPort: ports[5]}}
 	ssl := config.SSLSectionConfig{Meta: meta, TLS: config.SSLConfig{Mode: "default", DefaultDirectory: "config/ssl"}}
 	rootConfig := config.RootConfig{

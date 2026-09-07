@@ -12,8 +12,12 @@ export function usePage() {
   const isSuperAdmin = computed(() => globalStatus.role === 'super_admin')
   const supported = webAuthnSupported()
   const webAuthnEnabled = computed(() => globalStatus.userInfos.webAuthnEnabled === true)
+  const canReadGlobalPolicy = computed(() => globalStatus.hasCapability('config.read'))
   const sectionOptions = computed(() => {
     const options = []
+    if (canReadGlobalPolicy.value) {
+      options.push({ value: 'security-policy', label: '安全策略' })
+    }
     if (!isSuperAdmin.value) {
       options.push({ value: 'password', label: lang.modify_pwd })
     }
@@ -31,10 +35,11 @@ export function usePage() {
     set: value => { globalStatus.securityActiveSection = value }
   })
 
-  const selectSection = value => {
-    if (sectionOptions.value.some(item => item.value === value)) {
-      selectedSection.value = value
-    }
+  const globalSecurityPolicyPage = ref(null)
+  const selectSection = async value => {
+    if (!sectionOptions.value.some(item => item.value === value) || value === selectedSection.value) return
+    if (selectedSection.value === 'security-policy' && !await (globalSecurityPolicyPage.value?.beforeLeave?.() ?? true)) return
+    selectedSection.value = value
   }
 
   watch(sectionOptions, options => {
@@ -290,6 +295,7 @@ export function usePage() {
 
   return {
     lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
+    globalSecurityPolicyPage,
     registering, credentialsLoading, credentials, securityLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
     bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,

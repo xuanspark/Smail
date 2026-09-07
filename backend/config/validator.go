@@ -117,66 +117,51 @@ func validateSMTP(smtp SMTPConfig) error {
 	if !validLoginVerificationPolicy(smtp.LoginPolicy) {
 		return ErrInvalidSMTP
 	}
+	if smtp.RelayHost != "" && !validSMTPHost(smtp.RelayHost) {
+		return ErrInvalidSMTP
+	}
+	if smtp.RelayPort != 0 && !validPort(smtp.RelayPort) {
+		return ErrInvalidSMTP
+	}
+	if smtp.FromDomain != "" && !validCanonicalDomain(smtp.FromDomain) {
+		return ErrInvalidSMTP
+	}
+	if strings.TrimSpace(smtp.Username) != smtp.Username {
+		return ErrInvalidSMTP
+	}
+	if err := ValidateStoredSecret(smtp.Password, false); err != nil {
+		return ErrInvalidSMTP
+	}
 	if smtp.From != "" {
 		parsedFrom, err := mail.ParseAddress(smtp.From)
 		if err != nil || parsedFrom.Address != smtp.From || strings.ContainsAny(smtp.From, "\r\n") {
 			return ErrInvalidSMTP
 		}
 	}
-	if !smtp.VerificationEnabled {
-		if smtp.RelayHost != "" && !validSMTPHost(smtp.RelayHost) {
-			return ErrInvalidSMTP
-		}
-		if smtp.RelayPort != 0 && !validPort(smtp.RelayPort) {
-			return ErrInvalidSMTP
-		}
-		if smtp.FromDomain != "" && !validCanonicalDomain(smtp.FromDomain) {
-			return ErrInvalidSMTP
-		}
-		if strings.TrimSpace(smtp.Username) != smtp.Username {
-			return ErrInvalidSMTP
-		}
-		if err := ValidateStoredSecret(smtp.Password, false); err != nil {
-			return ErrInvalidSMTP
-		}
-		if smtp.Username != "" {
-			if err := ValidateStoredSecret(smtp.Password, true); err != nil {
+	if smtp.Security != "" {
+		switch smtp.Security {
+		case "starttls", "implicit_tls", "tls":
+		case "plain":
+			if !isLocalSMTPHost(smtp.RelayHost) {
 				return ErrInvalidSMTP
 			}
+		default:
+			return ErrInvalidSMTP
 		}
-		if smtp.Security != "" {
-			switch smtp.Security {
-			case "starttls", "implicit_tls", "tls":
-			case "plain":
-				if !isLocalSMTPHost(smtp.RelayHost) {
-					return ErrInvalidSMTP
-				}
-			default:
-				return ErrInvalidSMTP
-			}
-		}
+	}
+	relayConfigured := smtp.RelayHost != "" || smtp.RelayPort != 0 || smtp.Username != "" ||
+		smtp.Password.Configured() || smtp.Security != "" || smtp.From != ""
+	if !relayConfigured {
 		return nil
 	}
-	if !validSMTPHost(smtp.RelayHost) || !validPort(smtp.RelayPort) || !validCanonicalDomain(smtp.FromDomain) || smtp.From == "" {
-		return ErrInvalidSMTP
-	}
-	if strings.TrimSpace(smtp.Username) != smtp.Username {
+	if smtp.RelayHost == "" || smtp.RelayPort == 0 || smtp.Security == "" || smtp.From == "" || smtp.FromDomain == "" {
 		return ErrInvalidSMTP
 	}
 	if smtp.Username == "" {
-		if err := ValidateStoredSecret(smtp.Password, false); err != nil || smtp.Password.Configured() {
+		if smtp.Password.Configured() {
 			return ErrInvalidSMTP
 		}
 	} else if err := ValidateStoredSecret(smtp.Password, true); err != nil {
-		return ErrInvalidSMTP
-	}
-	switch smtp.Security {
-	case "starttls", "implicit_tls", "tls":
-	case "plain":
-		if !isLocalSMTPHost(smtp.RelayHost) {
-			return ErrInvalidSMTP
-		}
-	default:
 		return ErrInvalidSMTP
 	}
 	return nil

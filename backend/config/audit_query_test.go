@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -13,11 +14,30 @@ func TestValidateConfigAuditQueryAcceptsSupportedFilters(t *testing.T) {
 		To:        time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC),
 		ActorID:   "42",
 		Operation: ConfigOperationUpdate,
-		Section:   SectionSMTP,
+		Section:   SectionMail,
 		Limit:     1000,
 	}
 	if err := ValidateConfigAuditQuery(query); err != nil {
 		t.Fatalf("valid audit query rejected: %v", err)
+	}
+}
+
+func TestConfigAuditQueryFiltersCombinedMailSection(t *testing.T) {
+	writer := &MemoryAuditWriter{}
+	for _, event := range []ConfigAuditEvent{
+		{Operation: ConfigOperationUpdate, Section: SectionMail, ActorID: "42", ActorRole: "super_admin", FromGeneration: 1, ToGeneration: 2, Result: "success", CreatedAt: time.Now().UTC()},
+		{Operation: ConfigOperationUpdate, Section: SectionSMTP, ActorID: "42", ActorRole: "super_admin", FromGeneration: 2, ToGeneration: 3, Result: "success", CreatedAt: time.Now().UTC()},
+	} {
+		if err := writer.WriteConfigAudit(context.Background(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := writer.Query(context.Background(), ConfigAuditQuery{Section: SectionMail, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Section != SectionMail {
+		t.Fatalf("mail audit filter returned %+v", items)
 	}
 }
 

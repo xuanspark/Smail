@@ -96,6 +96,17 @@ func authorizedConfigActor() AuditActor {
 	return AuditActor{UserID: "1", Role: "super_admin", SessionID: "test-session", RecentAuth: true, RecoveryCodeConfigured: true}
 }
 
+func mailSectionFromRuntime(runtime RuntimeConfig) MailSectionConfig {
+	return MailSectionConfig{
+		Meta:     runtime.SMTP.Meta,
+		Listener: runtime.SMTP.Listener,
+		Relay:    runtime.SMTP.Relay,
+		IMAP:     runtime.Email.IMAP,
+		POP3:     runtime.Email.POP3,
+		Policy:   runtime.Email.Policy,
+	}
+}
+
 type rejectingRuntimeSnapshotStore struct {
 	current RuntimeConfig
 	err     error
@@ -369,6 +380,249 @@ func TestConfigManagerUpdateApplyUsesPendingGeneration(t *testing.T) {
 	}
 	if _, err := manager.Apply(context.Background(), applied.Generation); !errors.Is(err, ErrGenerationConflict) {
 		t.Fatalf("second apply error = %v, want generation conflict", err)
+	}
+}
+
+func TestConfigManagerMailSectionRejectsNonStrictPayloadsAndDirectSecrets(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mail := mailSectionFromRuntime(manager.Snapshot())
+	payload, err := json.Marshal(mail)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unknown := append([]byte(nil), payload[:len(payload)-1]...)
+	unknown = append(unknown, []byte(`,"unknown":true}`)...)
+	if _, err := manager.Validate(context.Background(), ValidateRequest{Section: SectionMail, Payload: unknown}); err == nil {
+		t.Fatal("mail section accepted an unknown JSON field")
+	}
+
+	meta, err := json.Marshal(mail.Meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate := append([]byte(`{"meta":`), meta...)
+	duplicate = append(duplicate, ',')
+	duplicate = append(duplicate, payload[1:]...)
+	if _, err := manager.Validate(context.Background(), ValidateRequest{Section: SectionMail, Payload: duplicate}); err == nil {
+		t.Fatal("mail section accepted a duplicate JSON field")
+	}
+
+	mail.Relay.Password = StoredSecret{Ciphertext: "enc:v1:direct-secret", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()}
+	directSecret, err := json.Marshal(mail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Validate(context.Background(), ValidateRequest{Section: SectionMail, Payload: directSecret}); !errors.Is(err, ErrInvalidSecretChange) {
+		t.Fatalf("direct relay secret error = %v, want invalid secret change", err)
+	}
+}
+
+func TestConfigManagerMailSectionAppliesBothPartitionsWithoutMailFile(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	vault, err := credential.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := ApplySecretChange(vault, StoredSecret{}, SecretChange{
+		Operation: SecretReplace,
+		Value:     &SecretInput{Plaintext: "existing-relay-secret"},
+	}, SecretPolicy{Required: true, MaxLength: 4096}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.SMTP.Relay = SMTPConfig{
+		RelayHost:           "smtp.example.com",
+		RelayPort:           587,
+		Username:            "relay-user",
+		Password:            stored,
+		Security:            "starttls",
+		From:                "no-reply@example.com",
+		FromDomain:          "example.com",
+		VerificationEnabled: true,
+		LoginPolicy:         "new_device",
+	}
+	runtime.Email.Policy.LoginVerificationPolicy = "new_device"
+	runtime.Email.Policy.ExternalRecoveryEnabled = true
+	writeRuntimeFixture(t, root, runtime)
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mail := mailSectionFromRuntime(manager.Snapshot())
+	mail.Relay.Password = StoredSecret{}
+	mail.Listener = SMTPListenerConfig{Port: 2525, STARTTLSPort: 2587, TLSPort: 2465}
+	mail.IMAP.TLSPort = 2993
+	mail.POP3 = POP3ListenerConfig{Port: 2110, TLSPort: 2995}
+	mail.Policy.MaxMessageBytes = 8 << 20
+	mail.Policy.SpamFilterLevel = 2
+	payload, err := json.Marshal(mail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionMail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Candidate.SMTP.Relay.Password != stored {
+		t.Fatal("mail candidate did not preserve the existing relay secret")
+	}
+	status := manager.Status()
+	if len(status.PendingRestart) != 2 || status.PendingRestart[0] != ServiceSMTP || status.PendingRestart[1] != ServiceEmail {
+		t.Fatalf("mail pending restart services = %+v, want smtp and email", status.PendingRestart)
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation, "wrong-candidate", SectionMail, authorizedConfigActor()); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("wrong candidate ID error = %v, want generation conflict", err)
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation, updated.CandidateID, SectionSMTP, authorizedConfigActor()); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("wrong section error = %v, want generation conflict", err)
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation+1, updated.CandidateID, SectionMail, authorizedConfigActor()); !errors.Is(err, ErrGenerationConflict) {
+		t.Fatalf("wrong generation error = %v, want generation conflict", err)
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation, updated.CandidateID, SectionMail, authorizedConfigActor()); err != nil {
+		t.Fatal(err)
+	}
+
+	configDirectory := filepath.Join(root, "config")
+	if _, err := os.Stat(filepath.Join(configDirectory, "mail.json")); !os.IsNotExist(err) {
+		t.Fatalf("combined mail view was persisted as mail.json: %v", err)
+	}
+	for _, name := range []string{"smtp.json", "email.json"} {
+		data, err := os.ReadFile(filepath.Join(configDirectory, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), `"generation":2`) {
+			t.Fatalf("%s was not updated to generation 2: %s", name, data)
+		}
+	}
+	reloaded, err := NewConfigLoader(root, options).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPorts := MailPorts{SMTP: 2525, SMTPSTARTTLS: 2587, SMTPTLS: 2465, IMAP: 2993, POP3: 2110, POP3TLS: 2995}
+	if got := ResolveMailPorts(reloaded.SMTP, reloaded.Email); got != wantPorts {
+		t.Fatalf("reloaded mail ports = %+v, want %+v", got, wantPorts)
+	}
+	if reloaded.Email.Policy.MaxMessageBytes != 8<<20 || reloaded.Email.Policy.SpamFilterLevel != 2 {
+		t.Fatalf("reloaded mail policy is incomplete: %+v", reloaded.Email.Policy)
+	}
+	if reloaded.SMTP.Relay.Password != stored {
+		t.Fatal("reloaded relay secret changed without an explicit secret operation")
+	}
+}
+
+func TestConfigManagerMailSectionSecretReplacementUsesVault(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeFixture(t, root, validRuntimeConfig())
+	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mail := mailSectionFromRuntime(manager.Snapshot())
+	mail.Relay = SMTPConfig{
+		RelayHost:  "smtp.example.com",
+		RelayPort:  587,
+		Username:   "relay-user",
+		Security:   "starttls",
+		From:       "no-reply@example.com",
+		FromDomain: "example.com",
+	}
+	payload, err := json.Marshal(mail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := UpdateRequest{
+		Section: SectionMail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+		SecretChanges: map[string]SecretChange{
+			"relay.password": {Operation: SecretReplace, Value: &SecretInput{Plaintext: "new-relay-secret"}},
+		},
+	}
+	if _, err := manager.Update(context.Background(), request); !errors.Is(err, ErrStepUpRequired) {
+		t.Fatalf("mail secret replacement without step-up error = %v, want step-up required", err)
+	}
+	request.Confirmation = StepUpConfirmation{Confirmed: true, Method: "recent_auth"}
+	updated, err := manager.Update(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := updated.Candidate.SMTP.Relay.Password
+	if !stored.Configured() || stored.Ciphertext == "new-relay-secret" || !credential.IsEncrypted(stored.Ciphertext) {
+		t.Fatalf("relay secret was not stored as managed ciphertext: %+v", stored)
+	}
+	plaintext, err := manager.vault.Decrypt(stored.Version, stored.Ciphertext)
+	if err != nil || plaintext != "new-relay-secret" {
+		t.Fatalf("relay secret cannot be recovered from the managed vault: value=%q error=%v", plaintext, err)
+	}
+}
+
+func TestConfigManagerMailSectionPreservesFieldsAcrossPageSpecificEdits(t *testing.T) {
+	root := t.TempDir()
+	runtime := validRuntimeConfig()
+	runtime.SMTP.Listener = SMTPListenerConfig{Port: 2525, STARTTLSPort: 2587, TLSPort: 2465}
+	runtime.Email.IMAP.TLSPort = 2993
+	runtime.Email.POP3 = POP3ListenerConfig{Port: 2110, TLSPort: 2995}
+	runtime.Email.Policy.MaxMessageBytes = 4 << 20
+	writeRuntimeFixture(t, root, runtime)
+	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+	manager, err := NewConfigManager(root, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	securityEdit := mailSectionFromRuntime(manager.Snapshot())
+	securityEdit.Relay.VerificationEnabled = true
+	securityEdit.Relay.LoginPolicy = "new_device"
+	securityEdit.Policy.ExternalRecoveryEnabled = true
+	securityPayload, err := json.Marshal(securityEdit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := manager.Update(context.Background(), UpdateRequest{
+		Section: SectionMail, ExpectedGeneration: 1, Payload: securityPayload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation, updated.CandidateID, SectionMail, authorizedConfigActor()); err != nil {
+		t.Fatal(err)
+	}
+	afterSecurity := manager.Snapshot()
+	wantPorts := MailPorts{SMTP: 2525, SMTPSTARTTLS: 2587, SMTPTLS: 2465, IMAP: 2993, POP3: 2110, POP3TLS: 2995}
+	if got := ResolveMailPorts(afterSecurity.SMTP, afterSecurity.Email); got != wantPorts || afterSecurity.Email.Policy.MaxMessageBytes != 4<<20 {
+		t.Fatal("security policy edit overwrote mail listener or policy fields")
+	}
+
+	mailEdit := mailSectionFromRuntime(afterSecurity)
+	mailEdit.Policy.MaxMessageBytes = 12 << 20
+	mailPayload, err := json.Marshal(mailEdit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err = manager.Update(context.Background(), UpdateRequest{
+		Section: SectionMail, ExpectedGeneration: 2, Payload: mailPayload, Actor: authorizedConfigActor(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation, updated.CandidateID, SectionMail, authorizedConfigActor()); err != nil {
+		t.Fatal(err)
+	}
+	afterMail := manager.Snapshot()
+	if !afterMail.SMTP.Relay.VerificationEnabled || afterMail.SMTP.Relay.LoginPolicy != "new_device" ||
+		afterMail.Email.Policy.LoginVerificationPolicy != "new_device" || !afterMail.Email.Policy.ExternalRecoveryEnabled {
+		t.Fatal("mail page edit overwrote security policy fields")
 	}
 }
 
@@ -688,7 +942,13 @@ func TestConfigManagerSecretChangesRequireStepUpAndPreserveStoredSecret(t *testi
 func TestConfigManagerSecretClearRequiresExplicitConfirmation(t *testing.T) {
 	root := t.TempDir()
 	runtime := validRuntimeConfig()
-	runtime.SMTP.Relay = SMTPConfig{}
+	runtime.SMTP.Relay = SMTPConfig{
+		RelayHost:  "smtp.example.com",
+		RelayPort:  587,
+		Security:   "starttls",
+		From:       "no-reply@example.com",
+		FromDomain: "example.com",
+	}
 	writeRuntimeFixture(t, root, runtime)
 	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
 	manager, err := NewConfigManager(root, options)
@@ -696,6 +956,7 @@ func TestConfigManagerSecretClearRequiresExplicitConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	smtp := manager.Snapshot().SMTP
+	smtp.Relay.Username = "relay-user"
 	payload, err := json.Marshal(smtp)
 	if err != nil {
 		t.Fatal(err)
@@ -713,6 +974,7 @@ func TestConfigManagerSecretClearRequiresExplicitConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	smtp = manager.Snapshot().SMTP
+	smtp.Relay.Username = ""
 	smtp.Relay.Password = StoredSecret{}
 	payload, err = json.Marshal(smtp)
 	if err != nil {
@@ -1255,7 +1517,7 @@ func TestConfigManagerStatusReportsPendingRestartServices(t *testing.T) {
 	}
 	current := manager.Snapshot()
 	smtp := current.SMTP
-	smtp.Relay.RelayPort++
+	smtp.Listener.Port++
 	payload, err := json.Marshal(smtp)
 	if err != nil {
 		t.Fatal(err)

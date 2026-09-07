@@ -33,16 +33,6 @@
   line-height: 1.5;
 }
 
-.form-group-description {
-  flex: 1 1 100%;
-  margin: 0;
-  color: var(--pm-text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.credential-status,
-.form-group-note,
 .form-empty {
   margin: 0 0 8px;
   color: var(--pm-text-secondary);
@@ -85,7 +75,7 @@
   }
 
   .config-form[data-form-section="base"] .form-grid,
-  .config-form[data-form-section="email"] .form-grid,
+  .config-form[data-form-section="mail"] .form-grid,
   .form-group[data-group="verification"] .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

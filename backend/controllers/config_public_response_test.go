@@ -63,6 +63,10 @@ func TestPublicConfigSectionsDoNotExposeSecretsAndRemainStrictlyDecodable(t *tes
 			var value config.SMTPSectionConfig
 			return config.ParseStrict(data, &value)
 		}},
+		{config.SectionMail, func(data []byte) error {
+			var value config.MailSectionConfig
+			return config.ParseStrict(data, &value)
+		}},
 		{config.SectionEmail, func(data []byte) error {
 			var value config.EmailSectionConfig
 			return config.ParseStrict(data, &value)
@@ -90,12 +94,24 @@ func TestPublicConfigSectionsDoNotExposeSecretsAndRemainStrictlyDecodable(t *tes
 			if strings.Contains(string(data), "database-secret") || strings.Contains(string(data), "relay-secret") {
 				t.Fatalf("public configuration contains secret data: %s", data)
 			}
+			if strings.Contains(string(data), "enc:v1:") {
+				t.Fatalf("public configuration contains encrypted secret material: %s", data)
+			}
 			writableData := make(map[string]json.RawMessage)
 			if err := json.Unmarshal(data, &writableData); err != nil {
 				t.Fatalf("public configuration is not a JSON object: %v", err)
 			}
 			delete(writableData, "databasePasswordStatus")
 			delete(writableData, "relayPasswordStatus")
+			if test.section == config.SectionMail {
+				var relay map[string]json.RawMessage
+				if err := json.Unmarshal(writableData["relay"], &relay); err != nil {
+					t.Fatalf("mail relay public configuration is not an object: %v", err)
+				}
+				if password, ok := relay["password"]; !ok || string(password) != "null" {
+					t.Fatalf("mail relay password placeholder is invalid: %s", password)
+				}
+			}
 			if test.section == config.SectionPlugins {
 				var plugins map[string]json.RawMessage
 				if err := json.Unmarshal(writableData["plugins"], &plugins); err != nil {

@@ -20,6 +20,30 @@ func TestPublicMailPortsMatchListenersWithoutChangingSnapshot(t *testing.T) {
 		}
 		before := runtime.Email
 		want := config.ResolveMailPorts(runtime.SMTP, runtime.Email)
+		mailPublic, err := publicConfigSection(runtime, config.SectionMail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mailData, err := json.Marshal(mailPublic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var writableMail map[string]json.RawMessage
+		if err := json.Unmarshal(mailData, &writableMail); err != nil {
+			t.Fatal(err)
+		}
+		delete(writableMail, "relayPasswordStatus")
+		mailData, err = json.Marshal(writableMail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var mail config.MailSectionConfig
+		if err := config.ParseStrict(mailData, &mail); err != nil {
+			t.Fatal(err)
+		}
+		if mail.Listener.Port != want.SMTP || mail.Listener.STARTTLSPort != want.SMTPSTARTTLS || mail.Listener.TLSPort != want.SMTPTLS || mail.IMAP.TLSPort != want.IMAP || mail.POP3.Port != want.POP3 || mail.POP3.TLSPort != want.POP3TLS {
+			t.Fatal("combined public mail ports differ from listener configuration")
+		}
 		smtpPublic, err := publicConfigSection(runtime, config.SectionSMTP)
 		if err != nil {
 			t.Fatal(err)

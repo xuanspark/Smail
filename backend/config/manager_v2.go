@@ -744,6 +744,8 @@ func servicesForSection(section Section) []ServiceName {
 		return []ServiceName{ServiceSMTP}
 	case SectionEmail:
 		return []ServiceName{ServiceEmail}
+	case SectionMail:
+		return []ServiceName{ServiceSMTP, ServiceEmail}
 	case SectionSSL:
 		return []ServiceName{ServiceHTTP, ServiceSMTP, ServiceSSL}
 	case SectionPlugins:
@@ -813,12 +815,38 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		}
 		value.SMTPSectionConfig.Relay.Password = current.SMTP.Relay.Password
 		candidate.SMTP = value.SMTPSectionConfig
+		candidate.Email.Policy.LoginVerificationPolicy = candidate.SMTP.Relay.LoginPolicy
 	case SectionEmail:
 		var value EmailSectionConfig
 		if err := ParseStrict(payload, &value); err != nil {
 			return RuntimeConfig{}, err
 		}
 		candidate.Email = value
+		candidate.SMTP.Relay.LoginPolicy = candidate.Email.Policy.LoginVerificationPolicy
+	case SectionMail:
+		var value struct {
+			MailSectionConfig
+			RelayPasswordStatus json.RawMessage `json:"relayPasswordStatus"`
+		}
+		if err := ParseStrict(payload, &value); err != nil {
+			return RuntimeConfig{}, err
+		}
+		if value.MailSectionConfig.Relay.Password.Configured() {
+			return RuntimeConfig{}, ErrInvalidSecretChange
+		}
+		value.MailSectionConfig.Relay.Password = current.SMTP.Relay.Password
+		candidate.SMTP = SMTPSectionConfig{
+			Meta:     value.Meta,
+			Listener: value.Listener,
+			Relay:    value.Relay,
+		}
+		candidate.Email = EmailSectionConfig{
+			Meta:   value.Meta,
+			IMAP:   value.IMAP,
+			POP3:   value.POP3,
+			Policy: value.Policy,
+		}
+		candidate.Email.Policy.LoginVerificationPolicy = candidate.SMTP.Relay.LoginPolicy
 	case SectionSSL:
 		var value SSLSectionConfig
 		if err := ParseStrict(payload, &value); err != nil {
@@ -901,7 +929,7 @@ func applySecretChanges(candidate *RuntimeConfig, section Section, changes map[s
 				return err
 			}
 			candidate.Root.Database.Password = stored
-		case section == SectionSMTP && name == "relay.password":
+		case (section == SectionSMTP || section == SectionMail) && name == "relay.password":
 			stored, err := ApplySecretChange(vault, candidate.SMTP.Relay.Password, change, SecretPolicy{Required: candidate.SMTP.Relay.Username != "", AllowClear: candidate.SMTP.Relay.Username == "", MaxLength: 4096}, now)
 			if err != nil {
 				return err

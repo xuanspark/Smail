@@ -17,6 +17,7 @@ func Finish() error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
+	initializing := !cfg.IsInit && cfg.SetupState != config.SetupStateReady
 	portsChanged := applyServicePorts(cfg)
 	if cfg.IsSetupReady() {
 		if portsChanged {
@@ -29,6 +30,11 @@ func Finish() error {
 	}
 	cfg.SetupState = config.SetupStateReady
 	cfg.IsInit = true
+	if initializing {
+		cfg.VerificationEnabled = true
+		cfg.ExternalRecoveryEnabled = true
+		cfg.LoginPolicy = "new_device"
+	}
 
 	err = config.WriteConfig(cfg)
 	if err != nil {

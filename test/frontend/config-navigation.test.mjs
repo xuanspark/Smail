@@ -5,7 +5,7 @@ import { compileFunction } from 'node:vm'
 import { computed, reactive, ref } from './vue.mjs'
 
 const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigNavigation.js', import.meta.url), 'utf8')
-const components = ['BaseConfig', 'SmtpConfig', 'ImapConfig', 'Pop3Config', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']
+const components = ['BaseConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']
 const createNavigation = compileFunction(
   source.replace(/^import .*$/gm, '').replace('export function useNavigation', 'function useNavigation') + '\nreturn useNavigation()',
   ['computed', 'nextTick', 'ref', 'useGlobalStatusStore', ...components]
@@ -20,8 +20,8 @@ function fixture(capabilities = ['config.read']) {
 
 test('配置菜单包含三个独立插件三级页面，无权限的维护入口不可打开', async () => {
   const { page, allowed } = fixture()
-  assert.equal(new Set(page.sectionOptions.value.map(item => item.component)).size, 7)
-  assert.deepEqual(page.sectionOptions.value.map(item => item.value), ['base', 'smtp', 'imap', 'pop3', 'email', 'ssl', 'plugins'])
+  assert.equal(new Set(page.sectionOptions.value.map(item => item.component)).size, 4)
+  assert.deepEqual(page.sectionOptions.value.map(item => item.value), ['base', 'mail', 'ssl', 'plugins'])
   const children = page.sectionOptions.value.find(item => item.value === 'plugins').children
   assert.deepEqual(children.map(item => item.value), ['spam_block', 'telegram_push', 'wechat_push'])
   await page.selectSection('plugins')
@@ -61,17 +61,17 @@ test('切页等待离开确认，取消和快速重复点击不会更改页面',
   let resolve
   let prompts = 0
   page.currentPage.value = { beforeLeave: () => { prompts++; return new Promise(done => { resolve = done }) } }
-  const first = page.selectSection('smtp')
+  const first = page.selectSection('mail')
   await page.selectSection('ssl')
   assert.equal(prompts, 1)
   assert.equal(page.selectedSection.value, 'base')
   resolve(false)
   await first
   assert.equal(page.selectedSection.value, 'base')
-  const second = page.selectSection('email')
+  const second = page.selectSection('mail')
   resolve(true)
   await second
-  assert.equal(page.selectedSection.value, 'email')
+  assert.equal(page.selectedSection.value, 'mail')
   assert.equal(page.activePage.value.component.name, 'EmailConfig')
 })
 

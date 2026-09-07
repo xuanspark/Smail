@@ -78,8 +78,8 @@ type legacyMigrationConfig struct {
 	SMTPSecurity            string     `json:"smtpSecurity"`
 	SMTPFrom                string     `json:"smtpFrom"`
 	SMTPFromDomain          string     `json:"smtpFromDomain"`
-	VerificationEnabled     bool       `json:"verificationEnabled"`
-	ExternalRecoveryEnabled bool       `json:"externalRecoveryEnabled"`
+	VerificationEnabled     *bool      `json:"verificationEnabled"`
+	ExternalRecoveryEnabled *bool      `json:"externalRecoveryEnabled"`
 	LoginPolicy             string     `json:"loginPolicy"`
 	VerificationLoginPolicy string     `json:"verificationLoginPolicy"`
 	PluginAllowList         []string   `json:"pluginAllowList"`
@@ -514,7 +514,7 @@ func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConf
 			POP3Port:                110,
 			SpamFilterLevel:         legacy.SpamFilterLevel,
 			LoginVerificationPolicy: legacyLoginPolicy(legacy),
-			ExternalRecoveryEnabled: legacy.ExternalRecoveryEnabled,
+			ExternalRecoveryEnabled: legacyBoolDefault(legacy.ExternalRecoveryEnabled, true),
 		}},
 		SSL:      SSLSectionConfig{Meta: meta, TLS: ssl},
 		Plugins:  PluginsSectionConfig{Meta: meta, Plugins: plugins},
@@ -705,13 +705,13 @@ func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrati
 		Security:            legacy.SMTPSecurity,
 		From:                legacy.SMTPFrom,
 		FromDomain:          legacy.SMTPFromDomain,
-		VerificationEnabled: legacy.VerificationEnabled,
+		VerificationEnabled: legacyBoolDefault(legacy.VerificationEnabled, true),
 		LoginPolicy:         legacyLoginPolicy(legacy),
 	}
 	if relay.FromDomain == "" {
 		relay.FromDomain = legacy.Domain
 	}
-	if !relay.VerificationEnabled && relay.RelayHost == "" && relay.RelayPort == 0 && relay.Username == "" && legacy.SMTPPassword == "" {
+	if relay.RelayHost == "" && relay.RelayPort == 0 && relay.Username == "" && legacy.SMTPPassword == "" {
 		return relay, nil, nil
 	}
 	if relay.RelayPort == 0 {
@@ -871,7 +871,17 @@ func legacyLoginPolicy(legacy legacyMigrationConfig) string {
 	if legacy.LoginPolicy != "" {
 		return legacy.LoginPolicy
 	}
-	return legacy.VerificationLoginPolicy
+	if legacy.VerificationLoginPolicy != "" {
+		return legacy.VerificationLoginPolicy
+	}
+	return "new_device"
+}
+
+func legacyBoolDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func legacyControlledReference(value string) (string, bool) {

@@ -30,7 +30,7 @@ func ValidateConfigAuditQuery(query ConfigAuditQuery) error {
 	if query.Operation != "" && query.Operation != ConfigOperationUpdate && query.Operation != ConfigOperationRollback && query.Operation != ConfigOperationMigration {
 		return ErrInvalidAuditQuery
 	}
-	if query.Section != "" && query.Section != SectionRoot && query.Section != SectionSMTP && query.Section != SectionEmail && query.Section != SectionSSL && query.Section != SectionPlugins {
+	if query.Section != "" && query.Section != SectionRoot && query.Section != SectionMail && query.Section != SectionSMTP && query.Section != SectionEmail && query.Section != SectionSSL && query.Section != SectionPlugins {
 		return ErrInvalidAuditQuery
 	}
 	return nil

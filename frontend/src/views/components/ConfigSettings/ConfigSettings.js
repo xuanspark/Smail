@@ -5,16 +5,14 @@ import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { readFormConfig, updateFormConfig, validateFormConfig } from './ConfigForm/ConfigForm.js'
 
 const sections = [
-  { value: 'base', label: '基础配置', description: '管理站点与数据库连接，敏感凭据单独填写。' },
-  { value: 'smtp', label: 'SMTP 配置', description: '管理本机监听与发信中继；监听端口变更需应用配置并重启后端。' },
-  { value: 'imap', label: 'IMAP 配置', description: '管理 IMAP 隐式 TLS 监听；端口变更需应用配置并重启后端。' },
-  { value: 'pop3', label: 'POP3 配置', description: '管理 POP3 的 STLS 与隐式 TLS 监听；端口变更需应用配置并重启后端。' },
-  { value: 'email', label: '邮箱策略', description: '自动汇总三个协议的配置端口，管理邮件与账号恢复策略。' },
-  { value: 'ssl', label: 'SSL 配置', description: '管理证书与加密连接，应用后请留意待重启提示。' },
-  { value: 'plugins', label: '插件配置', description: '管理插件运行配置，敏感设置仅显示配置状态。' },
-  { value: 'spam_block', label: '垃圾邮件拦截', description: '配置垃圾邮件检测服务、超时和拦截阈值，仅编辑当前插件。' },
-  { value: 'telegram_push', label: 'Telegram 推送', description: '配置 Telegram 推送的运行参数与网络权限，个人绑定在扩展功能中管理。' },
-  { value: 'wechat_push', label: '微信推送', description: '配置微信推送的应用、模板与接收用户，敏感凭据不回填。' }
+  { value: 'base', label: '基础配置' },
+  { value: 'mail', label: '邮件服务与策略' },
+  { value: 'security_policy', label: '安全策略' },
+  { value: 'ssl', label: 'SSL 配置' },
+  { value: 'plugins', label: '插件配置' },
+  { value: 'spam_block', label: '垃圾邮件拦截' },
+  { value: 'telegram_push', label: 'Telegram 推送' },
+  { value: 'wechat_push', label: '微信推送' }
 ]
 
 const serviceLabels = {
@@ -57,7 +55,7 @@ export function usePage(pageKey = 'base') {
   // 独立页面复用原配置分区的原子保存与候选保护，不丢弃其他页面的字段。
   const pluginPages = ['spam_block', 'telegram_push', 'wechat_push']
   const apiSection = () => pluginPages.includes(selectedSection.value) ? 'plugins'
-    : ['imap', 'pop3'].includes(selectedSection.value) ? 'email' : selectedSection.value
+    : selectedSection.value === 'security_policy' ? 'mail' : selectedSection.value
   const currentSection = computed(() => sections.find(item => item.value === selectedSection.value) || sections[0])
   const sectionLoading = ref(false)
   let sectionRequestId = 0
@@ -66,23 +64,6 @@ export function usePage(pageKey = 'base') {
   const formConfig = computed(() => readFormConfig(editorText.value))
   const formErrors = ref({})
   const loadedText = ref('')
-  const smtpListener = ref(null)
-  const mailPortSummary = computed(() => {
-    if (selectedSection.value !== 'email' || !loadedText.value || !smtpListener.value) return null
-    const email = readFormConfig(loadedText.value)
-    return [
-      { name: 'SMTP', ports: [
-        { label: '收信 / STARTTLS', value: smtpListener.value.port },
-        { label: '提交 / STARTTLS', value: smtpListener.value.starttlsPort },
-        { label: '隐式 TLS', value: smtpListener.value.tlsPort }
-      ] },
-      { name: 'IMAP', ports: [{ label: '隐式 TLS', value: email.imap?.tlsPort }] },
-      { name: 'POP3', ports: [
-        { label: 'STLS', value: email.pop3?.port },
-        { label: '隐式 TLS', value: email.pop3?.tlsPort }
-      ] }
-    ]
-  })
   const sectionError = ref('')
   const secretValue = ref('')
   const confirmed = ref(false)
@@ -102,22 +83,24 @@ export function usePage(pageKey = 'base') {
         : '候选内容尚未完整读取，请刷新后核对。'
       return `${scope}三个插件共用一个配置分区，请在对应三级菜单核对；应用时整个候选一起生效，其他插件的原有配置会保留。`
     }
-    if (pending?.section !== 'email' || apiSection() !== 'email') return ''
+    if (pending?.section !== 'mail' || apiSection() !== 'mail') return ''
     const active = readFormConfig(loadedText.value)
     const candidate = pending.payload || {}
     const changed = [
-      ['imap', 'IMAP 配置'],
-      ['pop3', 'POP3 配置'],
-      ['policy', '邮箱策略']
+      ['listener', 'SMTP 监听'],
+      ['imap', 'IMAP 监听'],
+      ['pop3', 'POP3 监听'],
+      ['relay', 'SMTP 中继与登录验证'],
+      ['policy', '邮件与账号策略']
     ].filter(([key]) => {
       const before = active[key] || {}
       const after = candidate[key] || {}
       return Object.keys({ ...before, ...after }).some(field => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
     }).map(([, label]) => label)
     const scope = pending.payload && loadedText.value
-      ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的协议端口和邮箱策略未变化。')
+      ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的邮件服务与安全策略未变化。')
       : '候选内容尚未完整读取，请刷新后核对。'
-    return `${scope}IMAP、POP3 和邮箱策略共用一个配置分区，请逐页核对；应用时会一起生效，监听端口仍需重启后端。`
+    return `${scope}邮件服务页和安全策略页共用一个候选配置；应用时全部变更一起生效，监听端口变更仍需重启后端。`
   })
   let savedInput = null
   const validationResult = ref(null)
@@ -294,7 +277,6 @@ export function usePage(pageKey = 'base') {
     formErrors.value = {}
     editorText.value = ''
     loadedText.value = ''
-    smtpListener.value = null
     secretValue.value = ''
     confirmed.value = false
     validationResult.value = null
@@ -305,16 +287,6 @@ export function usePage(pageKey = 'base') {
       if (requestId !== sectionRequestId) return
       notifyResponseError(response, '配置分区读取失败')
       const publicConfig = response.data || {}
-      if (selectedSection.value === 'email') {
-        const smtpResponse = await http.get('/api/v1/config/smtp')
-        if (requestId !== sectionRequestId) return
-        notifyResponseError(smtpResponse, 'SMTP 监听配置读取失败')
-        // 不拼接不同代次的配置，也不在读取失败时显示旧端口。
-        if (smtpResponse.data?.meta?.generation !== publicConfig.meta?.generation) {
-          throw new Error('配置代次已变化，请刷新后查看最新端口')
-        }
-        smtpListener.value = smtpResponse.data?.listener || null
-      }
       editorText.value = JSON.stringify(publicConfig, null, 2)
       loadedText.value = editorText.value
       if (section === 'base') {
@@ -519,7 +491,7 @@ export function usePage(pageKey = 'base') {
       if (selectedSection.value === 'base') {
         delete payload.databasePasswordStatus
       }
-      if (selectedSection.value === 'smtp') {
+      if (apiSection() === 'mail') {
         delete payload.relayPasswordStatus
         if (payload.relay && 'password' in payload.relay) {
           delete payload.relay.password
@@ -549,7 +521,7 @@ export function usePage(pageKey = 'base') {
       secretChanges['database.password'] = { operation: 'replace', value: { plaintext: value } }
     }
     const relayPassword = formConfig.value?.relay?.password
-    if (relayPassword && selectedSection.value === 'smtp') {
+    if (relayPassword && selectedSection.value === 'mail') {
       secretChanges['relay.password'] = { operation: 'replace', value: { plaintext: relayPassword } }
     }
     return {
@@ -737,7 +709,6 @@ export function usePage(pageKey = 'base') {
   })
 
   return {
-    mailPortSummary,
     pendingScopeHint,
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
     selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,

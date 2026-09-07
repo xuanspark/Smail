@@ -168,6 +168,57 @@ func TestValidateRuntimeConfigRejectsUnsafeCrossSectionValues(t *testing.T) {
 	}
 }
 
+func TestValidateSMTPKeepsLoginVerificationIndependentFromRelay(t *testing.T) {
+	tests := []struct {
+		name  string
+		smtp  SMTPConfig
+		valid bool
+	}{
+		{
+			name: "verification enabled without relay",
+			smtp: SMTPConfig{
+				VerificationEnabled: true,
+				LoginPolicy:         "new_device",
+				FromDomain:          "example.com",
+			},
+			valid: true,
+		},
+		{
+			name: "partially configured relay",
+			smtp: SMTPConfig{
+				RelayHost:   "smtp.example.com",
+				RelayPort:   587,
+				Security:    "starttls",
+				LoginPolicy: "new_device",
+			},
+		},
+		{
+			name: "complete relay",
+			smtp: SMTPConfig{
+				RelayHost:   "smtp.example.com",
+				RelayPort:   587,
+				Security:    "starttls",
+				From:        "no-reply@example.com",
+				FromDomain:  "example.com",
+				LoginPolicy: "new_device",
+			},
+			valid: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateSMTP(test.smtp)
+			if test.valid && err != nil {
+				t.Fatalf("validateSMTP() error = %v", err)
+			}
+			if !test.valid && !errors.Is(err, ErrInvalidSMTP) {
+				t.Fatalf("validateSMTP() error = %v, want %v", err, ErrInvalidSMTP)
+			}
+		})
+	}
+}
+
 func TestSnapshotStoreRejectsInvalidCandidateWithoutChangingSnapshot(t *testing.T) {
 	initial := validRuntimeConfig()
 	store, err := NewSnapshotStore(initial, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})

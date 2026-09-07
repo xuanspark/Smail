@@ -9,6 +9,11 @@
       />
 
       <div class="security-main">
+    <GlobalSecurityPolicy
+      v-if="selectedSection === 'security-policy'"
+      ref="globalSecurityPolicyPage"
+    />
+
     <section v-if="selectedSection === 'password' && !isSuperAdmin" class="security-section">
       <div class="settings-header">
         <h3>{{ lang.modify_pwd }}</h3>
@@ -95,9 +100,11 @@
 <script setup>
 import { usePage } from './SecuritySettings.js'
 import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
+import GlobalSecurityPolicy from './GlobalSecurityPolicy/GlobalSecurityPolicy.vue'
 
 const {
   lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
+  globalSecurityPolicyPage,
   registering, credentialsLoading, credentials, securityLoading,
   securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
   bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,

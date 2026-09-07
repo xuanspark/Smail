@@ -61,7 +61,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		DkimPrivateKeyPath:      filepath.Join(ROOT_PATH, "config", "dkim", "dkim.priv"),
 		SSLType:                 SSLTypeUser,
 		SpamFilterLevel:         runtime.Email.Policy.SpamFilterLevel,
-		LoginPolicy:             runtime.Email.Policy.LoginVerificationPolicy,
+		LoginPolicy:             runtime.SMTP.Relay.LoginPolicy,
 		ExternalRecoveryEnabled: runtime.Email.Policy.ExternalRecoveryEnabled,
 		SMTPHost:                runtime.SMTP.Relay.RelayHost, SMTPPort: runtime.SMTP.Relay.RelayPort,
 		SMTPUsername: runtime.SMTP.Relay.Username, SMTPSecurity: runtime.SMTP.Relay.Security,

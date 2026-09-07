@@ -13,6 +13,7 @@ type Section string
 
 const (
 	SectionRoot    Section = "root"
+	SectionMail    Section = "mail"
 	SectionSMTP    Section = "smtp"
 	SectionEmail   Section = "email"
 	SectionSSL     Section = "ssl"
@@ -64,6 +65,16 @@ type EmailSectionConfig struct {
 	Policy EmailConfig        `json:"policy"`
 	IMAP   IMAPListenerConfig `json:"imap,omitempty"`
 	POP3   POP3ListenerConfig `json:"pop3,omitempty"`
+}
+
+// MailSectionConfig 是 API 与候选配置使用的组合视图，磁盘仍分别保存 smtp.json 和 email.json。
+type MailSectionConfig struct {
+	Meta     SectionMeta        `json:"meta"`
+	Listener SMTPListenerConfig `json:"listener"`
+	Relay    SMTPConfig         `json:"relay"`
+	IMAP     IMAPListenerConfig `json:"imap"`
+	POP3     POP3ListenerConfig `json:"pop3"`
+	Policy   EmailConfig        `json:"policy"`
 }
 
 type SSLSectionConfig struct {

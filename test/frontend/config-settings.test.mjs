@@ -45,8 +45,7 @@ test('证书页从状态接口读取生效反代模式，不额外加载基础�
   assert.equal(page.status.tlsMode, 'proxy')
   assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/ssl'])
   const template = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigEditor/ConfigEditor.vue', import.meta.url), 'utf8')
-  assert.match(template, /v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'"/)
-  assert.match(template, /Smail 不自动申请或续期 SSL 证书/)
+  assert.doesNotMatch(template, /selectedSection === 'ssl' && status\.tlsMode === 'proxy'|Smail 不自动申请或续期 SSL 证书/)
 })
 
 for (const failedRequest of ['/status', '/pending']) {
@@ -54,14 +53,22 @@ for (const failedRequest of ['/status', '/pending']) {
     let pending = null
     let fail = false
     let saves = 0
-    const { page } = fixture(() => {}, 'smtp', { http: {
+    const active = {
+      listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+      relay: {
+        relayHost: 'old.example.com', relayPort: 587, security: 'starttls',
+        from: 'sender@example.com', fromDomain: 'example.com'
+      },
+      imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+    }
+    const { page } = fixture(() => {}, 'mail', { http: {
       get: async path => {
         if (fail && path.endsWith(failedRequest)) throw new Error('模拟读取失败')
-        return { errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 1 } : { relay: { relayHost: 'old.example.com' } } }
+        return { errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 1 } : active }
       },
       put: async (path, body) => {
         saves++
-        pending = { generation: 2, candidateId: 'pending-recovery', section: 'smtp', sameSession: true, payload: body.payload }
+        pending = { generation: 2, candidateId: 'pending-recovery', section: 'mail', sameSession: true, payload: body.payload }
         fail = true
         return { errorNo: 0, data: pending }
       },
@@ -173,7 +180,7 @@ test('状态请求失败后可重试恢复，不保留不可用提示', async ()
   assert.equal(page.availabilityError.value, '')
 })
 
-test('独立页互不覆盖，旧页卸载时清除密码并丢弃较慢响应', async () => {
+test('独立页互不覆盖，页面卸载时清除密码并丢弃较慢响应', async () => {
   const base = deferred()
   const email = deferred()
   const { page, dispose } = fixture(() => base.promise)
@@ -188,11 +195,11 @@ test('独立页互不覆盖，旧页卸载时清除密码并丢弃较慢响应',
   page.secretValue.value = 'test-only-value'
   dispose()
   assert.equal(page.secretValue.value, '')
-  const emailPage = fixture(() => email.promise, 'email').page
+  const emailPage = fixture(() => email.promise, 'mail').page
   const emailRequest = emailPage.loadSection()
   email.resolve({ errorNo: 0, data: { policy: { smtpPort: 25 } } })
   await emailRequest
-  assert.equal(emailPage.currentSection.value.label, '邮箱策略')
+  assert.equal(emailPage.currentSection.value.label, '邮件服务与策略')
   assert.equal(emailPage.sectionLoading.value, false)
   base.resolve({ errorNo: 0, data: { database: { type: 'sqlite' } } })
   await baseRequest
@@ -219,34 +226,39 @@ test('同一页重复加载时，过期失败不覆盖最新请求', async () =>
   assert.deepEqual(JSON.parse(page.editorText.value), { enabled: true })
 })
 
-test('七个配置页按需加载，协议页复用正确分区且提供中文说明', async () => {
+test('配置页按需加载，邮件页和安全策略页共用 mail 分区', async () => {
   const requests = []
-  for (const key of ['base', 'smtp', 'imap', 'pop3', 'email', 'ssl', 'plugins']) {
+  for (const key of ['base', 'mail', 'security_policy', 'ssl', 'plugins']) {
     const { page } = fixture(async path => { requests.push(path); return { errorNo: 0, data: {} } }, key)
     await page.loadAll()
     assert.equal(page.selectedSection.value, key)
-    assert.match(page.currentSection.value.description, /[\u4e00-\u9fff]/)
+    assert.match(page.currentSection.value.label, /[\u4e00-\u9fff]/)
     assert.equal(page.secretValue.value, '')
     assert.equal(page.confirmed.value, false)
     assert.equal(page.savedGeneration.value, 0)
   }
-  assert.deepEqual(requests, ['base', 'smtp', 'imap', 'pop3', 'email', 'ssl', 'plugins']
-    .flatMap(key => ['/api/v1/config/status', `/api/v1/config/${['imap', 'pop3'].includes(key) ? 'email' : key}`, ...(key === 'email' ? ['/api/v1/config/smtp'] : [])]))
+  assert.deepEqual(requests, ['base', 'mail', 'security_policy', 'ssl', 'plugins']
+    .flatMap(key => ['/api/v1/config/status', `/api/v1/config/${key === 'security_policy' ? 'mail' : key}`]))
 })
 
-for (const key of ['imap', 'pop3']) {
-  test(`${key} 页面验证、保存、候选恢复及应用均使用邮箱分区且保留其他字段`, async () => {
+for (const key of ['mail', 'security_policy']) {
+  test(`${key} 页面验证、保存、候选恢复及应用均使用 mail 分区且保留未展示字段`, async () => {
     const requests = []
+    const payloads = []
     let pending = null
-    let active = { meta: { schema: 1, generation: 1 }, policy: { maxMessageBytes: 1234 }, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 } }
+    let active = {
+      meta: { schema: 1, generation: 1 },
+      listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+      relay: { verificationEnabled: true, loginPolicy: 'new_device' },
+      imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 },
+      policy: { maxMessageBytes: 1234, spamFilterLevel: 1, externalRecoveryEnabled: true }
+    }
     const { page } = fixture(() => {}, key, { http: {
       get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: active.meta.generation } : structuredClone(active) }),
       put: async (path, body) => {
         requests.push(path)
-        assert.equal(body.expectedGeneration, 1)
-        assert.deepEqual(body.payload.policy, active.policy)
-        assert.deepEqual(body.payload[key === 'imap' ? 'pop3' : 'imap'], active[key === 'imap' ? 'pop3' : 'imap'])
-        pending = { generation: 2, candidateId: 'mail-candidate', section: 'email', sameSession: true, payload: body.payload }
+        payloads.push(structuredClone(body))
+        pending = { generation: 2, candidateId: 'mail-candidate', section: 'mail', sameSession: true, payload: body.payload }
         return { errorNo: 0, data: pending }
       },
       post: async (path, body) => {
@@ -260,48 +272,50 @@ for (const key of ['imap', 'pop3']) {
       }
     } })
     await page.loadAll()
-    page.updateField([key, 'tlsPort'], key === 'imap' ? 1993 : 1995)
+    const path = key === 'mail' ? ['imap', 'tlsPort'] : ['relay', 'loginPolicy']
+    page.updateField(path, key === 'mail' ? 1993 : 'always')
     await page.validateConfig()
     await page.saveConfig()
-    await page.refreshPage()
     assert.equal(page.savedGeneration.value, 2)
-    page.updateField([key, 'tlsPort'], 8888)
-    assert.notEqual(page.formConfig.value[key].tlsPort, 8888)
+    assert.equal(payloads[0].expectedGeneration, 1)
+    assert.deepEqual(payloads[0].payload.listener, active.listener)
+    assert.deepEqual(payloads[0].payload.pop3, active.pop3)
+    if (key === 'security_policy') assert.equal(payloads[0].secretChanges['relay.password'], undefined)
+    if (key === 'security_policy') {
+      await page.refreshPage()
+      assert.equal(page.savedGeneration.value, 2)
+    }
+    page.updateField(path, key === 'mail' ? 8888 : 'off')
+    assert.notEqual(key === 'mail' ? page.formConfig.value.imap.tlsPort : page.formConfig.value.relay.loginPolicy, key === 'mail' ? 8888 : 'off')
     await page.applyConfig()
     assert.equal(page.status.activeGeneration, 2)
     assert.equal(page.savedGeneration.value, 0)
-    assert.deepEqual(requests, ['/api/v1/config/email/validate', '/api/v1/config/email', '/api/v1/config/email/apply'])
+    assert.deepEqual(requests, ['/api/v1/config/mail/validate', '/api/v1/config/mail', '/api/v1/config/mail/apply'])
   })
 }
 
-test('邮箱策略从三种协议配置汇总已应用端口，不能修改或被候选值误导', async () => {
-  const config = { meta: { generation: 3 }, policy: { smtpPort: 25, imapPort: 143, pop3Port: 110 }, imap: { tlsPort: 1993 }, pop3: { port: 1110, tlsPort: 1995 } }
-  const { page } = fixture(() => {}, 'email', { http: { get: async path => ({ errorNo: 0, data:
-    path.endsWith('/status') ? { activeGeneration: 3 } : path.endsWith('/smtp') ? { meta: { generation: 3 }, listener: { port: 2525, starttlsPort: 2587, tlsPort: 2465 }, relay: { relayPort: 9999 } } :
-      path.endsWith('/pending') ? { section: 'email', generation: 4, sameSession: true, payload: { ...config, imap: { tlsPort: 2993 } } } : config
-  }) } })
-  await page.loadAll()
-  assert.deepEqual(page.mailPortSummary.value.flatMap(service => service.ports.map(port => port.value)), [2525, 2587, 2465, 1993, 1110, 1995])
-  assert.equal(page.formConfig.value.imap.tlsPort, 2993)
-  const before = page.editorText.value
-  for (const path of [['policy', 'smtpPort'], ['policy', 'imapPort'], ['imap', 'tlsPort']]) page.updateField(path, 8888)
-  assert.equal(page.editorText.value, before)
-})
-
-test('邮箱策略拒绝不同代次的端口汇总，后续加载失败清除旧汇总', async () => {
-  let generation = 2
-  const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/smtp')
-    ? { meta: { generation }, listener: { port: 2525 } }
-    : { meta: { generation: 1 }, imap: { tlsPort: 1993 }, pop3: { port: 1110, tlsPort: 1995 } } }), 'email')
+test('安全策略页只编辑登录验证和账号恢复字段，完整保留邮件监听、中继与邮件策略', async () => {
+  const config = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: { relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls', verificationEnabled: true, loginPolicy: 'new_device' },
+    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 },
+    policy: { maxMessageBytes: 10485760, spamFilterLevel: 2, externalRecoveryEnabled: true }
+  }
+  let request
+  const { page } = fixture(async () => ({ errorNo: 0, data: config }), 'security_policy', {
+    http: { put: async (path, body) => { request = { path, body }; return { errorNo: 0, data: { generation: 2 } } } }
+  })
   await page.loadSection()
-  assert.match(page.sectionError.value, /代次/)
-  assert.equal(page.mailPortSummary.value, null)
-  generation = 1
-  await page.loadSection()
-  assert.ok(page.mailPortSummary.value)
-  generation = 3
-  await page.loadSection()
-  assert.equal(page.mailPortSummary.value, null)
+  page.updateField(['relay', 'loginPolicy'], 'always')
+  page.updateField(['listener', 'port'], 2525)
+  await page.saveConfig()
+  assert.equal(request.path, '/api/v1/config/mail')
+  assert.equal(request.body.payload.listener.port, 25)
+  assert.equal(request.body.payload.relay.loginPolicy, 'always')
+  assert.deepEqual(request.body.payload.imap, config.imap)
+  assert.deepEqual(request.body.payload.pop3, config.pop3)
+  assert.equal(request.body.payload.policy.maxMessageBytes, config.policy.maxMessageBytes)
+  assert.deepEqual(request.body.secretChanges, {})
 })
 
 test('迁移预览票据返回模板，迁移执行取消时不发送写入请求', async () => {
@@ -382,7 +396,7 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
     assert.ok(maintenance.includes(`pageKey === '${key}' && ${capability}`))
   }
   assert.match(maintenance, /v-if="canExportAudit"/)
-  for (const name of ['BaseConfig', 'SmtpConfig', 'ImapConfig', 'Pop3Config', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance', 'MailPortSummary']) {
+  for (const name of ['BaseConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']) {
     const page = readFileSync(new URL(`${name}/${name}.vue`, root), 'utf8')
     const { descriptor, errors } = parse(page)
     assert.deepEqual(errors, [])
@@ -416,9 +430,9 @@ test('配置编辑区移除填写标题、说明与重复标签，保留主标�
   assert.doesNotMatch(template, /'填写配置'|'查看配置'|按分组填写内容|当前页面的脱敏配置内容|panel-heading|selected-section-label/)
   assert.doesNotMatch(css, /selected-section-label/)
   assert.match(template, /<h3 id="config-page-title">{{ currentSection.label }}/)
-  assert.match(template, /v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'"[^>]*role="note"/)
+  assert.doesNotMatch(template, /selectedSection === 'ssl' && status\.tlsMode === 'proxy'|role="note"/)
   assert.match(template, /v-if="sectionError"[\s\S]*?:title="sectionError"/)
-  assert.match(template, /id="config-sensitive-hint"/)
+  assert.doesNotMatch(template, /config-sensitive-hint|sensitiveHint/)
   assert.match(template, /v-if="secretField" class="secret-editor"/)
   assert.match(template, /v-if="validationResult"[^>]*role="status"/)
 })
@@ -426,7 +440,7 @@ test('配置编辑区移除填写标题、说明与重复标签，保留主标�
 test('离开、刷新和正在执行的变更受保护，取消时保留编辑内容', async () => {
   let cancel = true
   let prompts = 0
-  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'mail', {
     confirm: async () => { prompts++; if (cancel) throw 'cancel' }
   })
   await page.loadAll()
@@ -461,7 +475,7 @@ test('标题合并配置状态，保留刷新保护和降级提示，不再渲�
   const header = template.match(/<header[\s\S]*?<\/header>/)?.[0] || ''
   assert.match(header, /aria-labelledby="config-page-title"/)
   assert.match(header, /<h3 id="config-page-title">{{ currentSection.label }}/)
-  assert.match(header, /<span class="sr-only">运行状态：<\/span>{{ stateLabel }}/)
+  assert.doesNotMatch(header, /stateLabel|运行状态|state-tag/)
   assert.match(header, /v-for="issue in status.degradedReasons \|\| \[\]"/)
   assert.match(header, /v-if="!loading && !availabilityError"/)
   assert.match(header, /:disabled="!!working \|\| sectionLoading \|\| loading"/)
@@ -497,16 +511,24 @@ test('只读账号不得发送配置写入请求或读取无权限维护数据',
   assert.deepEqual(requests, ['/api/v1/config/status'])
 })
 
-test('独立页保持验证、保存、应用端点和代次协议，敏感值不串页', async () => {
+test('邮件页保持验证、保存、应用端点和代次协议，中继密码只作为 secretChanges 发送', async () => {
   const requests = []
   let pending = null
-  const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 8 } : { relayPasswordStatus: 'configured' } }), 'smtp', {
+  const active = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: {
+      relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
+      from: 'sender@example.com', fromDomain: 'example.com'
+    },
+    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+  }
+  const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 8 } : active }), 'mail', {
     http: {
-      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 8 } : { relayPasswordStatus: 'configured' } }),
+      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 8 } : active }),
       post: async (path, body) => { requests.push({ path, body }); if (path.endsWith('/apply')) pending = null; return { errorNo: 0, data: { valid: true } } },
       put: async (path, body) => {
         requests.push({ path, body })
-        pending = { generation: 9, candidateId: 'candidate-9', section: 'smtp', sameSession: true, payload: {} }
+        pending = { generation: 9, candidateId: 'candidate-9', section: 'mail', sameSession: true, payload: body.payload }
         return { errorNo: 0, data: pending }
       }
     }
@@ -518,9 +540,10 @@ test('独立页保持验证、保存、应用端点和代次协议，敏感值�
   await page.saveConfig()
   assert.equal(page.savedGeneration.value, 9)
   await page.applyConfig()
-  assert.deepEqual(requests.map(item => item.path), ['/api/v1/config/smtp/validate', '/api/v1/config/smtp', '/api/v1/config/smtp/apply'])
+  assert.deepEqual(requests.map(item => item.path), ['/api/v1/config/mail/validate', '/api/v1/config/mail', '/api/v1/config/mail/apply'])
   assert.equal(requests[0].body.expectedGeneration, 8)
-  assert.deepEqual(requests[0].body.payload, {})
+  assert.equal(requests[0].body.payload.relay.password, undefined)
+  assert.deepEqual(requests[0].body.payload.listener, active.listener)
   assert.deepEqual(requests[0].body.secretChanges, { 'relay.password': { operation: 'replace', value: { plaintext: 'test-only-value' } } })
   assert.deepEqual(requests[0].body.confirmation, { confirmed: true, method: 'recent_auth' })
   assert.deepEqual(requests[2].body, { generation: 9, candidateId: 'candidate-9' })
@@ -530,7 +553,11 @@ test('独立页保持验证、保存、应用端点和代次协议，敏感值�
 })
 
 test('可视化编辑按权限和工作状态保护，编辑会清除过期确认及候选代次', async () => {
-  const { page, dispose } = fixture(async () => ({ errorNo: 0, data: { relay: { relayHost: 'smtp.example.com' } } }), 'smtp')
+  const config = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: { relayHost: 'smtp.example.com' }, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+  }
+  const { page, dispose } = fixture(async () => ({ errorNo: 0, data: config }), 'mail')
   await page.loadAll()
   const original = page.editorText.value
   for (const state of ['loading', 'sectionLoading', 'working', 'sectionError']) {
@@ -541,7 +568,7 @@ test('可视化编辑按权限和工作状态保护，编辑会清除过期确�
     assert.equal(page.secretValue.value, '')
     page[state].value = false
   }
-  const readonly = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', { hasCapability: () => false }).page
+  const readonly = fixture(async () => ({ errorNo: 0, data: {} }), 'mail', { hasCapability: () => false }).page
   readonly.updateField(['relay', 'relayHost'], 'blocked.example.com')
   assert.equal(readonly.editorText.value, '')
   page.savedGeneration.value = 8
@@ -562,7 +589,15 @@ test('可视化编辑按权限和工作状态保护，编辑会清除过期确�
 
 test('前端无效字段阻止网络请求，修正字段后同步清除错误', async () => {
   const requests = []
-  const { page } = fixture(async () => ({ errorNo: 0, data: { imap: { tlsPort: 993 } } }), 'imap', {
+  const config = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: {
+      relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
+      from: 'sender@example.com', fromDomain: 'example.com'
+    },
+    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+  }
+  const { page } = fixture(async () => ({ errorNo: 0, data: config }), 'mail', {
     http: { post: async path => { requests.push(path); return { errorNo: 0, data: { valid: true } } } }
   })
   await page.loadAll()
@@ -574,7 +609,7 @@ test('前端无效字段阻止网络请求，修正字段后同步清除错误',
   page.updateField(['imap', 'tlsPort'], 1993)
   assert.deepEqual(page.formErrors.value, {})
   await page.validateConfig()
-  assert.deepEqual(requests, ['/api/v1/config/email/validate'])
+  assert.deepEqual(requests, ['/api/v1/config/mail/validate'])
 })
 
 test('插件读取状态字段不传回严格解析接口，未展示字段和权限仍保留', async () => {
@@ -614,7 +649,15 @@ test('SQLite 不显示或发送密码，网络数据库和中继密码留空保�
     assert.deepEqual(request.secretChanges, type === 'sqlite' ? {} : { 'database.password': { operation: 'replace', value: { plaintext: ' test-only-value ' } } })
   }
   let request
-  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
+  const mail = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: {
+      relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
+      from: 'sender@example.com', fromDomain: 'example.com'
+    },
+    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+  }
+  const { page } = fixture(async () => ({ errorNo: 0, data: mail }), 'mail', {
     http: { post: async (path, body) => { request = body; return { errorNo: 0, data: { valid: true } } } }
   })
   await page.loadSection()
@@ -644,7 +687,7 @@ test('基础配置保存完整保留隐藏的额外访问主机、数据库和�
 
 test('保存后更改密码或填写内容不能应用旧候选', async () => {
   const requests = []
-  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'smtp', {
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }), 'mail', {
     http: {
       put: async () => ({ errorNo: 0, data: { generation: 8 } }),
       post: async path => { requests.push(path); return { errorNo: 0 } }
@@ -662,19 +705,24 @@ test('保存后更改密码或填写内容不能应用旧候选', async () => {
   assert.deepEqual(requests, [])
 })
 
-test('共用邮箱分区的候选明确提示其他页面的改动，忽略代次与字段顺序', async () => {
-  const active = { meta: { generation: 1 }, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: { maxMessageBytes: 1234 } }
-  for (const key of ['imap', 'pop3', 'email']) {
-    const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/smtp') ? { meta: { generation: 1 }, listener: {} } : active }), key)
+test('邮件页与安全策略页共享候选并明确提示改动范围，忽略代次与字段顺序', async () => {
+  const active = {
+    meta: { generation: 1 }, listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: { verificationEnabled: true, loginPolicy: 'new_device' },
+    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 },
+    policy: { maxMessageBytes: 1234, externalRecoveryEnabled: true }
+  }
+  for (const key of ['mail', 'security_policy']) {
+    const { page } = fixture(async () => ({ errorNo: 0, data: active }), key)
     await page.loadSection()
-    page.pendingCandidate.value = { section: 'email', payload: { ...active, meta: { generation: 2 }, pop3: { tlsPort: 995, port: 110 } } }
-    assert.match(page.pendingScopeHint.value, /协议端口和邮箱策略未变化/)
+    page.pendingCandidate.value = { section: 'mail', payload: { ...active, meta: { generation: 2 }, pop3: { tlsPort: 995, port: 110 } } }
+    assert.match(page.pendingScopeHint.value, /邮件服务与安全策略未变化/)
     page.pendingCandidate.value.payload = { ...active, pop3: { port: 1110, tlsPort: 1995 }, policy: { maxMessageBytes: 5678 } }
-    assert.match(page.pendingScopeHint.value, /本次候选涉及：POP3 配置、邮箱策略。/)
-    assert.match(page.pendingScopeHint.value, /请逐页核对；应用时会一起生效/)
+    assert.match(page.pendingScopeHint.value, /本次候选涉及：POP3 监听、邮件与账号策略。/)
+    assert.match(page.pendingScopeHint.value, /邮件服务页和安全策略页共用一个候选配置/)
     page.pendingCandidate.value = { section: 'smtp' }
     assert.equal(page.pendingScopeHint.value, '')
-    page.pendingCandidate.value = { section: 'email' }
+    page.pendingCandidate.value = { section: 'mail' }
     assert.match(page.pendingScopeHint.value, /候选内容尚未完整读取/)
   }
   const template = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigEditor/ConfigEditor.vue', import.meta.url), 'utf8')

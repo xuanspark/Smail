@@ -5,9 +5,6 @@
         <div class="overview-copy">
           <div class="overview-title">
             <h3 id="config-page-title">{{ currentSection.label }}</h3>
-            <el-tag v-if="!loading && !availabilityError" :type="stateTagType" effect="light" size="small">
-              <span class="sr-only">运行状态：</span>{{ stateLabel }}
-            </el-tag>
           </div>
         </div>
         <div class="overview-actions">
@@ -36,15 +33,6 @@
       </template>
     </header>
 
-    <el-alert
-      v-if="!canWrite"
-      title="当前账号仅能查看配置，保存、应用和回滚操作已隐藏。"
-      type="info"
-      :closable="false"
-      show-icon
-      class="config-alert"
-    />
-
     <div v-if="availabilityError" class="config-availability" role="status">
       <el-alert :title="availabilityError" type="warning" :closable="false" show-icon />
       <el-button :loading="loading" @click="refreshPage">重新检查</el-button>
@@ -52,10 +40,6 @@
 
     <div v-else-if="!loading" class="config-page-body">
         <section class="editor-panel" :aria-busy="sectionLoading">
-          <p v-if="selectedSection === 'ssl' && status.tlsMode === 'proxy'" class="heading-note" role="note">
-            当前由反向代理提供 HTTPS，Smail 不自动申请或续期 SSL 证书。下方配置仅用于本地邮件服务证书；外部续期后请重新导入并应用，不能仅更新反代服务器上的证书。
-          </p>
-
           <el-alert
             v-if="sectionError"
             :title="sectionError"
@@ -65,7 +49,6 @@
             class="config-alert"
           />
 
-          <MailPortSummary v-if="mailPortSummary && !sectionLoading && !sectionError" :services="mailPortSummary" />
           <ConfigForm
             v-if="!sectionLoading && !sectionError"
             :section="selectedSection"
@@ -74,8 +57,6 @@
             :disabled="!canWrite || !!working || !!pendingCandidate"
             @change="updateField"
           />
-          <p v-if="sensitiveHint" id="config-sensitive-hint" class="editor-hint">{{ sensitiveHint }}。</p>
-
           <div v-if="secretField" class="secret-editor">
             <div>
               <label for="config-secret-input">{{ secretField.label }}</label>
@@ -129,7 +110,6 @@
                 {{ savedGeneration ? `应用代次 ${savedGeneration}` : '应用配置' }}
               </el-button>
             </div>
-            <p class="action-hint">保存不会立即生效；需要继续修改时先取消候选。跨会话恢复或取消需要近期认证并勾选确认。</p>
           </div>
           <div v-if="validationResult" class="result-box" :class="validationResult.valid ? 'result-success' : 'result-error'" role="status">
             <strong>{{ validationResult.valid ? '验证通过' : '验证未通过' }}</strong>
@@ -149,16 +129,12 @@
 <script setup>
 import { inject } from 'vue'
 import ConfigForm from '../ConfigForm/ConfigForm.vue'
-import MailPortSummary from '../MailPortSummary/MailPortSummary.vue'
 
 const {
-  mailPortSummary,
   availabilityError,
   loading,
   working,
   status,
-  stateLabel,
-  stateTagType,
   selectedSection,
   currentSection,
   sectionLoading,
@@ -167,7 +143,6 @@ const {
   updateField,
   updateSecret,
   sectionError,
-  sensitiveHint,
   secretField,
   secretValue,
   confirmed,
