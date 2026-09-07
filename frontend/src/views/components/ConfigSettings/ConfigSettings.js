@@ -82,7 +82,7 @@ export function usePage(pageKey = 'base') {
       const scope = pending.payload && loadedText.value
         ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的插件运行配置未变化。')
         : '候选内容尚未完整读取，请刷新后核对。'
-      return `${scope}三个插件共用一个配置分区，请在对应三级菜单核对；应用时整个候选一起生效，其他插件的原有配置会保留。`
+      return `${scope}三个插件共用一组运行配置，请在对应三级菜单核对；完成保存时会统一生效，其他插件的原有配置会保留。`
     }
     if (pending?.section !== 'mail' || apiSection() !== 'mail') return ''
     const active = readFormConfig(loadedText.value)
@@ -101,7 +101,7 @@ export function usePage(pageKey = 'base') {
     const scope = pending.payload && loadedText.value
       ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的邮件服务与安全策略未变化。')
       : '候选内容尚未完整读取，请刷新后核对。'
-    return `${scope}邮件服务页和安全策略页共用一个候选配置；应用时全部变更一起生效，监听端口变更仍需重启后端。`
+    return `${scope}邮件服务页和安全策略页共用一组运行配置；完成保存时全部变更一起生效，监听端口变更仍需重启后端。`
   })
   let savedInput = null
   const validationResult = ref(null)
@@ -577,7 +577,7 @@ export function usePage(pageKey = 'base') {
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await loadStatus()
       await loadPending()
-      if (!quiet) ElMessage.success('配置已保存，等待应用')
+      if (!quiet) ElMessage.success('配置已暂存，正在完成保存')
       return true
     } catch (error) {
       if (isRecentAuthenticationCancelled(error)) return false
@@ -625,7 +625,7 @@ export function usePage(pageKey = 'base') {
       return
     }
     const saved = await saveConfig({ quiet: true })
-    if (saved) await applyConfig({ successMessage: '配置已保存并应用' })
+    if (saved) await applyConfig({ successMessage: '配置已保存' })
   }
 
   const continuePending = async () => {
@@ -716,7 +716,7 @@ export function usePage(pageKey = 'base') {
     if (!hasChanges.value && !migrationToken.value && !rollbackPreview.value) return true
     try {
       await ElMessageBox.confirm(
-        '当前页有编辑内容、待应用候选配置或操作预览。离开会清除本页状态，但不会撤销已保存到服务器的候选配置。确认离开吗？',
+        '当前页有编辑内容、未完成的保存或操作预览。离开会清除本页状态，但不会撤销已暂存到服务器的更改。确认离开吗？',
         '确认离开当前页',
         { type: 'warning', confirmButtonText: '离开页面', cancelButtonText: '继续编辑' }
       )

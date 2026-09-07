@@ -78,7 +78,7 @@
           <div v-if="canWrite" class="editor-footer">
             <el-alert
               v-if="pendingCandidate"
-              title="有一项配置尚未生效，可以继续应用或放弃更改。"
+              title="上次保存尚未完成，可以继续保存或放弃本次更改。"
               type="warning"
               :closable="false"
               show-icon
@@ -98,7 +98,7 @@
                 :disabled="sectionLoading || !!working || !!sectionError || !hasChanges"
                 @click="saveAndApply"
               >
-                保存并应用
+                保存配置
               </el-button>
               <el-button
                 v-else
@@ -107,7 +107,7 @@
                 :disabled="sectionLoading || !!working || !!sectionError"
                 @click="continuePending"
               >
-                继续应用
+                继续保存
               </el-button>
               <el-button
                 v-if="pendingCandidate"

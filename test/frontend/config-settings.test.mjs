@@ -9,6 +9,7 @@ const formSource = readFileSync(new URL('../../frontend/src/views/components/Con
 const formHelpers = compileFunction(formSource.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, updateFormConfig, validateFormConfig }')()
 const recentAuthenticationSource = readFileSync(new URL('../../frontend/src/utils/recentAuthentication.js', import.meta.url), 'utf8')
   .replace(/^import .*$/gm, '')
+  .replaceAll('export async function ', 'async function ')
   .replaceAll('export function ', 'function ')
 const compileRecentAuthentication = compileFunction(
   recentAuthenticationSource + '\nreturn { isRecentAuthenticationCancelled, requestWithRecentAuthentication }',
@@ -429,7 +430,7 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
   assert.doesNotMatch(template, /&#x[0-9a-f]+;/i)
 })
 
-test('配置编辑页将验证、候选保存和应用精简为单一操作', () => {
+test('配置编辑页将验证、候选保存和应用精简为单一保存操作', () => {
   const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
   const template = readFileSync(new URL('ConfigEditor/ConfigEditor.vue', root), 'utf8')
   const sharedCss = readFileSync(new URL('ConfigSettings.css', root), 'utf8')
@@ -437,9 +438,9 @@ test('配置编辑页将验证、候选保存和应用精简为单一操作', ()
   assert.doesNotMatch(template, /change-workflow|step-number|配置变更流程/)
   assert.doesNotMatch(sharedCss + editorCss, /change-workflow|step-number/)
   assert.match(template, /@click="saveAndApply"/)
-  assert.match(template, /保存并应用/)
+  assert.match(template, /保存配置/)
   assert.match(template, /@click="continuePending"/)
-  assert.match(template, /继续应用/)
+  assert.match(template, /继续保存/)
   assert.match(template, /v-if="canWrite" class="editor-footer"/)
   assert.match(template, /@click="managePending\('cancel'\)"/)
   assert.match(template, /放弃更改/)
@@ -857,7 +858,7 @@ test('邮件页与安全策略页共享候选并明确提示改动范围，忽�
     assert.match(page.pendingScopeHint.value, /邮件服务与安全策略未变化/)
     page.pendingCandidate.value.payload = { ...active, pop3: { port: 1110, tlsPort: 1995 }, policy: { maxMessageBytes: 5678 } }
     assert.match(page.pendingScopeHint.value, /本次候选涉及：POP3 监听、邮件与账号策略。/)
-    assert.match(page.pendingScopeHint.value, /邮件服务页和安全策略页共用一个候选配置/)
+    assert.match(page.pendingScopeHint.value, /邮件服务页和安全策略页共用一组运行配置/)
     page.pendingCandidate.value = { section: 'smtp' }
     assert.equal(page.pendingScopeHint.value, '')
     page.pendingCandidate.value = { section: 'mail' }
@@ -924,7 +925,7 @@ for (const key of ['spam_block', 'telegram_push', 'wechat_push']) {
     const restored = fixture(() => {}, other, { http }).page
     await restored.loadAll()
     assert.equal(restored.savedGeneration.value, 2)
-    assert.match(restored.pendingScopeHint.value, /三个插件共用一个配置分区/)
+    assert.match(restored.pendingScopeHint.value, /三个插件共用一组运行配置/)
     assert.ok(restored.pendingScopeHint.value.includes(page.currentSection.value.label))
     await restored.applyConfig()
     assert.ok(requests.includes('/api/v1/config/plugins/apply'))

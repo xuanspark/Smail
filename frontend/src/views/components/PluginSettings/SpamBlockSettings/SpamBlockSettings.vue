@@ -25,7 +25,7 @@
       show-icon
     />
 
-    <el-alert v-if="pendingCandidate" title="有一项配置尚未生效，可以继续应用或放弃更改。" type="warning" :closable="false" show-icon />
+    <el-alert v-if="pendingCandidate" title="上次保存尚未完成，可以继续保存或放弃本次更改。" type="warning" :closable="false" show-icon />
     <el-form label-position="top" class="spam-form">
       <el-form-item label="模型 API 接口地址">
         <el-input
@@ -68,7 +68,7 @@
           :disabled="!canWrite() || !!working || loading || !hasChanges"
           @click="saveAndApply"
         >
-          保存并应用
+          保存配置
         </el-button>
         <el-button
           v-else
@@ -77,7 +77,7 @@
           :disabled="!canWrite() || !!working || loading"
           @click="continuePending"
         >
-          继续应用
+          继续保存
         </el-button>
         <el-button v-if="canWrite() && pendingCandidate" type="danger" plain :disabled="!!working || pendingCandidate.committed" @click="managePending('cancel')">放弃更改</el-button>
       </div>

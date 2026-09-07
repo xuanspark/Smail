@@ -64,6 +64,8 @@ function isAuthenticationRefreshRequest(config) {
 }
 
 function isAuthenticationFailureError(error) {
+    const errorCode = error?.response?.data?.data?.code
+    if (errorCode === 'RECENT_AUTH_REQUIRED') return false
     return error?.response?.data?.errorNo === 403
         || (error?.response?.status === 403 && isAuthenticationRefreshRequest(error.config))
 }
@@ -71,6 +73,7 @@ function isAuthenticationFailureError(error) {
 http.interceptors.response.use(async (response) => {
     //响应成功
     if (response.data?.errorNo === 403
+        && response.data?.data?.code !== 'RECENT_AUTH_REQUIRED'
         && !isSetupRequest(response.config)
         && !isAuthenticationRefreshRequest(response.config)) {
         await handleLoginRedirect();

@@ -25,6 +25,7 @@ func TestReauthenticateCurrentUser(t *testing.T) {
 	oldSession := session.Instance
 	oldUserAttempts := reauthUserAttempts
 	oldIPAttempts := reauthIPAttempts
+	testRoot := t.TempDir()
 	t.Cleanup(func() {
 		if db.Instance != nil && db.Instance != oldDB {
 			_ = db.Instance.Close()
@@ -36,7 +37,7 @@ func TestReauthenticateCurrentUser(t *testing.T) {
 		reauthIPAttempts = oldIPAttempts
 	})
 
-	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(t.TempDir(), "reauth.db")}
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "reauth.db")}
 	if err := db.Init(""); err != nil {
 		t.Fatal(err)
 	}

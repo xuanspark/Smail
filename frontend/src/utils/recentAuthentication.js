@@ -18,12 +18,12 @@ export async function requestWithRecentAuthentication(request) {
   let password = ''
   try {
     const result = await ElMessageBox.prompt(
-      '为保护敏感配置，请确认当前登录密码。确认后将自动继续应用。',
+      '为保护敏感配置，请确认当前登录密码。确认后将自动完成保存。',
       '确认当前密码',
       {
         inputType: 'password',
         inputPlaceholder: '请输入当前密码',
-        confirmButtonText: '确认并继续',
+        confirmButtonText: '确认并保存',
         cancelButtonText: '取消',
         closeOnClickModal: false,
         inputValidator: value => String(value || '').length > 0 || '请输入当前密码'

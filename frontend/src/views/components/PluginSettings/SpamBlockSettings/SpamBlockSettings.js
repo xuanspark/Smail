@@ -131,7 +131,7 @@ export function useSpamBlockSettings() {
       savedInput = JSON.stringify(settings)
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await load()
-      if (!quiet) ElMessage.success('垃圾邮件插件配置已保存，等待应用')
+      if (!quiet) ElMessage.success('垃圾邮件插件配置已暂存，正在完成保存')
       return true
     } catch (error) {
       if (isRecentAuthenticationCancelled(error)) return false
@@ -201,7 +201,7 @@ export function useSpamBlockSettings() {
       return
     }
     const saved = await save({ quiet: true })
-    if (saved) await apply({ successMessage: '垃圾邮件插件配置已保存并应用' })
+    if (saved) await apply({ successMessage: '垃圾邮件插件配置已保存' })
   }
 
   const continuePending = async () => {
