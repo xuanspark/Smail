@@ -1,10 +1,17 @@
 package config
 
-// 邮件监听与发信中继相互独立。零值表示沿用兼容默认值，不表示关闭服务。
+const (
+	MailSecurityBoth        = "both"
+	MailSecuritySTARTTLS    = "starttls"
+	MailSecurityImplicitTLS = "implicit_tls"
+)
+
+// 邮件监听与发信中继相互独立。未设置加密模式的旧配置继续同时开放两套监听。
 type SMTPListenerConfig struct {
-	Port         int `json:"port"`
-	STARTTLSPort int `json:"starttlsPort"`
-	TLSPort      int `json:"tlsPort"`
+	Port         int    `json:"port"`
+	STARTTLSPort int    `json:"starttlsPort"`
+	TLSPort      int    `json:"tlsPort"`
+	Security     string `json:"security,omitempty"`
 }
 
 type IMAPListenerConfig struct {
@@ -16,6 +23,32 @@ type POP3ListenerConfig struct {
 	TLSPort int `json:"tlsPort"`
 }
 
+func ResolveMailSecurity(listener SMTPListenerConfig) string {
+	switch NormalizeMailSecurity(listener.Security) {
+	case MailSecuritySTARTTLS:
+		return MailSecuritySTARTTLS
+	case MailSecurityImplicitTLS:
+		return MailSecurityImplicitTLS
+	case "", MailSecurityBoth:
+		return MailSecurityBoth
+	default:
+		return listener.Security
+	}
+}
+
+// NormalizeMailSecurity 保留空值及未知值，只将旧版 TLS 名称规范为当前名称。
+func NormalizeMailSecurity(value string) string {
+	if value == "tls" {
+		return MailSecurityImplicitTLS
+	}
+	return value
+}
+
+// PublicMailSecurity 保留旧配置的空值，只规范公开视图中的旧版名称。
+func PublicMailSecurity(listener SMTPListenerConfig) string {
+	return NormalizeMailSecurity(listener.Security)
+}
+
 // ResolveMailPorts 是公开配置视图、冲突校验及真实监听的共同端口来源。
 func ResolveMailPorts(smtp SMTPSectionConfig, email EmailSectionConfig) MailPorts {
 	portOr := func(port, fallback int) int {
@@ -24,7 +57,7 @@ func ResolveMailPorts(smtp SMTPSectionConfig, email EmailSectionConfig) MailPort
 		}
 		return fallback
 	}
-	return MailPorts{
+	ports := MailPorts{
 		SMTP:         portOr(smtp.Listener.Port, portOr(email.Policy.SMTPPort, 25)),
 		SMTPSTARTTLS: portOr(smtp.Listener.STARTTLSPort, 587),
 		SMTPTLS:      portOr(smtp.Listener.TLSPort, 465),
@@ -33,9 +66,34 @@ func ResolveMailPorts(smtp SMTPSectionConfig, email EmailSectionConfig) MailPort
 		POP3:    portOr(email.POP3.Port, portOr(email.Policy.POP3Port, 110)),
 		POP3TLS: portOr(email.POP3.TLSPort, 995),
 	}
+	switch ResolveMailSecurity(smtp.Listener) {
+	case MailSecuritySTARTTLS:
+		ports.SMTPTLS = 0
+		ports.IMAP = portOr(email.IMAP.TLSPort, 143)
+		ports.POP3TLS = 0
+	case MailSecurityImplicitTLS:
+		ports.SMTPSTARTTLS = 0
+		ports.IMAP = portOr(email.IMAP.TLSPort, 993)
+		ports.POP3 = 0
+	}
+	return ports
 }
 
 func validateMailListeners(smtp SMTPSectionConfig, email EmailSectionConfig) error {
+	if smtp.Listener.Security == MailSecurityBoth {
+		return ErrInvalidRuntimeConfig
+	}
+	security := ResolveMailSecurity(smtp.Listener)
+	if security != MailSecurityBoth && security != MailSecuritySTARTTLS && security != MailSecurityImplicitTLS {
+		return ErrInvalidRuntimeConfig
+	}
+	relayConfigured := smtpRelayConfigured(smtp.Relay)
+	if relayConfigured && security != MailSecurityBoth {
+		relaySecurity := NormalizeMailSecurity(smtp.Relay.Security)
+		if relaySecurity != security {
+			return ErrInvalidSMTP
+		}
+	}
 	for _, port := range []int{
 		smtp.Listener.Port, smtp.Listener.STARTTLSPort, smtp.Listener.TLSPort,
 		email.IMAP.TLSPort, email.POP3.Port, email.POP3.TLSPort,

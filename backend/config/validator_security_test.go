@@ -184,6 +184,15 @@ func TestValidateSMTPKeepsLoginVerificationIndependentFromRelay(t *testing.T) {
 			valid: true,
 		},
 		{
+			name: "unified defaults without relay host",
+			smtp: SMTPConfig{
+				RelayPort:  587,
+				Security:   "starttls",
+				FromDomain: "example.com",
+			},
+			valid: true,
+		},
+		{
 			name: "partially configured relay",
 			smtp: SMTPConfig{
 				RelayHost:   "smtp.example.com",

@@ -149,8 +149,7 @@ func validateSMTP(smtp SMTPConfig) error {
 			return ErrInvalidSMTP
 		}
 	}
-	relayConfigured := smtp.RelayHost != "" || smtp.RelayPort != 0 || smtp.Username != "" ||
-		smtp.Password.Configured() || smtp.Security != "" || smtp.From != ""
+	relayConfigured := smtpRelayConfigured(smtp)
 	if !relayConfigured {
 		return nil
 	}
@@ -165,6 +164,12 @@ func validateSMTP(smtp SMTPConfig) error {
 		return ErrInvalidSMTP
 	}
 	return nil
+}
+
+// smtpRelayConfigured 只把实际连接或发件身份字段视为启用中继。
+// 推荐端口、统一加密方式和默认发件域名单独存在时，中继仍保持可选状态。
+func smtpRelayConfigured(smtp SMTPConfig) bool {
+	return smtp.RelayHost != "" || smtp.Username != "" || smtp.Password.Configured() || smtp.From != ""
 }
 
 func validateSSL(ssl SSLConfig) error {

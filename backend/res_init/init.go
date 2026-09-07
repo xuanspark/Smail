@@ -194,10 +194,15 @@ func Init(serverVersion string) error {
 			}()
 		}
 		hooks.Init(serverVersion)
-		// smtp server start
+		mailSecurity := config.CurrentMailSecurity()
+		// SMTP 25 用于服务器间投递，始终保留并支持机会性 STARTTLS。
 		startService(serviceErrors, "SMTP", smtp_server.Start)
-		startService(serviceErrors, "SMTP TLS", smtp_server.StartWithTLS)
-		startService(serviceErrors, "SMTP STARTTLS", smtp_server.StartWithTLSNew)
+		if mailSecurity == config.MailSecurityBoth || mailSecurity == config.MailSecurityImplicitTLS {
+			startService(serviceErrors, "SMTP TLS", smtp_server.StartWithTLS)
+		}
+		if mailSecurity == config.MailSecurityBoth || mailSecurity == config.MailSecuritySTARTTLS {
+			startService(serviceErrors, "SMTP STARTTLS", smtp_server.StartWithTLSNew)
+		}
 		// http server start
 		startService(serviceErrors, "HTTPS", http_server.HttpsStart)
 		startService(serviceErrors, "HTTP", http_server.HttpStart)
@@ -211,11 +216,17 @@ func Init(serverVersion string) error {
 		// 更新 SSL 配置。
 		ssl.Update(false)
 
-		// pop3 server start
-		startService(serviceErrors, "POP3", pop3_server.Start)
-		startService(serviceErrors, "POP3 TLS", pop3_server.StartWithTls)
-		// imap server start
-		startService(serviceErrors, "IMAP TLS", imap_server.StarTLS)
+		if mailSecurity == config.MailSecurityBoth || mailSecurity == config.MailSecuritySTARTTLS {
+			startService(serviceErrors, "POP3 STLS", pop3_server.Start)
+		}
+		if mailSecurity == config.MailSecurityBoth || mailSecurity == config.MailSecurityImplicitTLS {
+			startService(serviceErrors, "POP3 TLS", pop3_server.StartWithTls)
+		}
+		if mailSecurity == config.MailSecuritySTARTTLS {
+			startService(serviceErrors, "IMAP STARTTLS", imap_server.Start)
+		} else {
+			startService(serviceErrors, "IMAP TLS", imap_server.StarTLS)
+		}
 
 		log.Info("邮箱服务已启动")
 		restart.SetCurrent(restart.NewSignalTrigger(signal.RestartChan))

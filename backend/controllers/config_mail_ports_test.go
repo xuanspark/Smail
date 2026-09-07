@@ -44,6 +44,9 @@ func TestPublicMailPortsMatchListenersWithoutChangingSnapshot(t *testing.T) {
 		if mail.Listener.Port != want.SMTP || mail.Listener.STARTTLSPort != want.SMTPSTARTTLS || mail.Listener.TLSPort != want.SMTPTLS || mail.IMAP.TLSPort != want.IMAP || mail.POP3.Port != want.POP3 || mail.POP3.TLSPort != want.POP3TLS {
 			t.Fatal("combined public mail ports differ from listener configuration")
 		}
+		if mail.Listener.Security != runtime.SMTP.Listener.Security {
+			t.Fatal("public mail view changed legacy security state")
+		}
 		smtpPublic, err := publicConfigSection(runtime, config.SectionSMTP)
 		if err != nil {
 			t.Fatal(err)
@@ -68,6 +71,39 @@ func TestPublicMailPortsMatchListenersWithoutChangingSnapshot(t *testing.T) {
 		}
 		if before != runtime.Email {
 			t.Fatal("public view changed runtime configuration")
+		}
+	}
+}
+
+func TestPublicMailSecurityNormalizesLegacyTLSNames(t *testing.T) {
+	runtime := config.RuntimeConfig{
+		SMTP: config.SMTPSectionConfig{
+			Listener: config.SMTPListenerConfig{Security: "tls"},
+			Relay:    config.SMTPConfig{Security: "tls"},
+		},
+	}
+
+	for _, section := range []config.Section{config.SectionSMTP, config.SectionMail} {
+		public, err := publicConfigSection(runtime, section)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(public)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var value struct {
+			Listener config.SMTPListenerConfig `json:"listener"`
+			Relay    config.SMTPConfig         `json:"relay"`
+		}
+		if err := json.Unmarshal(data, &value); err != nil {
+			t.Fatal(err)
+		}
+		if value.Listener.Security != config.MailSecurityImplicitTLS {
+			t.Fatalf("%s listener security = %q, want %q", section, value.Listener.Security, config.MailSecurityImplicitTLS)
+		}
+		if value.Relay.Security != config.MailSecurityImplicitTLS {
+			t.Fatalf("%s relay security = %q, want %q", section, value.Relay.Security, config.MailSecurityImplicitTLS)
 		}
 	}
 }

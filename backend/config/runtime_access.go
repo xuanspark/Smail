@@ -289,6 +289,15 @@ func CurrentMailPorts() MailPorts {
 	// 旧版 SMTPPort 属于发信中继，不能用作本机监听端口。
 	return ResolveMailPorts(SMTPSectionConfig{}, EmailSectionConfig{})
 }
+
+func CurrentMailSecurity() string {
+	if manager := CurrentManager(); manager != nil {
+		if runtime := manager.Snapshot(); runtime.Generation != 0 {
+			return ResolveMailSecurity(runtime.SMTP.Listener)
+		}
+	}
+	return MailSecurityBoth
+}
 func cloneHTTPConfig(source HTTPConfig) HTTPConfig {
 	clone := source
 	clone.TrustedProxyCIDRs = append([]string(nil), source.TrustedProxyCIDRs...)

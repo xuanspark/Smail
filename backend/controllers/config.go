@@ -449,12 +449,12 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 		ports := config.ResolveMailPorts(runtime.SMTP, runtime.Email)
 		return map[string]any{
 			"meta":     runtime.SMTP.Meta,
-			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS},
+			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS, Security: config.PublicMailSecurity(runtime.SMTP.Listener)},
 			"relay": map[string]any{
 				"relayHost":           runtime.SMTP.Relay.RelayHost,
 				"relayPort":           runtime.SMTP.Relay.RelayPort,
 				"username":            runtime.SMTP.Relay.Username,
-				"security":            runtime.SMTP.Relay.Security,
+				"security":            config.NormalizeMailSecurity(runtime.SMTP.Relay.Security),
 				"from":                runtime.SMTP.Relay.From,
 				"fromDomain":          runtime.SMTP.Relay.FromDomain,
 				"verificationEnabled": runtime.SMTP.Relay.VerificationEnabled,
@@ -467,12 +467,12 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 		ports := config.ResolveMailPorts(runtime.SMTP, runtime.Email)
 		return map[string]any{
 			"meta":     runtime.SMTP.Meta,
-			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS},
+			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS, Security: config.PublicMailSecurity(runtime.SMTP.Listener)},
 			"relay": map[string]any{
 				"relayHost":           runtime.SMTP.Relay.RelayHost,
 				"relayPort":           runtime.SMTP.Relay.RelayPort,
 				"username":            runtime.SMTP.Relay.Username,
-				"security":            runtime.SMTP.Relay.Security,
+				"security":            config.NormalizeMailSecurity(runtime.SMTP.Relay.Security),
 				"from":                runtime.SMTP.Relay.From,
 				"fromDomain":          runtime.SMTP.Relay.FromDomain,
 				"verificationEnabled": runtime.SMTP.Relay.VerificationEnabled,

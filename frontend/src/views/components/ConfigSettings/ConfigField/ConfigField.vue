@@ -25,7 +25,13 @@
       placeholder="请选择"
       @update:model-value="update"
     >
-      <el-option v-for="option in selectOptions" :key="String(option.value)" :label="option.label" :value="option.value" />
+      <el-option
+        v-for="option in selectOptions"
+        :key="String(option.value)"
+        :label="option.label"
+        :value="option.value"
+        :disabled="option.disabled === true"
+      />
     </el-select>
     <el-switch
       v-else-if="field.type === 'switch'"

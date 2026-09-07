@@ -9,15 +9,37 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var instance *imapserver.Server
 var instanceTLS *imapserver.Server
 
 func Stop() {
+	if instance != nil {
+		if err := instance.Close(); err != nil {
+			log.WithError(err).Warn("close IMAP STARTTLS server failed")
+		}
+		instance = nil
+	}
 	if instanceTLS != nil {
 		if err := instanceTLS.Close(); err != nil {
 			log.WithError(err).Warn("close IMAP server failed")
 		}
 		instanceTLS = nil
 	}
+}
+
+// Start 启动普通 IMAP 监听，认证前必须通过 STARTTLS 升级连接。
+func Start() error {
+	server, err := newIMAPServer()
+	if err != nil {
+		return err
+	}
+	instance = server
+	imapPort := config.CurrentMailPorts().IMAP
+	log.Infof("IMAP With STARTTLS Server Start On Port :%d", imapPort)
+	if err := instance.ListenAndServe(fmt.Sprintf(":%d", imapPort)); err != nil {
+		return fmt.Errorf("serve IMAP STARTTLS: %w", err)
+	}
+	return nil
 }
 
 // StarTLS 启动隐式 TLS 监听，不提供明文认证入口。

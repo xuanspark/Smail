@@ -77,12 +77,12 @@ for (const failedRequest of ['/status', '/pending']) {
     let fail = false
     let saves = 0
     const active = {
-      listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+      listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
       relay: {
         relayHost: 'old.example.com', relayPort: 587, security: 'starttls',
         from: 'sender@example.com', fromDomain: 'example.com'
       },
-      imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+      imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
     }
     const { page } = fixture(() => {}, 'mail', { http: {
       get: async path => {
@@ -271,9 +271,9 @@ for (const key of ['mail', 'security_policy']) {
     let pending = null
     let active = {
       meta: { schema: 1, generation: 1 },
-      listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+      listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
       relay: { verificationEnabled: true, loginPolicy: 'new_device' },
-      imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 },
+      imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 },
       policy: { maxMessageBytes: 1234, spamFilterLevel: 1, externalRecoveryEnabled: true }
     }
     const { page } = fixture(() => {}, key, { http: {
@@ -451,10 +451,10 @@ test('保存并应用一次点击按候选协议连续完成保存和应用', as
   const requests = []
   let pending = null
   const active = {
-    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: { relayHost: '', relayPort: 0, security: '', from: '', fromDomain: '' },
-    imap: { tlsPort: 993 },
-    pop3: { port: 110, tlsPort: 995 },
+    imap: { tlsPort: 143 },
+    pop3: { port: 110, tlsPort: 0 },
     policy: { maxMessageBytes: 10 << 20, spamFilterLevel: 2 }
   }
   const { page } = fixture(async path => ({
@@ -494,9 +494,9 @@ test('最近认证过期时在当前页确认密码并自动重试保存和应�
   let saveAttempts = 0
   let prompts = 0
   const active = {
-    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: { relayHost: '', relayPort: 0, security: '', from: '', fromDomain: '' },
-    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+    imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
   }
   const recentAuthError = Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
   const { page } = fixture(async () => ({ errorNo: 0, data: active }), 'mail', {
@@ -539,8 +539,8 @@ test('最近认证过期时在当前页确认密码并自动重试保存和应�
 test('取消最近身份确认时保留配置输入且不重试请求', async () => {
   let saves = 0
   const active = {
-    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
-    relay: {}, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+    listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
+    relay: {}, imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
   }
   const { page, messages } = fixture(async path => ({
     errorNo: 0,
@@ -654,12 +654,12 @@ test('邮件页保持验证、保存、应用端点和代次协议，中继密�
   const requests = []
   let pending = null
   const active = {
-    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: {
       relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
       from: 'sender@example.com', fromDomain: 'example.com'
     },
-    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+    imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
   }
   const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 8 } : active }), 'mail', {
     http: {
@@ -729,12 +729,12 @@ test('可视化编辑按权限和工作状态保护，编辑会清除过期确�
 test('前端无效字段阻止网络请求，修正字段后同步清除错误', async () => {
   const requests = []
   const config = {
-    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: {
       relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
       from: 'sender@example.com', fromDomain: 'example.com'
     },
-    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+    imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
   }
   const { page } = fixture(async () => ({ errorNo: 0, data: config }), 'mail', {
     http: { post: async path => { requests.push(path); return { errorNo: 0, data: { valid: true } } } }
@@ -789,12 +789,12 @@ test('SQLite 不显示或发送密码，网络数据库和中继密码留空保�
   }
   let request
   const mail = {
-    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: {
       relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
       from: 'sender@example.com', fromDomain: 'example.com'
     },
-    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+    imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
   }
   const { page } = fixture(async () => ({ errorNo: 0, data: mail }), 'mail', {
     http: { post: async (path, body) => { request = body; return { errorNo: 0, data: { valid: true } } } }

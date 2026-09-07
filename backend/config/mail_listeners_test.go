@@ -146,3 +146,67 @@ func TestOldPartitionPayloadsKeepExistingListenerDefaults(t *testing.T) {
 		t.Fatalf("legacy listeners changed: %+v", got)
 	}
 }
+
+func TestUnifiedMailSecurityResolvesOnlySelectedClientListeners(t *testing.T) {
+	for _, test := range []struct {
+		security string
+		want     MailPorts
+	}{
+		{MailSecuritySTARTTLS, MailPorts{SMTP: 25, SMTPSTARTTLS: 587, IMAP: 143, POP3: 110}},
+		{MailSecurityImplicitTLS, MailPorts{SMTP: 25, SMTPTLS: 465, IMAP: 993, POP3TLS: 995}},
+	} {
+		smtp := SMTPSectionConfig{Listener: SMTPListenerConfig{Security: test.security}}
+		if got := ResolveMailPorts(smtp, EmailSectionConfig{}); got != test.want {
+			t.Fatalf("%s ports = %+v, want %+v", test.security, got, test.want)
+		}
+	}
+}
+
+func TestLegacyMailSecurityKeepsExistingListeners(t *testing.T) {
+	smtp := SMTPSectionConfig{Listener: SMTPListenerConfig{Port: 2525, STARTTLSPort: 2587, TLSPort: 2465}}
+	email := EmailSectionConfig{IMAP: IMAPListenerConfig{TLSPort: 2993}, POP3: POP3ListenerConfig{Port: 2110, TLSPort: 2995}}
+	want := MailPorts{SMTP: 2525, SMTPSTARTTLS: 2587, SMTPTLS: 2465, IMAP: 2993, POP3: 2110, POP3TLS: 2995}
+	if got := ResolveMailPorts(smtp, email); got != want {
+		t.Fatalf("legacy ports = %+v, want %+v", got, want)
+	}
+	if got := ResolveMailSecurity(smtp.Listener); got != MailSecurityBoth {
+		t.Fatalf("legacy security = %q, want %q", got, MailSecurityBoth)
+	}
+	if got := PublicMailSecurity(smtp.Listener); got != "" {
+		t.Fatalf("legacy public security = %q, want empty", got)
+	}
+	if got := PublicMailSecurity(SMTPListenerConfig{Security: "tls"}); got != MailSecurityImplicitTLS {
+		t.Fatalf("legacy TLS public security = %q, want %q", got, MailSecurityImplicitTLS)
+	}
+	if got := NormalizeMailSecurity("tls"); got != MailSecurityImplicitTLS {
+		t.Fatalf("legacy relay security = %q, want %q", got, MailSecurityImplicitTLS)
+	}
+}
+
+func TestMailListenerValidationAcceptsMatchingLegacyTLSNames(t *testing.T) {
+	runtime := validRuntimeConfig()
+	runtime.SMTP.Listener.Security = "tls"
+	runtime.SMTP.Relay.Security = "tls"
+	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err != nil {
+		t.Fatalf("matching legacy TLS validation = %v", err)
+	}
+}
+
+func TestMailListenerValidationRejectsUnknownSecurity(t *testing.T) {
+	runtime := validRuntimeConfig()
+	runtime.SMTP.Listener.Security = "unknown"
+	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); !errors.Is(err, ErrInvalidRuntimeConfig) {
+		t.Fatalf("validation = %v, want invalid runtime configuration", err)
+	}
+}
+
+func TestMailListenerValidationAllowsLegacyEmptySecurityButRejectsExplicitBoth(t *testing.T) {
+	runtime := validRuntimeConfig()
+	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err != nil {
+		t.Fatalf("legacy empty security validation = %v", err)
+	}
+	runtime.SMTP.Listener.Security = MailSecurityBoth
+	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); !errors.Is(err, ErrInvalidRuntimeConfig) {
+		t.Fatalf("explicit both validation = %v, want invalid runtime configuration", err)
+	}
+}
