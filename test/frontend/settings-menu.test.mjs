@@ -120,3 +120,17 @@ test('两级菜单分别提供选中、非选中悬停和键盘焦点样式', ()
     assert.match(read(`${name}/${name}.css`), /@container settings-content \(max-width: 560px\)/)
   }
 })
+
+test('配置管理只在真实移动端将内部导航移到内容顶部', () => {
+  const header = read('HomeHeader/HomeHeader.vue')
+  const config = read('ConfigSettings/ConfigSettings.css')
+  const containerStart = config.indexOf('@container settings-content (max-width: 560px)')
+  const desktopStart = config.indexOf('@media (min-width: 769px)', containerStart)
+  const containerRule = config.slice(containerStart, desktopStart)
+  assert.match(header, /min\(100vw, max\(50vw, 820px\)\)/)
+  assert.match(config, /grid-template-areas: "main submenu"/)
+  assert.match(config, /@media \(min-width: 769px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\)/)
+  assert.match(config, /@media \(max-width: 768px\)[\s\S]*"submenu"[\s\S]*"main"/)
+  assert.ok(containerStart >= 0 && desktopStart > containerStart)
+  assert.doesNotMatch(containerRule, /config-workspace|config-navigation/)
+})

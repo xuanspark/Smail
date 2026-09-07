@@ -99,7 +99,7 @@
 }
 .config-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 196px;
+  grid-template-columns: minmax(0, 1fr) clamp(156px, 30%, 196px);
   grid-template-areas: "main submenu";
   align-items: start;
   gap: 16px;
@@ -378,6 +378,62 @@
     flex-direction: column;
     gap: 10px;
   }
+}
+
+@media (min-width: 769px) {
+  .config-navigation {
+    gap: 10px;
+  }
+
+  .config-navigation > :deep(.settings-submenu) {
+    position: static;
+    padding: 2px 0 2px 10px;
+    border: 0;
+    border-left: 1px solid var(--pm-border-color);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .config-navigation > :deep(.settings-submenu-heading) {
+    flex-direction: row-reverse;
+    padding: 2px 8px 8px;
+  }
+
+  .config-navigation > :deep(.settings-submenu-list) {
+    display: grid;
+    gap: 2px;
+    padding: 0;
+  }
+
+  .config-navigation > :deep(.settings-submenu-entry),
+  .config-navigation > :deep(.settings-submenu-item) {
+    width: 100%;
+  }
+
+  .config-navigation > :deep(.settings-submenu-item) {
+    white-space: normal;
+  }
+
+  .config-navigation > :deep(.has-children) {
+    margin-top: 6px;
+    padding: 4px;
+  }
+
+  .config-navigation > :deep(.settings-tertiary-list) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .config-navigation > :deep(.settings-submenu-item.active::before) {
+    top: 10px;
+    right: auto;
+    bottom: 10px;
+    left: -11px;
+    width: 3px;
+    height: auto;
+  }
+}
+
+@media (max-width: 768px) {
   .config-workspace {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -385,8 +441,8 @@
       "main";
     gap: 16px;
   }
+
   .config-navigation {
-    gap: 12px;
     position: static;
   }
 }
