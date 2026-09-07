@@ -4,12 +4,12 @@
       <div class="authorization-header">
         <h3>邮件客户端协议</h3>
         <p class="authorization-desc">
-          本地邮件服务默认启动，不依赖 SMTP 中继。以下开关只控制当前账号的客户端访问权限，不影响其他用户或服务监听。
+          本地服务不依赖 SMTP 中继；开关只控制当前账号。
         </p>
       </div>
 
       <el-alert
-        title="登录名填写完整邮箱地址，密码填写本协议授权码，不能使用网页登录密码。授权码仅显示一次；关闭协议会暂停新登录，重新开启可继续使用未撤销的授权码。"
+        title="使用完整邮箱和协议授权码登录；授权码仅显示一次，重新开启可继续使用未撤销的授权码。"
         type="warning"
         :closable="false"
         show-icon
