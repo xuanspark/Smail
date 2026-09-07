@@ -3,7 +3,6 @@
     <div class="settings-header">
       <div>
         <h3>{{ pageTitle }}</h3>
-        <p class="settings-desc">维护工具独立运行，不会修改其他页面的编辑状态。</p>
       </div>
       <el-button plain :disabled="!!working" @click="refreshPage">刷新本页</el-button>
     </div>

@@ -82,7 +82,7 @@ const baseGroups = [
     field('domains.accepted', '接收邮件的域名', 'list', { required: true, wide: false, hint: '需包含主邮件域名，每个域名单独填写。', placeholder: 'example.com' }),
     field('logLevel', '日志级别', 'select', { options: options([['', '默认级别'], ['debug', '调试'], ['info', '信息'], ['warn', '警告'], ['error', '错误']]) })
   ]),
-  group('database', '数据库连接', '修改数据库类型、名称或文件请使用右侧“数据库迁移”，支持 SQLite、MySQL、PostgreSQL，避免切换到空数据库。', [
+  group('database', '数据库连接', '', [
     field('database.name', '数据库名称', 'text', { locked: true, show: networkDatabase }),
     field('database.host', '数据库主机', 'text', { required: true, show: networkDatabase, placeholder: '127.0.0.1' }),
     port('database.port', '数据库端口', { min: 1, show: networkDatabase }),
@@ -109,12 +109,12 @@ const baseGroups = [
 ]
 
 const smtpGroups = [
-  group('listener', 'SMTP 服务监听', '本地邮件服务默认启动，不受中继配置或用户协议开关控制。', [
+  group('listener', 'SMTP 服务监听', '', [
     port('listener.port', 'SMTP 收信端口', { min: 1, hint: '默认 25，用于接收其他邮件服务器投递，支持 STARTTLS；不是发信中继端口。' }),
     port('listener.starttlsPort', 'SMTP 提交端口（STARTTLS）', { min: 1, hint: '默认 587，客户端升级 TLS 后进行认证。' }),
     port('listener.tlsPort', 'SMTP 隐式 TLS 端口', { min: 1, hint: '默认 465，客户端建立连接时直接使用 TLS。' })
   ]),
-  group('relay', 'SMTP 中继连接（可选）', '仅用于验证及通知邮件外发，不负责启动本地邮件服务；未使用时可保留空值。', [
+  group('relay', 'SMTP 中继连接（可选）', '', [
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
     field('relay.security', '连接加密', 'select', {
       options: options([
@@ -131,7 +131,7 @@ const smtpGroups = [
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
     field('relay.fromDomain', '发件域名', 'text', { placeholder: 'example.com' })
   ]),
-  group('verification', '验证邮件策略', '启用前请确认服务器、端口、发件邮箱和认证信息完整。', [
+  group('verification', '验证邮件策略', '', [
     field('relay.verificationEnabled', '启用验证邮件发送', 'switch'),
     field('relay.loginPolicy', '中继登录验证策略', 'select', { options: loginOptions })
   ])
@@ -151,7 +151,7 @@ const pop3Groups = [
 ]
 
 const emailGroups = [
-  group('policy', '邮件与账号策略', '设置邮件大小、垃圾邮件过滤和账号恢复方式。', [
+  group('policy', '邮件与账号策略', '', [
     field('policy.maxMessageBytes', '最大邮件大小（字节）', 'number', { min: 0, max: Number.MAX_SAFE_INTEGER, integer: true, hint: '0 使用后端默认限制；1 MiB = 1048576 字节。' }),
     field('policy.spamFilterLevel', '垃圾邮件过滤级别', 'select', { fallback: 0, options: options([[0, '不过滤'], [1, 'SPF 与 DKIM 均失败时过滤'], [2, 'SPF 失败时过滤'], [3, 'DKIM 失败时过滤']]) }),
     field('policy.loginVerificationPolicy', '账号登录验证策略', 'select', { options: loginOptions }),
@@ -160,7 +160,7 @@ const emailGroups = [
 ]
 
 const sslGroups = [
-  group('certificate', '证书与存储', '这里只填写已导入受管存储的相对引用，不会上传文件或绕过证书校验。', [
+  group('certificate', '证书与存储', '', [
     field('tls.mode', '证书来源', 'select', { options: options([['managed_default', '系统管理证书'], ['managed_upload', '已导入的自定义证书'], ['default', '默认目录（兼容模式）'], ['custom', '自定义目录（兼容模式）']]) }),
     field('tls.defaultDirectory', '默认证书目录', 'text', { required: true, placeholder: 'config/ssl' }),
     field('tls.customDirectory', '自定义证书目录', 'text', { required: true, show: uploadedCertificate, placeholder: 'config/ssl/example.com' }),

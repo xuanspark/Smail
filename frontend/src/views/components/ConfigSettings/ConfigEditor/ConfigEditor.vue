@@ -9,7 +9,6 @@
               <span class="sr-only">运行状态：</span>{{ stateLabel }}
             </el-tag>
           </div>
-          <p class="settings-desc">{{ currentSection.description }}</p>
         </div>
         <div class="overview-actions">
           <el-button
