@@ -78,10 +78,7 @@ func sslUpdateLoop() {
 
 // 新增：HTTP 就绪探测（最多等待 ~90 秒）
 func waitHTTPReady() bool {
-	port := 80
-	if cfg := config.CurrentConfig(); cfg != nil && cfg.HttpPort > 0 {
-		port = cfg.HttpPort
-	}
+	port := config.CurrentHTTPConfig().Port
 	if port < 1 || port > 65535 {
 		log.Warnf("invalid HTTP port %d, skipping SSL update this round", port)
 		return false

@@ -12,13 +12,13 @@ yarn
 yarn dev
 ```
 
-开发代理默认连接本机 HTTPS 后端 `https://127.0.0.1:443`。如果后端使用其他地址，请在 `frontend/.env.development` 中设置：
+开发环境由前端占用 HTTP `80` 和 HTTPS `443`，后端 API 独立监听 `5201`。前端开发代理默认连接本机后端 `http://127.0.0.1:5201`。如果后端使用其他地址，请在 `frontend/.env.development` 中设置：
 
 ```env
-VITE_DEV_BACKEND_URL=https://127.0.0.1:443
+VITE_DEV_BACKEND_URL=http://127.0.0.1:5201
 ```
 
-自签名证书仅用于本地开发，代理不会校验证书链；生产环境应使用有效证书。
+前端开发服务使用 `config/ssl` 下的证书提供 HTTPS，HTTP `80` 只负责跳转到 HTTPS。生产环境应使用有效证书，并由正式 Web 服务器承载前端入口。
 
 ### 生产构建
 

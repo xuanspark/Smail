@@ -186,7 +186,7 @@ PMail 原版的协议登录流程与 Smail 不兼容，不能直接作为 Smail 
 
 2、后端： golang + MySQL/SQLite
 
-后端代码位于 `backend/`；推荐使用 `deploy/build.ps1` 构建后，通过 `deploy/start-dev.ps1` 启动开发服务。
+后端代码位于 `backend/`；推荐使用 `deploy/build.ps1` 构建后，通过 `deploy/start-dev.ps1` 启动开发服务。当前开发端口固定分工为：前端使用 HTTP `80` 和 HTTPS `443`，后端 API 使用 `5201`；前端通过代理访问后端，浏览器统一打开 HTTPS 前端地址。
 
 3、编译项目
 
