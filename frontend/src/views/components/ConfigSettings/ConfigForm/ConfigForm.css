@@ -52,6 +52,10 @@
   display: none;
 }
 
+.form-group[data-group="verification"] .config-field > :deep(.el-switch) {
+  align-items: flex-start;
+}
+
 .section-error {
   margin-left: 6px;
   color: var(--el-color-danger);

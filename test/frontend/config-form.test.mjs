@@ -160,6 +160,10 @@ test('分组只显示必要标题和字段错误，删除普通介绍、备注�
   assert.doesNotMatch(formStyle, /margin-top|padding-top/)
   assert.match(css, /\.config-form:not\(:first-child\)\s*\{\s*margin-top: 10px;/)
   assert.match(css, /\.form-group \+ \.form-group\s*\{[^}]*border-top:/)
+  assert.match(
+    css,
+    /\.form-group\[data-group="verification"\] \.config-field > :deep\(\.el-switch\)\s*\{\s*align-items: flex-start;/
+  )
 })
 
 test('单字段更新完整保留内部数据，锁定字段和污染路径无法写入', () => {
