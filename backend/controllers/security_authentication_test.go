@@ -10,6 +10,8 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/externalemail"
+	"git.pcux.cn/xuans/Smail/services/verification"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
 
@@ -64,6 +66,30 @@ func TestSuperAdminCannotManageRecoveryCodesThroughWeb(t *testing.T) {
 	}
 	if result.ErrorNo != response.NoAccessPrivileges {
 		t.Fatalf("error number = %d, want %d; body=%s", result.ErrorNo, response.NoAccessPrivileges, recorder.Body.String())
+	}
+}
+
+func TestBindExternalEmailReturnsStableRecentAuthenticationCode(t *testing.T) {
+	previous := securityRuntime
+	securityRuntime.external = &externalemail.Repository{}
+	securityRuntime.verification = &verification.Service{}
+	t.Cleanup(func() { securityRuntime = previous })
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/security/external-email/bind",
+		strings.NewReader(`{"email":"backup@example.com","type":"backup"}`),
+	)
+	BindExternalEmail(&appcontext.Context{UserID: 1, UserAccount: "alice"}, recorder, request)
+
+	var result response.Response
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	data, ok := result.Data.(map[string]any)
+	if result.ErrorNo != response.NoAccessPrivileges || !ok || data["code"] != string(access.CodeRecentAuthRequired) {
+		t.Fatalf("recent authentication response = %+v", result)
 	}
 }
 

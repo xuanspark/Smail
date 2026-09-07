@@ -93,6 +93,39 @@ func (r *Repository) Bind(request BindRequest) (*models.ExternalEmail, error) {
 	return item, nil
 }
 
+// FindPending 返回当前用户同一地址和用途尚未完成的绑定，供重新发送验证码复用。
+func (r *Repository) FindPending(userID int, email, emailType string) (*models.ExternalEmail, error) {
+	if r == nil || r.engine == nil || r.vault == nil || userID <= 0 {
+		return nil, ErrInvalidBinding
+	}
+	if emailType != models.ExternalEmailTypePrimary && emailType != models.ExternalEmailTypeBackup {
+		return nil, ErrInvalidBinding
+	}
+	normalized, err := NormalizeEmail(email)
+	if err != nil {
+		return nil, ErrInvalidBinding
+	}
+	fingerprint, err := r.vault.Fingerprint(normalized)
+	if err != nil {
+		return nil, err
+	}
+	item := &models.ExternalEmail{}
+	has, err := r.engine.Where(
+		"user_id = ? AND email_fingerprint = ? AND email_type = ? AND status = ?",
+		userID,
+		fingerprint,
+		emailType,
+		models.ExternalEmailStatusPending,
+	).Get(item)
+	if err != nil {
+		return nil, fmt.Errorf("find pending external email binding: %w", err)
+	}
+	if !has {
+		return nil, ErrBindingNotFound
+	}
+	return item, nil
+}
+
 func (r *Repository) List(userID int) ([]models.ExternalEmail, error) {
 	if r == nil || r.engine == nil || userID <= 0 {
 		return nil, ErrInvalidBinding

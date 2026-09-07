@@ -149,11 +149,13 @@ for (const action of ['edit', 'refresh']) {
     }
     const page = compileFunction(source + '\nreturn usePage("mail")', [
       'computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'ElMessageBox',
-      'http', 'useGlobalStatusStore', 'readFormConfig', 'updateFormConfig', 'validateFormConfig'
+      'http', 'useGlobalStatusStore', 'isRecentAuthenticationCancelled',
+      'requestWithRecentAuthentication', 'readFormConfig', 'updateFormConfig', 'validateFormConfig'
     ])(
       Vue.computed, () => {}, () => {}, Vue.reactive, Vue.ref,
       { success() {}, warning() {}, error: message => errors.push(message) }, { confirm: async () => true },
-      transport, () => ({ hasCapability: () => true }), readFormConfig, updateFormConfig, validateFormConfig
+      transport, () => ({ hasCapability: () => true }), () => false, request => request(),
+      readFormConfig, updateFormConfig, validateFormConfig
     )
     await page.loadAll()
     page.updateField(['policy', 'maxMessageBytes'], 8 << 20)
@@ -170,38 +172,71 @@ for (const action of ['edit', 'refresh']) {
 
 // 使用真实响应拦截器和页面函数；仅隔离网络、消息提示以及下载所需的浏览器对象。
 test('外部邮箱验证码输入错误后必须能够再次输入，而不是重新绑定同一地址', async () => {
-  const source = read('src/views/components/SecuritySettings/SecuritySettings.js')
-    .replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
-  let bound = false
-  let prompts = 0
+  const source = read('src/views/components/SecuritySettings/ExternalEmailBindingDialog/ExternalEmailBindingDialog.js')
+    .replace(/^import(?:.|\n)*?from .*$/gm, '')
+    .replace(/export /g, '')
+  let binds = 0
   let verifies = 0
-  const notifications = []
-  const page = compileFunction(source + '\nreturn usePage()', [
-    'computed', 'onMounted', 'reactive', 'ref', 'watch', 'ElMessageBox', 'ElNotification',
-    'lang', 'http', 'useGlobalStatusStore', 'webAuthnSupported'
+  const verifyRequests = []
+  const events = []
+  const dialog = compileFunction(source + '\nreturn useExternalEmailBindingDialog({ modelValue: false }, emit)', [
+    'computed', 'onBeforeUnmount', 'reactive', 'ref', 'watch', 'http',
+    'isRecentAuthenticationCancelled', 'requestWithRecentAuthentication', 'emit'
   ])(
-    Vue.computed, () => {}, Vue.reactive, Vue.ref, () => {},
-    { prompt: async () => { prompts++; return { value: prompts === 1 ? 'incorrect' : 'correct' } } },
-    notification => notifications.push(notification.message), {},
-    { get: async () => ({ errorNo: 0, data: [] }), post: async url => {
+    Vue.computed, () => {}, Vue.reactive, Vue.ref, Vue.watch,
+    { post: async (url, body) => {
       if (url.endsWith('/bind')) {
-        if (bound) return { errorNo: 400, errorMsg: '外部邮箱绑定失败' }
-        bound = true
-        return { errorNo: 0, data: { id: 1, challenge_id: 'audit-binding', email: 'b***@example.com' } }
+        binds++
+        return { errorNo: 0, data: { id: 1, challenge_id: 'audit-binding', email: 'b***@example.com', expires_at: new Date(Date.now() + 600000).toISOString() } }
       }
       assert.ok(url.endsWith('/verify'))
       verifies++
+      verifyRequests.push(body)
       return verifies === 1 ? { errorNo: 400, errorMsg: '验证失败' } : { errorNo: 0 }
     } },
-    () => ({ role: 'user', userInfos: {}, securityActiveSection: 'external-email' }), () => false
+    () => false,
+    request => request(),
+    (name, value) => events.push([name, value])
   )
-  page.bindForm.email = 'binding@example.com'
-  await page.bindExternalEmail()
-  assert.equal(prompts, 1)
+
+  dialog.form.email = 'binding@example.com'
+  assert.equal(await dialog.sendVerificationCode(), true)
+  dialog.form.code = 'incorrect'
+  assert.equal(await dialog.verifyAndBind(), false)
   assert.equal(verifies, 1)
-  await page.bindExternalEmail()
-  console.log(`binding_pending=${bound} prompt_count=${prompts} verify_count=${verifies} notifications=${JSON.stringify(notifications)}`)
-  assert.equal(prompts, 2, '验证码首次输入错误后应允许重试验证现有绑定')
+  dialog.form.code = 'correct'
+  assert.equal(await dialog.verifyAndBind(), true)
+  console.log(`bind_count=${binds} verify_count=${verifies} verify_requests=${JSON.stringify(verifyRequests)} events=${JSON.stringify(events)}`)
+  assert.equal(binds, 1, '验证码错误后不能重新创建同一绑定')
+  assert.equal(verifies, 2, '验证码首次输入错误后应允许重试验证现有绑定')
+  assert.equal(verifyRequests[0].id, 'audit-binding')
+  assert.equal(verifyRequests[1].id, 'audit-binding')
+})
+
+test('近期认证要求由 Axios 异常返回时必须确认密码并重试原请求', async () => {
+  const source = read('src/utils/recentAuthentication.js')
+    .replace(/^import .*$/gm, '')
+    .replace(/export /g, '')
+  let requests = 0
+  const posts = []
+  const result = await compileFunction(source + '\nreturn requestWithRecentAuthentication(request)', [
+    'ElMessageBox', 'http', 'request'
+  ])(
+    { prompt: async () => ({ value: 'CurrentPass12' }) },
+    { post: async (url, body) => { posts.push([url, body]); return { errorNo: 0 } } },
+    async () => {
+      requests++
+      if (requests === 1) {
+        const error = new Error('需要近期认证')
+        error.apiErrorCode = 'RECENT_AUTH_REQUIRED'
+        throw error
+      }
+      return { errorNo: 0, data: { challenge_id: 'retry-success' } }
+    }
+  )
+  assert.equal(requests, 2)
+  assert.deepEqual(posts, [['/api/v1/security/reauth', { password: 'CurrentPass12' }]])
+  assert.equal(result.data.challenge_id, 'retry-success')
 })
 
 // 使用真实响应拦截器和页面函数；仅隔离网络、消息提示以及下载所需的浏览器对象。

@@ -30,6 +30,10 @@ func TestRepositoryBindsVerifiesAndScopesByUser(t *testing.T) {
 	if item.Status != models.ExternalEmailStatusPending || item.EmailCiphertext == "" {
 		t.Fatalf("unexpected binding: %+v", item)
 	}
+	pending, err := repo.FindPending(1, "OWNER@example.com", models.ExternalEmailTypePrimary)
+	if err != nil || pending.ID != item.ID {
+		t.Fatalf("pending binding = %+v, err = %v", pending, err)
+	}
 	if _, err := repo.Bind(BindRequest{UserID: 1, Email: "other@example.com", Type: models.ExternalEmailTypePrimary}); err != ErrPrimaryLimit {
 		t.Fatalf("primary limit error = %v", err)
 	}
@@ -38,6 +42,9 @@ func TestRepositoryBindsVerifiesAndScopesByUser(t *testing.T) {
 	}
 	if err := repo.Verify(1, item.ID); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := repo.FindPending(1, "owner@example.com", models.ExternalEmailTypePrimary); err != ErrBindingNotFound {
+		t.Fatalf("verified binding remained pending: %v", err)
 	}
 	stored, err := repo.List(1)
 	if err != nil || len(stored) != 1 {

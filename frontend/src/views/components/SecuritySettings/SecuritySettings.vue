@@ -61,19 +61,17 @@
 
     <el-divider v-if="selectedSection === 'external-email'" class="settings-divider" />
     <section v-if="selectedSection === 'external-email'" class="security-section">
-      <div class="settings-header"><h3>外部安全邮箱</h3><p class="settings-desc">用于登录二次验证和密码恢复，只显示脱敏地址。</p></div>
-      <div class="external-bind-form">
-        <el-input v-model="bindForm.email" placeholder="请输入完整邮箱地址" clearable />
-        <el-select v-model="bindForm.type" aria-label="邮箱用途"><el-option label="备用邮箱" value="backup" /><el-option label="主要邮箱" value="primary" /></el-select>
-        <el-button type="primary" :loading="externalLoading" @click="bindExternalEmail">绑定并验证</el-button>
+      <div class="settings-header external-email-header">
+        <div><h3>外部安全邮箱</h3><p class="settings-desc">用于登录二次验证和密码恢复，只显示脱敏地址。</p></div>
+        <el-button type="primary" @click="openExternalEmailDialog">绑定外部邮箱</el-button>
       </div>
-      <div v-if="externalEmails.length" class="external-list">
+      <div v-if="externalEmails.length" v-loading="externalListLoading" class="external-list">
         <div v-for="item in externalEmails" :key="item.id" class="external-item">
           <div><strong>{{ item.email }}</strong><span>{{ item.type === 'primary' ? '主要邮箱' : '备用邮箱' }}</span><el-tag size="small" :type="item.status === 'verified' ? 'success' : 'warning'">{{ item.status === 'verified' ? '已验证' : item.status === 'pending' ? '待验证' : '已停用' }}</el-tag></div>
           <el-button v-if="item.status !== 'disabled'" type="danger" plain size="small" @click="disableExternalEmail(item)">停用</el-button>
         </div>
       </div>
-      <el-empty v-else description="暂无外部安全邮箱" />
+      <el-empty v-else v-loading="externalListLoading" description="暂无外部安全邮箱" />
     </section>
 
     <el-divider v-if="selectedSection === 'webauthn'" class="settings-divider" />
@@ -92,6 +90,11 @@
 
     <el-divider v-if="selectedSection === 'logout'" class="settings-divider" />
     <section v-if="selectedSection === 'logout'" class="security-section"><div class="settings-header"><h3 class="danger-text">{{ lang.logout }}</h3><p class="settings-desc">{{ lang.logout_desc }}</p></div><el-button type="danger" plain @click="logout" class="logout-btn">{{ lang.logout }}</el-button></section>
+
+    <ExternalEmailBindingDialog
+      v-model="externalDialogVisible"
+      @bound="handleExternalEmailBound"
+    />
       </div>
     </div>
   </div>
@@ -101,14 +104,16 @@
 import { usePage } from './SecuritySettings.js'
 import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
 import GlobalSecurityPolicy from './GlobalSecurityPolicy/GlobalSecurityPolicy.vue'
+import ExternalEmailBindingDialog from './ExternalEmailBindingDialog/ExternalEmailBindingDialog.vue'
 
 const {
   lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
   globalSecurityPolicyPage,
   registering, credentialsLoading, credentials, securityLoading,
-  securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
-  bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
-  saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, bindExternalEmail,
+  securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
+  externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
+  saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
+  handleExternalEmailBound,
   disableExternalEmail, formatTime, logout,
 } = usePage()
 </script>

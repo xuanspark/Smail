@@ -9,21 +9,27 @@ export function isRecentAuthenticationCancelled(error) {
 }
 
 export async function requestWithRecentAuthentication(request) {
+  let initialResponse
+  let requiresRecentAuthentication = false
   try {
-    return await request()
+    initialResponse = await request()
   } catch (error) {
     if (error?.apiErrorCode !== recentAuthenticationRequired) throw error
+    requiresRecentAuthentication = true
+  }
+  if (!requiresRecentAuthentication && initialResponse?.data?.code !== recentAuthenticationRequired) {
+    return initialResponse
   }
 
   let password = ''
   try {
     const result = await ElMessageBox.prompt(
-      '为保护敏感配置，请确认当前登录密码。确认后将自动完成保存。',
+      '为保护账户安全，请确认当前登录密码。确认后将自动继续当前操作。',
       '确认当前密码',
       {
         inputType: 'password',
         inputPlaceholder: '请输入当前密码',
-        confirmButtonText: '确认并保存',
+        confirmButtonText: '确认并继续',
         cancelButtonText: '取消',
         closeOnClickModal: false,
         inputValidator: value => String(value || '').length > 0 || '请输入当前密码'

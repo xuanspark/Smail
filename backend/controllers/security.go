@@ -653,6 +653,9 @@ func ListExternalEmails(ctx *context.Context, w http.ResponseWriter, req *http.R
 	}
 	result := make([]map[string]any, 0, len(items))
 	for _, item := range items {
+		if item.Status == models.ExternalEmailStatusPending {
+			continue
+		}
 		email, err := runtime.external.Decrypt(item)
 		if err != nil {
 			continue
@@ -669,7 +672,7 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 		return
 	}
 	if !ctx.RecentAuth {
-		writeSecurityError(w, response.NoAccessPrivileges, "此操作需要最近十分钟内完成登录，请重新登录后再试")
+		writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "此操作需要最近十分钟内完成登录，请确认当前密码", string(access.CodeRecentAuthRequired))
 		return
 	}
 	var input externalEmailRequest
@@ -679,7 +682,7 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 	}
 	normalizedEmail, err := externalemail.NormalizeEmail(input.Email)
 	if err != nil {
-		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
+		writeSecurityError(w, response.ParamsError, "请输入有效的外部邮箱地址")
 		return
 	}
 	owned, err := currentUserPrimaryEmail(ctx.UserID, normalizedEmail)
@@ -694,14 +697,31 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 	}
 	input.Email = normalizedEmail
 	item, err := runtime.external.Bind(externalemail.BindRequest{UserID: ctx.UserID, Email: input.Email, Type: input.Type})
+	created := err == nil
+	if errors.Is(err, externalemail.ErrBindingExists) {
+		item, err = runtime.external.FindPending(ctx.UserID, input.Email, input.Type)
+		if errors.Is(err, externalemail.ErrBindingNotFound) {
+			writeSecurityError(w, response.ParamsError, "该外部邮箱已经绑定")
+			return
+		}
+	}
 	if err != nil {
-		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
+		switch {
+		case errors.Is(err, externalemail.ErrPrimaryLimit):
+			writeSecurityError(w, response.ParamsError, "主要外部邮箱已存在，请先停用后再绑定")
+		case errors.Is(err, externalemail.ErrBackupLimit):
+			writeSecurityError(w, response.ParamsError, "备用外部邮箱已存在，请先停用后再绑定")
+		default:
+			writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
+		}
 		return
 	}
 	challenge, err := runtime.verification.Issue(verification.IssueRequest{Purpose: verification.PurposeExternalEmailBind, UserID: ctx.UserID, Account: ctx.UserAccount, Email: input.Email, ResourceID: item.ID}, remoteIP(req))
 	if err != nil {
-		_ = runtime.external.AbandonPending(ctx.UserID, item.ID)
-		writeSecurityError(w, response.ParamsError, "外部邮箱绑定失败")
+		if created {
+			_ = runtime.external.AbandonPending(ctx.UserID, item.ID)
+		}
+		writeSecurityError(w, response.ParamsError, externalEmailVerificationIssueMessage(err))
 		return
 	}
 	response.NewSuccessResponse(map[string]any{"id": item.ID, "challenge_id": challenge.ID, "status": item.Status, "email": maskEmail(input.Email), "expires_at": challenge.ExpiresAt.UTC()}).FPrint(w)
@@ -727,7 +747,7 @@ func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.
 		return
 	}
 	if err := runtime.verification.VerifyBound(input.ID, ctx.UserAccount, input.Email, input.Code, verification.PurposeExternalEmailBind, input.BindingID, remoteIP(req)); err != nil {
-		writeSecurityError(w, response.ParamsError, "验证失败")
+		writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
 		return
 	}
 	if err := runtime.external.Verify(ctx.UserID, input.BindingID); err != nil {
@@ -804,4 +824,32 @@ func maskEmail(value string) string {
 
 func writeSecurityError(w http.ResponseWriter, code int, message string) {
 	response.NewErrorResponse(code, message, "").FPrint(w)
+}
+
+func writeSecurityErrorWithCode(w http.ResponseWriter, errorNo int, message, code string) {
+	response.NewErrorResponse(errorNo, message, response.ConfigErrorData{Code: code}).FPrint(w)
+}
+
+func externalEmailVerificationIssueMessage(err error) string {
+	switch {
+	case errors.Is(err, verification.ErrRateLimited):
+		return "验证码发送过于频繁，请稍后再试"
+	case errors.Is(err, verification.ErrSMTPRelayUnavailable),
+		errors.Is(err, verification.ErrInvalidSMTPConfig),
+		errors.Is(err, verification.ErrUnsupportedSMTP):
+		return "验证码发信服务尚未配置，请先完成 SMTP 发信配置"
+	default:
+		return "验证码发送失败，请检查发信服务后重试"
+	}
+}
+
+func externalEmailVerificationCheckMessage(err error) string {
+	switch {
+	case errors.Is(err, verification.ErrExpiredChallenge):
+		return "验证码已过期，请重新发送"
+	case errors.Is(err, verification.ErrTooManyAttempts):
+		return "验证码错误次数过多，请重新发送"
+	default:
+		return "验证码错误或验证请求已失效"
+	}
 }

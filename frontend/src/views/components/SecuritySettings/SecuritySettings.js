@@ -57,11 +57,10 @@ export function usePage() {
   const recoveryConfigured = ref(false)
   const generatedCodes = ref([])
   const externalEmails = ref([])
-  const externalLoading = ref(false)
+  const externalListLoading = ref(false)
+  const externalDialogVisible = ref(false)
   let lastNotificationKey = ''
   let lastNotificationAt = 0
-  const bindForm = reactive({ email: '', type: 'backup', challengeId: '', bindingId: 0, code: '' })
-  let bindingChallenge = null
 
   const ruleForm = reactive({ current_pwd: '', new_pwd: '', new_pwd2: '' })
   const rules = reactive({
@@ -115,6 +114,21 @@ export function usePage() {
       notify(error?.message || '读取账户安全设置失败')
     } finally {
       securityLoading.value = false
+    }
+  }
+
+  const loadExternalEmails = async () => {
+    externalListLoading.value = true
+    try {
+      const response = await http.get('/api/v1/security/external-email/list')
+      if (response.errorNo !== 0) throw new Error(response.errorMsg || '读取外部邮箱失败')
+      externalEmails.value = Array.isArray(response.data) ? response.data : []
+      return true
+    } catch (error) {
+      notify(error?.message || '读取外部邮箱失败')
+      return false
+    } finally {
+      externalListLoading.value = false
     }
   }
 
@@ -215,48 +229,13 @@ export function usePage() {
     }
   }
 
-  const bindExternalEmail = async () => {
-    if (externalLoading.value) return
-    if (!bindForm.email.trim()) {
-      notify('请输入外部安全邮箱')
-      return
-    }
-    externalLoading.value = true
-    try {
-      const email = bindForm.email.trim()
-      const type = bindForm.type
-      if (!bindingChallenge || bindingChallenge.email !== email || bindingChallenge.type !== type) {
-        bindingChallenge = null
-        bindForm.challengeId = ''
-        bindForm.bindingId = 0
-        const res = await http.post('/api/v1/security/external-email/bind', { email, type })
-        if (res.errorNo !== 0) throw new Error(res.errorMsg || '外部邮箱绑定失败')
-        if (!res.data?.challenge_id || !res.data?.id) throw new Error('外部邮箱验证信息不完整')
-        bindingChallenge = { email, type, maskedEmail: res.data.email, id: res.data.id, challengeId: res.data.challenge_id }
-        bindForm.challengeId = bindingChallenge.challengeId
-        bindForm.bindingId = bindingChallenge.id
-      }
-      const challenge = bindingChallenge
-      const prompt = await ElMessageBox.prompt(`验证码已发送到 ${challenge.maskedEmail}，请输入验证码`, '验证外部邮箱', {
-        confirmButtonText: '验证', cancelButtonText: '取消', inputPlaceholder: '请输入验证码',
-      })
-      bindForm.code = String(prompt.value).trim()
-      const verified = await http.post('/api/v1/security/external-email/verify', {
-        id: challenge.challengeId, binding_id: challenge.id, email: challenge.email, code: bindForm.code,
-      })
-      if (verified.errorNo !== 0) throw new Error(verified.errorMsg || '外部邮箱验证失败')
-      bindForm.email = ''
-      bindForm.challengeId = ''
-      bindForm.bindingId = 0
-      bindingChallenge = null
-      await loadSecurityData()
-      notify('外部安全邮箱绑定成功', 'success')
-    } catch (error) {
-      if (error !== 'cancel' && error !== 'close') notify(error?.message || '外部邮箱绑定失败')
-    } finally {
-      bindForm.code = ''
-      externalLoading.value = false
-    }
+  const openExternalEmailDialog = () => {
+    externalDialogVisible.value = true
+  }
+
+  const handleExternalEmailBound = async () => {
+    await loadExternalEmails()
+    notify('外部安全邮箱绑定成功', 'success')
   }
 
   const disableExternalEmail = async item => {
@@ -297,9 +276,10 @@ export function usePage() {
     lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
     globalSecurityPolicyPage,
     registering, credentialsLoading, credentials, securityLoading,
-    securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalLoading,
-    bindForm, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
-    saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, bindExternalEmail,
+    securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
+    externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
+    saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
+    handleExternalEmailBound,
     disableExternalEmail, formatTime, logout,
   }
 }
