@@ -122,11 +122,9 @@ const mailGroups = [
     port('listener.tlsPort', 'SMTP 隐式 TLS 端口', { min: 1, hint: '默认 465，客户端建立连接时直接使用 TLS。' }),
     port('imap.tlsPort', 'IMAP 隐式 TLS 端口', { min: 1, required: true, hint: '默认 993。客户端建立连接时直接使用 TLS。' }),
     port('pop3.port', 'POP3 端口（STLS）', { min: 1, required: true, hint: '默认 110，客户端使用 STLS 升级加密后认证。' }),
-    port('pop3.tlsPort', 'POP3 隐式 TLS 端口', { min: 1, required: true, hint: '默认 995，客户端建立连接时直接使用 TLS。' })
-  ]),
-  group('relay', 'SMTP 中继连接（可选）', '', [
-    field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
-    field('relay.security', '连接加密', 'select', {
+    port('pop3.tlsPort', 'POP3 隐式 TLS 端口', { min: 1, required: true, hint: '默认 995，客户端建立连接时直接使用 TLS。' }),
+    field('relay.security', 'SMTP 中继加密方式', 'select', {
+      wide: true,
       options: options([
         ['', '尚未配置'],
         ['starttls', 'STARTTLS（推荐端口 587）'],
@@ -134,8 +132,11 @@ const mailGroups = [
         ['tls', 'TLS 兼容模式（推荐端口 465）'],
         ['plain', '不加密（仅限本机，端口 25）']
       ]),
-      hint: '切换加密方式会自动匹配推荐端口，之后仍可手动填写服务商指定的端口。'
-    }),
+      hint: '仅控制下方外部 SMTP 中继连接，不改变本机 SMTP、IMAP 或 POP3 监听方式。切换后会自动匹配推荐中继端口，仍可手动填写服务商指定的端口。'
+    })
+  ]),
+  group('relay', 'SMTP 中继连接（可选）', '', [
+    field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
     port('relay.relayPort', 'SMTP 发信中继端口', { hint: '外部 SMTP 服务器端口，与本机监听无关；选择加密方式后自动填写。' }),
     field('relay.username', '认证用户名', 'text', { placeholder: '需要认证时填写' }),
     field('relay.password', '中继密码', 'password', { placeholder: '留空保持原值' }),

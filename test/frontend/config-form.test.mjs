@@ -53,6 +53,8 @@ test('邮件服务页面统一编辑六个监听端口，中继和策略字段�
   const config = { listener: { port: 25, starttlsPort: 587, tlsPort: 465 }, relay: { relayPort: 465 }, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: { smtpPort: 25, imapPort: 143, pop3Port: 110 } }
   const text = JSON.stringify(config)
   const groups = getFieldGroups('mail', config)
+  const listener = groups.find(group => group.id === 'listener')
+  const relay = groups.find(group => group.id === 'relay')
   const keys = groups.flatMap(group => group.fields.map(input => input.path.join('.')))
   assert.deepEqual(keys.filter(key => /^(listener|imap|pop3)\./.test(key)), [
     'listener.port', 'listener.starttlsPort', 'listener.tlsPort',
@@ -65,6 +67,11 @@ test('邮件服务页面统一编辑六个监听端口，中继和策略字段�
   assert.ok(!keys.includes('policy.smtpPort'))
   assert.ok(!keys.includes('policy.imapPort'))
   assert.ok(!keys.includes('policy.pop3Port'))
+  assert.equal(listener.fields.at(-1).path.join('.'), 'relay.security')
+  assert.equal(listener.fields.at(-1).label, 'SMTP 中继加密方式')
+  assert.equal(listener.fields.at(-1).wide, true)
+  assert.ok(!relay.fields.some(field => field.path.join('.') === 'relay.security'))
+  assert.ok(relay.fields.some(field => field.path.join('.') === 'relay.relayPort'))
   const edited = readFormConfig(updateFormConfig(text, 'mail', ['listener', 'tlsPort'], 2465))
   assert.equal(edited.listener.tlsPort, 2465)
   assert.equal(edited.relay.relayPort, 465)

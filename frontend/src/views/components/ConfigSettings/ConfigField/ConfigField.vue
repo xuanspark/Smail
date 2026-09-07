@@ -1,7 +1,7 @@
 <template>
   <div
     class="config-field"
-    :class="{ 'field-wide': ['list', 'network'].includes(field.type) && field.wide !== false }"
+    :class="{ 'field-wide': field.wide === true || (['list', 'network'].includes(field.type) && field.wide !== false) }"
     :data-field="fieldKey(field)"
   >
     <label :id="`${id}-label`" :for="id" class="field-label">
