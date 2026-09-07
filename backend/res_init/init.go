@@ -308,25 +308,7 @@ func startVerificationRuntime() error {
 		runtime.Stop()
 		return fmt.Errorf("start external email repository: %w", err)
 	}
-	delivery := verification.NewLazySMTPDelivery(func() (verification.SMTPSettings, error) {
-		smtpSettings, err := config.CurrentSMTPRuntimeSettings()
-		if err != nil {
-			return verification.SMTPSettings{}, err
-		}
-		security, err := smtpSecurityMode(smtpSettings.Relay.Security)
-		if err != nil {
-			return verification.SMTPSettings{}, err
-		}
-		return verification.SMTPSettings{
-			Host:       smtpSettings.Relay.RelayHost,
-			Port:       smtpSettings.Relay.RelayPort,
-			Username:   smtpSettings.Relay.Username,
-			Password:   smtpSettings.Password,
-			Security:   security,
-			From:       smtpSettings.Relay.From,
-			FromDomain: smtpSettings.Relay.FromDomain,
-		}, nil
-	})
+	delivery := newVerificationDelivery()
 	service, err := verification.NewService(runtime.Store, delivery, runtime.Events)
 	if err != nil {
 		runtime.Stop()
@@ -342,7 +324,7 @@ func startVerificationRuntime() error {
 	controllers.ConfigureSecurityRuntime(service, external, recover, credential)
 	credentialService = credential
 	verificationRuntime = runtime
-	log.Info("安全验证码服务已启动，外发邮件将在实际使用时检查 SMTP 中继配置")
+	log.Info("安全验证码服务已启动，已配置中继时优先使用中继，否则使用项目自身邮件投递")
 	return nil
 }
 

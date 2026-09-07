@@ -718,6 +718,7 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 	}
 	challenge, err := runtime.verification.Issue(verification.IssueRequest{Purpose: verification.PurposeExternalEmailBind, UserID: ctx.UserID, Account: ctx.UserAccount, Email: input.Email, ResourceID: item.ID}, remoteIP(req))
 	if err != nil {
+		log.WithError(err).Warn("issue external email verification challenge failed")
 		if created {
 			_ = runtime.external.AbandonPending(ctx.UserID, item.ID)
 		}
@@ -837,7 +838,11 @@ func externalEmailVerificationIssueMessage(err error) string {
 	case errors.Is(err, verification.ErrSMTPRelayUnavailable),
 		errors.Is(err, verification.ErrInvalidSMTPConfig),
 		errors.Is(err, verification.ErrUnsupportedSMTP):
-		return "验证码发信服务尚未配置，请先完成 SMTP 发信配置"
+		return "SMTP 中继配置不完整，请完善配置或清空中继后使用项目自身投递"
+	case errors.Is(err, verification.ErrProjectMailUnavailable):
+		return "项目邮件投递尚未就绪，请检查主域名和 DKIM 配置"
+	case errors.Is(err, verification.ErrMailDeliveryFailed):
+		return "验证码邮件投递失败，请确认收件地址和邮件服务状态"
 	default:
 		return "验证码发送失败，请检查发信服务后重试"
 	}

@@ -108,8 +108,8 @@ export function useExternalEmailBindingDialog(props, emit) {
 
   const close = () => {
     if (busy.value) return
-    clearMessages()
     visible.value = false
+    resetAll()
   }
 
   const sendVerificationCode = async () => {

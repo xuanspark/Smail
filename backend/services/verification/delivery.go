@@ -22,9 +22,11 @@ const (
 )
 
 var (
-	ErrInvalidSMTPConfig = errors.New("invalid SMTP configuration")
-	ErrUnsupportedSMTP   = errors.New("unsupported SMTP security mode")
-	ErrSMTPRelayUnavailable = errors.New("SMTP relay is unavailable")
+	ErrInvalidSMTPConfig      = errors.New("invalid SMTP configuration")
+	ErrUnsupportedSMTP        = errors.New("unsupported SMTP security mode")
+	ErrSMTPRelayUnavailable   = errors.New("SMTP relay is unavailable")
+	ErrProjectMailUnavailable = errors.New("project mail delivery is unavailable")
+	ErrMailDeliveryFailed     = errors.New("verification mail delivery failed")
 )
 
 type SMTPSettings struct {
@@ -178,6 +180,12 @@ func sendSMTPMessage(settings SMTPSettings, recipient string, message []byte) er
 }
 
 func buildCodeMessage(from, recipient string, code string, purpose Purpose) []byte {
+	title, text := CodeMessage(purpose, code)
+	return []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", from, recipient, mime.QEncoding.Encode("UTF-8", title), text))
+}
+
+// CodeMessage 返回验证码邮件的统一标题和正文，供中继与项目自身投递复用。
+func CodeMessage(purpose Purpose, code string) (string, string) {
 	title := "Smail 安全验证码"
 	purposeText := "完成本次安全验证"
 	switch purpose {
@@ -190,7 +198,8 @@ func buildCodeMessage(from, recipient string, code string, purpose Purpose) []by
 	case PurposeExternalEmailChange:
 		purposeText = "完成外部邮箱变更验证"
 	}
-	return []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n您好，您正在%s。验证码：%s\r\n验证码有效期为十分钟，请勿向他人泄露。\r\n", from, recipient, mime.QEncoding.Encode("UTF-8", title), purposeText, code))
+	text := fmt.Sprintf("您好，您正在%s。验证码：%s\r\n验证码有效期为十分钟，请勿向他人泄露。", purposeText, code)
+	return title, text
 }
 
 func clearBytes(data []byte) {

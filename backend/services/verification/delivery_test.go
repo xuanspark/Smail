@@ -40,6 +40,16 @@ func TestSMTPDeliveryKeepsCodeOutOfChallenge(t *testing.T) {
 	clearBytes(message)
 }
 
+func TestCodeMessageDescribesExternalEmailBinding(t *testing.T) {
+	title, text := CodeMessage(PurposeExternalEmailBind, "12345678")
+	if title != "Smail 安全验证码" {
+		t.Fatalf("title = %q", title)
+	}
+	if !strings.Contains(text, "外部邮箱绑定验证") || !strings.Contains(text, "12345678") {
+		t.Fatalf("unexpected verification message: %q", text)
+	}
+}
+
 func TestSMTPModesAreValidated(t *testing.T) {
 	base := SMTPSettings{Host: "localhost", Port: 25, Security: SecurityPlain, From: "no-reply@example.com"}
 	if _, err := NewSMTPDelivery(base); err != nil {
