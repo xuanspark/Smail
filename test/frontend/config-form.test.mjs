@@ -268,17 +268,31 @@ test('不同插件超时字段使用各自实际单位，不把毫秒当作秒',
   assert.deepEqual(validateFormConfig('plugins', { plugins: { spam_block: { settings: { timeout: 10000 } } } }), {})
 })
 
-test('证书路径始终受管且引用成对，切回默认来源清除自定义目录', () => {
-  const tls = { mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl/imported', certificateRef: 'config/ssl/imported/cert.pem', privateKeyRef: 'config/ssl/imported/key.pem' }
+test('证书管理方式只展示三种业务模式并同步底层托管配置', () => {
+  const tls = { management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl/imported', certificateRef: 'config/ssl/imported/cert.pem', privateKeyRef: 'config/ssl/imported/key.pem' }
   assert.deepEqual(validateFormConfig('ssl', { tls }), {})
+  const management = getFieldGroups('ssl', { tls }).flatMap(group => group.fields).find(field => field.path.join('.') === 'tls.management')
+  assert.deepEqual(management.options.map(option => [option.value, option.label]), [
+    ['web_server', 'Web 服务器管理'],
+    ['project', '项目自身管理'],
+    ['custom', '自定义']
+  ])
   for (const customDirectory of ['C:/certs', '/etc/ssl', '../certs', 'config/../certs', 'config\\ssl', 'config//ssl']) {
     assert.ok(validateFormConfig('ssl', { tls: { ...tls, customDirectory } })['tls.customDirectory'])
   }
   assert.ok(validateFormConfig('ssl', { tls: { ...tls, privateKeyRef: '' } })['tls.privateKeyRef'])
   assert.ok(validateFormConfig('ssl', { tls: { ...tls, certificateRef: 'config/ssl/outside.pem' } })['tls.certificateRef'])
-  const updated = readFormConfig(updateFormConfig(JSON.stringify({ tls }), 'ssl', ['tls', 'mode'], 'managed_default'))
-  assert.equal(updated.tls.customDirectory, '')
-  assert.equal(updated.tls.privateKeyRef, tls.privateKeyRef)
+  let updated = readFormConfig(updateFormConfig(JSON.stringify({ tls }), 'ssl', ['tls', 'management'], 'project'))
+  assert.equal(updated.tls.mode, tls.mode)
+  assert.equal(updated.tls.customDirectory, tls.customDirectory)
+  assert.equal(updated.tls.certificateRef, tls.certificateRef)
+  assert.equal(updated.tls.challenge, 'http')
+  assert.ok(getFieldGroups('ssl', updated).flatMap(group => group.fields).some(field => field.path.join('.') === 'tls.challenge'))
+  assert.ok(!getFieldGroups('ssl', updated).flatMap(group => group.fields).some(field => field.path.join('.') === 'tls.certificateRef'))
+  updated = readFormConfig(updateFormConfig(JSON.stringify(updated), 'ssl', ['tls', 'management'], 'web_server'))
+  assert.equal(updated.tls.mode, tls.mode)
+  assert.equal(updated.tls.customDirectory, tls.customDirectory)
+  assert.ok(getFieldGroups('ssl', updated).flatMap(group => group.fields).some(field => field.path.join('.') === 'tls.certificateRef'))
 })
 
 test('SMTP 加密方式自动匹配端口，手动端口和读取过程不改变原配置', () => {

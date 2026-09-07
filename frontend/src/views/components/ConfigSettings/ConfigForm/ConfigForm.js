@@ -67,6 +67,13 @@ const localSMTPHost = value => {
 
 const networkDatabase = config => config.database?.type !== 'sqlite'
 const uploadedCertificate = config => ['managed_upload', 'custom'].includes(config.tls?.mode)
+const certificateManagement = config => {
+  const management = config.tls?.management
+  if (['web_server', 'project', 'custom'].includes(management)) return management
+  return ['managed_default', 'default'].includes(config.tls?.mode) ? 'project' : 'custom'
+}
+const projectManagedCertificate = config => certificateManagement(config) === 'project'
+const externalManagedCertificate = config => !projectManagedCertificate(config)
 const normalizedDomain = value => value.toLowerCase().replace(/\.$/, '')
 const validDomain = value => {
   if (typeof value !== 'string' || value !== value.trim()) return false
@@ -151,11 +158,27 @@ const securityPolicyGroups = [
 
 const sslGroups = [
   group('certificate', '证书与存储', '', [
-    field('tls.mode', '证书来源', 'select', { options: options([['managed_default', '系统管理证书'], ['managed_upload', '已导入的自定义证书'], ['default', '默认目录（兼容模式）'], ['custom', '自定义目录（兼容模式）']]) }),
-    field('tls.defaultDirectory', '默认证书目录', 'text', { required: true, placeholder: 'config/ssl' }),
-    field('tls.customDirectory', '自定义证书目录', 'text', { required: true, show: uploadedCertificate, placeholder: 'config/ssl/example.com' }),
-    field('tls.certificateRef', '证书文件引用', 'text', { placeholder: 'config/ssl/example.com/fullchain.pem', hint: '必须位于当前证书目录内，与私钥成对填写。' }),
-    field('tls.privateKeyRef', '私钥文件引用', 'text', { placeholder: 'config/ssl/example.com/privkey.pem', hint: '填写文件引用，不是私钥内容。' })
+    field('tls.management', '证书管理方式', 'select', {
+      fallback: 'custom',
+      options: options([
+        ['web_server', 'Web 服务器管理'],
+        ['project', '项目自身管理'],
+        ['custom', '自定义']
+      ])
+    }),
+    field('tls.challenge', '证书验证方式', 'select', {
+      show: projectManagedCertificate,
+      fallback: 'http',
+      options: options([['http', 'HTTP 验证'], ['dns', 'DNS 验证']])
+    }),
+    field('tls.certificateRef', '证书文件', 'text', {
+      show: externalManagedCertificate,
+      placeholder: 'config/ssl/example.com/fullchain.pem'
+    }),
+    field('tls.privateKeyRef', '私钥文件', 'text', {
+      show: externalManagedCertificate,
+      placeholder: 'config/ssl/example.com/privkey.pem'
+    })
   ])
 ]
 
@@ -244,6 +267,7 @@ export function updateFormConfig(text, section, path, value) {
     if (key === 'http.httpsEnabled') {
       config.http.httpsPort = value ? (validPort(config.http.httpsPort) ? config.http.httpsPort : 443) : 0
     }
+    if (key === 'tls.management' && value === 'project') config.tls.challenge ||= 'http'
   }
   if (key === 'tls.mode' && ['managed_default', 'default'].includes(value)) config.tls.customDirectory = ''
   return JSON.stringify(config, null, 2)
@@ -309,6 +333,9 @@ export function validateFormConfig(section, config) {
   }
   if (section === 'ssl') {
     const tls = config.tls || {}
+    const management = certificateManagement(config)
+    if (!['web_server', 'project', 'custom'].includes(management)) errors['tls.management'] = '请选择证书管理方式'
+    if (management === 'project' && !['http', 'dns'].includes(tls.challenge || 'http')) errors['tls.challenge'] = '请选择证书验证方式'
     const directory = uploadedCertificate(config) ? tls.customDirectory : tls.defaultDirectory
     const controlled = value => typeof value === 'string' && !!value && !/^(\/|[a-z]:)/i.test(value) && !/[\\:]/.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..')
     for (const name of ['defaultDirectory', ...(uploadedCertificate(config) ? ['customDirectory'] : [])]) {

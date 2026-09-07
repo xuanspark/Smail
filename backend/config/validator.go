@@ -171,6 +171,9 @@ func validateSSL(ssl SSLConfig) error {
 	if !isControlledRelativePath(ssl.DefaultDirectory) {
 		return ErrInvalidSSL
 	}
+	if ssl.Management != "" && !ValidSSLManagement(ssl.Management) {
+		return ErrInvalidSSL
+	}
 	if ssl.Challenge != "" && ssl.Challenge != SSLChallengeHTTP && ssl.Challenge != SSLChallengeDNS {
 		return ErrInvalidSSL
 	}

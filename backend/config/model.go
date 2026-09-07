@@ -104,6 +104,7 @@ type EmailConfig struct {
 }
 
 type SSLConfig struct {
+	Management       string `json:"management,omitempty"`
 	Mode             string `json:"mode"`
 	DefaultDirectory string `json:"defaultDirectory"`
 	CustomDirectory  string `json:"customDirectory,omitempty"`

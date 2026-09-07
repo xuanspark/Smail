@@ -736,7 +736,7 @@ func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrati
 func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 	certificateRef, certificateOK := legacyControlledReference(legacy.SSLPublicKeyPath)
 	privateKeyRef, privateKeyOK := legacyControlledReference(legacy.SSLPrivateKeyPath)
-	ssl := SSLConfig{Mode: ManagedSSLModeDefault, DefaultDirectory: "config/ssl"}
+	ssl := SSLConfig{Management: SSLManagementProject, Mode: ManagedSSLModeDefault, DefaultDirectory: "config/ssl"}
 	switch legacy.SSLType {
 	case SSLTypeAutoDNS:
 		ssl.Challenge = SSLChallengeDNS
@@ -744,6 +744,10 @@ func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 		ssl.Challenge = SSLChallengeHTTP
 	}
 	if legacy.SSLType == SSLTypeUser {
+		ssl.Management = SSLManagementCustom
+		if strings.EqualFold(strings.TrimSpace(legacy.TLSMode), HTTPSTLSModeProxy) {
+			ssl.Management = SSLManagementWebServer
+		}
 		ssl.Mode = ManagedSSLModeUpload
 		ssl.CustomDirectory = "config/ssl"
 	}

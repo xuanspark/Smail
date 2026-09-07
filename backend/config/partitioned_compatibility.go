@@ -78,7 +78,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		}
 	}
 	tls := runtime.SSL.TLS
-	if tls.Mode == ManagedSSLModeDefault {
+	if EffectiveSSLManagement(tls) == SSLManagementProject {
 		if tls.Challenge == SSLChallengeDNS {
 			cfg.SSLType = SSLTypeAutoDNS
 		} else {

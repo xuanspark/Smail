@@ -491,7 +491,9 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 		value.POP3 = config.POP3ListenerConfig{Port: ports.POP3, TLSPort: ports.POP3TLS}
 		return value, nil
 	case config.SectionSSL:
-		return runtime.SSL, nil
+		value := runtime.SSL
+		value.TLS.Management = config.EffectiveSSLManagement(value.TLS)
+		return value, nil
 	case config.SectionPlugins:
 		plugins := make(map[string]any, len(runtime.Plugins.Plugins))
 		for id, item := range runtime.Plugins.Plugins {

@@ -114,6 +114,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	if cfg.SSLType != config.SSLTypeUser {
 		clearLegacySSLPaths(cfg)
 		cfg.SSL = config.SSLConfig{
+			Management:       config.SSLManagementProject,
 			Mode:             config.ManagedSSLModeDefault,
 			DefaultDirectory: "config/ssl",
 		}
@@ -127,6 +128,11 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		}
 	}
 	if cfg.SSLType == config.SSLTypeUser {
+		if cfg.UsesProxyHTTPS() {
+			cfg.SSL.Management = config.SSLManagementWebServer
+		} else {
+			cfg.SSL.Management = config.SSLManagementCustom
+		}
 		privatePath, publicPath, err := validateUserCertificatePaths(priKey, crtKey)
 		if err != nil {
 			return err
@@ -175,7 +181,14 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 		return
 	}
 	clearLegacySSLPaths(cfg)
+	management := cfg.SSL.Management
+	if reference.Mode == config.ManagedSSLModeDefault {
+		management = config.SSLManagementProject
+	} else if !config.ValidSSLManagement(management) || management == config.SSLManagementProject {
+		management = config.SSLManagementCustom
+	}
 	cfg.SSL = config.SSLConfig{
+		Management:       management,
 		Mode:             reference.Mode,
 		DefaultDirectory: "config/ssl",
 		CertificateRef:   reference.CertificateRef,

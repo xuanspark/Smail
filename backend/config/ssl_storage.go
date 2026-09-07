@@ -19,12 +19,32 @@ import (
 )
 
 const (
-	ManagedSSLModeDefault = "managed_default"
-	ManagedSSLModeUpload  = "managed_upload"
+	ManagedSSLModeDefault  = "managed_default"
+	ManagedSSLModeUpload   = "managed_upload"
+	SSLManagementWebServer = "web_server"
+	SSLManagementProject   = "project"
+	SSLManagementCustom    = "custom"
 
 	managedSSLRelativeRoot = "config/ssl/managed"
 	maxManagedSSLFileSize  = 1 << 20
 )
+
+// EffectiveSSLManagement 返回面向用户的证书管理方式，并兼容旧配置中的底层存储模式。
+func EffectiveSSLManagement(ssl SSLConfig) string {
+	switch ssl.Management {
+	case SSLManagementWebServer, SSLManagementProject, SSLManagementCustom:
+		return ssl.Management
+	}
+	if ssl.Mode == ManagedSSLModeDefault || ssl.Mode == "default" {
+		return SSLManagementProject
+	}
+	return SSLManagementCustom
+}
+
+// ValidSSLManagement 判断证书管理责任是否为当前支持的三种业务模式。
+func ValidSSLManagement(management string) bool {
+	return management == SSLManagementWebServer || management == SSLManagementProject || management == SSLManagementCustom
+}
 
 var (
 	ErrInvalidSSLMode          = errors.New("invalid SSL managed mode")
