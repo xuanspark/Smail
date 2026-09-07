@@ -9,8 +9,9 @@ const smtpPorts = new Map([['starttls', 587], ['implicit_tls', 465], ['tls', 465
 const normalizedMailSecurity = value => value === 'tls' ? 'implicit_tls' : value
 const mailSecurity = config => {
   const value = normalizedMailSecurity(config.listener?.security)
-  return ['starttls', 'implicit_tls', 'both'].includes(value) ? value : 'both'
+  return value || 'both'
 }
+const relaySecurityForMail = config => mailSecurity(config) === 'implicit_tls' ? 'implicit_tls' : 'starttls'
 const startTLSMail = config => mailSecurity(config) === 'starttls'
 const implicitTLSMail = config => mailSecurity(config) === 'implicit_tls'
 const relayConfigured = config => !!(
@@ -43,7 +44,7 @@ export function getRecommendedPort(config, path) {
     case 'http.httpsPort':
       return 443
     case 'relay.relayPort':
-      return smtpPorts.get(mailSecurity(config))
+      return smtpPorts.get(relaySecurityForMail(config))
     case 'listener.port':
       return 25
     case 'listener.starttlsPort':
@@ -117,14 +118,12 @@ const mailGroups = [
     field('listener.security', '统一加密方式', 'select', {
       wide: true,
       fallback: 'both',
-      options: [
-        { value: 'both', label: '旧配置兼容状态（请选择统一加密方式）', disabled: true },
-        ...options([
-          ['starttls', 'STARTTLS / STLS'],
-          ['implicit_tls', '隐式 TLS']
-        ])
-      ],
-      hint: '切换后 SMTP 提交、IMAP、POP3 和已配置的 SMTP 中继会统一使用同一种加密方式，并自动匹配推荐端口。SMTP 25 收信端口始终保留。'
+      options: options([
+        ['both', '全部启用（推荐）'],
+        ['starttls', '仅 STARTTLS / STLS'],
+        ['implicit_tls', '仅隐式 TLS']
+      ]),
+      hint: '推荐同时开放 SMTP 587/465、IMAP 993 和 POP3 110/995，与 PMail 的默认监听方式一致。选择单一方式时会关闭另一组客户端端口；SMTP 25 收信端口始终保留。'
     }),
     port('listener.port', 'SMTP 收信端口', { min: 1, hint: '默认 25，用于接收其他邮件服务器投递，支持 STARTTLS；不是发信中继端口。' }),
     port('listener.starttlsPort', 'SMTP 提交端口（STARTTLS）', { min: 1, show: config => !implicitTLSMail(config), hint: '默认 587，客户端升级 TLS 后进行认证。' }),
@@ -257,22 +256,23 @@ export function updateFormConfig(text, section, path, value) {
   }
   parent[path.at(-1)] = value ?? (input.type === 'number' ? null : '')
   if (previousValue !== value) {
-    if (key === 'listener.security' && ['starttls', 'implicit_tls'].includes(value)) {
+    if (key === 'listener.security' && ['both', 'starttls', 'implicit_tls'].includes(value)) {
       const startTLS = value === 'starttls'
+      const both = value === 'both'
       config.listener.port = 25
-      config.listener.starttlsPort = startTLS ? 587 : 0
+      config.listener.starttlsPort = startTLS || both ? 587 : 0
       config.listener.tlsPort = startTLS ? 0 : 465
       config.imap ||= {}
       config.imap.tlsPort = startTLS ? 143 : 993
       config.pop3 ||= {}
-      config.pop3.port = startTLS ? 110 : 0
+      config.pop3.port = startTLS || both ? 110 : 0
       config.pop3.tlsPort = startTLS ? 0 : 995
       config.relay ||= {}
-      config.relay.security = value
-      config.relay.relayPort = smtpPorts.get(value)
+      config.relay.security = relaySecurityForMail(config)
+      config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
-    if (key.startsWith('relay.') && key !== 'relay.security' && relayConfigured(config) && ['starttls', 'implicit_tls'].includes(mailSecurity(config))) {
-      config.relay.security = mailSecurity(config)
+    if (key.startsWith('relay.') && key !== 'relay.security' && relayConfigured(config) && ['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
+      config.relay.security = relaySecurityForMail(config)
       if (!validPort(config.relay.relayPort)) config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
     if (key === 'http.tlsMode' && ['direct', 'proxy'].includes(value)) {
@@ -331,14 +331,14 @@ export function validateFormConfig(section, config) {
   if (section === 'mail') {
     const relay = config.relay || {}
     const configured = relayConfigured(config)
-    if (!['starttls', 'implicit_tls'].includes(mailSecurity(config))) {
-      errors['listener.security'] = '请选择 STARTTLS / STLS 或隐式 TLS'
+    if (!['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
+      errors['listener.security'] = '请选择全部启用、STARTTLS / STLS 或隐式 TLS'
     }
     if (configured) {
       if (!relay.relayHost) errors['relay.relayHost'] = '请填写 SMTP 服务器'
       const relaySecurity = normalizedMailSecurity(relay.security)
       if (!['starttls', 'implicit_tls'].includes(relaySecurity)) errors['listener.security'] = '请先选择统一加密方式'
-      if (['starttls', 'implicit_tls'].includes(mailSecurity(config)) && relaySecurity !== mailSecurity(config)) errors['listener.security'] = 'SMTP 中继加密方式必须与邮件服务保持一致'
+      if (mailSecurity(config) !== 'both' && ['starttls', 'implicit_tls'].includes(mailSecurity(config)) && relaySecurity !== mailSecurity(config)) errors['listener.security'] = 'SMTP 中继加密方式必须与邮件服务保持一致'
       if (!validPort(relay.relayPort)) errors['relay.relayPort'] = '请填写 1～65535 的 SMTP 端口'
       if (!relay.from) errors['relay.from'] = '请填写发件邮箱'
       if (!relay.fromDomain) errors['relay.fromDomain'] = '请填写发件域名'

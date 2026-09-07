@@ -6,7 +6,7 @@ const (
 	MailSecurityImplicitTLS = "implicit_tls"
 )
 
-// 邮件监听与发信中继相互独立。未设置加密模式的旧配置继续同时开放两套监听。
+// 邮件监听与发信中继相互独立。全部启用模式同时开放两套安全监听。
 type SMTPListenerConfig struct {
 	Port         int    `json:"port"`
 	STARTTLSPort int    `json:"starttlsPort"`
@@ -80,9 +80,6 @@ func ResolveMailPorts(smtp SMTPSectionConfig, email EmailSectionConfig) MailPort
 }
 
 func validateMailListeners(smtp SMTPSectionConfig, email EmailSectionConfig) error {
-	if smtp.Listener.Security == MailSecurityBoth {
-		return ErrInvalidRuntimeConfig
-	}
 	security := ResolveMailSecurity(smtp.Listener)
 	if security != MailSecurityBoth && security != MailSecuritySTARTTLS && security != MailSecurityImplicitTLS {
 		return ErrInvalidRuntimeConfig

@@ -525,31 +525,44 @@ func TestConfigManagerMailSectionAppliesBothPartitionsWithoutMailFile(t *testing
 
 func TestConfigManagerMailSectionAcceptsUnifiedSecurityModes(t *testing.T) {
 	tests := []struct {
-		name      string
-		security  string
-		listener  SMTPListenerConfig
-		imap      IMAPListenerConfig
-		pop3      POP3ListenerConfig
-		relayPort int
-		want      MailPorts
+		name          string
+		security      string
+		relaySecurity string
+		listener      SMTPListenerConfig
+		imap          IMAPListenerConfig
+		pop3          POP3ListenerConfig
+		relayPort     int
+		want          MailPorts
 	}{
 		{
-			name:      "starttls",
-			security:  MailSecuritySTARTTLS,
-			listener:  SMTPListenerConfig{Port: 25, STARTTLSPort: 587, Security: MailSecuritySTARTTLS},
-			imap:      IMAPListenerConfig{TLSPort: 143},
-			pop3:      POP3ListenerConfig{Port: 110},
-			relayPort: 587,
-			want:      MailPorts{SMTP: 25, SMTPSTARTTLS: 587, IMAP: 143, POP3: 110},
+			name:          "both",
+			security:      MailSecurityBoth,
+			relaySecurity: MailSecuritySTARTTLS,
+			listener:      SMTPListenerConfig{Port: 25, STARTTLSPort: 587, TLSPort: 465, Security: MailSecurityBoth},
+			imap:          IMAPListenerConfig{TLSPort: 993},
+			pop3:          POP3ListenerConfig{Port: 110, TLSPort: 995},
+			relayPort:     587,
+			want:          MailPorts{SMTP: 25, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 110, POP3TLS: 995},
 		},
 		{
-			name:      "implicit_tls",
-			security:  MailSecurityImplicitTLS,
-			listener:  SMTPListenerConfig{Port: 25, TLSPort: 465, Security: MailSecurityImplicitTLS},
-			imap:      IMAPListenerConfig{TLSPort: 993},
-			pop3:      POP3ListenerConfig{TLSPort: 995},
-			relayPort: 465,
-			want:      MailPorts{SMTP: 25, SMTPTLS: 465, IMAP: 993, POP3TLS: 995},
+			name:          "starttls",
+			security:      MailSecuritySTARTTLS,
+			relaySecurity: MailSecuritySTARTTLS,
+			listener:      SMTPListenerConfig{Port: 25, STARTTLSPort: 587, Security: MailSecuritySTARTTLS},
+			imap:          IMAPListenerConfig{TLSPort: 143},
+			pop3:          POP3ListenerConfig{Port: 110},
+			relayPort:     587,
+			want:          MailPorts{SMTP: 25, SMTPSTARTTLS: 587, IMAP: 143, POP3: 110},
+		},
+		{
+			name:          "implicit_tls",
+			security:      MailSecurityImplicitTLS,
+			relaySecurity: MailSecurityImplicitTLS,
+			listener:      SMTPListenerConfig{Port: 25, TLSPort: 465, Security: MailSecurityImplicitTLS},
+			imap:          IMAPListenerConfig{TLSPort: 993},
+			pop3:          POP3ListenerConfig{TLSPort: 995},
+			relayPort:     465,
+			want:          MailPorts{SMTP: 25, SMTPTLS: 465, IMAP: 993, POP3TLS: 995},
 		},
 	}
 
@@ -568,7 +581,7 @@ func TestConfigManagerMailSectionAcceptsUnifiedSecurityModes(t *testing.T) {
 			mail.IMAP = test.imap
 			mail.POP3 = test.pop3
 			mail.Relay.RelayPort = test.relayPort
-			mail.Relay.Security = test.security
+			mail.Relay.Security = test.relaySecurity
 			mail.Relay.FromDomain = "example.com"
 			mail.Relay.VerificationEnabled = true
 			payload, err := json.Marshal(mail)
@@ -599,7 +612,7 @@ func TestConfigManagerMailSectionAcceptsUnifiedSecurityModes(t *testing.T) {
 			if got := ResolveMailPorts(reloaded.SMTP, reloaded.Email); got != test.want {
 				t.Fatalf("reloaded ports = %+v, want %+v", got, test.want)
 			}
-			if ResolveMailSecurity(reloaded.SMTP.Listener) != test.security || NormalizeMailSecurity(reloaded.SMTP.Relay.Security) != test.security {
+			if ResolveMailSecurity(reloaded.SMTP.Listener) != test.security || NormalizeMailSecurity(reloaded.SMTP.Relay.Security) != test.relaySecurity {
 				t.Fatalf("reloaded security modes are not unified: listener=%q relay=%q", reloaded.SMTP.Listener.Security, reloaded.SMTP.Relay.Security)
 			}
 		})

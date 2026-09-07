@@ -152,6 +152,7 @@ func TestUnifiedMailSecurityResolvesOnlySelectedClientListeners(t *testing.T) {
 		security string
 		want     MailPorts
 	}{
+		{MailSecurityBoth, MailPorts{SMTP: 25, SMTPSTARTTLS: 587, SMTPTLS: 465, IMAP: 993, POP3: 110, POP3TLS: 995}},
 		{MailSecuritySTARTTLS, MailPorts{SMTP: 25, SMTPSTARTTLS: 587, IMAP: 143, POP3: 110}},
 		{MailSecurityImplicitTLS, MailPorts{SMTP: 25, SMTPTLS: 465, IMAP: 993, POP3TLS: 995}},
 	} {
@@ -200,13 +201,13 @@ func TestMailListenerValidationRejectsUnknownSecurity(t *testing.T) {
 	}
 }
 
-func TestMailListenerValidationAllowsLegacyEmptySecurityButRejectsExplicitBoth(t *testing.T) {
+func TestMailListenerValidationAllowsLegacyEmptyAndExplicitBothSecurity(t *testing.T) {
 	runtime := validRuntimeConfig()
 	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err != nil {
 		t.Fatalf("legacy empty security validation = %v", err)
 	}
 	runtime.SMTP.Listener.Security = MailSecurityBoth
-	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); !errors.Is(err, ErrInvalidRuntimeConfig) {
-		t.Fatalf("explicit both validation = %v, want invalid runtime configuration", err)
+	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err != nil {
+		t.Fatalf("explicit both validation = %v", err)
 	}
 }
