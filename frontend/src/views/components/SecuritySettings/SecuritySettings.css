@@ -26,6 +26,21 @@
 .settings-divider { margin: 32px 0; border-color: var(--pm-border-color); }
 .security-key-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .security-alert { margin-bottom: 18px; }
+.external-bind-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.external-bind-form :deep(.el-input),
+.external-bind-form :deep(.el-select) {
+  width: 100%;
+}
+.external-bind-form :deep(.el-button) {
+  justify-self: start;
+  margin: 0;
+}
 .credential-list { min-height: 72px; display: grid; gap: 12px; }
 .credential-item { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px; border: 1px solid var(--pm-border-color); border-radius: var(--pm-radius-sm); background: var(--pm-bg-secondary); }
 .credential-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
