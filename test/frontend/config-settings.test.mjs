@@ -390,7 +390,7 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
   assert.doesNotThrow(() => compileScript(descriptor, { id: 'config-layout', inlineTemplate: true }))
   assert.deepEqual(compileStyle({ source: css, id: 'data-v-config-layout', scoped: true }).errors, [])
   assert.match(template, /v-if="canWrite" class="editor-footer"/)
-  assert.match(template, /v-model="confirmed"/)
+  assert.doesNotMatch(template, /v-model="confirmed"/)
   assert.doesNotMatch(template, /maintenance-panel|migration-panel|rollback-panel|audit-panel/)
   for (const [key, capability] of [['migration', 'canMigrate'], ['restart', 'canRestart'], ['backups', 'canRollback'], ['audit', 'canAudit']]) {
     assert.ok(maintenance.includes(`pageKey === '${key}' && ${capability}`))
@@ -407,20 +407,62 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
   assert.doesNotMatch(template, /&#x[0-9a-f]+;/i)
 })
 
-test('配置编辑页移除步骤提示条和专用样式，保留实际操作及确认控件', () => {
+test('配置编辑页将验证、候选保存和应用精简为单一操作', () => {
   const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
   const template = readFileSync(new URL('ConfigEditor/ConfigEditor.vue', root), 'utf8')
   const sharedCss = readFileSync(new URL('ConfigSettings.css', root), 'utf8')
   const editorCss = readFileSync(new URL('ConfigEditor/ConfigEditor.css', root), 'utf8')
   assert.doesNotMatch(template, /change-workflow|step-number|配置变更流程/)
   assert.doesNotMatch(sharedCss + editorCss, /change-workflow|step-number/)
-  for (const action of ['validateConfig', 'saveConfig', 'applyConfig']) {
-    assert.match(template, new RegExp(`<el-button\\b[^>]*@click="${action}"[^>]*>`))
-  }
+  assert.match(template, /@click="saveAndApply"/)
+  assert.match(template, /保存并应用/)
+  assert.match(template, /@click="continuePending"/)
+  assert.match(template, /继续应用/)
   assert.match(template, /v-if="canWrite" class="editor-footer"/)
-  assert.match(template, /<el-checkbox\b[^>]*v-model="confirmed"/)
-  assert.match(template, /@click="managePending\('resume'\)"/)
   assert.match(template, /@click="managePending\('cancel'\)"/)
+  assert.match(template, /放弃更改/)
+  assert.doesNotMatch(template, /只验证|保存候选配置|我已确认这是受控变更|应用代次/)
+})
+
+test('保存并应用一次点击按候选协议连续完成保存和应用', async () => {
+  const requests = []
+  let pending = null
+  const active = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: { relayHost: '', relayPort: 0, security: '', from: '', fromDomain: '' },
+    imap: { tlsPort: 993 },
+    pop3: { port: 110, tlsPort: 995 },
+    policy: { maxMessageBytes: 10 << 20, spamFilterLevel: 2 }
+  }
+  const { page } = fixture(async path => ({
+    errorNo: 0,
+    data: path.endsWith('/status') ? { activeGeneration: 4 } : active
+  }), 'mail', {
+    http: {
+      get: async path => ({
+        errorNo: 0,
+        data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 4 } : active
+      }),
+      put: async (path, body) => {
+        requests.push(path)
+        pending = { generation: 5, candidateId: 'one-click-5', section: 'mail', sameSession: true, payload: body.payload }
+        return { errorNo: 0, data: pending }
+      },
+      post: async (path, body) => {
+        requests.push(path)
+        assert.equal(body.generation, 5)
+        assert.equal(body.candidateId, 'one-click-5')
+        pending = null
+        return { errorNo: 0, data: { generation: 5 } }
+      }
+    }
+  })
+  await page.loadAll()
+  page.updateField(['policy', 'maxMessageBytes'], 12 << 20)
+  await page.saveAndApply()
+  assert.deepEqual(requests, ['/api/v1/config/mail', '/api/v1/config/mail/apply'])
+  assert.equal(page.pendingCandidate.value, null)
+  assert.equal(page.savedGeneration.value, 0)
 })
 
 test('配置编辑区移除填写标题、说明与重复标签，保留主标题和必要提示', () => {
@@ -434,7 +476,7 @@ test('配置编辑区移除填写标题、说明与重复标签，保留主标�
   assert.match(template, /v-if="sectionError"[\s\S]*?:title="sectionError"/)
   assert.doesNotMatch(template, /config-sensitive-hint|sensitiveHint/)
   assert.match(template, /v-if="secretField" class="secret-editor"/)
-  assert.match(template, /v-if="validationResult"[^>]*role="status"/)
+  assert.match(template, /v-if="validationResult && !validationResult\.valid"[^>]*role="status"/)
 })
 
 test('离开、刷新和正在执行的变更受保护，取消时保留编辑内容', async () => {

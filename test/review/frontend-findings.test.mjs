@@ -113,7 +113,21 @@ for (const action of ['edit', 'refresh']) {
   test(`保存候选配置后 ${action} 不应让页面失去继续保存或应用的入口`, async () => {
     const source = read('src/views/components/ConfigSettings/ConfigSettings.js')
       .replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
-    const initial = { generation: 1, policy: { smtpPort: 25, imapPort: 993, pop3Port: 995, maxMessageBytes: 0 } }
+    const initial = {
+      listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+      relay: {
+        relayHost: '',
+        relayPort: 0,
+        security: '',
+        from: '',
+        fromDomain: '',
+        verificationEnabled: true,
+        loginPolicy: 'new_device'
+      },
+      imap: { tlsPort: 993 },
+      pop3: { port: 110, tlsPort: 995 },
+      policy: { maxMessageBytes: 10 << 20, spamFilterLevel: 2, externalRecoveryEnabled: true }
+    }
     let pending = null
     let applied = false
     const errors = []
@@ -121,7 +135,7 @@ for (const action of ['edit', 'refresh']) {
       get: async url => ({ errorNo: 0, data: url.endsWith('/pending') ? pending : url.endsWith('/status') ? { activeGeneration: 1, setupState: 'ready' } : initial }),
       put: async (url, body) => {
         if (pending) return { errorNo: 409, errorMsg: '配置代次冲突' }
-        pending = { generation: 2, candidateId: 'audit-candidate', sameSession: true, section: 'email', payload: body.payload }
+        pending = { generation: 2, candidateId: 'audit-candidate', sameSession: true, section: 'mail', payload: body.payload }
         return { errorNo: 0, data: pending }
       },
       post: async (url, body) => {
@@ -133,7 +147,7 @@ for (const action of ['edit', 'refresh']) {
         return { errorNo: 0, data: { generation: 2 } }
       }
     }
-    const page = compileFunction(source + '\nreturn usePage("email")', [
+    const page = compileFunction(source + '\nreturn usePage("mail")', [
       'computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'ElMessageBox',
       'http', 'useGlobalStatusStore', 'readFormConfig', 'updateFormConfig', 'validateFormConfig'
     ])(
@@ -148,8 +162,7 @@ for (const action of ['edit', 'refresh']) {
     assert.deepEqual(errors, [])
     if (action === 'edit') page.updateField(['policy', 'maxMessageBytes'], 16 << 20)
     else await page.refreshPage()
-    await page.saveConfig()
-    await page.applyConfig()
+    await page.continuePending()
     console.log(`action=${action} server_pending=${pending} saved_generation=${page.savedGeneration.value} apply_requested=${applied} errors=${JSON.stringify(errors)}`)
     assert.equal(applied, true, '页面必须保留恢复或取消候选配置的可用路径，而不是保存冲突且应用不发请求')
   })

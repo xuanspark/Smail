@@ -25,7 +25,7 @@
       show-icon
     />
 
-    <el-alert v-if="pendingCandidate" title="存在待应用候选，编辑已锁定。刷新可恢复候选，需要修改时请先取消。" type="warning" :closable="false" show-icon />
+    <el-alert v-if="pendingCandidate" title="有一项配置尚未生效，可以继续应用或放弃更改。" type="warning" :closable="false" show-icon />
     <el-form label-position="top" class="spam-form">
       <el-form-item label="模型 API 接口地址">
         <el-input
@@ -60,21 +60,29 @@
       </div>
       <p class="spam-help">阈值越低，过滤越严格，也更容易产生误判；请根据模型返回结果逐步调整。</p>
 
-      <el-checkbox v-if="canWrite()" v-model="confirmed" class="spam-confirmation">
-        我已确认这是受控变更，并允许使用最近认证完成高风险配置操作
-      </el-checkbox>
       <div class="spam-actions">
-        <el-button :loading="working === 'validate'" :disabled="!canWrite() || !!working || !!pendingCandidate || loading" @click="validate">只验证</el-button>
-        <el-button type="primary" :loading="working === 'save'" :disabled="!canWrite() || !!working || !!pendingCandidate || loading" @click="save">保存候选配置</el-button>
-        <el-button type="success" plain :loading="working === 'apply'" :disabled="!canWrite() || !savedGeneration || !!working || loading" @click="apply">
-          应用{{ savedGeneration ? `代次 ${savedGeneration}` : '' }}
+        <el-button
+          v-if="!pendingCandidate"
+          type="primary"
+          :loading="working === 'save' || working === 'apply'"
+          :disabled="!canWrite() || !!working || loading || !hasChanges"
+          @click="saveAndApply"
+        >
+          保存并应用
         </el-button>
-        <el-button v-if="canWrite() && pendingCandidate && !pendingCandidate.sameSession" :disabled="!!working || !confirmed" @click="managePending('resume')">恢复候选到当前会话</el-button>
-        <el-button v-if="canWrite() && pendingCandidate" type="warning" plain :disabled="!!working || pendingCandidate.committed" @click="managePending('cancel')">取消候选配置</el-button>
+        <el-button
+          v-else
+          type="primary"
+          :loading="working === 'resume' || working === 'apply'"
+          :disabled="!canWrite() || !!working || loading"
+          @click="continuePending"
+        >
+          继续应用
+        </el-button>
+        <el-button v-if="canWrite() && pendingCandidate" type="danger" plain :disabled="!!working || pendingCandidate.committed" @click="managePending('cancel')">放弃更改</el-button>
       </div>
-      <div v-if="validationResult" class="spam-result" :class="validationResult.valid ? 'is-success' : 'is-error'">
-        <strong>{{ validationResult.valid ? '验证通过' : '验证未通过' }}</strong>
-        <span v-if="validationResult.generation">候选代次：{{ validationResult.generation }}</span>
+      <div v-if="validationResult && !validationResult.valid" class="spam-result is-error">
+        <strong>配置检查未通过</strong>
         <ul v-if="validationResult.issues?.length">
           <li v-for="issue in validationResult.issues" :key="`${issue.code}-${issue.message}`">{{ issue.code }}：{{ issue.message }}</li>
         </ul>
@@ -90,17 +98,15 @@ const {
   loading,
   working,
   errorMessage,
-  confirmed,
-  savedGeneration,
   pendingCandidate,
   managePending,
   validationResult,
   settings,
+  hasChanges,
   canWrite,
   load,
-  validate,
-  save,
-  apply
+  saveAndApply,
+  continuePending
 } = useSpamBlockSettings()
 </script>
 

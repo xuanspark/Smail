@@ -43,6 +43,19 @@
   padding-top: 2px;
 }
 
+.action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.action-row :deep(.el-button) {
+  min-width: 112px;
+  margin-left: 0;
+}
+
 .overview-meta {
   display: flex;
   flex-wrap: wrap;
@@ -126,6 +139,14 @@
   .overview-actions {
     justify-content: flex-start;
     padding-top: 0;
+  }
+
+  .action-row {
+    justify-content: stretch;
+  }
+
+  .action-row :deep(.el-button) {
+    flex: 1;
   }
 
   .overview-meta {

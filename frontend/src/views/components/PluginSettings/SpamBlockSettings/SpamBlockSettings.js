@@ -1,4 +1,4 @@
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
@@ -16,7 +16,6 @@ export function useSpamBlockSettings() {
   const loading = ref(false)
   const working = ref('')
   const errorMessage = ref('')
-  const confirmed = ref(false)
   const savedGeneration = ref(0)
   const pendingCandidate = ref(null)
   let savedInput = ''
@@ -24,6 +23,7 @@ export function useSpamBlockSettings() {
   const validationResult = ref(null)
   const pluginsPayload = ref(null)
   const settings = reactive({ ...defaultSettings })
+  const hasChanges = computed(() => JSON.stringify(settings) !== savedInput)
 
   const canWrite = () => globalStatus.hasCapability('config.write_global')
 
@@ -95,7 +95,7 @@ export function useSpamBlockSettings() {
     expectedGeneration: activeGeneration.value,
     payload: buildPayload(),
     confirmation: {
-      confirmed: confirmed.value,
+      confirmed: true,
       method: 'recent_auth'
     }
   })
@@ -117,8 +117,8 @@ export function useSpamBlockSettings() {
     }
   }
 
-  const save = async () => {
-    if (!canWrite() || loading.value || working.value || errorMessage.value || pendingCandidate.value) return
+  const save = async ({ quiet = false } = {}) => {
+    if (!canWrite() || loading.value || working.value || errorMessage.value || pendingCandidate.value) return false
     working.value = 'save'
     try {
       const response = await http.put('/api/v1/config/plugins', buildRequest())
@@ -128,19 +128,21 @@ export function useSpamBlockSettings() {
       savedInput = JSON.stringify(settings)
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await load()
-      ElMessage.success(`垃圾邮件插件配置已保存，代次 ${savedGeneration.value} 等待应用`)
+      if (!quiet) ElMessage.success('垃圾邮件插件配置已保存，等待应用')
+      return true
     } catch (error) {
       ElMessage.error(error.message || '插件配置保存失败')
+      return false
     } finally {
       working.value = ''
     }
   }
 
-  const apply = async () => {
-    if (!canWrite() || loading.value || working.value || !savedGeneration.value) return
+  const apply = async ({ successMessage = '垃圾邮件插件配置已应用' } = {}) => {
+    if (!canWrite() || loading.value || working.value || !savedGeneration.value) return false
     if (savedInput !== JSON.stringify(settings)) {
       ElMessage.warning('填写内容与候选不一致，请刷新查看候选，或先取消候选再修改')
-      return
+      return false
     }
     working.value = 'apply'
     try {
@@ -151,31 +153,56 @@ export function useSpamBlockSettings() {
       notifyResponseError(response, '插件配置应用失败')
       savedGeneration.value = 0
       await load()
-      ElMessage.success('垃圾邮件插件配置已应用')
+      ElMessage.success(successMessage)
+      return true
     } catch (error) {
       ElMessage.error(error.message || '垃圾邮件插件配置应用失败')
+      return false
     } finally {
       working.value = ''
     }
   }
 
   const managePending = async action => {
-    if (!canWrite() || loading.value || working.value || !pendingCandidate.value) return
+    if (!canWrite() || loading.value || working.value || !pendingCandidate.value) return false
     working.value = action
     try {
-      await ElMessageBox.confirm(action === 'cancel' ? '取消候选后不会影响当前生效配置，确认继续吗？' : '确认将已保存候选恢复到当前会话吗？', '管理候选配置', { type: 'warning', confirmButtonText: '确认', cancelButtonText: '返回' })
+      if (action === 'cancel') {
+        await ElMessageBox.confirm('放弃后会保留当前生效配置，本次修改不会应用。', '放弃本次更改', { type: 'warning', confirmButtonText: '放弃更改', cancelButtonText: '返回' })
+      }
       const response = await http.post('/api/v1/config/pending', {
         generation: pendingCandidate.value.generation, action,
         candidateId: pendingCandidate.value.candidateId,
-        confirmation: { confirmed: confirmed.value, method: 'recent_auth' }
+        confirmation: { confirmed: true, method: 'recent_auth' }
       })
       notifyResponseError(response, '候选配置操作失败')
       await load()
+      if (action === 'cancel') ElMessage.success('本次更改已放弃')
+      return true
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '候选配置操作失败')
+      return false
     } finally {
       working.value = ''
     }
+  }
+
+  const saveAndApply = async () => {
+    if (pendingCandidate.value) {
+      await continuePending()
+      return
+    }
+    const saved = await save({ quiet: true })
+    if (saved) await apply({ successMessage: '垃圾邮件插件配置已保存并应用' })
+  }
+
+  const continuePending = async () => {
+    if (!pendingCandidate.value) return
+    if (!pendingCandidate.value.sameSession) {
+      const resumed = await managePending('resume')
+      if (!resumed) return
+    }
+    await apply()
   }
 
   onMounted(load)
@@ -184,16 +211,17 @@ export function useSpamBlockSettings() {
     loading,
     working,
     errorMessage,
-    confirmed,
-    savedGeneration,
     pendingCandidate,
     managePending,
     validationResult,
     settings,
+    hasChanges,
     canWrite,
     load,
     validate,
     save,
-    apply
+    apply,
+    saveAndApply,
+    continuePending
   }
 }

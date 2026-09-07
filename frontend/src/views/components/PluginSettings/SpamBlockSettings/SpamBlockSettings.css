@@ -56,15 +56,17 @@
   margin-top: -4px;
 }
 
-.spam-confirmation {
-  margin-top: 20px;
-}
-
 .spam-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
   margin-top: 20px;
+}
+
+.spam-actions :deep(.el-button) {
+  min-width: 112px;
+  margin-left: 0;
 }
 
 .spam-result {

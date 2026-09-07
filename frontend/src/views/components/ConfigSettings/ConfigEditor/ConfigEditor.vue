@@ -78,7 +78,7 @@
           <div v-if="canWrite" class="editor-footer">
             <el-alert
               v-if="pendingCandidate"
-              :title="`服务器存在待应用候选，代次 ${pendingCandidate.generation}。已锁定编辑；如需修改，请先取消候选。刷新页面不会丢失候选。`"
+              title="有一项配置尚未生效，可以继续应用或放弃更改。"
               type="warning"
               :closable="false"
               show-icon
@@ -90,30 +90,38 @@
               :closable="false"
               show-icon
             />
-            <el-checkbox v-model="confirmed" class="confirmation-check" :disabled="sectionLoading || !!working || !!sectionError">
-              我已确认这是受控变更，并允许使用最近认证完成高风险配置操作
-            </el-checkbox>
             <div class="action-row">
-              <el-button :loading="working === 'validate'" :disabled="sectionLoading || !!working || !!sectionError || !!pendingCandidate" @click="validateConfig">
-                只验证
+              <el-button
+                v-if="!pendingCandidate"
+                type="primary"
+                :loading="working === 'save' || working === 'apply'"
+                :disabled="sectionLoading || !!working || !!sectionError || !hasChanges"
+                @click="saveAndApply"
+              >
+                保存并应用
               </el-button>
-              <el-button type="primary" :loading="working === 'save'" :disabled="sectionLoading || !!working || !!sectionError || !!pendingCandidate" @click="saveConfig">
-                保存候选配置
+              <el-button
+                v-else
+                type="primary"
+                :loading="working === 'resume' || working === 'apply'"
+                :disabled="sectionLoading || !!working || !!sectionError"
+                @click="continuePending"
+              >
+                继续应用
               </el-button>
-              <el-button v-if="pendingCandidate && !pendingCandidate.sameSession" :disabled="!!working || !confirmed" @click="managePending('resume')">
-                恢复候选到当前会话
-              </el-button>
-              <el-button v-if="pendingCandidate" type="warning" plain :disabled="!!working || pendingCandidate.committed" @click="managePending('cancel')">
-                取消候选配置
-              </el-button>
-              <el-button type="success" plain :loading="working === 'apply'" :disabled="sectionLoading || !!working || !savedGeneration" @click="applyConfig">
-                {{ savedGeneration ? `应用代次 ${savedGeneration}` : '应用配置' }}
+              <el-button
+                v-if="pendingCandidate"
+                type="danger"
+                plain
+                :disabled="!!working || pendingCandidate.committed"
+                @click="managePending('cancel')"
+              >
+                放弃更改
               </el-button>
             </div>
           </div>
-          <div v-if="validationResult" class="result-box" :class="validationResult.valid ? 'result-success' : 'result-error'" role="status">
-            <strong>{{ validationResult.valid ? '验证通过' : '验证未通过' }}</strong>
-            <span v-if="validationResult.generation">候选代次：{{ validationResult.generation }}</span>
+          <div v-if="validationResult && !validationResult.valid" class="result-box result-error" role="status">
+            <strong>配置检查未通过</strong>
             <ul v-if="validationResult.issues?.length">
               <li v-for="issue in validationResult.issues" :key="`${issue.code}-${issue.message}`">
                 {{ issue.code }}：{{ issue.message }}
@@ -145,19 +153,15 @@ const {
   sectionError,
   secretField,
   secretValue,
-  confirmed,
-  savedGeneration,
   pendingCandidate,
   pendingScopeHint,
   managePending,
   validationResult,
+  hasChanges,
   canWrite,
   refreshPage,
-  validateConfig,
-  saveConfig,
-  applyConfig,
-  formatTime,
-  serviceLabel
+  saveAndApply,
+  continuePending
 } = inject('smail-config-page')
 </script>
 

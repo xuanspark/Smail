@@ -243,27 +243,31 @@ export function usePage(pageKey = 'base') {
   }
 
   const managePending = async action => {
-    if (!canOperate() || !pendingCandidate.value) return
+    if (!canOperate() || !pendingCandidate.value) return false
     working.value = action
     try {
-      await ElMessageBox.confirm(
-        action === 'cancel' ? '取消后保留当前生效配置，候选修改不会应用。确认取消吗？' : '恢复后将候选配置绑定到当前会话，请确认已核对候选内容。',
-        action === 'cancel' ? '取消候选配置' : '恢复候选配置',
-        { type: 'warning', confirmButtonText: '确认', cancelButtonText: '返回' }
-      )
+      if (action === 'cancel') {
+        await ElMessageBox.confirm(
+          '放弃后会保留当前生效配置，本次修改不会应用。',
+          '放弃本次更改',
+          { type: 'warning', confirmButtonText: '放弃更改', cancelButtonText: '返回' }
+        )
+      }
       const response = await http.post('/api/v1/config/pending', {
         generation: pendingCandidate.value.generation,
         candidateId: pendingCandidate.value.candidateId,
         action,
-        confirmation: { confirmed: confirmed.value, method: 'recent_auth' }
+        confirmation: { confirmed: true, method: 'recent_auth' }
       })
       notifyResponseError(response, '候选配置操作失败')
       await loadStatus()
       await loadSection()
       await loadPending()
-      ElMessage.success(action === 'cancel' ? '候选已取消，可以继续编辑' : '候选已恢复，请核对后应用')
+      if (action === 'cancel') ElMessage.success('本次更改已放弃')
+      return true
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '候选配置操作失败')
+      return false
     } finally {
       working.value = ''
     }
@@ -528,7 +532,7 @@ export function usePage(pageKey = 'base') {
       expectedGeneration: Number(status.activeGeneration),
       payload: parsePayload(),
       secretChanges,
-      confirmation: { confirmed: confirmed.value, method: 'recent_auth' }
+      confirmation: { confirmed: true, method: 'recent_auth' }
     }
   }
 
@@ -557,8 +561,8 @@ export function usePage(pageKey = 'base') {
     }
   }
 
-  const saveConfig = async () => {
-    if (!canEdit() || !checkForm()) return
+  const saveConfig = async ({ quiet = false } = {}) => {
+    if (!canEdit() || !checkForm()) return false
     working.value = 'save'
     try {
       const request = buildRequest()
@@ -570,20 +574,22 @@ export function usePage(pageKey = 'base') {
       validationResult.value = { valid: true, generation: savedGeneration.value, issues: [] }
       await loadStatus()
       await loadPending()
-      ElMessage.success(`候选配置已保存，代次 ${savedGeneration.value} 等待应用`)
+      if (!quiet) ElMessage.success('配置已保存，等待应用')
+      return true
     } catch (error) {
       ElMessage.error(error.message || '配置保存失败')
+      return false
     } finally {
       working.value = ''
     }
   }
 
-  const applyConfig = async () => {
-    if (!canOperate() || !savedGeneration.value) return
+  const applyConfig = async ({ successMessage = '配置已应用' } = {}) => {
+    if (!canOperate() || !savedGeneration.value) return false
     if (!savedInput || savedInput.text !== editorText.value || savedInput.secret !== secretValue.value) {
       invalidateCandidate()
       ElMessage.warning('填写内容已变更，请重新保存候选配置后再应用')
-      return
+      return false
     }
     working.value = 'apply'
     try {
@@ -595,12 +601,32 @@ export function usePage(pageKey = 'base') {
       savedGeneration.value = 0
       await Promise.all([loadStatus(), loadSection()])
       await loadPending()
-      ElMessage.success('配置已应用')
+      ElMessage.success(successMessage)
+      return true
     } catch (error) {
       ElMessage.error(error.message || '配置应用失败')
+      return false
     } finally {
       working.value = ''
     }
+  }
+
+  const saveAndApply = async () => {
+    if (pendingCandidate.value) {
+      await continuePending()
+      return
+    }
+    const saved = await saveConfig({ quiet: true })
+    if (saved) await applyConfig({ successMessage: '配置已保存并应用' })
+  }
+
+  const continuePending = async () => {
+    if (!pendingCandidate.value) return
+    if (!pendingCandidate.value.sameSession) {
+      const resumed = await managePending('resume')
+      if (!resumed) return
+    }
+    await applyConfig()
   }
 
   const previewRollback = async () => {
@@ -715,7 +741,7 @@ export function usePage(pageKey = 'base') {
     sectionError, sensitiveHint, secretField, secretValue,
     confirmed, savedGeneration, pendingCandidate, managePending, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
-    auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig,
+    auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig, saveAndApply, continuePending,
     loadBackups, previewRollback, executeRollback, loadAudit, exportAudit, formatTime,
     serviceLabel, sectionLabel, operationLabel, databaseConfig, databaseTypeLabel, canMigrate,
     migrationTargetName, migrationPreview, migrationToken, migrationRecord, migrationStatusLabel, migrationStatusType,
