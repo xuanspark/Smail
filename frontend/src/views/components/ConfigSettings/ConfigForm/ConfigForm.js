@@ -128,12 +128,9 @@ const smtpGroups = [
     }),
     port('relay.relayPort', 'SMTP 发信中继端口', { hint: '外部 SMTP 服务器端口，与本机监听无关；选择加密方式后自动填写。' }),
     field('relay.username', '认证用户名', 'text', { placeholder: '需要认证时填写' }),
+    field('relay.password', '中继密码', 'password', { placeholder: '留空保持原值' }),
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
     field('relay.fromDomain', '发件域名', 'text', { placeholder: 'example.com' })
-  ]),
-  group('verification', '验证邮件策略', '', [
-    field('relay.verificationEnabled', '启用验证邮件发送', 'switch'),
-    field('relay.loginPolicy', '中继登录验证策略', 'select', { options: loginOptions })
   ])
 ]
 
@@ -296,7 +293,7 @@ export function validateFormConfig(section, config) {
   }
   if (section === 'smtp') {
     const relay = config.relay || {}
-    if (relay.verificationEnabled || (relay.relayHost && relay.security)) {
+    if (relay.relayHost && relay.security) {
       if (!['starttls', 'implicit_tls', 'tls', 'plain'].includes(relay.security)) {
         errors['relay.security'] = '请选择明确的连接加密方式，系统会自动匹配端口'
       }

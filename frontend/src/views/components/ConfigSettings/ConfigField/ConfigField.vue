@@ -121,7 +121,9 @@
       :placeholder="field.placeholder || '填写内容'"
       :aria-describedby="descriptionId"
       :aria-invalid="!!error"
-      autocomplete="off"
+      :type="field.type === 'password' ? 'password' : 'text'"
+      :show-password="field.type === 'password'"
+      :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
       @update:model-value="update"
     />
     <ConfigPagination

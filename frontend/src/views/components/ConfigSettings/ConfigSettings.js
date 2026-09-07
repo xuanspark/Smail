@@ -180,9 +180,6 @@ export function usePage(pageKey = 'base') {
     if (selectedSection.value === 'base' && ['mysql', 'postgresql'].includes(formConfig.value.database?.type)) {
       return { label: '数据库密码', description: '只在本次请求内传输，保存后仅保留密文状态。留空表示保持原值。', placeholder: '输入新数据库密码（可选）' }
     }
-    if (selectedSection.value === 'smtp') {
-      return { label: 'SMTP Relay 密码', description: '只在本次请求内传输，保存后仅保留密文状态。留空表示保持原值。', placeholder: '输入新的 Relay 密码（可选）' }
-    }
     return null
   })
   const sensitiveHint = computed(() => secretField.value ? '密码不会回填，修改请使用下方独立输入框，留空保持原值' : '')
@@ -524,6 +521,12 @@ export function usePage(pageKey = 'base') {
       }
       if (selectedSection.value === 'smtp') {
         delete payload.relayPasswordStatus
+        if (payload.relay && 'password' in payload.relay) {
+          delete payload.relay.password
+          if (Object.keys(payload.relay).length === 0) {
+            delete payload.relay
+          }
+        }
       }
       if (apiSection() === 'plugins' && payload.plugins && typeof payload.plugins === 'object') {
         Object.values(payload.plugins).forEach(plugin => {
@@ -545,8 +548,9 @@ export function usePage(pageKey = 'base') {
     if (value && selectedSection.value === 'base' && secretField.value) {
       secretChanges['database.password'] = { operation: 'replace', value: { plaintext: value } }
     }
-    if (value && selectedSection.value === 'smtp') {
-      secretChanges['relay.password'] = { operation: 'replace', value: { plaintext: value } }
+    const relayPassword = formConfig.value?.relay?.password
+    if (relayPassword && selectedSection.value === 'smtp') {
+      secretChanges['relay.password'] = { operation: 'replace', value: { plaintext: relayPassword } }
     }
     return {
       expectedGeneration: Number(status.activeGeneration),

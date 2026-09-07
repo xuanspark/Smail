@@ -512,7 +512,7 @@ test('独立页保持验证、保存、应用端点和代次协议，敏感值�
     }
   })
   await page.loadAll()
-  page.secretValue.value = 'test-only-value'
+  page.updateField(['relay', 'password'], 'test-only-value')
   page.confirmed.value = true
   await page.validateConfig()
   await page.saveConfig()
@@ -618,7 +618,7 @@ test('SQLite 不显示或发送密码，网络数据库和中继密码留空保�
     http: { post: async (path, body) => { request = body; return { errorNo: 0, data: { valid: true } } } }
   })
   await page.loadSection()
-  page.updateSecret(' smtp-test-only ')
+  page.updateField(['relay', 'password'], ' smtp-test-only ')
   await page.validateConfig()
   assert.equal(request.secretChanges['relay.password'].value.plaintext, ' smtp-test-only ')
 })

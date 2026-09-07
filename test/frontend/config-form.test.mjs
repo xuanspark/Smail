@@ -40,7 +40,7 @@ test('七个页面使用分组表单，控件和样式能编译且不再提供 J
     const keys = groups.flatMap(group => group.fields.map(field => field.path.join('.')))
     assert.equal(keys.length, new Set(keys).size)
     assert.ok(groups.every(group => /[\u4e00-\u9fff]/.test(group.title)))
-    assert.ok(!keys.some(key => /generation|password|encryptionKey|capabilities/.test(key)))
+    assert.ok(!keys.some(key => /generation|database\.password|encryptionKey|capabilities/.test(key)))
   }
 })
 
@@ -320,8 +320,7 @@ test('加密配置校验拦截监听冲突、远程明文和已启用但未选�
   for (const relayHost of ['smtp.example.com', '127.0.0.999', '127.1', '127.0.0.1.evil.com', '192.168.1.1']) {
     assert.ok(validateFormConfig('smtp', { relay: { relayHost, security: 'plain', relayPort: 25 } })['relay.relayHost'])
   }
-  const errors = validateFormConfig('smtp', { relay: { verificationEnabled: true, relayHost: 'smtp.example.com', relayPort: 0 } })
-  assert.ok(errors['relay.security'])
+  const errors = validateFormConfig('smtp', { relay: { relayHost: 'smtp.example.com', security: 'starttls', relayPort: 0 } })
   assert.ok(errors['relay.relayPort'])
   assert.deepEqual(validateFormConfig('smtp', { relay: {} }), {})
   assert.deepEqual(validateFormConfig('smtp', { relay: { security: 'starttls', relayPort: 2525, relayHost: 'smtp.example.com' } }), {})
