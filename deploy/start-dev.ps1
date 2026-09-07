@@ -9,10 +9,13 @@ $logs = Join-Path $root 'test-log\runtime'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $previousRoot = $env:SMAIL_ROOT
+$previousHTTPPortOverride = $env:SMAIL_HTTP_PORT_OVERRIDE
+$previousHTTPTLSModeOverride = $env:SMAIL_HTTP_TLS_MODE_OVERRIDE
+$previousSetupPort = $env:setup_port
 try {
     if ($Service -eq 'backend') {
         $binary = Join-Path $root 'out\backend\smail-dev.exe'
-        if (Get-NetTCPConnection -State Listen -LocalPort 443 -ErrorAction SilentlyContinue) { throw '443 端口已占用，请先确认并停止旧后端' }
+        if (Get-NetTCPConnection -State Listen -LocalPort 5201 -ErrorAction SilentlyContinue) { throw '5201 端口已占用，请先确认并停止旧后端' }
         $running = Get-CimInstance Win32_Process | Where-Object {
             $_.ExecutablePath -and $_.ExecutablePath -eq $binary
         }
@@ -32,8 +35,11 @@ try {
         if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw '请先运行 deploy/build.ps1 编译后端' }
         # SMAIL_ROOT 是 config 的父目录，不能指向 config 本身或编译输出目录。
         $env:SMAIL_ROOT = $root
+        $env:SMAIL_HTTP_PORT_OVERRIDE = '5201'
+        $env:SMAIL_HTTP_TLS_MODE_OVERRIDE = 'proxy'
+        $env:setup_port = '5201'
         $arguments = @('--dev-disable-admin-reset')
-        Write-Output '开发启动：沿用 config/config.json 和现有数据库；明确停用管理员恢复通道，不请求权限提升。'
+        Write-Output '开发启动：后端 API 仅监听 5201；沿用 config/config.json 和现有数据库；明确停用管理员恢复通道，不请求权限提升。'
         if ($SkipBuild) { Write-Warning '已跳过编译，请自行确认二进制与当前源码一致。' }
         # 插件从 out/plugins 加载；账号、配置和密钥仍通过 SMAIL_ROOT 定位到根目录 config。
         foreach ($name in @('spam_block.exe', 'pmail_telegram_push.exe', 'wechat_push.exe')) {
@@ -43,11 +49,13 @@ try {
         }
         $workingDirectory = Join-Path $root 'out'
     } else {
-        if (Get-NetTCPConnection -State Listen -LocalPort 15173 -ErrorAction SilentlyContinue) { throw '15173 端口已占用，请先确认并停止旧前端' }
+        foreach ($port in @(80, 443)) {
+            if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { throw "$port 端口已占用，请先确认并停止旧前端或旧后端" }
+        }
         $binary = (Get-Command node -ErrorAction Stop).Source
         $vite = Join-Path $root 'frontend\node_modules\vite\bin\vite.js'
         if (-not (Test-Path -LiteralPath $vite)) { throw '请先安装 frontend 的依赖' }
-        $arguments = @(('"{0}"' -f $vite), '--host', '127.0.0.1', '--port', '15173', '--strictPort')
+        $arguments = @(('"{0}"' -f $vite), '--host', '127.0.0.1', '--port', '443', '--strictPort')
         $workingDirectory = Join-Path $root 'frontend'
     }
     $stdout = Join-Path $logs "$Service-$stamp.stdout.log"
@@ -61,4 +69,7 @@ try {
     Write-Output "运行文件：$binary；标准输出：$stdout；错误日志：$stderr"
 } finally {
     $env:SMAIL_ROOT = $previousRoot
+    $env:SMAIL_HTTP_PORT_OVERRIDE = $previousHTTPPortOverride
+    $env:SMAIL_HTTP_TLS_MODE_OVERRIDE = $previousHTTPTLSModeOverride
+    $env:setup_port = $previousSetupPort
 }

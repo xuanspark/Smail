@@ -1,4 +1,7 @@
 /* eslint-env node */
+import { readFileSync } from 'node:fs'
+import { createServer as createHTTPServer } from 'node:http'
+import path from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import AutoImport from 'unplugin-auto-import/vite'
@@ -6,27 +9,40 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import vue from '@vitejs/plugin-vue'
 
+const developmentHTTPRedirect = (frontendOrigin, host = '127.0.0.1', port = 80) => ({
+  name: 'smail-development-http-redirect',
+  apply: 'serve',
+  async configureServer(server) {
+    const redirectServer = createHTTPServer((request, response) => {
+      const requestURL = new URL(request.url || '/', 'http://127.0.0.1')
+      const location = new URL(`${requestURL.pathname}${requestURL.search}`, frontendOrigin)
+      response.writeHead(308, {
+        Location: location.toString(),
+        'Cache-Control': 'no-store'
+      })
+      response.end()
+    })
+
+    await new Promise((resolve, reject) => {
+      redirectServer.once('error', reject)
+      redirectServer.listen(port, host, resolve)
+    })
+    server.httpServer?.once('close', () => redirectServer.close())
+  }
+})
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const backendUrl = (env.VITE_DEV_BACKEND_URL || 'https://127.0.0.1:443').replace(/\/$/, '')
+  const backendUrl = (env.VITE_DEV_BACKEND_URL || 'http://127.0.0.1:5201').replace(/\/$/, '')
   const backendOrigin = (env.VITE_DEV_BACKEND_ORIGIN || 'https://xuans.com').replace(/\/$/, '')
-
-  const rewriteDevelopmentCookies = (proxyResponse) => {
-    const setCookies = proxyResponse.headers['set-cookie']
-    if (!Array.isArray(setCookies)) {
-      return
-    }
-
-    proxyResponse.headers['set-cookie'] = setCookies.map((cookie) => (
-      cookie
-        .replace(/;\s*Secure/gi, '')
-        .replace(/;\s*Domain=[^;]*/gi, '')
-    ))
-  }
+  const frontendOrigin = (env.VITE_DEV_FRONTEND_ORIGIN || 'https://xuans.com').replace(/\/$/, '')
+  const certificatePath = path.resolve(process.cwd(), env.SMAIL_DEV_TLS_CERTIFICATE || '../config/ssl/xuans.com.crt')
+  const privateKeyPath = path.resolve(process.cwd(), env.SMAIL_DEV_TLS_PRIVATE_KEY || '../config/ssl/xuans.com.key')
 
   return {
     plugins: [
+      developmentHTTPRedirect(frontendOrigin),
       vue(),
       AutoImport({
         resolvers: [ElementPlusResolver()],
@@ -41,6 +57,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      host: '127.0.0.1',
+      port: 443,
+      strictPort: true,
+      https: {
+        cert: readFileSync(certificatePath),
+        key: readFileSync(privateKeyPath)
+      },
       cors: true,
       proxy: {
         "/api": {
@@ -55,7 +78,6 @@ export default defineConfig(({ mode }) => {
               proxyRequest.setHeader('x-forwarded-proto', originURL.protocol.replace(':', ''))
               proxyRequest.removeHeader('referer')
             })
-            proxy.on('proxyRes', rewriteDevelopmentCookies)
           }
         },
         "/attachments": {

@@ -3,6 +3,8 @@ package config
 import "testing"
 
 func TestResolveHTTPPortDefaultsPreservesConfiguredPorts(t *testing.T) {
+	t.Setenv("SMAIL_HTTP_PORT_OVERRIDE", "")
+	t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", "")
 	t.Setenv("SMAIL_HTTP_PORT", "19001")
 	t.Setenv("SMAIL_HTTPS_PORT", "19002")
 
@@ -17,6 +19,8 @@ func TestResolveHTTPPortDefaultsPreservesConfiguredPorts(t *testing.T) {
 }
 
 func TestResolveHTTPPortDefaultsUsesEnvironmentPorts(t *testing.T) {
+	t.Setenv("SMAIL_HTTP_PORT_OVERRIDE", "")
+	t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", "")
 	t.Setenv("SMAIL_HTTP_PORT", "9001")
 	t.Setenv("SMAIL_HTTPS_PORT", "9002")
 
@@ -27,6 +31,8 @@ func TestResolveHTTPPortDefaultsUsesEnvironmentPorts(t *testing.T) {
 }
 
 func TestResolveHTTPPortDefaultsUsesSetupAndDirectDefaults(t *testing.T) {
+	t.Setenv("SMAIL_HTTP_PORT_OVERRIDE", "")
+	t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", "")
 	t.Setenv("SMAIL_HTTP_PORT", "")
 	t.Setenv("SMAIL_HTTPS_PORT", "")
 
@@ -37,6 +43,8 @@ func TestResolveHTTPPortDefaultsUsesSetupAndDirectDefaults(t *testing.T) {
 }
 
 func TestResolveHTTPPortDefaultsDisablesInternalHTTPSInProxyMode(t *testing.T) {
+	t.Setenv("SMAIL_HTTP_PORT_OVERRIDE", "")
+	t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", "")
 	t.Setenv("SMAIL_HTTP_PORT", "9001")
 	t.Setenv("SMAIL_HTTPS_PORT", "9002")
 
@@ -47,5 +55,22 @@ func TestResolveHTTPPortDefaultsDisablesInternalHTTPSInProxyMode(t *testing.T) {
 	}, 18080)
 	if got.Port != 9001 || got.HTTPSPort != 0 || got.HTTPSEnabled {
 		t.Fatalf("proxy HTTP config = %+v, want HTTP 9001 with internal HTTPS disabled", got)
+	}
+}
+
+func TestResolveHTTPPortDefaultsUsesExplicitRuntimeOverride(t *testing.T) {
+	t.Setenv("SMAIL_HTTP_PORT_OVERRIDE", "5201")
+	t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", HTTPSTLSModeProxy)
+	t.Setenv("SMAIL_HTTP_PORT", "9001")
+	t.Setenv("SMAIL_HTTPS_PORT", "9002")
+
+	got := ResolveHTTPPortDefaults(HTTPConfig{
+		Port:         80,
+		HTTPSPort:    443,
+		HTTPSEnabled: true,
+		TLSMode:      HTTPSTLSModeDirect,
+	}, 18080)
+	if got.Port != 5201 || got.HTTPSPort != 0 || got.HTTPSEnabled || got.TLSMode != HTTPSTLSModeProxy {
+		t.Fatalf("runtime override HTTP config = %+v, want proxy API on port 5201", got)
 	}
 }

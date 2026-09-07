@@ -77,7 +77,9 @@ func CurrentHTTPConfig() HTTPConfig {
 func ResolveHTTPPortDefaults(value HTTPConfig, setupPort int) HTTPConfig {
 	result := cloneHTTPConfig(value)
 	result.TLSMode = strings.ToLower(strings.TrimSpace(result.TLSMode))
-	if result.Port == 0 {
+	if override := environmentPort("SMAIL_HTTP_PORT_OVERRIDE"); override != 0 {
+		result.Port = override
+	} else if result.Port == 0 {
 		result.Port = environmentPort("SMAIL_HTTP_PORT")
 		if result.Port == 0 && validServicePort(setupPort) {
 			result.Port = setupPort
@@ -85,6 +87,9 @@ func ResolveHTTPPortDefaults(value HTTPConfig, setupPort int) HTTPConfig {
 		if result.Port == 0 {
 			result.Port = 80
 		}
+	}
+	if override := strings.ToLower(strings.TrimSpace(os.Getenv("SMAIL_HTTP_TLS_MODE_OVERRIDE"))); override == HTTPSTLSModeDirect || override == HTTPSTLSModeProxy {
+		result.TLSMode = override
 	}
 	if result.TLSMode == HTTPSTLSModeProxy {
 		result.HTTPSPort = 0

@@ -463,10 +463,7 @@ func dirInit() error {
 
 // 等待 HTTP 服务启动，最长约 90 秒。
 func waitHTTPReady(serviceErrors <-chan error) error {
-	port := 80
-	if cfg := config.CurrentConfig(); cfg != nil && cfg.HttpPort > 0 {
-		port = cfg.HttpPort
-	}
+	port := config.CurrentHTTPConfig().Port
 	url := fmt.Sprintf("http://127.0.0.1:%d/api/ping", port)
 
 	client := &http.Client{Timeout: 2 * time.Second}
