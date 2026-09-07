@@ -523,6 +523,89 @@ func TestConfigManagerMailSectionAppliesBothPartitionsWithoutMailFile(t *testing
 	}
 }
 
+func TestConfigManagerMailSectionAcceptsUnifiedSecurityModes(t *testing.T) {
+	tests := []struct {
+		name      string
+		security  string
+		listener  SMTPListenerConfig
+		imap      IMAPListenerConfig
+		pop3      POP3ListenerConfig
+		relayPort int
+		want      MailPorts
+	}{
+		{
+			name:      "starttls",
+			security:  MailSecuritySTARTTLS,
+			listener:  SMTPListenerConfig{Port: 25, STARTTLSPort: 587, Security: MailSecuritySTARTTLS},
+			imap:      IMAPListenerConfig{TLSPort: 143},
+			pop3:      POP3ListenerConfig{Port: 110},
+			relayPort: 587,
+			want:      MailPorts{SMTP: 25, SMTPSTARTTLS: 587, IMAP: 143, POP3: 110},
+		},
+		{
+			name:      "implicit_tls",
+			security:  MailSecurityImplicitTLS,
+			listener:  SMTPListenerConfig{Port: 25, TLSPort: 465, Security: MailSecurityImplicitTLS},
+			imap:      IMAPListenerConfig{TLSPort: 993},
+			pop3:      POP3ListenerConfig{TLSPort: 995},
+			relayPort: 465,
+			want:      MailPorts{SMTP: 25, SMTPTLS: 465, IMAP: 993, POP3TLS: 995},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeRuntimeFixture(t, root, validRuntimeConfig())
+			options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+			manager, err := NewConfigManager(root, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			mail := mailSectionFromRuntime(manager.Snapshot())
+			mail.Listener = test.listener
+			mail.IMAP = test.imap
+			mail.POP3 = test.pop3
+			mail.Relay.RelayPort = test.relayPort
+			mail.Relay.Security = test.security
+			mail.Relay.FromDomain = "example.com"
+			mail.Relay.VerificationEnabled = true
+			payload, err := json.Marshal(mail)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			updated, err := manager.Update(context.Background(), UpdateRequest{
+				Section: SectionMail, ExpectedGeneration: 1, Payload: payload, Actor: authorizedConfigActor(),
+			})
+			if err != nil {
+				t.Fatalf("update unified %s mail configuration: %v", test.security, err)
+			}
+			if got := ResolveMailPorts(updated.Candidate.SMTP, updated.Candidate.Email); got != test.want {
+				t.Fatalf("candidate ports = %+v, want %+v", got, test.want)
+			}
+			if smtpRelayConfigured(updated.Candidate.SMTP.Relay) {
+				t.Fatal("recommended relay defaults enabled the optional SMTP relay")
+			}
+			if _, err := manager.ApplyPendingAuthorized(context.Background(), updated.Generation, updated.CandidateID, SectionMail, authorizedConfigActor()); err != nil {
+				t.Fatal(err)
+			}
+
+			reloaded, err := NewConfigLoader(root, options).Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ResolveMailPorts(reloaded.SMTP, reloaded.Email); got != test.want {
+				t.Fatalf("reloaded ports = %+v, want %+v", got, test.want)
+			}
+			if ResolveMailSecurity(reloaded.SMTP.Listener) != test.security || NormalizeMailSecurity(reloaded.SMTP.Relay.Security) != test.security {
+				t.Fatalf("reloaded security modes are not unified: listener=%q relay=%q", reloaded.SMTP.Listener.Security, reloaded.SMTP.Relay.Security)
+			}
+		})
+	}
+}
+
 func TestConfigManagerMailSectionSecretReplacementUsesVault(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())
