@@ -39,7 +39,7 @@ test('配置与安全策略页面使用分组表单，控件和样式能编译�
     telegram_push: { settings: null },
     wechat_push: { settings: null }
   } }
-  for (const section of ['base', 'mail', 'security_policy', 'ssl', 'plugins', 'spam_block', 'telegram_push', 'wechat_push']) {
+  for (const section of ['base', 'mail', 'mail_policy', 'security_policy', 'ssl', 'plugins', 'spam_block', 'telegram_push', 'wechat_push']) {
     const groups = getFieldGroups(section, config)
     assert.ok(groups.length)
     const keys = groups.flatMap(group => group.fields.map(field => field.path.join('.')))
@@ -49,21 +49,30 @@ test('配置与安全策略页面使用分组表单，控件和样式能编译�
   }
 })
 
-test('邮件服务页面使用统一加密方式管理监听端口，中继和策略字段保持在同一配置分区', () => {
-  const config = { listener: { port: 25, starttlsPort: 587, tlsPort: 465 }, relay: { relayPort: 465 }, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: { smtpPort: 25, imapPort: 143, pop3Port: 110 } }
+test('邮件服务页面只管理监听和中继，邮件策略使用独立表单并保持同一配置分区', () => {
+  const config = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: { relayPort: 465 },
+    imap: { tlsPort: 993 },
+    pop3: { port: 110, tlsPort: 995 },
+    policy: { maxMessageBytes: 10485760, spamFilterLevel: 1, smtpPort: 25, imapPort: 143, pop3Port: 110 }
+  }
   const text = JSON.stringify(config)
   const groups = getFieldGroups('mail', config)
+  const policyGroups = getFieldGroups('mail_policy', config)
   const listener = groups.find(group => group.id === 'listener')
   const relay = groups.find(group => group.id === 'relay')
   const keys = groups.flatMap(group => group.fields.map(input => input.path.join('.')))
+  const policyKeys = policyGroups.flatMap(group => group.fields.map(input => input.path.join('.')))
   assert.deepEqual(keys.filter(key => /^(listener|imap|pop3)\./.test(key)), [
     'listener.security', 'listener.port', 'listener.starttlsPort', 'listener.tlsPort',
     'imap.tlsPort', 'pop3.port', 'pop3.tlsPort'
   ])
   assert.ok(keys.includes('relay.relayHost'))
   assert.ok(keys.includes('relay.password'))
-  assert.ok(keys.includes('policy.maxMessageBytes'))
-  assert.ok(keys.includes('policy.spamFilterLevel'))
+  assert.ok(!keys.includes('policy.maxMessageBytes'))
+  assert.ok(!keys.includes('policy.spamFilterLevel'))
+  assert.deepEqual(policyKeys, ['policy.maxMessageBytes', 'policy.spamFilterLevel'])
   assert.ok(!keys.includes('policy.smtpPort'))
   assert.ok(!keys.includes('policy.imapPort'))
   assert.ok(!keys.includes('policy.pop3Port'))

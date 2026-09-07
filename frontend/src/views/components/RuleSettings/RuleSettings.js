@@ -1,4 +1,4 @@
-import {reactive, ref} from 'vue';
+import {computed, reactive, ref} from 'vue';
 
 import lang from '../../../i18n/i18n';
 
@@ -7,8 +7,11 @@ import {Delete, Edit, InfoFilled, Plus} from '@element-plus/icons-vue'
 import {http} from "@/utils/axios";
 
 import {ElNotification} from "element-plus";
+import {useGlobalStatusStore} from '@/stores/useGlobalStatusStore'
 
 export function usePage() {
+  const globalStatus = useGlobalStatusStore()
+  const canReadGlobalPolicy = computed(() => globalStatus.hasCapability('config.read'))
   const data = ref([])
   
   const dialogVisible = ref(false)
@@ -154,7 +157,8 @@ export function usePage() {
     removeRuleLine,
     addRule,
     submitRule,
-    ruleTypeChange
+    ruleTypeChange,
+    canReadGlobalPolicy
   }
 }
 

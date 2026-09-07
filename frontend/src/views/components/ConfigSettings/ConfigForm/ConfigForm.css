@@ -80,8 +80,29 @@
 
   .config-form[data-form-section="base"] .form-grid,
   .config-form[data-form-section="mail"] .form-grid,
+  .config-form[data-form-section="mail_policy"] .form-grid,
   .form-group[data-group="verification"] .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 邮件服务页在桌面抽屉中采用紧凑双列，移除策略后可在常见高度内完整展示。 */
+@container config-main (min-width: 360px) {
+  .config-form[data-form-section="mail"] {
+    gap: 8px;
+  }
+
+  .config-form[data-form-section="mail"] .form-grid {
+    gap: 8px 12px;
+  }
+
+  .config-form[data-form-section="mail"] .form-group + .form-group {
+    margin-top: 8px;
+    padding-top: 10px;
+  }
+
+  .config-form[data-form-section="mail"] .form-group-heading {
+    margin-bottom: 6px;
   }
 }
 

@@ -7,7 +7,8 @@ import { readFormConfig, updateFormConfig, validateFormConfig } from './ConfigFo
 
 const sections = [
   { value: 'base', label: '基础配置' },
-  { value: 'mail', label: '邮件服务与策略' },
+  { value: 'mail', label: '邮件服务' },
+  { value: 'mail_policy', label: '邮件策略' },
   { value: 'security_policy', label: '安全策略' },
   { value: 'ssl', label: 'SSL 配置' },
   { value: 'plugins', label: '插件配置' },
@@ -56,7 +57,7 @@ export function usePage(pageKey = 'base') {
   // 独立页面复用原配置分区的原子保存与候选保护，不丢弃其他页面的字段。
   const pluginPages = ['spam_block', 'telegram_push', 'wechat_push']
   const apiSection = () => pluginPages.includes(selectedSection.value) ? 'plugins'
-    : selectedSection.value === 'security_policy' ? 'mail' : selectedSection.value
+    : ['mail_policy', 'security_policy'].includes(selectedSection.value) ? 'mail' : selectedSection.value
   const currentSection = computed(() => sections.find(item => item.value === selectedSection.value) || sections[0])
   const sectionLoading = ref(false)
   let sectionRequestId = 0
@@ -91,17 +92,17 @@ export function usePage(pageKey = 'base') {
       ['listener', 'SMTP 监听'],
       ['imap', 'IMAP 监听'],
       ['pop3', 'POP3 监听'],
-      ['relay', 'SMTP 中继与登录验证'],
-      ['policy', '邮件与账号策略']
+      ['relay', 'SMTP 中继'],
+      ['policy', '邮件策略']
     ].filter(([key]) => {
       const before = active[key] || {}
       const after = candidate[key] || {}
       return Object.keys({ ...before, ...after }).some(field => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
     }).map(([, label]) => label)
     const scope = pending.payload && loadedText.value
-      ? (changed.length ? `上次未完成的保存涉及：${changed.join('、')}。` : '上次未完成保存的邮件服务与安全策略未变化。')
+      ? (changed.length ? `上次未完成的保存涉及：${changed.join('、')}。` : '上次未完成保存的邮件配置未变化。')
       : '上次未完成保存的内容尚未完整读取，请刷新后核对。'
-    return `${scope}邮件服务页和安全策略页共用一组运行配置；完成保存时全部变更一起生效，监听端口变更仍需重启后端。`
+    return `${scope}邮件服务、邮件策略和安全策略共用一组运行配置；完成保存时全部变更一起生效，监听端口变更仍需重启后端。`
   })
   let savedInput = null
   const validationResult = ref(null)

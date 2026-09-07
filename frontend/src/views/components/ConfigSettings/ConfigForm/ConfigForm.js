@@ -140,7 +140,10 @@ const mailGroups = [
     field('relay.password', '中继密码', 'password', { placeholder: '留空保持原值' }),
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
     field('relay.fromDomain', '发件域名', 'text', { placeholder: 'example.com' })
-  ]),
+  ])
+]
+
+const mailPolicyGroups = [
   group('policy', '邮件策略', '', [
     field('policy.maxMessageBytes', '最大邮件大小（字节）', 'number', { min: 0, max: Number.MAX_SAFE_INTEGER, integer: true, hint: '0 使用后端默认限制；1 MiB = 1048576 字节。' }),
     field('policy.spamFilterLevel', '垃圾邮件过滤级别', 'select', { fallback: 0, options: options([[0, '不过滤'], [1, 'SPF 与 DKIM 均失败时过滤'], [2, 'SPF 失败时过滤'], [3, 'DKIM 失败时过滤']]) })
@@ -205,7 +208,7 @@ const pluginDefinitions = {
 export function getFieldGroups(section, config) {
   const pluginId = Object.hasOwn(pluginDefinitions, section) ? section : ''
   if (section !== 'plugins' && !pluginId) {
-    return ({ base: baseGroups, mail: mailGroups, security_policy: securityPolicyGroups, ssl: sslGroups }[section] || [])
+    return ({ base: baseGroups, mail: mailGroups, mail_policy: mailPolicyGroups, security_policy: securityPolicyGroups, ssl: sslGroups }[section] || [])
       .map(item => ({
         ...item,
         fields: item.fields

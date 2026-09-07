@@ -222,7 +222,7 @@ test('独立页互不覆盖，页面卸载时清除密码并丢弃较慢响应',
   const emailRequest = emailPage.loadSection()
   email.resolve({ errorNo: 0, data: { policy: { smtpPort: 25 } } })
   await emailRequest
-  assert.equal(emailPage.currentSection.value.label, '邮件服务与策略')
+  assert.equal(emailPage.currentSection.value.label, '邮件服务')
   assert.equal(emailPage.sectionLoading.value, false)
   base.resolve({ errorNo: 0, data: { database: { type: 'sqlite' } } })
   await baseRequest
@@ -249,9 +249,9 @@ test('同一页重复加载时，过期失败不覆盖最新请求', async () =>
   assert.deepEqual(JSON.parse(page.editorText.value), { enabled: true })
 })
 
-test('配置页按需加载，邮件页和安全策略页共用 mail 分区', async () => {
+test('配置页按需加载，邮件服务、邮件策略和安全策略页共用 mail 分区', async () => {
   const requests = []
-  for (const key of ['base', 'mail', 'security_policy', 'ssl', 'plugins']) {
+  for (const key of ['base', 'mail', 'mail_policy', 'security_policy', 'ssl', 'plugins']) {
     const { page } = fixture(async path => { requests.push(path); return { errorNo: 0, data: {} } }, key)
     await page.loadAll()
     assert.equal(page.selectedSection.value, key)
@@ -260,11 +260,11 @@ test('配置页按需加载，邮件页和安全策略页共用 mail 分区', as
     assert.equal(page.confirmed.value, false)
     assert.equal(page.savedGeneration.value, 0)
   }
-  assert.deepEqual(requests, ['base', 'mail', 'security_policy', 'ssl', 'plugins']
-    .flatMap(key => ['/api/v1/config/status', `/api/v1/config/${key === 'security_policy' ? 'mail' : key}`]))
+  assert.deepEqual(requests, ['base', 'mail', 'mail_policy', 'security_policy', 'ssl', 'plugins']
+    .flatMap(key => ['/api/v1/config/status', `/api/v1/config/${['mail_policy', 'security_policy'].includes(key) ? 'mail' : key}`]))
 })
 
-for (const key of ['mail', 'security_policy']) {
+for (const key of ['mail', 'mail_policy', 'security_policy']) {
   test(`${key} 页面验证、保存、候选恢复及应用均使用 mail 分区且保留未展示字段`, async () => {
     const requests = []
     const payloads = []
@@ -295,21 +295,25 @@ for (const key of ['mail', 'security_policy']) {
       }
     } })
     await page.loadAll()
-    const path = key === 'mail' ? ['imap', 'tlsPort'] : ['relay', 'loginPolicy']
-    page.updateField(path, key === 'mail' ? 1993 : 'always')
+    const edit = {
+      mail: { path: ['imap', 'tlsPort'], value: 1993, rejected: 8888 },
+      mail_policy: { path: ['policy', 'maxMessageBytes'], value: 5678, rejected: 8765 },
+      security_policy: { path: ['relay', 'loginPolicy'], value: 'always', rejected: 'off' }
+    }[key]
+    page.updateField(edit.path, edit.value)
     await page.validateConfig()
     await page.saveConfig()
     assert.equal(page.savedGeneration.value, 2)
     assert.equal(payloads[0].expectedGeneration, 1)
     assert.deepEqual(payloads[0].payload.listener, active.listener)
     assert.deepEqual(payloads[0].payload.pop3, active.pop3)
-    if (key === 'security_policy') assert.equal(payloads[0].secretChanges['relay.password'], undefined)
+    if (key !== 'mail') assert.equal(payloads[0].secretChanges['relay.password'], undefined)
     if (key === 'security_policy') {
       await page.refreshPage()
       assert.equal(page.savedGeneration.value, 2)
     }
-    page.updateField(path, key === 'mail' ? 8888 : 'off')
-    assert.notEqual(key === 'mail' ? page.formConfig.value.imap.tlsPort : page.formConfig.value.relay.loginPolicy, key === 'mail' ? 8888 : 'off')
+    page.updateField(edit.path, edit.rejected)
+    assert.notEqual(edit.path.reduce((value, part) => value?.[part], page.formConfig.value), edit.rejected)
     await page.applyConfig()
     assert.equal(page.status.activeGeneration, 2)
     assert.equal(page.savedGeneration.value, 0)
@@ -844,21 +848,21 @@ test('保存后更改密码或填写内容不能应用旧候选', async () => {
   assert.deepEqual(requests, [])
 })
 
-test('邮件页与安全策略页共享候选并明确提示改动范围，忽略代次与字段顺序', async () => {
+test('邮件服务、邮件策略和安全策略页共享候选并明确提示改动范围，忽略代次与字段顺序', async () => {
   const active = {
     meta: { generation: 1 }, listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
     relay: { verificationEnabled: true, loginPolicy: 'new_device' },
     imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 },
     policy: { maxMessageBytes: 1234, externalRecoveryEnabled: true }
   }
-  for (const key of ['mail', 'security_policy']) {
+  for (const key of ['mail', 'mail_policy', 'security_policy']) {
     const { page } = fixture(async () => ({ errorNo: 0, data: active }), key)
     await page.loadSection()
     page.pendingCandidate.value = { section: 'mail', payload: { ...active, meta: { generation: 2 }, pop3: { tlsPort: 995, port: 110 } } }
-    assert.match(page.pendingScopeHint.value, /邮件服务与安全策略未变化/)
+    assert.match(page.pendingScopeHint.value, /邮件配置未变化/)
     page.pendingCandidate.value.payload = { ...active, pop3: { port: 1110, tlsPort: 1995 }, policy: { maxMessageBytes: 5678 } }
-    assert.match(page.pendingScopeHint.value, /上次未完成的保存涉及：POP3 监听、邮件与账号策略。/)
-    assert.match(page.pendingScopeHint.value, /邮件服务页和安全策略页共用一组运行配置/)
+    assert.match(page.pendingScopeHint.value, /上次未完成的保存涉及：POP3 监听、邮件策略。/)
+    assert.match(page.pendingScopeHint.value, /邮件服务、邮件策略和安全策略共用一组运行配置/)
     page.pendingCandidate.value = { section: 'smtp' }
     assert.equal(page.pendingScopeHint.value, '')
     page.pendingCandidate.value = { section: 'mail' }

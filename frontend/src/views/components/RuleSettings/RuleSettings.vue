@@ -1,7 +1,14 @@
 <template>
-<div class="settings-card">
+<div class="settings-card rule-settings-card">
+    <MailPolicySettings
+      v-if="canReadGlobalPolicy"
+      ref="mailPolicyPage"
+      class="rule-mail-policy"
+    />
+
+    <section class="personal-rules" aria-labelledby="personal-rules-title">
     <div class="settings-header">
-      <h3>{{ lang.auto_rules }}</h3>
+      <h3 id="personal-rules-title">{{ lang.auto_rules }}</h3>
       <p class="settings-desc">{{ lang.auto_rules_desc }}</p>
     </div>
 
@@ -38,6 +45,7 @@
         <el-icon><Plus /></el-icon> {{ lang.new_rule }}
       </el-button>
     </div>
+    </section>
 
     <el-dialog v-model="dialogVisible" :title="addRuleForm.id > 0 ? '编辑规则' : lang.new_rule" width="700px" class="premium-dialog">
       <div class="dialog-content">
@@ -110,9 +118,11 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { usePage, Plus } from './RuleSettings.js'
 import { usePagination } from '../ConfigSettings/ConfigPagination/ConfigPagination.js'
 import ConfigPagination from '../ConfigSettings/ConfigPagination/ConfigPagination.vue'
+import MailPolicySettings from './MailPolicySettings/MailPolicySettings.vue'
 
 const {
   lang,
@@ -136,9 +146,15 @@ const {
   DELETE,
   FORWARD,
   reflushGroupInfos,
-  groupData
+  groupData,
+  canReadGlobalPolicy
 } = usePage()
 const { currentPage, pageCount, pageItems } = usePagination(data, 6)
+
+const mailPolicyPage = ref(null)
+const beforeLeave = () => mailPolicyPage.value?.beforeLeave?.() ?? true
+
+defineExpose({ beforeLeave })
 </script>
 
 <style scoped src="./RuleSettings.css"></style>

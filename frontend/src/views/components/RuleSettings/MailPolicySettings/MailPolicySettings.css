@@ -1,0 +1,41 @@
+.mail-policy-settings {
+  padding: 12px 14px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: 12px;
+  background: var(--pm-bg-secondary);
+}
+
+.mail-policy-settings :deep(.config-page),
+.mail-policy-settings :deep(.config-page-body) {
+  gap: 8px;
+}
+
+.mail-policy-settings :deep(.config-overview) {
+  padding-bottom: 8px;
+}
+
+.mail-policy-settings :deep(.overview-title h3) {
+  font-size: 17px;
+}
+
+.mail-policy-settings :deep(.editor-panel) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mail-policy-settings :deep(.form-group-heading) {
+  display: none;
+}
+
+.mail-policy-settings :deep(.editor-footer) {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+@container settings-content (max-width: 560px) {
+  .mail-policy-settings {
+    padding: 12px;
+  }
+}

@@ -158,3 +158,33 @@
     border-left: 0;
   }
 }
+
+/* 半宽桌面抽屉内保持邮件服务标题与操作同行，避免无意义的纵向占位。 */
+@media (min-width: 769px) and (max-height: 800px) {
+  .config-page[data-config-page="mail"] .config-overview {
+    padding-bottom: 6px;
+  }
+
+  .config-page[data-config-page="mail"] .overview-heading {
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .config-page[data-config-page="mail"] .overview-copy {
+    flex-basis: auto;
+  }
+
+  .config-page[data-config-page="mail"] .overview-actions {
+    justify-content: flex-end;
+    padding-top: 0;
+  }
+
+  .config-page[data-config-page="mail"] .editor-panel {
+    padding: 8px;
+  }
+
+  .config-page[data-config-page="mail"] .editor-footer .action-row {
+    margin-top: 0;
+  }
+}

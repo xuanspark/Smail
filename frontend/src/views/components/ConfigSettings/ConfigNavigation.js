@@ -14,7 +14,7 @@ export function useNavigation() {
   const switching = ref(false)
   const pages = [
     { value: 'base', label: '基础配置', component: BaseConfig },
-    { value: 'mail', label: '邮件服务与策略', component: EmailConfig },
+    { value: 'mail', label: '邮件服务', component: EmailConfig },
     { value: 'ssl', label: 'SSL 配置', component: SslConfig },
     { value: 'plugins', label: '插件配置', children: [
       { value: 'spam_block', label: '垃圾邮件拦截', component: PluginsConfig },
