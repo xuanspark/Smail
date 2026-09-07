@@ -857,12 +857,12 @@ test('邮件页与安全策略页共享候选并明确提示改动范围，忽�
     page.pendingCandidate.value = { section: 'mail', payload: { ...active, meta: { generation: 2 }, pop3: { tlsPort: 995, port: 110 } } }
     assert.match(page.pendingScopeHint.value, /邮件服务与安全策略未变化/)
     page.pendingCandidate.value.payload = { ...active, pop3: { port: 1110, tlsPort: 1995 }, policy: { maxMessageBytes: 5678 } }
-    assert.match(page.pendingScopeHint.value, /本次候选涉及：POP3 监听、邮件与账号策略。/)
+    assert.match(page.pendingScopeHint.value, /上次未完成的保存涉及：POP3 监听、邮件与账号策略。/)
     assert.match(page.pendingScopeHint.value, /邮件服务页和安全策略页共用一组运行配置/)
     page.pendingCandidate.value = { section: 'smtp' }
     assert.equal(page.pendingScopeHint.value, '')
     page.pendingCandidate.value = { section: 'mail' }
-    assert.match(page.pendingScopeHint.value, /候选内容尚未完整读取/)
+    assert.match(page.pendingScopeHint.value, /上次未完成保存的内容尚未完整读取/)
   }
   const template = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigEditor/ConfigEditor.vue', import.meta.url), 'utf8')
   assert.match(template, /:title="pendingScopeHint"/)
@@ -917,7 +917,7 @@ for (const key of ['spam_block', 'telegram_push', 'wechat_push']) {
     await page.validateConfig()
     await page.saveConfig()
     assert.ok(requests.includes('/api/v1/config/plugins/validate'))
-    assert.match(page.pendingScopeHint.value, new RegExp(`本次候选涉及：${page.currentSection.value.label}。`))
+    assert.match(page.pendingScopeHint.value, new RegExp(`上次未完成的保存涉及：${page.currentSection.value.label}。`))
     const other = Object.keys(original.plugins).find(id => id !== key)
     page.updateField(['plugins', other, 'enabled'], true)
     assert.equal(page.formConfig.value.plugins[other].enabled, false)

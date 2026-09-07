@@ -52,7 +52,7 @@ export function useSpamBlockSettings() {
       ])
       notifyResponseError(statusResponse, '配置状态读取失败')
       notifyResponseError(pluginsResponse, '插件配置读取失败')
-      notifyResponseError(pendingResponse, '候选配置读取失败')
+      notifyResponseError(pendingResponse, '未完成的配置更改读取失败')
       pendingCandidate.value = pendingResponse.data || null
       savedGeneration.value = 0
       activeGeneration.value = Number(statusResponse.data?.activeGeneration || 0)
@@ -142,10 +142,10 @@ export function useSpamBlockSettings() {
     }
   }
 
-  const apply = async ({ successMessage = '垃圾邮件插件配置已应用' } = {}) => {
+  const apply = async ({ successMessage = '垃圾邮件插件配置已保存' } = {}) => {
     if (!canWrite() || loading.value || working.value || !savedGeneration.value) return false
     if (savedInput !== JSON.stringify(settings)) {
-      ElMessage.warning('填写内容与候选不一致，请刷新查看候选，或先取消候选再修改')
+      ElMessage.warning('填写内容已变更，请刷新后核对，或放弃上次未完成的更改')
       return false
     }
     working.value = 'apply'
@@ -157,14 +157,14 @@ export function useSpamBlockSettings() {
           candidateId: pendingCandidate.value?.candidateId
         }
       ))
-      notifyResponseError(response, '插件配置应用失败')
+      notifyResponseError(response, '插件配置保存失败')
       savedGeneration.value = 0
       await load()
       ElMessage.success(successMessage)
       return true
     } catch (error) {
       if (isRecentAuthenticationCancelled(error)) return false
-      ElMessage.error(error.message || '垃圾邮件插件配置应用失败')
+      ElMessage.error(error.message || '垃圾邮件插件配置保存失败')
       return false
     } finally {
       working.value = ''
@@ -183,12 +183,12 @@ export function useSpamBlockSettings() {
         candidateId: pendingCandidate.value.candidateId,
         confirmation: { confirmed: true, method: 'recent_auth' }
       })
-      notifyResponseError(response, '候选配置操作失败')
+      notifyResponseError(response, '未完成的配置更改处理失败')
       await load()
       if (action === 'cancel') ElMessage.success('本次更改已放弃')
       return true
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '候选配置操作失败')
+      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '未完成的配置更改处理失败')
       return false
     } finally {
       working.value = ''

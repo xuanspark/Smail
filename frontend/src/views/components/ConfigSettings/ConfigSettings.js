@@ -80,8 +80,8 @@ export function usePage(pageKey = 'base') {
           JSON.stringify(active[id]?.[key]) !== JSON.stringify(candidate[id]?.[key]))
       ).map(id => sections.find(item => item.value === id)?.label || id)
       const scope = pending.payload && loadedText.value
-        ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的插件运行配置未变化。')
-        : '候选内容尚未完整读取，请刷新后核对。'
+        ? (changed.length ? `上次未完成的保存涉及：${changed.join('、')}。` : '上次未完成保存的插件运行配置未变化。')
+        : '上次未完成保存的内容尚未完整读取，请刷新后核对。'
       return `${scope}三个插件共用一组运行配置，请在对应三级菜单核对；完成保存时会统一生效，其他插件的原有配置会保留。`
     }
     if (pending?.section !== 'mail' || apiSection() !== 'mail') return ''
@@ -99,8 +99,8 @@ export function usePage(pageKey = 'base') {
       return Object.keys({ ...before, ...after }).some(field => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
     }).map(([, label]) => label)
     const scope = pending.payload && loadedText.value
-      ? (changed.length ? `本次候选涉及：${changed.join('、')}。` : '本次候选的邮件服务与安全策略未变化。')
-      : '候选内容尚未完整读取，请刷新后核对。'
+      ? (changed.length ? `上次未完成的保存涉及：${changed.join('、')}。` : '上次未完成保存的邮件服务与安全策略未变化。')
+      : '上次未完成保存的内容尚未完整读取，请刷新后核对。'
     return `${scope}邮件服务页和安全策略页共用一组运行配置；完成保存时全部变更一起生效，监听端口变更仍需重启后端。`
   })
   let savedInput = null
@@ -229,7 +229,7 @@ export function usePage(pageKey = 'base') {
   const loadPending = async () => {
     const response = await http.get('/api/v1/config/pending')
     if (disposed) return
-    notifyResponseError(response, '候选配置读取失败')
+    notifyResponseError(response, '未完成的配置更改读取失败')
     pendingCandidate.value = response.data || null
     savedGeneration.value = 0
     savedInput = null
@@ -260,14 +260,14 @@ export function usePage(pageKey = 'base') {
         action,
         confirmation: { confirmed: true, method: 'recent_auth' }
       })
-      notifyResponseError(response, '候选配置操作失败')
+      notifyResponseError(response, '未完成的配置更改处理失败')
       await loadStatus()
       await loadSection()
       await loadPending()
       if (action === 'cancel') ElMessage.success('本次更改已放弃')
       return true
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '候选配置操作失败')
+      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '未完成的配置更改处理失败')
       return false
     } finally {
       working.value = ''
@@ -588,11 +588,11 @@ export function usePage(pageKey = 'base') {
     }
   }
 
-  const applyConfig = async ({ successMessage = '配置已应用' } = {}) => {
+  const applyConfig = async ({ successMessage = '配置已保存' } = {}) => {
     if (!canOperate() || !savedGeneration.value) return false
     if (!savedInput || savedInput.text !== editorText.value || savedInput.secret !== secretValue.value) {
       invalidateCandidate()
-      ElMessage.warning('填写内容已变更，请重新保存候选配置后再应用')
+      ElMessage.warning('填写内容已变更，请重新保存配置')
       return false
     }
     working.value = 'apply'
@@ -604,7 +604,7 @@ export function usePage(pageKey = 'base') {
           candidateId: pendingCandidate.value?.candidateId
         }
       ))
-      notifyResponseError(response, '配置应用失败')
+      notifyResponseError(response, '配置保存失败')
       savedGeneration.value = 0
       await Promise.all([loadStatus(), loadSection()])
       await loadPending()
@@ -612,7 +612,7 @@ export function usePage(pageKey = 'base') {
       return true
     } catch (error) {
       if (isRecentAuthenticationCancelled(error)) return false
-      ElMessage.error(error.message || '配置应用失败')
+      ElMessage.error(error.message || '配置保存失败')
       return false
     } finally {
       working.value = ''
