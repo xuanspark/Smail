@@ -2,6 +2,7 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
+import { isRecentAuthenticationCancelled, requestWithRecentAuthentication } from '@/utils/recentAuthentication'
 import { readFormConfig, updateFormConfig, validateFormConfig } from './ConfigForm/ConfigForm.js'
 
 const sections = [
@@ -566,7 +567,9 @@ export function usePage(pageKey = 'base') {
     working.value = 'save'
     try {
       const request = buildRequest()
-      const response = await http.put(`/api/v1/config/${apiSection()}`, request)
+      const response = await requestWithRecentAuthentication(
+        () => http.put(`/api/v1/config/${apiSection()}`, request)
+      )
       notifyResponseError(response, '配置保存失败')
       savedGeneration.value = response.data?.generation || 0
       pendingCandidate.value = { ...response.data, section: apiSection(), sameSession: true }
@@ -577,6 +580,7 @@ export function usePage(pageKey = 'base') {
       if (!quiet) ElMessage.success('配置已保存，等待应用')
       return true
     } catch (error) {
+      if (isRecentAuthenticationCancelled(error)) return false
       ElMessage.error(error.message || '配置保存失败')
       return false
     } finally {
@@ -593,10 +597,13 @@ export function usePage(pageKey = 'base') {
     }
     working.value = 'apply'
     try {
-      const response = await http.post(`/api/v1/config/${apiSection()}/apply`, {
-        generation: savedGeneration.value,
-        candidateId: pendingCandidate.value?.candidateId
-      })
+      const response = await requestWithRecentAuthentication(() => http.post(
+        `/api/v1/config/${apiSection()}/apply`,
+        {
+          generation: savedGeneration.value,
+          candidateId: pendingCandidate.value?.candidateId
+        }
+      ))
       notifyResponseError(response, '配置应用失败')
       savedGeneration.value = 0
       await Promise.all([loadStatus(), loadSection()])
@@ -604,6 +611,7 @@ export function usePage(pageKey = 'base') {
       ElMessage.success(successMessage)
       return true
     } catch (error) {
+      if (isRecentAuthenticationCancelled(error)) return false
       ElMessage.error(error.message || '配置应用失败')
       return false
     } finally {

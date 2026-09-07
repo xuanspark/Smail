@@ -13,6 +13,7 @@ import (
 func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/security/setup/acknowledge", "/api/security/setup/acknowledge", http.MethodPost, 4<<10, controllers.AcknowledgeSecuritySetup)
 	registerV1MethodRoute(mux, "/api/v1/login", "/api/login", http.MethodPost, 64<<10, controllers.Login)
+	registerV1MethodRoute(mux, "/api/v1/security/reauth", "/api/security/reauth", http.MethodPost, 4<<10, controllers.ReauthenticateCurrentUser)
 	registerV1MethodRoute(mux, "/api/v1/security/verification/request", "/api/security/verification/request", http.MethodPost, 16<<10, controllers.RequestVerification)
 	registerV1MethodRoute(mux, "/api/v1/security/verification/verify", "/api/security/verification/verify", http.MethodPost, 16<<10, controllers.VerifyVerification)
 	registerV1MethodRoute(mux, "/api/v1/security/login/verify", "/api/security/login/verify", http.MethodPost, 16<<10, controllers.CompleteLoginVerification)

@@ -48,6 +48,11 @@ func Authenticate(account, plain string) (*models.User, error) {
 	return authenticateLoadedUser(&user, has, err, plain)
 }
 
+// AuthenticateUserByID 使用当前会话用户 ID 校验密码，避免重新认证时切换账号。
+func AuthenticateUserByID(userID int, plain string) (*models.User, error) {
+	return authenticateUserByID(userID, plain)
+}
+
 func authenticateUserByID(userID int, plain string) (*models.User, error) {
 	if userID <= 0 {
 		if plain != "" {

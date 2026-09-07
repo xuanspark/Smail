@@ -46,6 +46,7 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/.well-known/", controllers.AcmeChallenge)
 	mux.HandleFunc("/api/ping", controllers.Ping)
 	mux.HandleFunc("/api/login", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.Login))))
+	mux.HandleFunc("/api/security/reauth", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.ReauthenticateCurrentUser))))
 	mux.HandleFunc("/api/security/verification/request", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.RequestVerification))))
 	mux.HandleFunc("/api/security/verification/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.VerifyVerification))))
 	mux.HandleFunc("/api/security/login/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.CompleteLoginVerification))))

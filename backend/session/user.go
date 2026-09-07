@@ -58,6 +58,34 @@ func PutUser(ctx context.Context, user *models.User) error {
 	return nil
 }
 
+// RefreshRecentAuthentication 仅续期当前会话的高风险操作认证时间，不创建新会话。
+func RefreshRecentAuthentication(ctx context.Context, user *models.User) error {
+	if Instance == nil || user == nil || user.ID <= 0 {
+		return errors.New("session user is invalid")
+	}
+	identity, err := GetUser(ctx)
+	if err != nil {
+		return err
+	}
+	if identity.ID != user.ID || identity.Account != user.Account ||
+		identity.SessionVersion != user.SessionVersion ||
+		(identity.SecurityVersion > 0 && identity.SecurityVersion != user.SecurityVersion) {
+		return errors.New("session user changed")
+	}
+	identity.Name = user.Name
+	identity.Role = user.EffectiveRole()
+	identity.IsAdmin = user.IsAdmin
+	identity.SecurityVersion = user.SecurityVersion
+	identity.MustChangePassword = user.MustChangePassword
+	identity.AuthenticatedAt = time.Now().UTC().Unix()
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return err
+	}
+	Instance.Put(ctx, userSessionKey, string(encoded))
+	return nil
+}
+
 func GetUser(ctx context.Context) (UserIdentity, error) {
 	var identity UserIdentity
 	if Instance == nil {

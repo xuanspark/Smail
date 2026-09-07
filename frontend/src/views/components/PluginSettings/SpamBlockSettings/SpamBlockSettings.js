@@ -2,6 +2,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
+import { isRecentAuthenticationCancelled, requestWithRecentAuthentication } from '@/utils/recentAuthentication'
 
 const defaultSettings = {
   url: '',
@@ -121,7 +122,9 @@ export function useSpamBlockSettings() {
     if (!canWrite() || loading.value || working.value || errorMessage.value || pendingCandidate.value) return false
     working.value = 'save'
     try {
-      const response = await http.put('/api/v1/config/plugins', buildRequest())
+      const response = await requestWithRecentAuthentication(
+        () => http.put('/api/v1/config/plugins', buildRequest())
+      )
       notifyResponseError(response, '插件配置保存失败')
       savedGeneration.value = Number(response.data?.generation || 0)
       pendingCandidate.value = { ...response.data, section: 'plugins', sameSession: true }
@@ -131,6 +134,7 @@ export function useSpamBlockSettings() {
       if (!quiet) ElMessage.success('垃圾邮件插件配置已保存，等待应用')
       return true
     } catch (error) {
+      if (isRecentAuthenticationCancelled(error)) return false
       ElMessage.error(error.message || '插件配置保存失败')
       return false
     } finally {
@@ -146,16 +150,20 @@ export function useSpamBlockSettings() {
     }
     working.value = 'apply'
     try {
-      const response = await http.post('/api/v1/config/plugins/apply', {
-        generation: savedGeneration.value,
-        candidateId: pendingCandidate.value?.candidateId
-      })
+      const response = await requestWithRecentAuthentication(() => http.post(
+        '/api/v1/config/plugins/apply',
+        {
+          generation: savedGeneration.value,
+          candidateId: pendingCandidate.value?.candidateId
+        }
+      ))
       notifyResponseError(response, '插件配置应用失败')
       savedGeneration.value = 0
       await load()
       ElMessage.success(successMessage)
       return true
     } catch (error) {
+      if (isRecentAuthenticationCancelled(error)) return false
       ElMessage.error(error.message || '垃圾邮件插件配置应用失败')
       return false
     } finally {

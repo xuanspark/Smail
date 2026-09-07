@@ -7,12 +7,31 @@ import { computed, reactive, ref } from './vue.mjs'
 
 const formSource = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigForm/ConfigForm.js', import.meta.url), 'utf8')
 const formHelpers = compileFunction(formSource.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, updateFormConfig, validateFormConfig }')()
+const recentAuthenticationSource = readFileSync(new URL('../../frontend/src/utils/recentAuthentication.js', import.meta.url), 'utf8')
+  .replace(/^import .*$/gm, '')
+  .replaceAll('export function ', 'function ')
+const compileRecentAuthentication = compileFunction(
+  recentAuthenticationSource + '\nreturn { isRecentAuthenticationCancelled, requestWithRecentAuthentication }',
+  ['ElMessageBox', 'http']
+)
 const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigSettings.js', import.meta.url), 'utf8')
 const compilePage = compileFunction(
   source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage(pageKey)',
-  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount', 'readFormConfig', 'updateFormConfig', 'validateFormConfig']
+  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount', 'readFormConfig', 'updateFormConfig', 'validateFormConfig', 'isRecentAuthenticationCancelled', 'requestWithRecentAuthentication']
 )
-const createPageWithKey = (...args) => compilePage(...args, formHelpers.readFormConfig, formHelpers.updateFormConfig, formHelpers.validateFormConfig)
+const createPageWithKey = (...args) => {
+  const http = args[6]
+  const messageBox = args[5]
+  const recentAuthentication = compileRecentAuthentication(messageBox, http)
+  return compilePage(
+    ...args,
+    formHelpers.readFormConfig,
+    formHelpers.updateFormConfig,
+    formHelpers.validateFormConfig,
+    recentAuthentication.isRecentAuthenticationCancelled,
+    recentAuthentication.requestWithRecentAuthentication
+  )
+}
 const createPage = (...args) => createPageWithKey(...args, 'base', () => {})
 
 function fixture(get, pageKey = 'base', options = {}) {
@@ -20,7 +39,10 @@ function fixture(get, pageKey = 'base', options = {}) {
   let dispose = () => {}
   const page = createPageWithKey(computed, () => {}, reactive, ref,
     { error: message => messages.push(message), warning: message => messages.push(message), success: () => {} },
-    { confirm: options.confirm || (async () => {}) }, {
+    {
+      confirm: options.confirm || (async () => {}),
+      prompt: options.prompt || (async () => { throw 'cancel' })
+    }, {
       get: path => path.endsWith('/pending') && !options.pendingGet ? Promise.resolve({ errorNo: 0, data: null }) : get(path),
       ...options.http
     },
@@ -463,6 +485,80 @@ test('保存并应用一次点击按候选协议连续完成保存和应用', as
   assert.deepEqual(requests, ['/api/v1/config/mail', '/api/v1/config/mail/apply'])
   assert.equal(page.pendingCandidate.value, null)
   assert.equal(page.savedGeneration.value, 0)
+})
+
+test('最近认证过期时在当前页确认密码并自动重试保存和应用', async () => {
+  const requests = []
+  let pending = null
+  let saveAttempts = 0
+  let prompts = 0
+  const active = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: { relayHost: '', relayPort: 0, security: '', from: '', fromDomain: '' },
+    imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+  }
+  const recentAuthError = Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
+  const { page } = fixture(async () => ({ errorNo: 0, data: active }), 'mail', {
+    prompt: async () => { prompts++; return { value: 'CurrentPass12' } },
+    http: {
+      get: async path => ({
+        errorNo: 0,
+        data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 1 } : active
+      }),
+      put: async (path, body) => {
+        requests.push(path)
+        saveAttempts++
+        if (saveAttempts === 1) throw recentAuthError
+        pending = { generation: 2, candidateId: 'reauth-candidate', section: 'mail', sameSession: true, payload: body.payload }
+        return { errorNo: 0, data: pending }
+      },
+      post: async (path, body) => {
+        requests.push(path)
+        if (path.endsWith('/reauth')) {
+          assert.deepEqual(body, { password: 'CurrentPass12' })
+          return { errorNo: 0, data: { reauthenticated: true } }
+        }
+        pending = null
+        return { errorNo: 0, data: { generation: 2 } }
+      }
+    }
+  })
+  await page.loadAll()
+  page.updateField(['listener', 'port'], 2525)
+  await page.saveAndApply()
+  assert.equal(prompts, 1)
+  assert.deepEqual(requests, [
+    '/api/v1/config/mail',
+    '/api/v1/security/reauth',
+    '/api/v1/config/mail',
+    '/api/v1/config/mail/apply'
+  ])
+})
+
+test('取消最近身份确认时保留配置输入且不重试请求', async () => {
+  let saves = 0
+  const active = {
+    listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
+    relay: {}, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 }, policy: {}
+  }
+  const { page, messages } = fixture(async path => ({
+    errorNo: 0,
+    data: path.endsWith('/status') ? { activeGeneration: 1 } : active
+  }), 'mail', {
+    prompt: async () => { throw 'cancel' },
+    http: {
+      put: async () => {
+        saves++
+        throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
+      }
+    }
+  })
+  await page.loadAll()
+  page.updateField(['listener', 'port'], 2525)
+  await page.saveAndApply()
+  assert.equal(saves, 1)
+  assert.equal(page.formConfig.value.listener.port, 2525)
+  assert.deepEqual(messages, [])
 })
 
 test('配置编辑区移除填写标题、说明与重复标签，保留主标题和必要提示', () => {
