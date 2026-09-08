@@ -18,6 +18,12 @@ function fixture(get) {
   return { page, dispose: () => dispose() }
 }
 
+test('日志页面使用共享 HTTP 客户端的命名导出', () => {
+  const transport = readFileSync(new URL('../../frontend/src/utils/axios.js', import.meta.url), 'utf8')
+  assert.match(transport, /export\s*\{\s*http\s*\}/)
+  assert.match(read('LogSettings.js'), /import\s*\{\s*http\s*\}\s*from\s*['"]@\/utils\/axios['"]/)
+})
+
 test('日志页面模板和样式能编译，详情不使用原始 HTML 渲染', () => {
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')

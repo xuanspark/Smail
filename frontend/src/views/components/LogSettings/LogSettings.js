@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import http from '@/utils/axios'
+import { http } from '@/utils/axios'
 
 export function useLogs() {
   const category = ref('config')
