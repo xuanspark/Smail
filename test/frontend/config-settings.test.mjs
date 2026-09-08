@@ -37,9 +37,10 @@ const createPage = (...args) => createPageWithKey(...args, 'base', () => {})
 
 function fixture(get, pageKey = 'base', options = {}) {
   const messages = []
+  const successes = []
   let dispose = () => {}
   const page = createPageWithKey(computed, () => {}, reactive, ref,
-    { error: message => messages.push(message), warning: message => messages.push(message), success: () => {} },
+    { error: message => messages.push(message), warning: message => messages.push(message), success: message => successes.push(message) },
     {
       confirm: options.confirm || (async () => {}),
       prompt: options.prompt || (async () => { throw 'cancel' })
@@ -48,7 +49,7 @@ function fixture(get, pageKey = 'base', options = {}) {
       ...options.http
     },
     () => ({ hasCapability: options.hasCapability || (() => true) }), pageKey, callback => { dispose = callback })
-  return { page, messages, dispose: () => dispose() }
+  return { page, messages, successes, dispose: () => dispose() }
 }
 
 function deferred() {
@@ -454,21 +455,22 @@ test('配置编辑页将验证、候选保存和应用精简为单一保存操�
 test('保存并应用一次点击按候选协议连续完成保存和应用', async () => {
   const requests = []
   let pending = null
-  const active = {
+  let active = {
+    meta: { generation: 4 },
     listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: { relayHost: '', relayPort: 0, security: '', from: '', fromDomain: '' },
     imap: { tlsPort: 143 },
     pop3: { port: 110, tlsPort: 0 },
     policy: { maxMessageBytes: 10 << 20, spamFilterLevel: 2 }
   }
-  const { page } = fixture(async path => ({
+  const { page, successes, messages } = fixture(async path => ({
     errorNo: 0,
     data: path.endsWith('/status') ? { activeGeneration: 4 } : active
   }), 'mail', {
     http: {
       get: async path => ({
         errorNo: 0,
-        data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 4 } : active
+        data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: active.meta.generation } : active
       }),
       put: async (path, body) => {
         requests.push(path)
@@ -479,17 +481,21 @@ test('保存并应用一次点击按候选协议连续完成保存和应用', as
         requests.push(path)
         assert.equal(body.generation, 5)
         assert.equal(body.candidateId, 'one-click-5')
+        active = { ...pending.payload, meta: { generation: 5 } }
         pending = null
         return { errorNo: 0, data: { generation: 5 } }
       }
     }
   })
   await page.loadAll()
-  page.updateField(['policy', 'maxMessageBytes'], 12 << 20)
+  page.updateField(['listener', 'port'], 2525)
   await page.saveAndApply()
   assert.deepEqual(requests, ['/api/v1/config/mail', '/api/v1/config/mail/apply'])
   assert.equal(page.pendingCandidate.value, null)
   assert.equal(page.savedGeneration.value, 0)
+  assert.deepEqual(successes, ['配置已保存'])
+  assert.deepEqual(messages, [])
+  assert.equal(page.formConfig.value.listener.port, 2525)
 })
 
 test('最近认证过期时在当前页确认密码并自动重试保存和应用', async () => {
@@ -497,18 +503,19 @@ test('最近认证过期时在当前页确认密码并自动重试保存和应�
   let pending = null
   let saveAttempts = 0
   let prompts = 0
-  const active = {
+  let active = {
+    meta: { generation: 1 },
     listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: { relayHost: '', relayPort: 0, security: '', from: '', fromDomain: '' },
     imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 }, policy: {}
   }
   const recentAuthError = Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
-  const { page } = fixture(async () => ({ errorNo: 0, data: active }), 'mail', {
+  const { page, successes, messages } = fixture(async () => ({ errorNo: 0, data: active }), 'mail', {
     prompt: async () => { prompts++; return { value: 'CurrentPass12' } },
     http: {
       get: async path => ({
         errorNo: 0,
-        data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 1 } : active
+        data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: active.meta.generation } : active
       }),
       put: async (path, body) => {
         requests.push(path)
@@ -523,6 +530,7 @@ test('最近认证过期时在当前页确认密码并自动重试保存和应�
           assert.deepEqual(body, { password: 'CurrentPass12' })
           return { errorNo: 0, data: { reauthenticated: true } }
         }
+        active = { ...pending.payload, meta: { generation: 2 } }
         pending = null
         return { errorNo: 0, data: { generation: 2 } }
       }
@@ -532,6 +540,8 @@ test('最近认证过期时在当前页确认密码并自动重试保存和应�
   page.updateField(['listener', 'port'], 2525)
   await page.saveAndApply()
   assert.equal(prompts, 1)
+  assert.deepEqual(successes, ['配置已保存'])
+  assert.deepEqual(messages, [])
   assert.deepEqual(requests, [
     '/api/v1/config/mail',
     '/api/v1/security/reauth',
@@ -657,7 +667,8 @@ test('只读账号不得发送配置写入请求或读取无权限维护数据',
 test('邮件页保持验证、保存、应用端点和代次协议，中继密码只作为 secretChanges 发送', async () => {
   const requests = []
   let pending = null
-  const active = {
+  let active = {
+    meta: { generation: 8 },
     listener: { port: 25, starttlsPort: 587, tlsPort: 0, security: 'starttls' },
     relay: {
       relayHost: 'smtp.example.com', relayPort: 587, security: 'starttls',
@@ -667,8 +678,15 @@ test('邮件页保持验证、保存、应用端点和代次协议，中继密�
   }
   const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 8 } : active }), 'mail', {
     http: {
-      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 8 } : active }),
-      post: async (path, body) => { requests.push({ path, body }); if (path.endsWith('/apply')) pending = null; return { errorNo: 0, data: { valid: true } } },
+      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: active.meta.generation } : active }),
+      post: async (path, body) => {
+        requests.push({ path, body })
+        if (path.endsWith('/apply')) {
+          active = { ...pending.payload, meta: { generation: 9 } }
+          pending = null
+        }
+        return { errorNo: 0, data: { valid: true } }
+      },
       put: async (path, body) => {
         requests.push({ path, body })
         pending = { generation: 9, candidateId: 'candidate-9', section: 'mail', sameSession: true, payload: body.payload }
@@ -682,7 +700,7 @@ test('邮件页保持验证、保存、应用端点和代次协议，中继密�
   await page.validateConfig()
   await page.saveConfig()
   assert.equal(page.savedGeneration.value, 9)
-  await page.applyConfig()
+  assert.equal(await page.applyConfig(), true)
   assert.deepEqual(requests.map(item => item.path), ['/api/v1/config/mail/validate', '/api/v1/config/mail', '/api/v1/config/mail/apply'])
   assert.equal(requests[0].body.expectedGeneration, 8)
   assert.equal(requests[0].body.payload.relay.password, undefined)
@@ -698,6 +716,7 @@ test('邮件页保持验证、保存、应用端点和代次协议，中继密�
 test('自定义证书导入后使用规范化的候选引用继续应用，不误判表单已变化', async () => {
   const requests = []
   let pending = null
+  let generation = 8
   let active = {
     tls: {
       management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl',
@@ -705,15 +724,16 @@ test('自定义证书导入后使用规范化的候选引用继续应用，不�
     }
   }
   const normalized = {
+    meta: { generation: 9 },
     tls: {
       ...active.tls,
       certificateRef: 'config/ssl/managed/upload/version-0123456789abcdef0123456789abcdef/public.crt',
       privateKeyRef: 'config/ssl/managed/upload/version-0123456789abcdef0123456789abcdef/private.key'
     }
   }
-  const { page } = fixture(async () => ({ errorNo: 0, data: active }), 'ssl', {
+  const { page, successes, messages } = fixture(async () => ({ errorNo: 0, data: active }), 'ssl', {
     http: {
-      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 8 } : active }),
+      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: generation } : active }),
       put: async (path, body) => {
         requests.push({ path, body })
         pending = { generation: 9, candidateId: 'ssl-candidate', section: 'ssl', sameSession: true, payload: normalized }
@@ -722,6 +742,7 @@ test('自定义证书导入后使用规范化的候选引用继续应用，不�
       post: async (path, body) => {
         requests.push({ path, body })
         active = normalized
+        generation = 9
         pending = null
         return { errorNo: 0, data: { generation: 9 } }
       }
@@ -733,7 +754,76 @@ test('自定义证书导入后使用规范化的候选引用继续应用，不�
   assert.deepEqual(requests[1].body, { generation: 9, candidateId: 'ssl-candidate' })
   assert.equal(JSON.parse(page.editorText.value).tls.certificateRef, normalized.tls.certificateRef)
   assert.equal(page.savedGeneration.value, 0)
+  assert.deepEqual(successes, ['配置已保存'])
+  assert.deepEqual(messages, [])
 })
+
+for (const failure of ['section-network', 'section-response', 'status-network', 'pending-network', 'section-stale', 'status-stale']) {
+  test(`证书应用后的 ${failure} 不得误报完成，刷新后恢复真实配置`, async () => {
+    const original = {
+      meta: { generation: 8 },
+      tls: {
+        management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl',
+        certificateRef: 'config/ssl/old/public.crt', privateKeyRef: 'config/ssl/old/private.key'
+      }
+    }
+    const normalized = {
+      meta: { generation: 9 },
+      tls: {
+        ...original.tls,
+        certificateRef: 'config/ssl/managed/upload/version-0123456789abcdef0123456789abcdef/public.crt',
+        privateKeyRef: 'config/ssl/managed/upload/version-0123456789abcdef0123456789abcdef/private.key'
+      }
+    }
+    let applied = false
+    let fail = true
+    let pending = null
+    let writes = 0
+    const { page, messages, successes } = fixture(() => {}, 'ssl', { http: {
+      get: async path => {
+        if (applied && fail) {
+          if (failure === 'section-network' && path.endsWith('/ssl') ||
+              failure === 'status-network' && path.endsWith('/status') ||
+              failure === 'pending-network' && path.endsWith('/pending')) throw new Error('模拟回读失败')
+          if (failure === 'section-response' && path.endsWith('/ssl')) return { errorNo: 500, errorMsg: '配置分区读取失败' }
+        }
+        const statusGeneration = applied && !(fail && failure === 'status-stale') ? 9 : 8
+        const active = applied && !(fail && failure === 'section-stale') ? normalized : original
+        return { errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: statusGeneration } : path.endsWith('/pending') ? pending : active }
+      },
+      put: async () => {
+        writes++
+        pending = { generation: 9, candidateId: 'ssl-readback', section: 'ssl', sameSession: true, payload: normalized }
+        return { errorNo: 0, data: pending }
+      },
+      post: async () => {
+        writes++
+        applied = true
+        pending = null
+        return { errorNo: 0, data: { generation: 9 } }
+      }
+    } })
+    await page.loadAll()
+    page.updateField(['tls', 'certificateRef'], 'D:/certs/new/public.crt')
+    page.updateField(['tls', 'privateKeyRef'], 'D:/certs/new/private.key')
+    await page.saveAndApply()
+    assert.equal(applied, true)
+    assert.deepEqual(successes, [])
+    assert.match(messages.at(-1), /配置已应用.*刷新/)
+    assert.ok(page.sectionError.value)
+    assert.equal(page.pendingCandidate.value, null)
+    assert.equal(page.savedGeneration.value, 0)
+    assert.equal(page.editorText.value, '')
+    await page.saveAndApply()
+    assert.equal(writes, 2)
+    fail = false
+    await page.refreshPage()
+    assert.equal(page.sectionError.value, '')
+    assert.equal(page.formConfig.value.tls.certificateRef, normalized.tls.certificateRef)
+    assert.equal(page.status.activeGeneration, 9)
+    assert.equal(page.hasChanges.value, false)
+  })
+}
 
 test('可视化编辑按权限和工作状态保护，编辑会清除过期确认及候选代次', async () => {
   const config = {

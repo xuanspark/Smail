@@ -181,12 +181,14 @@ const sslGroups = [
     field('tls.certificateRef', '证书文件', 'text', {
       wide: true,
       show: externalManagedCertificate,
-      placeholder: 'config/ssl/example.com/fullchain.pem'
+      placeholder: 'config/ssl/example.com/fullchain.pem',
+      hint: '填写后端服务器上的 PEM 证书路径。自定义模式支持绝对路径或相对运行根目录的路径，保存后显示导入后的受管路径；Web 服务器管理模式填写已有受管证书的相对路径。'
     }),
     field('tls.privateKeyRef', '私钥文件', 'text', {
       wide: true,
       show: externalManagedCertificate,
-      placeholder: 'config/ssl/example.com/privkey.pem'
+      placeholder: 'config/ssl/example.com/privkey.pem',
+      hint: '填写与证书匹配的 PEM 私钥文件路径，不是私钥内容。文件必须可被后端运行用户读取；自定义模式保存后显示受管副本的路径。'
     })
   ])
 ]

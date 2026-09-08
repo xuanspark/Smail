@@ -275,7 +275,7 @@ export function usePage(pageKey = 'base') {
     }
   }
 
-  const loadSection = async () => {
+  const loadSection = async ({ minimumGeneration = 0 } = {}) => {
     const requestId = ++sectionRequestId
     const section = apiSection()
     sectionLoading.value = true
@@ -290,19 +290,25 @@ export function usePage(pageKey = 'base') {
     savedInput = null
     try {
       const response = await http.get(`/api/v1/config/${section}`)
-      if (requestId !== sectionRequestId) return
+      if (requestId !== sectionRequestId || disposed) return false
       notifyResponseError(response, '配置分区读取失败')
       const publicConfig = response.data || {}
+      const generation = Number(section === 'base' ? publicConfig.generation : publicConfig.meta?.generation)
+      if (minimumGeneration && (!Number.isSafeInteger(generation) || generation < minimumGeneration)) {
+        throw new Error('读取到的配置版本落后于本次保存，请刷新状态核对')
+      }
       editorText.value = JSON.stringify(publicConfig, null, 2)
       loadedText.value = editorText.value
       if (section === 'base') {
         const database = publicConfig.database || {}
         Object.assign(databaseConfig, { type: database.type || '', name: database.name || '', localRef: database.localRef || '' })
       }
+      return true
     } catch (error) {
-      if (requestId !== sectionRequestId) return
+      if (requestId !== sectionRequestId || disposed) return false
       sectionError.value = error.message || '配置分区读取失败'
       editorText.value = ''
+      return false
     } finally {
       if (requestId === sectionRequestId) sectionLoading.value = false
     }
@@ -597,6 +603,8 @@ export function usePage(pageKey = 'base') {
       return false
     }
     working.value = 'apply'
+    const generation = savedGeneration.value
+    let applied = false
     try {
       const response = await requestWithRecentAuthentication(() => http.post(
         `/api/v1/config/${apiSection()}/apply`,
@@ -606,13 +614,30 @@ export function usePage(pageKey = 'base') {
         }
       ))
       notifyResponseError(response, '配置保存失败')
-      savedGeneration.value = 0
-      await Promise.all([loadStatus(), loadSection()])
+      applied = true
+      // 服务端已提交的候选不能再次应用；回读失败时只允许刷新，不误报保存失败或展示旧配置。
+      pendingCandidate.value = null
+      invalidateCandidate()
+      await loadStatus()
+      if (disposed) return false
+      if (!Number.isSafeInteger(Number(status.activeGeneration)) || Number(status.activeGeneration) < generation) {
+        throw new Error('配置状态尚未更新')
+      }
+      if (!await loadSection({ minimumGeneration: generation })) throw new Error('最新配置读取失败')
       await loadPending()
+      if (disposed) return false
       ElMessage.success(successMessage)
       return true
     } catch (error) {
+      if (disposed) return false
       if (isRecentAuthenticationCancelled(error)) return false
+      if (applied) {
+        sectionError.value = '配置已应用，但最新配置读取失败，请刷新状态核对'
+        editorText.value = ''
+        loadedText.value = ''
+        ElMessage.warning(sectionError.value)
+        return false
+      }
       ElMessage.error(error.message || '配置保存失败')
       return false
     } finally {
