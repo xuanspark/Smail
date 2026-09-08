@@ -2,6 +2,7 @@ import axios from 'axios'
 import lang from '../i18n/i18n';
 import {router} from "@/router";
 import {createLoginRedirectHandler} from "@/utils/navigation.mjs";
+import { decodeBlobAPIError } from './apiResponse.mjs'
 
 //创建axios的一个实例
 const http = axios.create({
@@ -72,6 +73,7 @@ function isAuthenticationFailureError(error) {
 
 http.interceptors.response.use(async (response) => {
     //响应成功
+    await decodeBlobAPIError(response)
     if (response.data?.errorNo === 403
         && response.data?.data?.code !== 'RECENT_AUTH_REQUIRED'
         && !isSetupRequest(response.config)
@@ -81,6 +83,7 @@ http.interceptors.response.use(async (response) => {
     return response.data;
 }, async (error) => {
     //响应错误
+    await decodeBlobAPIError(error.response)
     if (error.response && error.response.status) {
         let message = ""
         switch (error.response.status) {

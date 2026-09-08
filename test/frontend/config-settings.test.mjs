@@ -59,6 +59,64 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+for (const cancelled of [false, true]) {
+  test(`审计导出身份过期后确认密码再重试，取消不误报失败：取消=${cancelled}`, async context => {
+    const originalDocument = globalThis.document
+    let downloads = 0
+    globalThis.document = { createElement: () => ({ click: () => { downloads++ } }) }
+    context.after(() => { globalThis.document = originalDocument })
+    const requests = []
+    let prompts = 0
+    const { page, messages, successes } = fixture(() => {}, 'audit', {
+      prompt: async () => {
+        prompts++
+        if (cancelled) throw 'cancel'
+        return { value: 'test-password' }
+      },
+      http: {
+        post: async (url, body) => {
+          requests.push(url)
+          if (url.endsWith('/reauth')) {
+            assert.equal(body.password, 'test-password')
+            return { errorNo: 0 }
+          }
+          if (requests.length === 1) {
+            throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
+          }
+          return new Blob(['action\nupdate'], { type: 'text/csv' })
+        }
+      }
+    })
+    await page.exportAudit('csv')
+    assert.equal(prompts, 1)
+    assert.equal(downloads, cancelled ? 0 : 1)
+    assert.deepEqual(messages, [])
+    assert.equal(successes.length, cancelled ? 0 : 1)
+    assert.equal(page.working.value, '')
+    assert.deepEqual(requests, cancelled
+      ? ['/api/v1/audits/config']
+      : ['/api/v1/audits/config', '/api/v1/security/reauth', '/api/v1/audits/config'])
+  })
+}
+
+test('审计导出确认身份后仍被拒绝时只重试一次，不能下载错误文件', async () => {
+  let exports = 0
+  const { page, messages } = fixture(() => {}, 'audit', {
+    prompt: async () => ({ value: 'test-password' }),
+    http: {
+      post: async url => {
+        if (url.endsWith('/reauth')) return { errorNo: 0 }
+        exports++
+        throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
+      }
+    }
+  })
+  await page.exportAudit('csv')
+  assert.equal(exports, 2)
+  assert.deepEqual(messages, ['需要最近认证'])
+  assert.equal(page.working.value, '')
+})
+
 test('证书页从状态接口读取生效反代模式，不额外加载基础配置', async () => {
   const requests = []
   const { page } = fixture(async path => {

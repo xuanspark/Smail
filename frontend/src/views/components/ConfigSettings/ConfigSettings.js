@@ -727,7 +727,9 @@ export function usePage(pageKey = 'base') {
     if (!canExportAudit.value || working.value) return
     working.value = format === 'csv' ? 'export-csv' : 'export'
     try {
-      const response = await http.post('/api/v1/audits/config', { format, limit: 500 }, { responseType: 'blob' })
+      const response = await requestWithRecentAuthentication(() => http.post(
+        '/api/v1/audits/config', { format, limit: 500 }, { responseType: 'blob' }
+      ))
       if (!(response instanceof Blob)) {
         throw new Error(response?.errorMsg || '审计导出响应格式不正确')
       }
@@ -747,7 +749,7 @@ export function usePage(pageKey = 'base') {
       URL.revokeObjectURL(url)
       ElMessage.success('审计记录已导出')
     } catch (error) {
-      ElMessage.error(error.message || '审计导出失败')
+      if (!isRecentAuthenticationCancelled(error)) ElMessage.error(error.message || '审计导出失败')
     } finally {
       working.value = ''
     }
