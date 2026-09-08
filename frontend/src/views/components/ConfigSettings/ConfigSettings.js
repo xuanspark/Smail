@@ -41,6 +41,9 @@ export function usePage(pageKey = 'base') {
   const loading = ref(false)
   const availabilityError = ref('')
   const working = ref('')
+  // 一次保存跨越暂存、应用和回读；中间候选不是需要用户恢复的失败记录。
+  const saveFlow = ref('')
+  const busy = computed(() => !!working.value || !!saveFlow.value)
   const backupsLoading = ref(false)
   const auditLoading = ref(false)
   const backupsError = ref('')
@@ -67,10 +70,13 @@ export function usePage(pageKey = 'base') {
   const formErrors = ref({})
   const loadedText = ref('')
   const sectionError = ref('')
+  const saveError = ref('')
   const secretValue = ref('')
   const confirmed = ref(false)
   const savedGeneration = ref(0)
   const pendingCandidate = ref(null)
+  const showPendingRecovery = computed(() => !!pendingCandidate.value && !saveFlow.value)
+  const continuingSave = computed(() => saveFlow.value === 'resume' || showPendingRecovery.value)
   const pendingScopeHint = computed(() => {
     const pending = pendingCandidate.value
     if (pending?.section === 'plugins' && apiSection() === 'plugins') {
@@ -178,16 +184,18 @@ export function usePage(pageKey = 'base') {
   const canOperate = () => !disposed && canWrite.value && !loading.value && !working.value && !sectionLoading.value && !sectionError.value && !availabilityError.value
   const canEdit = () => canOperate() && !pendingCandidate.value && !savedGeneration.value
   const updateField = (path, value) => {
-    if (!canEdit()) return
+    if (saveFlow.value || !canEdit()) return
     const updated = updateFormConfig(editorText.value, selectedSection.value, path, value)
     if (updated === editorText.value) return
     editorText.value = updated
+    saveError.value = ''
     if (Object.keys(formErrors.value).length) formErrors.value = validateFormConfig(selectedSection.value, formConfig.value)
     invalidateCandidate()
   }
   const updateSecret = value => {
-    if (!canEdit() || !secretField.value || secretValue.value === value) return
+    if (saveFlow.value || !canEdit() || !secretField.value || secretValue.value === value) return
     secretValue.value = value
+    saveError.value = ''
     invalidateCandidate()
   }
 
@@ -246,6 +254,7 @@ export function usePage(pageKey = 'base') {
 
   const managePending = async action => {
     if (!canOperate() || !pendingCandidate.value) return false
+    saveError.value = ''
     working.value = action
     try {
       if (action === 'cancel') {
@@ -268,7 +277,10 @@ export function usePage(pageKey = 'base') {
       if (action === 'cancel') ElMessage.success('本次更改已放弃')
       return true
     } catch (error) {
-      if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '未完成的配置更改处理失败')
+      if (error !== 'cancel' && error !== 'close') {
+        saveError.value = error.message || '未完成的配置更改处理失败'
+        ElMessage.error(saveError.value)
+      }
       return false
     } finally {
       working.value = ''
@@ -280,6 +292,7 @@ export function usePage(pageKey = 'base') {
     const section = apiSection()
     sectionLoading.value = true
     sectionError.value = ''
+    saveError.value = ''
     formErrors.value = {}
     editorText.value = ''
     loadedText.value = ''
@@ -571,6 +584,7 @@ export function usePage(pageKey = 'base') {
 
   const saveConfig = async ({ quiet = false } = {}) => {
     if (!canEdit() || !checkForm()) return false
+    saveError.value = ''
     working.value = 'save'
     try {
       const request = buildRequest()
@@ -588,7 +602,8 @@ export function usePage(pageKey = 'base') {
       return true
     } catch (error) {
       if (isRecentAuthenticationCancelled(error)) return false
-      ElMessage.error(error.message || '配置保存失败')
+      saveError.value = error.message || '配置保存失败'
+      ElMessage.error(saveError.value)
       return false
     } finally {
       working.value = ''
@@ -597,6 +612,7 @@ export function usePage(pageKey = 'base') {
 
   const applyConfig = async ({ successMessage = '配置已保存' } = {}) => {
     if (!canOperate() || !savedGeneration.value) return false
+    saveError.value = ''
     if (!savedInput || savedInput.text !== editorText.value || savedInput.secret !== secretValue.value) {
       invalidateCandidate()
       ElMessage.warning('填写内容已变更，请重新保存配置')
@@ -638,7 +654,8 @@ export function usePage(pageKey = 'base') {
         ElMessage.warning(sectionError.value)
         return false
       }
-      ElMessage.error(error.message || '配置保存失败')
+      saveError.value = error.message || '配置保存失败'
+      ElMessage.error(saveError.value)
       return false
     } finally {
       working.value = ''
@@ -646,21 +663,23 @@ export function usePage(pageKey = 'base') {
   }
 
   const saveAndApply = async () => {
-    if (pendingCandidate.value) {
-      await continuePending()
-      return
+    if (saveFlow.value || !canOperate()) return false
+    saveFlow.value = pendingCandidate.value ? 'resume' : 'save'
+    try {
+      if (pendingCandidate.value) {
+        if (!pendingCandidate.value.sameSession && !await managePending('resume')) return false
+        return await applyConfig()
+      }
+      const saved = await saveConfig({ quiet: true })
+      return saved ? await applyConfig({ successMessage: '配置已保存' }) : false
+    } finally {
+      saveFlow.value = ''
     }
-    const saved = await saveConfig({ quiet: true })
-    if (saved) await applyConfig({ successMessage: '配置已保存' })
   }
 
   const continuePending = async () => {
-    if (!pendingCandidate.value) return
-    if (!pendingCandidate.value.sameSession) {
-      const resumed = await managePending('resume')
-      if (!resumed) return
-    }
-    await applyConfig()
+    if (!pendingCandidate.value) return false
+    return saveAndApply()
   }
 
   const previewRollback = async () => {
@@ -735,7 +754,7 @@ export function usePage(pageKey = 'base') {
   }
 
   const beforeLeave = async () => {
-    if (working.value) {
+    if (busy.value) {
       ElMessage.warning('当前操作尚未完成，请稍后再切换页面')
       return false
     }
@@ -746,7 +765,7 @@ export function usePage(pageKey = 'base') {
         '确认离开当前页',
         { type: 'warning', confirmButtonText: '离开页面', cancelButtonText: '继续编辑' }
       )
-      return !working.value
+      return !busy.value
     } catch {
       return false
     }
@@ -770,9 +789,10 @@ export function usePage(pageKey = 'base') {
 
   return {
     pendingScopeHint,
+    saveFlow, busy, showPendingRecovery, continuingSave,
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
     selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,
-    sectionError, sensitiveHint, secretField, secretValue,
+    sectionError, saveError, sensitiveHint, secretField, secretValue,
     confirmed, savedGeneration, pendingCandidate, managePending, validationResult, canWrite, canRollback, canAudit, canExportAudit,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig, saveAndApply, continuePending,

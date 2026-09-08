@@ -13,7 +13,7 @@
             size="small"
             plain
             :loading="loading"
-            :disabled="!!working || sectionLoading || loading"
+            :disabled="busy || sectionLoading || loading"
             @click="refreshPage"
           >
             刷新状态
@@ -48,13 +48,21 @@
             show-icon
             class="config-alert"
           />
+          <el-alert
+            v-if="saveError"
+            :title="saveError"
+            type="error"
+            :closable="false"
+            show-icon
+            class="config-alert"
+          />
 
           <ConfigForm
             v-if="!sectionLoading && !sectionError"
             :section="selectedSection"
             :config="formConfig"
             :errors="formErrors"
-            :disabled="!canWrite || !!working || !!pendingCandidate"
+            :disabled="!canWrite || busy || !!pendingCandidate"
             @change="updateField"
           />
           <div v-if="secretField" class="secret-editor">
@@ -68,7 +76,7 @@
               type="password"
               show-password
               clearable
-              :disabled="!canWrite || sectionLoading || !!working || !!sectionError || !!pendingCandidate"
+              :disabled="!canWrite || sectionLoading || busy || !!sectionError || !!pendingCandidate"
               :placeholder="secretField.placeholder"
               autocomplete="new-password"
               @update:model-value="updateSecret"
@@ -77,14 +85,14 @@
 
           <div v-if="canWrite" class="editor-footer">
             <el-alert
-              v-if="pendingCandidate"
+              v-if="showPendingRecovery"
               title="上次保存尚未完成，可以继续保存或放弃本次更改。"
               type="warning"
               :closable="false"
               show-icon
             />
             <el-alert
-              v-if="pendingScopeHint"
+              v-if="showPendingRecovery && pendingScopeHint"
               :title="pendingScopeHint"
               type="warning"
               :closable="false"
@@ -92,28 +100,18 @@
             />
             <div class="action-row">
               <el-button
-                v-if="!pendingCandidate"
                 type="primary"
-                :loading="working === 'save' || working === 'apply'"
-                :disabled="sectionLoading || !!working || !!sectionError || !hasChanges"
+                :loading="busy"
+                :disabled="sectionLoading || busy || !!sectionError || (!pendingCandidate && !hasChanges)"
                 @click="saveAndApply"
               >
-                保存配置
+                {{ continuingSave ? '继续保存' : '保存配置' }}
               </el-button>
               <el-button
-                v-else
-                type="primary"
-                :loading="working === 'resume' || working === 'apply'"
-                :disabled="sectionLoading || !!working || !!sectionError"
-                @click="continuePending"
-              >
-                继续保存
-              </el-button>
-              <el-button
-                v-if="pendingCandidate"
+                v-if="showPendingRecovery"
                 type="danger"
                 plain
-                :disabled="!!working || pendingCandidate.committed"
+                :disabled="busy || pendingCandidate.committed"
                 @click="managePending('cancel')"
               >
                 放弃更改
@@ -141,7 +139,9 @@ import ConfigForm from '../ConfigForm/ConfigForm.vue'
 const {
   availabilityError,
   loading,
-  working,
+  busy,
+  showPendingRecovery,
+  continuingSave,
   status,
   selectedSection,
   currentSection,
@@ -151,6 +151,7 @@ const {
   updateField,
   updateSecret,
   sectionError,
+  saveError,
   secretField,
   secretValue,
   pendingCandidate,
@@ -160,8 +161,7 @@ const {
   hasChanges,
   canWrite,
   refreshPage,
-  saveAndApply,
-  continuePending
+  saveAndApply
 } = inject('smail-config-page')
 </script>
 

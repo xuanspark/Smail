@@ -444,7 +444,10 @@ test('配置编辑页将验证、候选保存和应用精简为单一保存操�
   assert.doesNotMatch(sharedCss + editorCss, /change-workflow|step-number/)
   assert.match(template, /@click="saveAndApply"/)
   assert.match(template, /保存配置/)
-  assert.match(template, /@click="continuePending"/)
+  assert.match(template, /continuingSave \? '继续保存' : '保存配置'/)
+  assert.match(template, /v-if="showPendingRecovery"/)
+  assert.match(template, /v-if="showPendingRecovery && pendingScopeHint"/)
+  assert.match(template, /v-if="saveError"[\s\S]*?:title="saveError"[\s\S]*?type="error"/)
   assert.match(template, /继续保存/)
   assert.match(template, /v-if="canWrite" class="editor-footer"/)
   assert.match(template, /@click="managePending\('cancel'\)"/)
@@ -497,6 +500,181 @@ test('保存并应用一次点击按候选协议连续完成保存和应用', as
   assert.deepEqual(messages, [])
   assert.equal(page.formConfig.value.listener.port, 2525)
 })
+
+test('一键保存的所有异步阶段保持忙碌，不闪现恢复提示或允许重复操作', { timeout: 5000 }, async t => {
+  const stages = Array.from({ length: 7 }, () => ({ entered: deferred(), release: deferred() }))
+  t.after(() => stages.forEach(stage => stage.release.resolve()))
+  let requestIndex = 0
+  let testing = false
+  let pending = null
+  let active = {
+    meta: { generation: 1 },
+    tls: { management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl', certificateRef: 'config/ssl/public.crt', privateKeyRef: 'config/ssl/private.key' }
+  }
+  const pause = async () => {
+    if (!testing) return
+    const stage = stages[requestIndex++]
+    assert.ok(stage, '不应产生重复请求')
+    stage.entered.resolve()
+    await stage.release.promise
+  }
+  const { page, successes } = fixture(() => {}, 'ssl', { http: {
+    get: async path => {
+      await pause()
+      return { errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: active.meta.generation } : active }
+    },
+    put: async (path, body) => {
+      await pause()
+      pending = { generation: 2, candidateId: 'continuous-save', section: 'ssl', sameSession: true, payload: body.payload }
+      return { errorNo: 0, data: pending }
+    },
+    post: async () => {
+      await pause()
+      active = { ...pending.payload, meta: { generation: 2 } }
+      pending = null
+      return { errorNo: 0, data: { generation: 2 } }
+    }
+  } })
+  await page.loadAll()
+  page.updateField(['tls', 'certificateRef'], 'D:/certs/public.crt')
+  const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
+  const { watch } = require('vue')
+  const transitions = []
+  const stop = watch(() => [page.working.value, page.saveFlow.value, page.pendingCandidate.value], () => {
+    transitions.push({ working: page.working.value, flow: page.saveFlow.value, pending: !!page.pendingCandidate.value, busy: page.busy.value, recovery: page.showPendingRecovery.value })
+  }, { flush: 'sync' })
+  t.after(stop)
+  testing = true
+  const saving = page.saveAndApply()
+  for (const stage of stages) {
+    await Promise.race([stage.entered.promise, saving.then(() => { throw new Error('保存流程提前结束') })])
+    assert.equal(page.busy.value, true)
+    assert.equal(page.saveFlow.value, 'save')
+    assert.equal(page.showPendingRecovery.value, false)
+    assert.equal(page.continuingSave.value, false)
+    const input = page.editorText.value
+    page.updateField(['tls', 'certificateRef'], 'D:/blocked.crt')
+    assert.equal(page.editorText.value, input)
+    assert.equal(await page.saveAndApply(), false)
+    assert.equal(await page.continuePending(), false)
+    assert.equal(await page.beforeLeave(), false)
+    stage.release.resolve()
+  }
+  assert.equal(await saving, true)
+  assert.equal(requestIndex, 7)
+  assert.equal(page.busy.value, false)
+  assert.equal(page.saveFlow.value, '')
+  assert.equal(page.showPendingRecovery.value, false)
+  assert.deepEqual(successes, ['配置已保存'])
+  const gaps = transitions.filter(state => state.pending && !state.working && state.flow)
+  assert.ok(gaps.length > 0, '必须检查暂存与应用之间的同步状态切换')
+  assert.ok(gaps.every(state => state.busy && !state.recovery))
+})
+
+for (const failure of ['save', 'apply', 'apply-auth-cancel', 'readback']) {
+  test(`一键保存 ${failure} 后解除忙碌，真实失败仍提示且未应用的候选可以恢复`, async () => {
+    let fail = true
+    let applied = false
+    let pending = null
+    let writes = 0
+    const config = {
+      meta: { generation: 1 },
+      tls: { management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl', certificateRef: 'config/ssl/public.crt', privateKeyRef: 'config/ssl/private.key' }
+    }
+    const { page, messages, successes } = fixture(() => {}, 'ssl', { http: {
+      get: async path => {
+        if (fail && applied && failure === 'readback') throw new Error('模拟回读失败')
+        return { errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: applied ? 2 : 1 } : { ...config, meta: { generation: applied ? 2 : 1 } } }
+      },
+      put: async (path, body) => {
+        writes++
+        if (fail && failure === 'save') throw new Error('模拟保存失败')
+        pending = { generation: 2, candidateId: 'failed-save', section: 'ssl', sameSession: true, payload: body.payload }
+        return { errorNo: 0, data: pending }
+      },
+      post: async () => {
+        writes++
+        if (fail && failure === 'apply') throw new Error('模拟应用失败')
+        if (fail && failure === 'apply-auth-cancel') throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
+        applied = true
+        pending = null
+        return { errorNo: 0, data: { generation: 2 } }
+      }
+    } })
+    await page.loadAll()
+    page.updateField(['tls', 'certificateRef'], 'D:/certs/public.crt')
+    assert.equal(await page.saveAndApply(), false)
+    assert.equal(page.busy.value, false)
+    assert.equal(page.saveFlow.value, '')
+    assert.deepEqual(successes, [])
+    const recoverable = ['apply', 'apply-auth-cancel'].includes(failure)
+    assert.equal(page.showPendingRecovery.value, recoverable)
+    assert.equal(page.continuingSave.value, recoverable)
+    if (failure === 'apply-auth-cancel') {
+      assert.deepEqual(messages, [])
+      assert.equal(page.saveError.value, '')
+    } else {
+      assert.ok(messages.length > 0, '真实失败不能被隐藏')
+      assert.equal(page.saveError.value || page.sectionError.value, messages.at(-1), '错误必须保留在页面中')
+    }
+    if (failure === 'save') {
+      page.updateField(['tls', 'certificateRef'], 'D:/certs/fixed/public.crt')
+      assert.equal(page.saveError.value, '')
+    }
+    if (recoverable) {
+      fail = false
+      const writesBefore = writes
+      const continuing = page.continuePending()
+      assert.equal(page.saveFlow.value, 'resume')
+      assert.equal(page.continuingSave.value, true)
+      assert.equal(page.showPendingRecovery.value, false)
+      assert.equal(page.saveError.value, '')
+      assert.equal(await continuing, true)
+      assert.equal(writes, writesBefore + 1, '只应用已有候选，不重复保存')
+      assert.equal(page.showPendingRecovery.value, false)
+      assert.deepEqual(successes, ['配置已保存'])
+    }
+  })
+}
+
+for (const rejected of [false, true]) {
+  test(`恢复其他会话候选期间保持按钮稳定，恢复失败保留入口：失败=${rejected}`, async () => {
+    let active = {
+      meta: { generation: 1 },
+      tls: { management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl', certificateRef: 'config/ssl/public.crt', privateKeyRef: 'config/ssl/private.key' }
+    }
+    let pending = { generation: 2, section: 'ssl', sameSession: false, candidateId: 'another-session', payload: active }
+    const requests = []
+    const { page, messages } = fixture(() => {}, 'ssl', { http: {
+      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: active.meta.generation } : active }),
+      post: async (path, body) => {
+        assert.equal(page.saveFlow.value, 'resume')
+        assert.equal(page.busy.value, true)
+        assert.equal(page.continuingSave.value, true)
+        assert.equal(page.showPendingRecovery.value, false)
+        requests.push(path)
+        if (path.endsWith('/pending')) {
+          assert.equal(body.action, 'resume')
+          if (rejected) throw new Error('模拟候选恢复失败')
+          pending = { ...pending, sameSession: true }
+        } else {
+          assert.equal(body.candidateId, 'another-session')
+          active = { ...active, meta: { generation: 2 } }
+          pending = null
+        }
+        return { errorNo: 0, data: { generation: 2 } }
+      }
+    } })
+    await page.loadAll()
+    assert.equal(page.showPendingRecovery.value, true)
+    assert.equal(await page.continuePending(), !rejected)
+    assert.equal(page.busy.value, false)
+    assert.equal(page.showPendingRecovery.value, rejected)
+    assert.equal(page.saveError.value, rejected ? '模拟候选恢复失败' : '')
+    assert.deepEqual(requests, rejected ? ['/api/v1/config/pending'] : ['/api/v1/config/pending', '/api/v1/config/ssl/apply'])
+    assert.deepEqual(messages, rejected ? ['模拟候选恢复失败'] : [])
+  })
+}
 
 test('最近认证过期时在当前页确认密码并自动重试保存和应用', async () => {
   const requests = []
@@ -631,7 +809,7 @@ test('标题合并配置状态，保留刷新保护和降级提示，不再渲�
   assert.doesNotMatch(header, /stateLabel|运行状态|state-tag/)
   assert.match(header, /v-for="issue in status.degradedReasons \|\| \[\]"/)
   assert.match(header, /v-if="!loading && !availabilityError"/)
-  assert.match(header, /:disabled="!!working \|\| sectionLoading \|\| loading"/)
+  assert.match(header, /:disabled="busy \|\| sectionLoading \|\| loading"/)
   assert.match(header, /@click="refreshPage"/)
   assert.doesNotMatch(header, /<dl class="overview-meta"/)
   assert.doesNotMatch(header, /access-tag/)
