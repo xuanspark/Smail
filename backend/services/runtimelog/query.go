@@ -72,16 +72,21 @@ func (w *Writer) Read(ctx context.Context, name string, offset, limit int) (Page
 		if at.Before(cutoff) {
 			return nil
 		}
+		// 先过滤再分页，偏移、统计和下一页判断均按实际可见记录计算。
+		visible, keep := presentLine(string(line))
+		if !keep {
+			return nil
+		}
 		position++
 		if position <= offset {
 			return nil
 		}
-		if len(page.Lines) >= limit || bytes+len(line) > maxResponseBytes {
+		if len(page.Lines) >= limit || bytes+len(visible) > maxResponseBytes {
 			page.HasMore = true
 			return finished
 		}
-		page.Lines = append(page.Lines, string(line))
-		bytes += len(line)
+		page.Lines = append(page.Lines, visible)
+		bytes += len(visible)
 		return nil
 	})
 	if errors.Is(err, finished) {

@@ -47,7 +47,11 @@ export function parseRuntimeLine(line, sequence) {
     }
   }
   const separator = /^\*{3,}$/.test(message.trim())
-  const summary = separator ? '启动分隔线' : message.trim() || '（空消息）'
+  const legacyStartup = level === 'info'
+    && /(?:^|\/)internal\/app\/app\.go:\d+$/.test(source.replace(/\\/g, '/'))
+    && /^\*{3}\s+Server Start Success\s*(?:\\r)?(?:\\n)?\s*$/.test(message)
+  // 历史启动信息只简化摘要，详情仍保留完整消息和原始记录。
+  const summary = legacyStartup ? '服务启动' : separator ? '启动分隔线' : message.trim() || '（空消息）'
   const sourceShort = source.replace(/^git\.pcux\.cn\/xuans\/Smail\//, '')
   return {
     sequence, raw, createdAt, level, source, sourceShort, requestId, message, summary,

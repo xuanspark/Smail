@@ -36,13 +36,7 @@ func Run() (err error) {
 		build.Version = "TestVersion"
 	}
 
-	log.Infoln("*******************************************************************")
-	log.Infof("***\tServer Start Success \n")
-	log.Infof("***\tServer Version: %s \n", build.Version)
-	log.Infof("***\tGit Commit Hash: %s ", build.GitHash)
-	log.Infof("***\tBuild Date: %s ", build.BuildTime)
-	log.Infof("***\tBuild GoLang Version: %s ", build.GoVersion)
-	log.Infoln("*******************************************************************")
+	log.Infof("服务启动，版本：%s", build.Version)
 
 	// 启动定时任务。
 	go cron_server.Start()

@@ -115,6 +115,29 @@ test('无请求标识、Windows 代码路径与原文方括号均能安全展示
   assert.equal(row.level, 'info')
 })
 
+test('旧启动信息只精简摘要，不改原始记录或其他业务消息', () => {
+  const header = '[2026-09-08T14:55:23Z] [info][2026-09-08 22:55:23]'
+  for (const source of ['git.pcux.cn/xuans/Smail/internal/app/app.go', 'D:\\source\\internal\\app\\app.go']) {
+    for (const suffix of [' ', ' \\n', '\\r\\n']) {
+      const message = `***\tServer Start Success${suffix}`
+      const raw = `${header}[${source}:40]${message}`
+      const row = parseRuntimeLine(raw, 1)
+      assert.equal(row.summary, '服务启动')
+      assert.equal(row.message, message)
+      assert.equal(row.raw, raw)
+    }
+  }
+  for (const raw of [
+    `${header}[other/app.go:40]***\tServer Start Success`,
+    `${header}[internal/app/app.go:40]***\tServer Start Success 后续内容`,
+    `${header.replace('[info]', '[warning]')}[internal/app/app.go:40]***\tServer Start Success`
+  ]) {
+    const row = parseRuntimeLine(raw, 1)
+    assert.equal(row.summary, row.message.trim())
+    assert.equal(row.raw, raw)
+  }
+})
+
 test('未知格式和非法时间不丢失消息，分隔线只改摘要不改原文', () => {
   for (const raw of ['[2026-99-99T00:00:00Z] 错误', '<img src=x onerror=alert(1)>', '[业务]消息', '']) {
     const row = parseRuntimeLine(raw, 1)
