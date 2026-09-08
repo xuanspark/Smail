@@ -8,11 +8,15 @@ import (
 	"git.pcux.cn/xuans/Smail/internal/buildinfo"
 	"git.pcux.cn/xuans/Smail/listen/cron_server"
 	"git.pcux.cn/xuans/Smail/res_init"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	log "github.com/sirupsen/logrus"
 )
 
 // Run 启动 Smail 主服务。
 func Run() error {
+	if err := runtimepath.CheckReady(config.ROOT_PATH); err != nil {
+		return err
+	}
 	if err := config.Init(); err != nil {
 		return err
 	}

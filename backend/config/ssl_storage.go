@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 	SSLManagementProject   = "project"
 	SSLManagementCustom    = "custom"
 
-	managedSSLRelativeRoot = "config/ssl/managed"
+	managedSSLRelativeRoot = "data/ssl/managed"
 	maxManagedSSLFileSize  = 1 << 20
 )
 
@@ -207,6 +208,7 @@ func ResolveManagedSSLReferences(ssl SSLConfig) (ManagedSSLReference, error) {
 }
 
 func resolveManagedSSLReferencesAtRoot(root string, ssl SSLConfig) (ManagedSSLReference, error) {
+	ssl = normalizeSSLDataReferences(ssl)
 	if !validManagedSSLMode(ssl.Mode) {
 		return ManagedSSLReference{}, ErrInvalidSSLMode
 	}
@@ -402,7 +404,7 @@ func resolveManagedReference(rootPath, reference, expectedName string) (string, 
 }
 
 func resolveManagedReferenceAtRoot(root, rootPath, reference, expectedName string) (string, error) {
-	rawReference := strings.TrimSpace(reference)
+	rawReference := runtimepath.LegacyReference(strings.TrimSpace(reference))
 	if rawReference == "" || strings.Contains(rawReference, `\`) || filepath.IsAbs(rawReference) || isWindowsAbsolute(rawReference) {
 		return "", ErrInvalidSSLReference
 	}

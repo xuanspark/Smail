@@ -810,11 +810,11 @@ func TestConfigBackupRejectsTamperedPartition(t *testing.T) {
 	if _, err := store.CreateBackup(runtime); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups-v2"))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("backup entries = %v, err = %v", entries, err)
 	}
-	path := filepath.Join(root, "config", "backups-v2", entries[0].Name(), "files", "email.json")
+	path := filepath.Join(root, "data", "backups-v2", entries[0].Name(), "files", "email.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -853,11 +853,11 @@ func TestConfigManagerRejectsUndecryptableRollbackBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups-v2"))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("backup entries = %v, err = %v", entries, err)
 	}
-	backupDirectory := filepath.Join(root, "config", "backups-v2", entries[0].Name())
+	backupDirectory := filepath.Join(root, "data", "backups-v2", entries[0].Name())
 	rootPath := filepath.Join(backupDirectory, "files", "config.json")
 	rootData, err := os.ReadFile(rootPath)
 	if err != nil {
@@ -925,7 +925,7 @@ func TestConfigBackupRetentionKeepsFourRecentBackups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups-v2"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1303,14 +1303,14 @@ func containsAny(value string, terms ...string) bool {
 
 func findTransactionDirectory(t *testing.T, root string) string {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(root, "config", "transaction"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "transaction"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 || !entries[0].IsDir() {
 		t.Fatalf("transaction entries = %+v", entries)
 	}
-	return filepath.Join(root, "config", "transaction", entries[0].Name())
+	return filepath.Join(root, "data", "transaction", entries[0].Name())
 }
 
 func TestTransactionRecoveryRejectsTamperedArtifacts(t *testing.T) {
@@ -1462,7 +1462,7 @@ func TestConfigBackupScheduleUsesSevenDayInterval(t *testing.T) {
 	if err != nil || !created || atDue == path {
 		t.Fatalf("at due path=%q created=%v err=%v, want new backup", atDue, created, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups-v2"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1484,7 +1484,7 @@ func TestConfigBackupScheduleCreatesSameGenerationBackupWhenDue(t *testing.T) {
 	if err != nil || !created || secondPath == "" || secondPath == firstPath {
 		t.Fatalf("due backup path=%q created=%v err=%v, want a new backup", secondPath, created, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups-v2"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1500,7 +1500,7 @@ func TestConfigBackupListingAndLoadingIgnoreTemporaryDirectories(t *testing.T) {
 	if _, err := store.CreateBackup(runtime); err != nil {
 		t.Fatal(err)
 	}
-	backupDirectory := filepath.Join(root, "config", "backups-v2")
+	backupDirectory := filepath.Join(root, "data", "backups-v2")
 	if err := os.Mkdir(filepath.Join(backupDirectory, ".interrupted.tmp"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -1528,7 +1528,7 @@ func TestConfigBackupCleanupKeepsOnlyExpiredValidBackup(t *testing.T) {
 	if _, err := store.createBackupAt(runtime, createdAt); err != nil {
 		t.Fatal(err)
 	}
-	backupDirectory := filepath.Join(root, "config", "backups-v2")
+	backupDirectory := filepath.Join(root, "data", "backups-v2")
 	if err := cleanupConfigBackups(backupDirectory, createdAt.Add(configBackupMaxAge+time.Nanosecond), store.validation); err != nil {
 		t.Fatal(err)
 	}
@@ -1553,7 +1553,7 @@ func TestConfigBackupRetentionHonorsThirtyDayBoundary(t *testing.T) {
 	if _, err := store.createBackupAt(second, base.Add(configBackupMaxAge)); err != nil {
 		t.Fatal(err)
 	}
-	backupDirectory := filepath.Join(root, "config", "backups-v2")
+	backupDirectory := filepath.Join(root, "data", "backups-v2")
 	entries, err := os.ReadDir(backupDirectory)
 	if err != nil {
 		t.Fatal(err)
@@ -1596,7 +1596,7 @@ func TestConfigBackupFailureDoesNotDeleteExistingValidBackup(t *testing.T) {
 	if _, err := store.LoadBackup(runtime.Generation); err != nil {
 		t.Fatalf("existing valid backup was removed after failure: %v", err)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups-v2"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups-v2"))
 	if err != nil {
 		t.Fatal(err)
 	}

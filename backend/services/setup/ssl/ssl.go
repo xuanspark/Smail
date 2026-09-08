@@ -116,7 +116,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		cfg.SSL = config.SSLConfig{
 			Management:       config.SSLManagementProject,
 			Mode:             config.ManagedSSLModeDefault,
-			DefaultDirectory: "config/ssl",
+			DefaultDirectory: "data/ssl",
 		}
 		if cfg.SSLType == config.SSLTypeAutoDNS {
 			cfg.SSL.Challenge = config.SSLChallengeDNS
@@ -190,12 +190,12 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 	cfg.SSL = config.SSLConfig{
 		Management:       management,
 		Mode:             reference.Mode,
-		DefaultDirectory: "config/ssl",
+		DefaultDirectory: "data/ssl",
 		CertificateRef:   reference.CertificateRef,
 		PrivateKeyRef:    reference.PrivateKeyRef,
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
-		cfg.SSL.CustomDirectory = "config/ssl/managed/upload"
+		cfg.SSL.CustomDirectory = "data/ssl/managed/upload"
 	} else if cfg.SSLType == config.SSLTypeAutoDNS {
 		cfg.SSL.Challenge = config.SSLChallengeDNS
 	} else {

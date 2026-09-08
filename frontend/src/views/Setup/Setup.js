@@ -74,7 +74,7 @@ export function usePage() {
 
   const dbSettings = reactive({
     "type": "sqlite",
-    "dsn": "./config/smail.db",
+    "dsn": "./data/smail.db",
     "mode": "fields",
     "user": "",
     "host": "127.0.0.1",
@@ -92,8 +92,8 @@ export function usePage() {
   const sslSettings = reactive({
     "type": "0",
     "challenge": "",
-    "key_path": "./config/ssl/private.key",
-    "crt_path": "./config/ssl/public.crt",
+    "key_path": "./data/ssl/private.key",
+    "crt_path": "./data/ssl/public.crt",
     "paramsList": [],
   })
 
@@ -223,7 +223,7 @@ export function usePage() {
     databaseError.value = ""
 
     if (dbSettings.type === "sqlite" && !dbSettings.dsn) {
-      dbSettings.dsn = "./config/smail.db";
+      dbSettings.dsn = "./data/smail.db";
     }
 
     const usesStructuredFields = dbSettings.type === "mysql" || dbSettings.type === "postgres"
@@ -295,7 +295,7 @@ export function usePage() {
       dbSettings.name = "smail"
     } else {
       dbSettings.mode = "dsn"
-      dbSettings.dsn = "./config/smail.db"
+      dbSettings.dsn = "./data/smail.db"
       dbSettings.host = "127.0.0.1"
       dbSettings.port = ""
       dbSettings.name = ""

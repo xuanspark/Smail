@@ -152,7 +152,7 @@ func (e *SQLiteExecutor) resolveReference(reference string) (string, error) {
 	if err != nil {
 		return "", ErrInvalidTargetName
 	}
-	configDirectory := filepath.Join(root, "config")
+	configDirectory := filepath.Join(root, "data")
 	info, err := os.Lstat(configDirectory)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", ErrInvalidTargetName

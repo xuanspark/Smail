@@ -22,7 +22,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	if err != nil || decrypted != "secret-value" {
 		t.Fatal("credential could not be decrypted")
 	}
-	info, err := os.Stat(filepath.Join(root, "config", "credential.key"))
+	info, err := os.Stat(filepath.Join(root, "data", "credential.key"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestReadKeyRejectsDirectorySymlink(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(target, "credential.key"), make([]byte, 32), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, filepath.Join(root, "config")); err != nil {
+	if err := os.Symlink(target, filepath.Join(root, "data")); err != nil {
 		t.Skipf("symlink is unavailable: %v", err)
 	}
 	if _, err := readKey(root); err == nil {
@@ -105,7 +105,7 @@ func TestReadKeyRejectsDirectorySymlink(t *testing.T) {
 
 func TestReadKeyRejectsKeySymlink(t *testing.T) {
 	root := t.TempDir()
-	configDir := filepath.Join(root, "config")
+	configDir := filepath.Join(root, "data")
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestConcurrentEncryptUsesSingleCompleteKey(t *testing.T) {
 			t.Fatalf("concurrent credential could not be decrypted: %v", err)
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config"))
+	entries, err := os.ReadDir(filepath.Join(root, "data"))
 	if err != nil {
 		t.Fatal(err)
 	}

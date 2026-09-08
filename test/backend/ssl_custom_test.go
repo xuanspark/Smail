@@ -66,7 +66,7 @@ func customSSLFixture(t *testing.T) (string, *ConfigManager, UpdateRequest, []by
 
 func assertNoCustomSSLVersions(t *testing.T, root string) {
 	t.Helper()
-	if _, err := os.Stat(filepath.Join(root, "config", "ssl", "managed", "upload")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "data", "ssl", "managed", "upload")); !os.IsNotExist(err) {
 		t.Fatalf("失败或只读操作产生了证书存储副作用: %v", err)
 	}
 }
@@ -101,7 +101,7 @@ func TestCustomSSLManagerValidateSaveApplyReload(t *testing.T) {
 			if manager.Snapshot().Generation != request.ExpectedGeneration {
 				t.Fatal("暂存提前切换了当前配置")
 			}
-			if !strings.HasPrefix(updated.Candidate.SSL.TLS.CertificateRef, "config/ssl/managed/upload/version-") {
+			if !strings.HasPrefix(updated.Candidate.SSL.TLS.CertificateRef, "data/ssl/managed/upload/version-") {
 				t.Fatal("候选未使用独立受管引用")
 			}
 			currentBytes, err := os.ReadFile(oldReference.CertificatePath)

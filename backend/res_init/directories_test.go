@@ -20,7 +20,7 @@ func TestDirInitUsesRuntimeRoot(t *testing.T) {
 		if err := dirInit(); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"config", "config/dkim", "config/ssl"} {
+		for _, name := range []string{"config", "data", "data/dkim", "data/ssl"} {
 			info, err := os.Stat(filepath.Join(root, name))
 			if err != nil || !info.IsDir() {
 				t.Fatalf("运行目录未创建: %s", name)
@@ -40,7 +40,7 @@ func TestDirInitPreservesExistingFiles(t *testing.T) {
 	if err := dirInit(); err != nil {
 		t.Fatal(err)
 	}
-	files := []string{"config/config.json", "config/smail.db", "config/credential.key", "config/dkim/dkim.priv", "config/ssl/private.key"}
+	files := []string{"config/config.json", "data/smail.db", "data/credential.key", "data/dkim/dkim.priv", "data/ssl/private.key"}
 	data := []byte("existing-runtime-fixture")
 	for _, name := range files {
 		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
@@ -63,10 +63,10 @@ func TestDirInitRejectsFileAsDirectory(t *testing.T) {
 	previous := config.ROOT_PATH
 	config.ROOT_PATH = root
 	t.Cleanup(func() { config.ROOT_PATH = previous })
-	if err := os.Mkdir(filepath.Join(root, "config"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "data"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "config", "dkim"), []byte("blocked"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "data", "dkim"), []byte("blocked"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := dirInit(); err == nil {

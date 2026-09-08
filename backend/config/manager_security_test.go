@@ -141,10 +141,10 @@ func TestLoadManagerRejectsSymlinkConfigFile(t *testing.T) {
 func TestBackupRejectsSymlinkDirectoryAndEntry(t *testing.T) {
 	t.Run("directory", func(t *testing.T) {
 		root := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(root, "config"), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, "data"), 0700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(t.TempDir(), filepath.Join(root, "config", "backups")); err != nil {
+		if err := os.Symlink(t.TempDir(), filepath.Join(root, "data", "backups")); err != nil {
 			t.Skipf("symlink is unavailable: %v", err)
 		}
 		if _, err := BackupConfig(root, RuntimeSnapshot{Config: testRootConfig(), Generation: 1}, time.Now()); err == nil {
@@ -153,7 +153,7 @@ func TestBackupRejectsSymlinkDirectoryAndEntry(t *testing.T) {
 	})
 	t.Run("entry", func(t *testing.T) {
 		root := t.TempDir()
-		directory := filepath.Join(root, "config", "backups")
+		directory := filepath.Join(root, "data", "backups")
 		if err := os.MkdirAll(directory, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +196,7 @@ func TestBackupRetentionKeepsExactlyFourRecentManagedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "config", "backups"))
+	entries, err := os.ReadDir(filepath.Join(root, "data", "backups"))
 	if err != nil {
 		t.Fatal(err)
 	}

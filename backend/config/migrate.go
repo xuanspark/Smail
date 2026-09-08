@@ -20,6 +20,7 @@ import (
 	"git.pcux.cn/xuans/Smail/plugins/catalog"
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 	"git.pcux.cn/xuans/Smail/utils/credential"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 var (
@@ -178,11 +179,15 @@ func MigrateLegacyConfig(root string, options RuntimeValidationOptions) (LegacyM
 	if err := ValidateRuntimeConfig(runtime, options); err != nil {
 		return LegacyMigrationResult{}, err
 	}
-	backupPath, err := writeLegacyMigrationBackup(directory, legacyData, time.Now().UTC())
+	dataDirectory, err := runtimepath.Directory(root)
 	if err != nil {
 		return LegacyMigrationResult{}, err
 	}
-	if err := preserveLegacyMigrationSource(directory, legacyData); err != nil {
+	backupPath, err := writeLegacyMigrationBackup(dataDirectory, legacyData, time.Now().UTC())
+	if err != nil {
+		return LegacyMigrationResult{}, err
+	}
+	if err := preserveLegacyMigrationSource(dataDirectory, legacyData); err != nil {
 		return LegacyMigrationResult{}, err
 	}
 	files, err := marshalRuntimeFilesWithPluginSecrets(runtime, true)
@@ -614,6 +619,7 @@ func legacySQLiteLocalRef(value string) (string, bool) {
 	value = filepath.ToSlash(value)
 	value = strings.TrimPrefix(value, "./")
 	value = strings.TrimPrefix(value, "config/")
+	value = strings.TrimPrefix(value, "data/")
 	if value == "" || strings.HasPrefix(value, "../") || value == ".." || strings.Contains(value, "/../") || strings.Contains(value, "\\") || strings.Contains(value, ":") {
 		return "", false
 	}
@@ -736,7 +742,9 @@ func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrati
 func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 	certificateRef, certificateOK := legacyControlledReference(legacy.SSLPublicKeyPath)
 	privateKeyRef, privateKeyOK := legacyControlledReference(legacy.SSLPrivateKeyPath)
-	ssl := SSLConfig{Management: SSLManagementProject, Mode: ManagedSSLModeDefault, DefaultDirectory: "config/ssl"}
+	certificateRef = runtimepath.LegacyReference(certificateRef)
+	privateKeyRef = runtimepath.LegacyReference(privateKeyRef)
+	ssl := SSLConfig{Management: SSLManagementProject, Mode: ManagedSSLModeDefault, DefaultDirectory: "data/ssl"}
 	switch legacy.SSLType {
 	case SSLTypeAutoDNS:
 		ssl.Challenge = SSLChallengeDNS
@@ -749,7 +757,7 @@ func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 			ssl.Management = SSLManagementWebServer
 		}
 		ssl.Mode = ManagedSSLModeUpload
-		ssl.CustomDirectory = "config/ssl"
+		ssl.CustomDirectory = "data/ssl"
 	}
 	if legacy.SSLPublicKeyPath == "" && legacy.SSLPrivateKeyPath == "" {
 		return ssl, nil

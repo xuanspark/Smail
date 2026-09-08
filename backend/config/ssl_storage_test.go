@@ -29,7 +29,7 @@ func TestImportManagedSSLUsesInternalReferencesAndAtomicCurrent(t *testing.T) {
 	if filepath.IsAbs(first.CertificateRef) || filepath.IsAbs(first.PrivateKeyRef) {
 		t.Fatal("SSL 内部引用不应为绝对路径")
 	}
-	if first.CertificateRef != "config/ssl/managed/default/current/public.crt" || first.PrivateKeyRef != "config/ssl/managed/default/current/private.key" {
+	if first.CertificateRef != "data/ssl/managed/default/current/public.crt" || first.PrivateKeyRef != "data/ssl/managed/default/current/private.key" {
 		t.Fatalf("内部引用不符合预期: %+v", first)
 	}
 	resolved, err := ResolveManagedSSLReferences(SSLConfig{Mode: ManagedSSLModeDefault, DefaultDirectory: "config/ssl", CertificateRef: first.CertificateRef, PrivateKeyRef: first.PrivateKeyRef})
@@ -236,7 +236,7 @@ func TestPrepareCustomSSLPathsImportsExternalFilesOnlyWhenSaving(t *testing.T) {
 	if runtime.SSL.TLS.CertificateRef == certificatePath || runtime.SSL.TLS.PrivateKeyRef == privateKeyPath {
 		t.Fatal("仅校验阶段不应保留外部证书路径")
 	}
-	managedRoot := filepath.Join(root, "config", "ssl", "managed", "upload")
+	managedRoot := filepath.Join(root, "data", "ssl", "managed", "upload")
 	if _, err := os.Stat(managedRoot); !os.IsNotExist(err) {
 		t.Fatalf("仅校验阶段不应创建受管目录，error = %v", err)
 	}
@@ -247,7 +247,7 @@ func TestPrepareCustomSSLPathsImportsExternalFilesOnlyWhenSaving(t *testing.T) {
 	if runtime.SSL.TLS.CertificateRef == certificatePath || runtime.SSL.TLS.PrivateKeyRef == privateKeyPath {
 		t.Fatal("保存后不应继续使用外部证书路径")
 	}
-	if !strings.HasPrefix(runtime.SSL.TLS.CertificateRef, "config/ssl/managed/upload/version-") {
+	if !strings.HasPrefix(runtime.SSL.TLS.CertificateRef, "data/ssl/managed/upload/version-") {
 		t.Fatalf("证书引用未切换到受管版本: %q", runtime.SSL.TLS.CertificateRef)
 	}
 	if _, err := ResolveManagedSSLReferences(runtime.SSL.TLS); err != nil {

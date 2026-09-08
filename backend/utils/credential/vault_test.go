@@ -34,7 +34,7 @@ func TestVaultRejectsBroadKeyPermissions(t *testing.T) {
 		t.Skip("POSIX permission bits are unavailable")
 	}
 	root := t.TempDir()
-	configDir := filepath.Join(root, "config")
+	configDir := filepath.Join(root, "data")
 	if err := os.Mkdir(configDir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestVaultRejectsBroadDirectoryPermissions(t *testing.T) {
 		t.Skip("POSIX permission bits are unavailable")
 	}
 	root := t.TempDir()
-	configDir := filepath.Join(root, "config")
+	configDir := filepath.Join(root, "data")
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatal(err)
 	}

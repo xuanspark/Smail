@@ -31,7 +31,7 @@ func writeCertificateBundle(cfg *config.Config, privateKey, certificate, issuer 
 		return err
 	}
 	defer workspaceRoot.Close()
-	baseRelative := filepath.Join("config", "ssl")
+	baseRelative := filepath.Join("data", "ssl")
 	if err := ensureSecureRootDirectory(workspaceRoot, baseRelative); err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func writeCertificateBundle(cfg *config.Config, privateKey, certificate, issuer 
 		}
 		relativePath, err := securefile.ControlledRelativePath(basePath, item.path)
 		if err != nil {
-			return errors.New("SSL file path must stay inside config/ssl")
+			return errors.New("SSL file path must stay inside data/ssl")
 		}
 		if _, exists := seen[relativePath]; exists {
 			return errors.New("SSL file paths must be unique")

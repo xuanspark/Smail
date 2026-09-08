@@ -18,7 +18,7 @@ yarn dev
 VITE_DEV_BACKEND_URL=http://127.0.0.1:5201
 ```
 
-前端开发服务使用 `config/ssl` 下的证书提供 HTTPS，HTTP `80` 只负责跳转到 HTTPS。生产环境应使用有效证书，并由正式 Web 服务器承载前端入口。
+前端开发服务使用 `data/ssl` 下的证书提供 HTTPS，HTTP `80` 只负责跳转到 HTTPS。生产环境应使用有效证书，并由正式 Web 服务器承载前端入口。生产构建不读取本机开发证书。
 
 ### 生产构建
 

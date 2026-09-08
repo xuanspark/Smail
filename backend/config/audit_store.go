@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 const ConfigAuditRetention = 365 * 24 * time.Hour
@@ -45,7 +46,7 @@ func NewFileAuditWriter(root string) (*FileAuditWriter, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, ErrAuditStorageUnavailable
 	}
-	directory, err := secureManagerConfigDirectory(root)
+	directory, err := runtimepath.Directory(root)
 	if err != nil {
 		return nil, err
 	}

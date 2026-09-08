@@ -17,7 +17,7 @@ import (
 func newSQLiteMigrationFixture(t *testing.T, switchConfig SQLiteSwitch) (*Service, string) {
 	t.Helper()
 	root := t.TempDir()
-	configDirectory := filepath.Join(root, "config")
+	configDirectory := filepath.Join(root, "data")
 	if err := os.Mkdir(configDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestSQLiteExecutorCopiesDatabaseAndSwitchesConfiguration(t *testing.T) {
 	if switched.LocalRef != "smail-next.db" || switched.Type != config.DatabaseTypeSQLite {
 		t.Fatalf("unexpected switched configuration: %+v", switched)
 	}
-	database, err := sql.Open("sqlite", filepath.Join(root, "config", "smail-next.db"))
+	database, err := sql.Open("sqlite", filepath.Join(root, "data", "smail-next.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestSQLiteExecutorCopiesDatabaseAndSwitchesConfiguration(t *testing.T) {
 	if body != "测试邮件" {
 		t.Fatalf("copied row = %q, want copied content", body)
 	}
-	info, err := os.Stat(filepath.Join(root, "config", "smail-next.db"))
+	info, err := os.Stat(filepath.Join(root, "data", "smail-next.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,10 +84,10 @@ func TestSQLiteExecutorSupportsNestedReferences(t *testing.T) {
 		switched = candidate
 		return nil
 	})
-	if err := os.MkdirAll(filepath.Join(root, "config", "archive"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "data", "archive"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(filepath.Join(root, "config", "smail.db"), filepath.Join(root, "config", "archive", "review.db")); err != nil {
+	if err := os.Rename(filepath.Join(root, "data", "smail.db"), filepath.Join(root, "data", "archive", "review.db")); err != nil {
 		t.Fatal(err)
 	}
 	record, token, err := service.Preview(context.Background(), config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "archive/review.db"}, 1, "archive/next.db")
@@ -101,14 +101,14 @@ func TestSQLiteExecutorSupportsNestedReferences(t *testing.T) {
 	if switched.LocalRef != "archive/next.db" {
 		t.Fatalf("switched localRef = %q, want archive/next.db", switched.LocalRef)
 	}
-	if _, err := os.Stat(filepath.Join(root, "config", "archive", "next.db")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "data", "archive", "next.db")); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSQLiteExecutorRejectsExistingTarget(t *testing.T) {
 	service, root := newSQLiteMigrationFixture(t, func(context.Context, config.DatabaseConfig) error { return nil })
-	if err := os.WriteFile(filepath.Join(root, "config", "smail-next.db"), []byte("existing"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "data", "smail-next.db"), []byte("existing"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	record, token, err := service.Preview(context.Background(), config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "smail.db"}, 1, "smail-next.db")
@@ -126,10 +126,10 @@ func TestSQLiteExecutorRejectsExistingTarget(t *testing.T) {
 
 func TestSQLiteExecutorRejectsCorruptSource(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "config"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "data"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "config", "smail.db"), []byte("not sqlite"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "data", "smail.db"), []byte("not sqlite"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	executor := NewSQLiteExecutor(root, func(context.Context, config.DatabaseConfig) error { return nil })
@@ -162,7 +162,7 @@ func TestSQLiteExecutorRequiresConfigurationSwitch(t *testing.T) {
 	if failed.ErrorCode != "SWITCH_UNAVAILABLE" {
 		t.Fatalf("error code = %q, want SWITCH_UNAVAILABLE", failed.ErrorCode)
 	}
-	if _, err := os.Stat(filepath.Join(root, "config", "next.db")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(root, "data", "next.db")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("target database remained after switch failure, stat error = %v", err)
 	}
 }
@@ -179,7 +179,7 @@ func TestSQLiteExecutorCleansTargetForKnownConfigurationSwitchRejection(t *testi
 	if !errors.Is(err, config.ErrGenerationConflict) || errors.Is(err, ErrSwitchOutcomeUnknown) {
 		t.Fatalf("known switch rejection = %v, record = %+v", err, failed)
 	}
-	if _, statErr := os.Stat(filepath.Join(root, "config", "known-rejection.db")); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(filepath.Join(root, "data", "known-rejection.db")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("target database remained after known switch rejection, stat error = %v", statErr)
 	}
 }
@@ -199,7 +199,7 @@ func TestSQLiteExecutorPreservesTargetWhenConfigurationSwitchOutcomeIsUnknown(t 
 	if !errors.Is(err, ErrSwitchOutcomeUnknown) {
 		t.Fatalf("switch failure error = %v, want unknown switch outcome", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(root, "config", "next.db")); statErr != nil {
+	if _, statErr := os.Stat(filepath.Join(root, "data", "next.db")); statErr != nil {
 		t.Fatalf("target database was removed after unknown switch outcome: %v", statErr)
 	}
 }
@@ -209,8 +209,8 @@ func TestSQLiteExecutorRejectsTargetSymlink(t *testing.T) {
 		t.Skip("Windows 创建符号链接需要额外权限")
 	}
 	service, root := newSQLiteMigrationFixture(t, func(context.Context, config.DatabaseConfig) error { return nil })
-	target := filepath.Join(root, "config", "next.db")
-	if err := os.Symlink(filepath.Join(root, "config", "smail.db"), target); err != nil {
+	target := filepath.Join(root, "data", "next.db")
+	if err := os.Symlink(filepath.Join(root, "data", "smail.db"), target); err != nil {
 		t.Fatal(err)
 	}
 	record, token, err := service.Preview(context.Background(), config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "smail.db"}, 1, "next.db")
@@ -267,7 +267,7 @@ func TestSQLiteExecutorReportsOrderedStatuses(t *testing.T) {
 	if len(statuses) != 2 || statuses[0] != StatusVerifying || statuses[1] != StatusSwitching {
 		t.Fatalf("statuses = %v, want verifying then switching", statuses)
 	}
-	if _, err := os.Stat(filepath.Join(root, "config", "next.db")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "data", "next.db")); err != nil {
 		t.Fatal(err)
 	}
 }

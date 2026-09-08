@@ -438,8 +438,8 @@ func stopAdminResetControl() {
 
 func dirInit() error {
 	// 初始化与配置读写使用同一个运行根目录，不依赖启动时的工作目录。
-	root := filepath.Join(config.ROOT_PATH, "config")
-	for _, directory := range []string{root, filepath.Join(root, "dkim"), filepath.Join(root, "ssl")} {
+	root := filepath.Join(config.ROOT_PATH, "data")
+	for _, directory := range []string{filepath.Join(config.ROOT_PATH, "config"), root, filepath.Join(root, "dkim"), filepath.Join(root, "ssl")} {
 		if err := os.MkdirAll(directory, 0700); err != nil {
 			return fmt.Errorf("创建运行配置目录失败: %w", err)
 		}

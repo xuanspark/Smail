@@ -17,7 +17,7 @@ func TestWriteCertificateBundleUsesRestrictedAtomicStorage(t *testing.T) {
 	root := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
 	t.Cleanup(func() { config.ROOT_PATH = oldRoot })
-	basePath := filepath.Join(root, "config", "ssl")
+	basePath := filepath.Join(root, "data", "ssl")
 	cfg := &config.Config{
 		SSLPrivateKeyPath: filepath.Join(basePath, "private.key"),
 		SSLPublicKeyPath:  filepath.Join(basePath, "public.crt"),
@@ -52,7 +52,7 @@ func TestWriteCertificateBundleUsesRestrictedAtomicStorage(t *testing.T) {
 		}
 	}
 	if runtime.GOOS != "windows" {
-		for _, directory := range []string{filepath.Join(root, "config"), basePath} {
+		for _, directory := range []string{filepath.Join(root, "data"), basePath} {
 			info, err := os.Stat(directory)
 			if err != nil {
 				t.Fatal(err)
@@ -79,7 +79,7 @@ func TestWriteCertificateBundleRejectsSymlinkDirectory(t *testing.T) {
 	root := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
 	t.Cleanup(func() { config.ROOT_PATH = oldRoot })
-	configDirectory := filepath.Join(root, "config")
+	configDirectory := filepath.Join(root, "data")
 	if err := os.Mkdir(configDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestWriteCertificateBundleRejectsSymlinkFile(t *testing.T) {
 	root := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
 	t.Cleanup(func() { config.ROOT_PATH = oldRoot })
-	basePath := filepath.Join(root, "config", "ssl")
+	basePath := filepath.Join(root, "data", "ssl")
 	if err := os.MkdirAll(basePath, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestWriteCertificateBundleRejectsMismatchedPair(t *testing.T) {
 	root := t.TempDir()
 	config.ROOT_PATH = root + string(os.PathSeparator)
 	t.Cleanup(func() { config.ROOT_PATH = oldRoot })
-	basePath := filepath.Join(root, "config", "ssl")
+	basePath := filepath.Join(root, "data", "ssl")
 	cfg := &config.Config{
 		SSLPrivateKeyPath: filepath.Join(basePath, "private.key"),
 		SSLPublicKeyPath:  filepath.Join(basePath, "public.crt"),

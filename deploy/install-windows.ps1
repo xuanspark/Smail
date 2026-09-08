@@ -117,6 +117,7 @@ $adminSource = Resolve-PackageFile -Candidates @(
 $resolvedInstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 New-Item -ItemType Directory -Path $resolvedInstallRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $resolvedInstallRoot "config") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $resolvedInstallRoot "data") -Force | Out-Null
 $transactionRoot = Join-Path $resolvedInstallRoot (".upgrade-" + [Guid]::NewGuid().ToString("N"))
 $backupRoot = Join-Path $resolvedInstallRoot (".backup-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $transactionRoot -Force | Out-Null

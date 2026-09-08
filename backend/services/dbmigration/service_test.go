@@ -241,7 +241,7 @@ func TestExecuteAuthorizedPassesActorToSQLiteSwitch(t *testing.T) {
 	root = t.TempDir()
 	executor = NewAuthorizedSQLiteExecutor(root, switchConfig)
 	service = NewService(executor)
-	configDirectory := filepath.Join(root, "config")
+	configDirectory := filepath.Join(root, "data")
 	if err := os.Mkdir(configDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}

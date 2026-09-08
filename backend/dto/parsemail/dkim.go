@@ -41,7 +41,7 @@ func Init() error {
 }
 
 func loadPrivateKey(path string) (crypto.Signer, error) {
-	basePath := filepath.Join(config.ROOT_PATH, "config", "dkim")
+	basePath := filepath.Join(config.ROOT_PATH, "data", "dkim")
 	privateName, err := securefile.ControlledRelativePath(basePath, path)
 	if err != nil {
 		return nil, err

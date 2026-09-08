@@ -13,6 +13,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 	fileutil "git.pcux.cn/xuans/Smail/utils/file"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 var (
@@ -335,7 +336,7 @@ func secureManagerConfigDirectory(root string) (string, error) {
 }
 
 func secureBackupDirectory(root string) (string, error) {
-	configDirectory, err := secureManagerConfigDirectory(root)
+	configDirectory, err := runtimepath.Directory(root)
 	if err != nil {
 		return "", err
 	}

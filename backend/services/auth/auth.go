@@ -117,7 +117,7 @@ func HasAuth(ctx *context.Context, email *models.Email) bool {
 }
 
 func DkimGen() (string, error) {
-	basePath := filepath.Join(config.ROOT_PATH, "config", "dkim")
+	basePath := filepath.Join(config.ROOT_PATH, "data", "dkim")
 	cfg := config.CurrentConfig()
 	if cfg == nil {
 		return "", fmt.Errorf("runtime configuration is unavailable")

@@ -18,6 +18,7 @@ type customSSLMaterial struct {
 }
 
 func prepareCustomSSLPaths(root string, candidate *RuntimeConfig) (*customSSLMaterial, error) {
+	candidate.SSL.TLS = normalizeSSLDataReferences(candidate.SSL.TLS)
 	ssl := &candidate.SSL.TLS
 	if EffectiveSSLManagement(*ssl) != SSLManagementCustom {
 		return nil, nil
@@ -56,8 +57,8 @@ func prepareCustomSSLPaths(root string, candidate *RuntimeConfig) (*customSSLMat
 		return nil, err
 	}
 	ssl.Mode = ManagedSSLModeUpload
-	ssl.DefaultDirectory = "config/ssl"
-	ssl.CustomDirectory = "config/ssl"
+	ssl.DefaultDirectory = "data/ssl"
+	ssl.CustomDirectory = "data/ssl"
 	// 仅在内存中使用合法占位引用完成跨分区校验，最终候选必须换成独立版本。
 	ssl.CertificateRef = managedSSLReference(ManagedSSLModeUpload, "public.crt")
 	ssl.PrivateKeyRef = managedSSLReference(ManagedSSLModeUpload, "private.key")

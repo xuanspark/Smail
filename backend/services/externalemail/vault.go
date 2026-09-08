@@ -16,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 const (
@@ -41,8 +43,13 @@ func NewVault(root string) (*Vault, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, ErrVaultUnavailable
 	}
-	configDir := filepath.Join(root, "config")
-	if err := os.MkdirAll(configDir, 0700); err != nil {
+	for _, name := range []string{"external-email-encryption.key", "external-email-fingerprint.key"} {
+		if _, err := os.Lstat(filepath.Join(root, "config", name)); err == nil || !os.IsNotExist(err) {
+			return nil, ErrVaultUnavailable
+		}
+	}
+	configDir, err := runtimepath.Directory(root)
+	if err != nil {
 		return nil, ErrVaultUnavailable
 	}
 	encryptionKey, err := loadKey(filepath.Join(configDir, "external-email-encryption.key"))

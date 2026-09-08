@@ -93,7 +93,7 @@ func prepareDKIMTestDirectory(t *testing.T) (string, string) {
 	oldRoot := config.ROOT_PATH
 	root := t.TempDir()
 	t.Cleanup(func() { config.ROOT_PATH = oldRoot })
-	directory := filepath.Join(root, "config", "dkim")
+	directory := filepath.Join(root, "data", "dkim")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatal(err)
 	}

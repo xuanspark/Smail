@@ -89,6 +89,7 @@ func (l *ConfigLoader) Load() (RuntimeConfig, error) {
 	if err := ValidateRuntimeConfig(runtime, l.options.Validation); err != nil {
 		return RuntimeConfig{}, err
 	}
+	runtime.SSL.TLS = normalizeSSLDataReferences(runtime.SSL.TLS)
 	return cloneRuntimeConfig(runtime), nil
 }
 

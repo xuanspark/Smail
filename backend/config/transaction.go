@@ -15,6 +15,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 	fileutil "git.pcux.cn/xuans/Smail/utils/file"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 type TransactionPhase string
@@ -518,7 +519,11 @@ func validateTransactionManifest(manifest TransactionManifest) error {
 }
 
 func secureTransactionDirectory(configDirectory string) (string, error) {
-	directory := filepath.Join(configDirectory, "transaction")
+	dataDirectory, err := runtimepath.Directory(filepath.Dir(configDirectory))
+	if err != nil {
+		return "", err
+	}
+	directory := filepath.Join(dataDirectory, "transaction")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return "", err
 	}
@@ -595,7 +600,7 @@ func (s *TransactionStore) CreateBackupIfDue(runtime RuntimeConfig, now time.Tim
 		return "", false, err
 	}
 	if found && now.Before(latest.CreatedAt.Add(configBackupInterval)) {
-		return filepath.Join(s.root, "config", "backups-v2", latest.ID), false, nil
+		return filepath.Join(s.root, "data", "backups-v2", latest.ID), false, nil
 	}
 	path, err := s.createBackupAt(runtime, now)
 	return path, true, err
@@ -757,7 +762,11 @@ func (s *TransactionStore) LoadBackup(generation uint64) (RuntimeConfig, error) 
 }
 
 func secureConfigBackupDirectory(configDirectory string) (string, error) {
-	directory := filepath.Join(configDirectory, "backups-v2")
+	dataDirectory, err := runtimepath.Directory(filepath.Dir(configDirectory))
+	if err != nil {
+		return "", err
+	}
+	directory := filepath.Join(dataDirectory, "backups-v2")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return "", err
 	}
@@ -862,6 +871,7 @@ func parseRuntimeFiles(files map[string][]byte, validation RuntimeValidationOpti
 	if err := ValidateRuntimeConfig(runtime, validation); err != nil {
 		return RuntimeConfig{}, err
 	}
+	runtime.SSL.TLS = normalizeSSLDataReferences(runtime.SSL.TLS)
 	return runtime, nil
 }
 

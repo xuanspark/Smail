@@ -73,10 +73,10 @@ func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := CurrentConfig()
-		if !cfg.IsSetupReady() || cfg.DbType != DBTypeSQLite || cfg.DbDSN != filepath.Join(root, "config", "existing.db") {
+		if !cfg.IsSetupReady() || cfg.DbType != DBTypeSQLite || cfg.DbDSN != filepath.Join(root, "data", "existing.db") {
 			t.Fatal("partitioned startup lost initialization or database identity")
 		}
-		if cfg.WebDomain != "mail.example.com" || cfg.SSLPublicKeyPath != filepath.Join(root, "config", "ssl", "site.crt") {
+		if cfg.WebDomain != "mail.example.com" || cfg.SSLPublicKeyPath != filepath.Join(root, "data", "ssl", "site.crt") {
 			t.Fatal("partitioned startup lost domain or certificate path")
 		}
 	}

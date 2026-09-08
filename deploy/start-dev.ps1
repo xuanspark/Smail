@@ -41,7 +41,7 @@ try {
         $arguments = @('--dev-disable-admin-reset')
         Write-Output '开发启动：后端 API 仅监听 5201；沿用 config/config.json 和现有数据库；明确停用管理员恢复通道，不请求权限提升。'
         if ($SkipBuild) { Write-Warning '已跳过编译，请自行确认二进制与当前源码一致。' }
-        # 插件从 out/plugins 加载；账号、配置和密钥仍通过 SMAIL_ROOT 定位到根目录 config。
+        # 插件从 out/plugins 加载；SMAIL_ROOT 下 config 保存配置，data 保存账号、密钥和证书。
         foreach ($name in @('spam_block.exe', 'pmail_telegram_push.exe', 'wechat_push.exe')) {
             if (-not (Test-Path -LiteralPath (Join-Path $root "out\plugins\$name") -PathType Leaf)) {
                 throw '内置插件产物不完整，请先运行 deploy/build.ps1'

@@ -64,7 +64,7 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 	if !bytes.Equal(backup, original) {
 		t.Fatal("legacy backup does not match the original configuration")
 	}
-	legacyCopy, err := os.ReadFile(filepath.Join(root, "config", legacyMigrationSourceCopy))
+	legacyCopy, err := os.ReadFile(filepath.Join(root, "data", legacyMigrationSourceCopy))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestMigrateLegacyConfigResumesAfterNonSecretPartitionWrite(t *testing.T) {
 	if _, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}); err != nil {
 		t.Fatal(err)
 	}
-	legacyCopy, err := os.ReadFile(filepath.Join(directory, legacyMigrationSourceCopy))
+	legacyCopy, err := os.ReadFile(filepath.Join(root, "data", legacyMigrationSourceCopy))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,10 @@ func TestMigrateLegacyConfigRejectsConflictingPreservedSource(t *testing.T) {
 		"httpPort":     80,
 		"httpsPort":    443,
 	})
-	legacyCopyPath := filepath.Join(root, "config", legacyMigrationSourceCopy)
+	if err := os.MkdirAll(filepath.Join(root, "data"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	legacyCopyPath := filepath.Join(root, "data", legacyMigrationSourceCopy)
 	conflictingCopy := []byte(`{"dbDSN":"different.db","dbType":"sqlite"}`)
 	if err := os.WriteFile(legacyCopyPath, conflictingCopy, 0600); err != nil {
 		t.Fatal(err)
@@ -419,7 +422,7 @@ func TestMigrateLegacyConfigRejectsRepeatedMigrationAfterSuccess(t *testing.T) {
 	if !bytes.Equal(after, migrated) {
 		t.Fatal("repeated migration changed the partitioned root")
 	}
-	legacyCopy, err := os.ReadFile(filepath.Join(root, "config", legacyMigrationSourceCopy))
+	legacyCopy, err := os.ReadFile(filepath.Join(root, "data", legacyMigrationSourceCopy))
 	if err != nil {
 		t.Fatal(err)
 	}

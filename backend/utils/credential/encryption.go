@@ -85,7 +85,7 @@ func loadOrCreateKey(root string) ([]byte, error) {
 	if !os.IsNotExist(err) {
 		return nil, err
 	}
-	directory := filepath.Join(root, "config")
+	directory := filepath.Join(root, "data")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
 	}
@@ -158,7 +158,13 @@ func newCredentialKeyTemporaryName() (string, error) {
 }
 
 func readKey(root string) ([]byte, error) {
-	directory := filepath.Join(root, "config")
+	// 旧密钥尚未迁移时拒绝生成新密钥，避免现有密文永久失去读取能力。
+	if _, err := os.Lstat(filepath.Join(root, "config", "credential.key")); err == nil {
+		return nil, errors.New("凭据密钥尚未迁移到 data")
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	directory := filepath.Join(root, "data")
 	if err := validateKeyDirectory(directory); err != nil {
 		return nil, err
 	}

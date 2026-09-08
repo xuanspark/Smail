@@ -8,6 +8,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/credential"
 	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -275,7 +276,7 @@ func legacyInitReady() bool {
 }
 
 func ReadPrivateKey() (*ecdsa.PrivateKey, bool, error) {
-	privateKey, created, err := loadOrCreateACMEPrivateKey(filepath.Join(ROOT_PATH, "config", "ssl"), "account_private.pem")
+	privateKey, created, err := loadOrCreateACMEPrivateKey(filepath.Join(ROOT_PATH, "data", "ssl"), "account_private.pem")
 	if err != nil {
 		return nil, false, err
 	}
@@ -331,9 +332,9 @@ func ReadConfig() (*Config, error) {
 
 func readConfig() (*Config, error) {
 	configData := Config{
-		DkimPrivateKeyPath:      ROOT_PATH + "config/dkim/dkim.priv",
-		SSLPrivateKeyPath:       ROOT_PATH + "config/ssl/private.key",
-		SSLPublicKeyPath:        ROOT_PATH + "config/ssl/public.crt",
+		DkimPrivateKeyPath:      ROOT_PATH + "data/dkim/dkim.priv",
+		SSLPrivateKeyPath:       ROOT_PATH + "data/ssl/private.key",
+		SSLPublicKeyPath:        ROOT_PATH + "data/ssl/public.crt",
 		VerificationEnabled:     true,
 		ExternalRecoveryEnabled: true,
 		LoginPolicy:             "new_device",
@@ -445,7 +446,7 @@ func persistControlledSSLPath(value string) string {
 }
 
 func resolvePath(value string) string {
-	value = strings.TrimSpace(value)
+	value = runtimepath.LegacyReference(strings.TrimSpace(value))
 	if value == "" {
 		return ""
 	}

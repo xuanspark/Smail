@@ -32,13 +32,13 @@ const developmentHTTPRedirect = (frontendOrigin, host = '127.0.0.1', port = 80) 
 })
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = (env.VITE_DEV_BACKEND_URL || 'http://127.0.0.1:5201').replace(/\/$/, '')
   const backendOrigin = (env.VITE_DEV_BACKEND_ORIGIN || 'https://xuans.com').replace(/\/$/, '')
   const frontendOrigin = (env.VITE_DEV_FRONTEND_ORIGIN || 'https://xuans.com').replace(/\/$/, '')
-  const certificatePath = path.resolve(process.cwd(), env.SMAIL_DEV_TLS_CERTIFICATE || '../config/ssl/xuans.com.crt')
-  const privateKeyPath = path.resolve(process.cwd(), env.SMAIL_DEV_TLS_PRIVATE_KEY || '../config/ssl/xuans.com.key')
+  const certificatePath = path.resolve(process.cwd(), env.SMAIL_DEV_TLS_CERTIFICATE || '../data/ssl/xuans.com.crt')
+  const privateKeyPath = path.resolve(process.cwd(), env.SMAIL_DEV_TLS_PRIVATE_KEY || '../data/ssl/xuans.com.key')
 
   return {
     plugins: [
@@ -60,10 +60,11 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 443,
       strictPort: true,
-      https: {
+      // 生产构建不依赖本机开发证书，只有开发服务器启动时才读取私钥。
+      https: command === 'serve' ? {
         cert: readFileSync(certificatePath),
         key: readFileSync(privateKeyPath)
-      },
+      } : undefined,
       cors: true,
       proxy: {
         "/api": {

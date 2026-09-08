@@ -80,7 +80,7 @@ func GetDatabaseSettings(ctx *context.Context) (string, string, error) {
 		return "", "", errors.Wrap(err)
 	}
 	if configData.DbType == "" && configData.DbDSN == "" {
-		return config.DBTypeSQLite, config.ROOT_PATH + "./config/smail.db", nil
+		return config.DBTypeSQLite, config.ROOT_PATH + "./data/smail.db", nil
 	}
 	return configData.DbType, configData.DbDSN, nil
 }
@@ -98,7 +98,7 @@ func GetDatabaseSettingsDetail(ctx *context.Context) (map[string]string, error) 
 	}
 	if dbType == config.DBTypeSQLite {
 		if strings.TrimSpace(result["db_dsn"]) == "" {
-			result["db_dsn"] = config.ROOT_PATH + "./config/smail.db"
+			result["db_dsn"] = config.ROOT_PATH + "./data/smail.db"
 		}
 		return result, nil
 	}
@@ -238,7 +238,7 @@ func SetDatabaseSettingsWithOptions(ctx *context.Context, settings DatabaseSetti
 	}
 	if dbType == config.DBTypeSQLite {
 		if dbDSN == "" {
-			dbDSN = config.ROOT_PATH + "./config/smail.db"
+			dbDSN = config.ROOT_PATH + "./data/smail.db"
 		}
 		if err = prepareSQLiteDatabase(dbDSN); err != nil {
 			return databaseError("准备 SQLite 数据文件失败", err)

@@ -19,10 +19,10 @@ import (
 func portableFixture(t *testing.T) (string, config.DatabaseConfig) {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "config"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "data"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	database, err := sql.Open("sqlite", filepath.Join(root, "config", "source.db"))
+	database, err := sql.Open("sqlite", filepath.Join(root, "data", "source.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestPortableSQLiteCopyPreservesDataAndLocksUntilRestart(t *testing.T) {
 	if err := executor.Preview(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "config", "target.db")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "data", "target.db")); !os.IsNotExist(err) {
 		t.Fatal("preview created target")
 	}
 	if err := executor.Run(context.Background(), plan, func(Status) error { return nil }); err != nil {
@@ -87,7 +87,7 @@ func TestPortableSQLiteCopyPreservesDataAndLocksUntilRestart(t *testing.T) {
 	if err := target.QueryRow(`SELECT id FROM "user" WHERE account='next'`).Scan(&next); err != nil || next <= 40 {
 		t.Fatal("identity sequence not advanced")
 	}
-	old, err := sql.Open("sqlite", filepath.Join(root, "config", "source.db")+"?_pragma=busy_timeout(1)")
+	old, err := sql.Open("sqlite", filepath.Join(root, "data", "source.db")+"?_pragma=busy_timeout(1)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestPortableSwitchFailurePreservesSourceAndTarget(t *testing.T) {
 		t.Fatal("rejected switch kept write lock")
 	}
 	for _, name := range []string{"source.db", "target.db"} {
-		if _, err := os.Stat(filepath.Join(root, "config", name)); err != nil {
+		if _, err := os.Stat(filepath.Join(root, "data", name)); err != nil {
 			t.Fatal("database removed")
 		}
 	}
@@ -205,7 +205,7 @@ func TestPortableRejectsCustomObjectsBeforeCreatingTarget(t *testing.T) {
 	if err := executor.Run(context.Background(), plan, func(Status) error { return nil }); !errors.Is(err, ErrSQLUnsupportedObject) {
 		t.Fatalf("custom view accepted: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "config", "target.db")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "data", "target.db")); !os.IsNotExist(err) {
 		t.Fatal("unsupported source created target")
 	}
 }

@@ -94,7 +94,7 @@ func TestApplyManagedSSLReferenceDoesNotPersistLegacyPaths(t *testing.T) {
 	if cfg.SSL.Mode != config.ManagedSSLModeUpload || cfg.SSL.CertificateRef != reference.CertificateRef || cfg.SSL.PrivateKeyRef != reference.PrivateKeyRef {
 		t.Fatalf("受控 SSL 内部引用写入错误: %+v", cfg.SSL)
 	}
-	if cfg.SSL.CustomDirectory != "config/ssl/managed/upload" {
+	if cfg.SSL.CustomDirectory != "data/ssl/managed/upload" {
 		t.Fatalf("自定义受控目录写入错误: %s", cfg.SSL.CustomDirectory)
 	}
 }

@@ -58,7 +58,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		HttpPort: root.HTTP.Port, HttpsPort: root.HTTP.HTTPSPort,
 		HttpsEnabled: 2, TLSMode: root.HTTP.TLSMode,
 		TrustedProxyCIDRs:       append([]string(nil), root.HTTP.TrustedProxyCIDRs...),
-		DkimPrivateKeyPath:      filepath.Join(ROOT_PATH, "config", "dkim", "dkim.priv"),
+		DkimPrivateKeyPath:      filepath.Join(ROOT_PATH, "data", "dkim", "dkim.priv"),
 		SSLType:                 SSLTypeUser,
 		SpamFilterLevel:         runtime.Email.Policy.SpamFilterLevel,
 		LoginPolicy:             runtime.SMTP.Relay.LoginPolicy,
@@ -77,7 +77,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 			return nil, err
 		}
 	}
-	tls := runtime.SSL.TLS
+	tls := normalizeSSLDataReferences(runtime.SSL.TLS)
 	if EffectiveSSLManagement(tls) == SSLManagementProject {
 		if tls.Challenge == SSLChallengeDNS {
 			cfg.SSLType = SSLTypeAutoDNS
@@ -97,7 +97,8 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 
 func compatibilityDatabase(database DatabaseConfig, vault *credential.Vault) (string, string, error) {
 	if database.Type == DatabaseTypeSQLite {
-		return DBTypeSQLite, filepath.Join(ROOT_PATH, "config", database.LocalRef), nil
+		path := filepath.Join(ROOT_PATH, "data", database.LocalRef)
+		return DBTypeSQLite, path, nil
 	}
 	password, err := OpenStoredSecret(vault, database.Password)
 	if err != nil {

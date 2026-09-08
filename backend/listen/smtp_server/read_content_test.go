@@ -46,7 +46,7 @@ func testInit(t *testing.T) {
 		Domains:            []string{"test.domain"},
 		DbType:             config.DBTypeSQLite,
 		DbDSN:              filepath.Join(t.TempDir(), "smtp.db"),
-		DkimPrivateKeyPath: filepath.Join(config.ROOT_PATH, "config", "dkim", "dkim.priv"),
+		DkimPrivateKeyPath: filepath.Join(config.ROOT_PATH, "data", "dkim", "dkim.priv"),
 		IsInit:             true,
 	}
 	if _, err := auth.DkimGen(); err != nil {

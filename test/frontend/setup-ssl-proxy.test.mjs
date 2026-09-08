@@ -94,8 +94,8 @@ test('初始化模板能编译，实际渲染按反代策略隐藏自动选项�
     if (tlsMode === 'proxy') {
       assert.doesNotMatch(html, /data-label="自动申请证书"|ssl-challenge-select-row|ssl-storage-card|ssl-port-warning/)
       assert.match(html, /外部续期后也需重新导入并应用/)
-      assert.match(html, /modelvalue="\.\/config\/ssl\/private\.key"/)
-      assert.match(html, /modelvalue="\.\/config\/ssl\/public\.crt"/)
+      assert.match(html, /modelvalue="\.\/data\/ssl\/private\.key"/)
+      assert.match(html, /modelvalue="\.\/data\/ssl\/public\.crt"/)
     } else {
       assert.match(html, /data-label="自动申请证书"/)
       assert.match(html, /ssl-challenge-select-row|ssl-storage-card/)
