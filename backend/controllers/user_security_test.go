@@ -14,6 +14,9 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/externalemail"
+	"git.pcux.cn/xuans/Smail/services/verification"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
@@ -224,5 +227,227 @@ func TestUserRequestsRejectInvalidJSON(t *testing.T) {
 				t.Fatalf("invalid request was accepted: %s", test.name)
 			}
 		})
+	}
+}
+
+func TestManagedRecoveryCodesAreScopedAndShownOnce(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	oldRuntime := currentSecurityRuntime()
+	testRoot := t.TempDir()
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		config.Instance = oldConfig
+		db.Instance = oldDB
+		ConfigureSecurityRuntime(oldRuntime.verification, oldRuntime.external, oldRuntime.recovery, oldRuntime.credentials)
+		ConfigureWebAuthnRuntime(oldRuntime.webauthn)
+	})
+
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "managed-recovery.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	actor := models.User{Account: "security-owner", Name: "Owner", SessionVersion: 1, SecurityVersion: 1}
+	actor.ApplyRole(access.RoleSuperAdmin)
+	target := models.User{Account: "security-target", Name: "Target", SessionVersion: 1, SecurityVersion: 1}
+	target.ApplyRole(access.RoleUser)
+	if err := auth.SetPassword(&actor, "OwnerPass123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SetPassword(&target, "TargetP123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&actor, &target); err != nil {
+		t.Fatal(err)
+	}
+	credentialService, err := credentials.NewService(db.Instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ConfigureSecurityRuntime(nil, nil, nil, credentialService)
+	ctx := &appcontext.Context{
+		UserID: actor.ID, UserAccount: actor.Account, Role: access.RoleSuperAdmin, RecentAuth: true,
+	}
+
+	generateRecorder := httptest.NewRecorder()
+	generateRequest := httptest.NewRequest(http.MethodPost, "/api/v1/user/security/recovery-codes/generate", strings.NewReader(`{"user_id":`+itoa(target.ID)+`,"count":5}`))
+	GenerateManagedRecoveryCodes(ctx, generateRecorder, generateRequest)
+	var generated struct {
+		ErrorNo int `json:"errorNo"`
+		Data    struct {
+			UserID    int      `json:"user_id"`
+			Codes     []string `json:"codes"`
+			ShownOnce bool     `json:"shown_once"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(generateRecorder.Body.Bytes(), &generated); err != nil {
+		t.Fatal(err)
+	}
+	if generated.ErrorNo != 0 || generated.Data.UserID != target.ID || len(generated.Data.Codes) != 5 || !generated.Data.ShownOnce {
+		t.Fatalf("unexpected managed recovery response: %s", generateRecorder.Body.String())
+	}
+	for _, code := range generated.Data.Codes {
+		if code == "" || !strings.Contains(code, "-") {
+			t.Fatalf("invalid one-time recovery code: %q", code)
+		}
+	}
+
+	statusRecorder := httptest.NewRecorder()
+	statusRequest := httptest.NewRequest(http.MethodGet, "/api/v1/user/security/recovery-codes?id="+itoa(target.ID), nil)
+	GetManagedRecoveryCodeStatus(ctx, statusRecorder, statusRequest)
+	if !strings.Contains(statusRecorder.Body.String(), `"configured":true`) {
+		t.Fatalf("managed recovery status was not enabled: %s", statusRecorder.Body.String())
+	}
+	for _, code := range generated.Data.Codes {
+		if strings.Contains(statusRecorder.Body.String(), code) {
+			t.Fatalf("status response leaked one-time code %q", code)
+		}
+	}
+
+	revokeRecorder := httptest.NewRecorder()
+	revokeRequest := httptest.NewRequest(http.MethodPost, "/api/v1/user/security/recovery-codes/revoke", strings.NewReader(`{"user_id":`+itoa(target.ID)+`}`))
+	RevokeManagedRecoveryCodes(ctx, revokeRecorder, revokeRequest)
+	if !strings.Contains(revokeRecorder.Body.String(), `"revoked":true`) {
+		t.Fatalf("managed recovery codes were not revoked: %s", revokeRecorder.Body.String())
+	}
+
+	deniedRecorder := httptest.NewRecorder()
+	deniedRequest := httptest.NewRequest(http.MethodGet, "/api/v1/user/security/recovery-codes?id="+itoa(actor.ID), nil)
+	GetManagedRecoveryCodeStatus(ctx, deniedRecorder, deniedRequest)
+	var denied struct {
+		ErrorNo int `json:"errorNo"`
+	}
+	if err := json.Unmarshal(deniedRecorder.Body.Bytes(), &denied); err != nil {
+		t.Fatal(err)
+	}
+	if denied.ErrorNo == 0 {
+		t.Fatal("web route allowed management of super-administrator recovery codes")
+	}
+}
+
+func TestManagedExternalEmailChangeInvalidatesPreviousChallenge(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	oldRuntime := currentSecurityRuntime()
+	testRoot := t.TempDir()
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		config.Instance = oldConfig
+		db.Instance = oldDB
+		ConfigureSecurityRuntime(oldRuntime.verification, oldRuntime.external, oldRuntime.recovery, oldRuntime.credentials)
+		ConfigureWebAuthnRuntime(oldRuntime.webauthn)
+	})
+
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "managed-external-email.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	actor := models.User{Account: "email-owner", Name: "Owner", SessionVersion: 1, SecurityVersion: 1}
+	actor.ApplyRole(access.RoleSuperAdmin)
+	target := models.User{Account: "email-target", Name: "Target", SessionVersion: 1, SecurityVersion: 1}
+	target.ApplyRole(access.RoleUser)
+	if err := auth.SetPassword(&actor, "OwnerPass123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SetPassword(&target, "TargetP123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&actor, &target); err != nil {
+		t.Fatal(err)
+	}
+
+	vault := externalemail.NewVaultWithKeys(
+		[]byte("01234567890123456789012345678901"),
+		[]byte("abcdefabcdefabcdefabcdefabcdefab"),
+	)
+	external, err := externalemail.NewRepository(db.Instance, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := verification.NewStore(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuedCodes := make(map[string]string)
+	verificationService, err := verification.NewService(store, func(challenge verification.Challenge, code string) error {
+		issuedCodes[challenge.ID] = code
+		return nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ConfigureSecurityRuntime(verificationService, external, nil, nil)
+
+	pending, err := external.BeginReplacement(externalemail.BindRequest{
+		UserID: target.ID,
+		Email:  "first@example.com",
+		Type:   models.ExternalEmailTypePrimary,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldChallenge, err := store.Issue(verification.IssueRequest{
+		Purpose:    verification.PurposeExternalEmailChange,
+		UserID:     target.ID,
+		Account:    target.Account,
+		Email:      "first@example.com",
+		ResourceID: pending.ID,
+	}, func(challenge verification.Challenge, code string) error {
+		issuedCodes[challenge.ID] = code
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := &appcontext.Context{
+		UserID:      actor.ID,
+		UserAccount: actor.Account,
+		Role:        access.RoleSuperAdmin,
+		RecentAuth:  true,
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/user/security/external-email/change",
+		strings.NewReader(`{"user_id":`+itoa(target.ID)+`,"email":"second@example.com","type":"primary"}`),
+	)
+	ChangeManagedExternalEmail(ctx, recorder, request)
+	var result struct {
+		ErrorNo int `json:"errorNo"`
+		Data    struct {
+			BindingID   int    `json:"binding_id"`
+			ChallengeID string `json:"challenge_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ErrorNo != 0 || result.Data.BindingID != pending.ID || result.Data.ChallengeID == "" {
+		t.Fatalf("unexpected managed external email response: %s", recorder.Body.String())
+	}
+	if err := store.VerifyBound(
+		oldChallenge.ID,
+		target.Account,
+		"first@example.com",
+		issuedCodes[oldChallenge.ID],
+		verification.PurposeExternalEmailChange,
+		pending.ID,
+	); err != verification.ErrInvalidChallenge {
+		t.Fatalf("previous challenge remained valid after pending email changed: %v", err)
+	}
+	if err := store.VerifyBound(
+		result.Data.ChallengeID,
+		target.Account,
+		"second@example.com",
+		issuedCodes[result.Data.ChallengeID],
+		verification.PurposeExternalEmailChange,
+		pending.ID,
+	); err != nil {
+		t.Fatalf("new challenge was not valid: %v", err)
 	}
 }

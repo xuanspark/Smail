@@ -111,6 +111,28 @@
             />
           </el-form-item>
 
+          <div v-if="editModel === 'edit'" class="security-edit-grid">
+            <div class="security-edit-item">
+              <div>
+                <strong>安全码</strong>
+                <span>{{ recoveryCodeMeta(selectedUser?.RecoveryCodeConfigured).label }}</span>
+              </div>
+              <el-button @click="openRecoveryCodeDialog">管理安全码</el-button>
+            </div>
+            <div class="security-edit-item">
+              <div>
+                <strong>外部邮箱</strong>
+                <span>
+                  {{ externalEmailMeta(
+                    selectedUser?.ExternalEmailEnabled,
+                    selectedUser?.ExternalEmailConfigured
+                  ).label }}
+                </span>
+              </div>
+              <el-button @click="openExternalEmailDialog">编辑外部邮箱</el-button>
+            </div>
+          </div>
+
           <el-form-item>
             <div class="status-switch">
               <span class="switch-label">{{ lang.status }}</span>
@@ -133,11 +155,24 @@
         </span>
       </template>
     </el-dialog>
+
+    <RecoveryCodeDialog
+      v-model="recoveryCodeDialogVisible"
+      :user="selectedUser"
+      @changed="handleSecurityChanged"
+    />
+    <UserExternalEmailDialog
+      v-model="externalEmailDialogVisible"
+      :user="selectedUser"
+      @changed="handleSecurityChanged"
+    />
   </div>
 </template>
 
 <script setup>
 import { usePage, Plus } from "./UserManagement.js";
+import RecoveryCodeDialog from "./RecoveryCodeDialog/RecoveryCodeDialog.vue";
+import UserExternalEmailDialog from "./UserExternalEmailDialog/UserExternalEmailDialog.vue";
 
 const {
   lang,
@@ -152,6 +187,12 @@ const {
   submit,
   editModel,
   editUserInfo,
+  selectedUser,
+  recoveryCodeDialogVisible,
+  externalEmailDialogVisible,
+  openRecoveryCodeDialog,
+  openExternalEmailDialog,
+  handleSecurityChanged,
   roleMeta,
   recoveryCodeMeta,
   externalEmailMeta,

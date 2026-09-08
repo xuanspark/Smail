@@ -217,6 +217,12 @@ func TestFrontendV1RoutesAreRegistered(t *testing.T) {
 		"/api/v1/user/edit",
 		"/api/v1/user/info",
 		"/api/v1/user/list",
+		"/api/v1/user/security/recovery-codes",
+		"/api/v1/user/security/recovery-codes/generate",
+		"/api/v1/user/security/recovery-codes/revoke",
+		"/api/v1/user/security/external-email/list",
+		"/api/v1/user/security/external-email/change",
+		"/api/v1/user/security/external-email/verify",
 	}
 	for _, path := range paths {
 		handler, pattern := mux.Handler(httptest.NewRequest(http.MethodGet, path, nil))

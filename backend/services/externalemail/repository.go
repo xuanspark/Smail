@@ -31,6 +31,93 @@ type BindRequest struct {
 	Type   string
 }
 
+// BeginReplacement 创建或更新待验证邮箱。旧邮箱会一直保留到新邮箱验证成功。
+func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmail, error) {
+	if r == nil || r.engine == nil || r.vault == nil || request.UserID <= 0 {
+		return nil, ErrInvalidBinding
+	}
+	if request.Type != models.ExternalEmailTypePrimary && request.Type != models.ExternalEmailTypeBackup {
+		return nil, ErrInvalidBinding
+	}
+	normalized, err := NormalizeEmail(request.Email)
+	if err != nil {
+		return nil, ErrInvalidBinding
+	}
+	fingerprint, err := r.vault.Fingerprint(normalized)
+	if err != nil {
+		return nil, err
+	}
+	ciphertext, err := r.vault.Encrypt(normalized)
+	if err != nil {
+		return nil, err
+	}
+
+	var sameAddress models.ExternalEmail
+	hasSameAddress, err := r.engine.Where("email_fingerprint = ?", fingerprint).Get(&sameAddress)
+	if err != nil {
+		return nil, fmt.Errorf("check replacement external email: %w", err)
+	}
+	if hasSameAddress {
+		if sameAddress.UserID != request.UserID || sameAddress.Status == models.ExternalEmailStatusVerified {
+			return nil, ErrBindingExists
+		}
+		if sameAddress.EmailType != request.Type {
+			return nil, ErrBindingExists
+		}
+		if sameAddress.Status == models.ExternalEmailStatusPending {
+			return &sameAddress, nil
+		}
+	}
+
+	now := r.now().UTC()
+	if hasSameAddress && sameAddress.Status == models.ExternalEmailStatusDisabled {
+		sameAddress.Status = models.ExternalEmailStatusPending
+		sameAddress.VerifiedAt = nil
+		sameAddress.CredentialVersion++
+		sameAddress.UpdatedAt = now
+		if _, err := r.engine.ID(sameAddress.ID).Cols("status", "verified_at", "credential_version", "updated_at").Update(&sameAddress); err != nil {
+			return nil, fmt.Errorf("reuse disabled replacement external email: %w", err)
+		}
+		return &sameAddress, nil
+	}
+
+	var pending models.ExternalEmail
+	hasPending, err := r.engine.Where(
+		"user_id = ? AND email_type = ? AND status = ?",
+		request.UserID,
+		request.Type,
+		models.ExternalEmailStatusPending,
+	).Get(&pending)
+	if err != nil {
+		return nil, fmt.Errorf("load pending replacement external email: %w", err)
+	}
+	if hasPending {
+		pending.EmailCiphertext = ciphertext
+		pending.EmailFingerprint = fingerprint
+		pending.CredentialVersion++
+		pending.UpdatedAt = now
+		if _, err := r.engine.ID(pending.ID).Cols("email_ciphertext", "email_fingerprint", "credential_version", "updated_at").Update(&pending); err != nil {
+			return nil, fmt.Errorf("update pending replacement external email: %w", err)
+		}
+		return &pending, nil
+	}
+
+	item := &models.ExternalEmail{
+		UserID:            request.UserID,
+		EmailCiphertext:   ciphertext,
+		EmailFingerprint:  fingerprint,
+		EmailType:         request.Type,
+		Status:            models.ExternalEmailStatusPending,
+		CredentialVersion: 1,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if _, err := r.engine.Insert(item); err != nil {
+		return nil, fmt.Errorf("create replacement external email: %w", err)
+	}
+	return item, nil
+}
+
 func NewRepository(engine *xorm.Engine, vault *Vault) (*Repository, error) {
 	if engine == nil || vault == nil {
 		return nil, ErrVaultUnavailable
@@ -197,6 +284,65 @@ func (r *Repository) Verify(userID, id int) error {
 	if _, err := r.engine.ID(id).Cols("status", "verified_at", "updated_at").Where("user_id = ?", userID).Update(item); err != nil {
 		return fmt.Errorf("verify external email binding: %w", err)
 	}
+	return nil
+}
+
+// VerifyReplacement 验证新邮箱后原子停用同用途旧邮箱，并启用新邮箱。
+func (r *Repository) VerifyReplacement(userID, id int) error {
+	if r == nil || r.engine == nil || userID <= 0 || id <= 0 {
+		return ErrInvalidBinding
+	}
+	session := r.engine.NewSession()
+	if session == nil {
+		return ErrInvalidBinding
+	}
+	defer session.Close()
+	if err := session.Begin(); err != nil {
+		return fmt.Errorf("begin external email replacement: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = session.Rollback()
+		}
+	}()
+
+	item := &models.ExternalEmail{}
+	has, err := session.Where("id = ? AND user_id = ? AND status = ?", id, userID, models.ExternalEmailStatusPending).Get(item)
+	if err != nil {
+		return fmt.Errorf("load replacement external email: %w", err)
+	}
+	if !has {
+		return ErrBindingOwnership
+	}
+	now := r.now().UTC()
+	if _, err := session.Where(
+		"user_id = ? AND email_type = ? AND id != ? AND status != ?",
+		userID,
+		item.EmailType,
+		id,
+		models.ExternalEmailStatusDisabled,
+	).Cols("status", "updated_at").Update(&models.ExternalEmail{
+		Status:    models.ExternalEmailStatusDisabled,
+		UpdatedAt: now,
+	}); err != nil {
+		return fmt.Errorf("disable old external email: %w", err)
+	}
+	item.Status = models.ExternalEmailStatusVerified
+	item.VerifiedAt = timePtr(now)
+	item.UpdatedAt = now
+	updated, err := session.ID(id).Where("user_id = ? AND status = ?", userID, models.ExternalEmailStatusPending).
+		Cols("status", "verified_at", "updated_at").Update(item)
+	if err != nil {
+		return fmt.Errorf("verify replacement external email: %w", err)
+	}
+	if updated != 1 {
+		return ErrBindingOwnership
+	}
+	if err := session.Commit(); err != nil {
+		return fmt.Errorf("commit external email replacement: %w", err)
+	}
+	committed = true
 	return nil
 }
 

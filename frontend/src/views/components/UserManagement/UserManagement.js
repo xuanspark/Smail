@@ -49,6 +49,12 @@ export function usePage() {
   const userInfoDialog = ref(false)
   
   const editModel = ref("edit")
+
+  const selectedUser = ref(null)
+
+  const recoveryCodeDialogVisible = ref(false)
+
+  const externalEmailDialogVisible = ref(false)
   
   const editUserInfo = reactive({
     "account": "",
@@ -65,11 +71,15 @@ export function usePage() {
       totalPage.value = res.data.total_page
       if (res.data["list"]) {
         userList.push(...res.data["list"])
+        if (selectedUser.value?.ID) {
+          selectedUser.value = userList.find(item => item.ID === selectedUser.value.ID) || selectedUser.value
+        }
       }
     })
   }
   
   const handleEdit = function (idx, row) {
+    selectedUser.value = row
     editUserInfo.account = row.Account
     editUserInfo.name = row.Name
     editUserInfo.disabled = row.Disabled === 1
@@ -80,6 +90,7 @@ export function usePage() {
   }
   
   const createUser = function () {
+    selectedUser.value = null
     editUserInfo.account = ""
     editUserInfo.name = ""
     editUserInfo.disabled = false
@@ -87,6 +98,20 @@ export function usePage() {
     editModel.value = "create"
     title.value = lang.newUser
     userInfoDialog.value = true
+  }
+
+  const openRecoveryCodeDialog = function () {
+    if (!selectedUser.value?.ID) return
+    recoveryCodeDialogVisible.value = true
+  }
+
+  const openExternalEmailDialog = function () {
+    if (!selectedUser.value?.ID) return
+    externalEmailDialogVisible.value = true
+  }
+
+  const handleSecurityChanged = function () {
+    reflushList()
   }
   
   const submit = function () {
@@ -148,6 +173,12 @@ export function usePage() {
     userInfoDialog,
     editModel,
     editUserInfo,
+    selectedUser,
+    recoveryCodeDialogVisible,
+    externalEmailDialogVisible,
+    openRecoveryCodeDialog,
+    openExternalEmailDialog,
+    handleSecurityChanged,
     title,
     reflushList,
     handleEdit,

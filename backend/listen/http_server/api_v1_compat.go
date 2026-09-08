@@ -65,6 +65,12 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/user/edit", "/api/user/edit", http.MethodPost, 64<<10, controllers.EditUser)
 	registerV1MethodRoute(mux, "/api/v1/user/info", "/api/user/info", http.MethodPost, 64<<10, controllers.Info)
 	registerV1MethodRoute(mux, "/api/v1/user/list", "/api/user/list", http.MethodPost, 64<<10, controllers.UserList)
+	registerV1MethodRoute(mux, "/api/v1/user/security/recovery-codes", "/api/user/security/recovery-codes", http.MethodGet, 0, controllers.GetManagedRecoveryCodeStatus)
+	registerV1MethodRoute(mux, "/api/v1/user/security/recovery-codes/generate", "/api/user/security/recovery-codes/generate", http.MethodPost, 16<<10, controllers.GenerateManagedRecoveryCodes)
+	registerV1MethodRoute(mux, "/api/v1/user/security/recovery-codes/revoke", "/api/user/security/recovery-codes/revoke", http.MethodPost, 4<<10, controllers.RevokeManagedRecoveryCodes)
+	registerV1MethodRoute(mux, "/api/v1/user/security/external-email/list", "/api/user/security/external-email/list", http.MethodGet, 0, controllers.ListManagedExternalEmails)
+	registerV1MethodRoute(mux, "/api/v1/user/security/external-email/change", "/api/user/security/external-email/change", http.MethodPost, 16<<10, controllers.ChangeManagedExternalEmail)
+	registerV1MethodRoute(mux, "/api/v1/user/security/external-email/verify", "/api/user/security/external-email/verify", http.MethodPost, 16<<10, controllers.VerifyManagedExternalEmail)
 	registerV1PluginRoutes(mux)
 }
 

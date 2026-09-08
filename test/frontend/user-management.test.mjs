@@ -44,6 +44,28 @@ test('用户管理页面可编译并展示权限与安全状态列', () => {
   assert.match(source, /scope\.row\.RecoveryCodeConfigured/)
   assert.match(source, /scope\.row\.ExternalEmailEnabled/)
   assert.match(source, /scope\.row\.ExternalEmailConfigured/)
+	assert.match(source, /管理安全码/)
+	assert.match(source, /编辑外部邮箱/)
+	assert.match(source, /RecoveryCodeDialog/)
+	assert.match(source, /UserExternalEmailDialog/)
+})
+
+test('用户安全信息使用独立弹窗并调用固定管理接口', () => {
+	for (const component of [
+		'RecoveryCodeDialog/RecoveryCodeDialog.vue',
+		'UserExternalEmailDialog/UserExternalEmailDialog.vue',
+	]) {
+		const { descriptor, errors } = parse(read(component))
+		assert.deepEqual(errors, [])
+		assert.doesNotThrow(() => compileScript(descriptor, { id: component, inlineTemplate: true }))
+	}
+	const recoverySource = read('RecoveryCodeDialog/RecoveryCodeDialog.js')
+	assert.match(recoverySource, /\/api\/v1\/user\/security\/recovery-codes\/generate/)
+	assert.match(recoverySource, /shown_once|codes/)
+	const externalSource = read('UserExternalEmailDialog/UserExternalEmailDialog.js')
+	assert.match(externalSource, /\/api\/v1\/user\/security\/external-email\/change/)
+	assert.match(externalSource, /\/api\/v1\/user\/security\/external-email\/verify/)
+	assert.doesNotMatch(externalSource, /\/api\/v1\/security\/external-email\/bind/)
 })
 
 test('用户管理样式可编译并保持紧凑表格布局', () => {

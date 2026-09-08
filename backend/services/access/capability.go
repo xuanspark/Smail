@@ -16,6 +16,7 @@ const (
 	CapabilityPluginWriteOwn     Capability = "plugin.write_own"
 	CapabilityUserRead           Capability = "user.read"
 	CapabilityUserManage         Capability = "user.manage"
+	CapabilityUserSecurityManage Capability = "user.security_manage"
 	CapabilityRoleManage         Capability = "role.manage"
 	CapabilityPasswordChangeOwn  Capability = "password.change_own"
 	CapabilityPasswordReset      Capability = "password.reset"
@@ -45,6 +46,7 @@ var policies = map[Capability]Policy{
 	CapabilityPluginWriteOwn:     {Capability: CapabilityPluginWriteOwn},
 	CapabilityUserRead:           {Capability: CapabilityUserRead},
 	CapabilityUserManage:         {Capability: CapabilityUserManage, RequiresTarget: true},
+	CapabilityUserSecurityManage: {Capability: CapabilityUserSecurityManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityRoleManage:         {Capability: CapabilityRoleManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityPasswordChangeOwn:  {Capability: CapabilityPasswordChangeOwn},
 	CapabilityPasswordReset:      {Capability: CapabilityPasswordReset, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
@@ -58,13 +60,13 @@ var grants = map[Role]map[Capability]struct{}{
 		CapabilityDatabaseMigrate, CapabilityPluginRead, CapabilityPluginControl,
 		CapabilityPluginRestart, CapabilityServiceRestart, CapabilityPluginWriteGlobal, CapabilityPluginWriteAnyUser,
 		CapabilityPluginWriteOwn, CapabilityUserRead, CapabilityUserManage,
-		CapabilityRoleManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,
+		CapabilityUserSecurityManage, CapabilityRoleManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,
 		CapabilityAuditRead, CapabilityAuditExport,
 	),
 	RoleAdmin: grant(
 		CapabilityConfigRead, CapabilityPluginRead, CapabilityPluginRestart,
 		CapabilityPluginWriteAnyUser, CapabilityPluginWriteOwn, CapabilityUserRead,
-		CapabilityUserManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,
+		CapabilityUserManage, CapabilityUserSecurityManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,
 		CapabilityAuditRead,
 	),
 	RoleUser: grant(

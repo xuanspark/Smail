@@ -32,6 +32,10 @@ func TestRoleBoundaries(t *testing.T) {
 		{name: "admin resets user", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPasswordReset, TargetRole: RoleUser, RecentAuth: true, RecoveryCodeConfigured: true}},
 		{name: "admin cannot reset admin", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPasswordReset, TargetRole: RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}, code: CodeTargetRoleDenied},
 		{name: "user cannot reset another user", req: Request{ActorRole: RoleUser, Capability: CapabilityPasswordReset, TargetRole: RoleUser, RecentAuth: true, RecoveryCodeConfigured: true}, code: CodeAccessDenied},
+		{name: "super admin manages user security", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityUserSecurityManage, TargetRole: RoleUser, RecentAuth: true}},
+		{name: "admin manages user security", req: Request{ActorRole: RoleAdmin, Capability: CapabilityUserSecurityManage, TargetRole: RoleUser, RecentAuth: true, RecoveryCodeConfigured: true}},
+		{name: "admin cannot manage admin security", req: Request{ActorRole: RoleAdmin, Capability: CapabilityUserSecurityManage, TargetRole: RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}, code: CodeTargetRoleDenied},
+		{name: "web cannot manage super admin security", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityUserSecurityManage, TargetRole: RoleSuperAdmin, RecentAuth: true}, code: CodeTargetRoleDenied},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -90,7 +94,7 @@ func TestAdminPluginRestartScope(t *testing.T) {
 
 func TestManagementEndpointCatalog(t *testing.T) {
 	endpoints := ManagementEndpoints()
-	if len(endpoints) != 32 {
+	if len(endpoints) != 34 {
 		t.Fatalf("unexpected endpoint count: %d", len(endpoints))
 	}
 	seen := map[string]struct{}{}
@@ -127,6 +131,10 @@ func TestManagementEndpointCatalog(t *testing.T) {
 	endpoint, ok = LookupEndpoint("GET", "/api/v1/config/backups")
 	if !ok || endpoint.Capability != CapabilityConfigRollback {
 		t.Fatal("configuration backup endpoint did not require rollback capability")
+	}
+	endpoint, ok = LookupEndpoint("POST", "/api/v1/user/security/external-email/change")
+	if !ok || endpoint.Capability != CapabilityUserSecurityManage {
+		t.Fatal("managed user security endpoint was not matched")
 	}
 }
 

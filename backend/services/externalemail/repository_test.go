@@ -113,3 +113,55 @@ func TestRepositoryAbandonsOnlyOwnedPendingBinding(t *testing.T) {
 		t.Fatalf("verified binding was abandoned: %v", err)
 	}
 }
+
+func TestRepositoryReplacesExternalEmailOnlyAfterVerification(t *testing.T) {
+	engine, err := xorm.NewEngine("sqlite", filepath.Join(t.TempDir(), "external.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	if err := engine.Sync2(&models.ExternalEmail{}); err != nil {
+		t.Fatal(err)
+	}
+	vault := NewVaultWithKeys([]byte("01234567890123456789012345678901"), []byte("abcdefabcdefabcdefabcdefabcdefab"))
+	repo, err := NewRepository(engine, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldBinding, err := repo.Bind(BindRequest{UserID: 1, Email: "old@example.com", Type: models.ExternalEmailTypePrimary})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Verify(1, oldBinding.ID); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := repo.BeginReplacement(BindRequest{UserID: 1, Email: "new@example.com", Type: models.ExternalEmailTypePrimary})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := repo.FindVerifiedPrimaryByUser(1)
+	if err != nil || before.ID != oldBinding.ID {
+		t.Fatalf("old binding was not retained before verification: %+v, %v", before, err)
+	}
+	if err := repo.VerifyReplacement(2, pending.ID); err != ErrBindingOwnership {
+		t.Fatalf("cross-user replacement error = %v", err)
+	}
+	if err := repo.VerifyReplacement(1, pending.ID); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.FindVerifiedPrimaryByUser(1)
+	if err != nil || after.ID != pending.ID {
+		t.Fatalf("new binding was not activated: %+v, %v", after, err)
+	}
+	items, err := repo.List(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[int]string{}
+	for _, item := range items {
+		statuses[item.ID] = item.Status
+	}
+	if statuses[oldBinding.ID] != models.ExternalEmailStatusDisabled || statuses[pending.ID] != models.ExternalEmailStatusVerified {
+		t.Fatalf("unexpected replacement statuses: %+v", statuses)
+	}
+}

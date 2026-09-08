@@ -1,0 +1,94 @@
+.recovery-code-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: var(--pm-radius-sm);
+  background: var(--pm-bg-secondary);
+}
+
+.recovery-code-summary > div {
+  display: grid;
+  gap: 3px;
+}
+
+.summary-label {
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+}
+
+.recovery-code-description {
+  margin: 16px 0 0;
+  color: var(--pm-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.recovery-code-result {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.result-title {
+  display: grid;
+  gap: 4px;
+  color: var(--el-color-warning-dark-2);
+  font-size: 13px;
+}
+
+.result-title span {
+  color: var(--pm-text-secondary);
+}
+
+.recovery-code-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recovery-code-grid code {
+  padding: 9px 10px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: var(--pm-radius-sm);
+  background: var(--pm-bg-secondary);
+  color: var(--pm-text-primary);
+  text-align: center;
+  user-select: all;
+}
+
+.copy-button {
+  justify-self: end;
+}
+
+.dialog-feedback.error {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--pm-radius-sm);
+  color: var(--el-color-danger-dark-2);
+  background: var(--el-color-danger-light-9);
+  font-size: 13px;
+}
+
+.recovery-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.recovery-dialog-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+@media (max-width: 520px) {
+  .recovery-code-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recovery-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

@@ -78,7 +78,7 @@ func authorizeResource(request Request) error {
 		if request.ActorRole == RoleAdmin && !request.OwnResource && !request.AuditScopeAuthorized {
 			return deny(CodeAccessDenied)
 		}
-	case CapabilityUserManage, CapabilityPasswordReset:
+	case CapabilityUserManage, CapabilityUserSecurityManage, CapabilityPasswordReset:
 		if !canManageAccountTarget(request.ActorRole, request.TargetRole) {
 			return deny(CodeTargetRoleDenied)
 		}
