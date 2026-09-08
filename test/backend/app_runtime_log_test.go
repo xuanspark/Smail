@@ -31,7 +31,7 @@ func TestFatalErrorIsLoggedBeforeRuntimeClose(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "fatal-probe") {
 			t.Fatalf("fatal error lost: %v", err)
 		}
-		files, err := filepath.Glob(filepath.Join(root, "log", "运行日志", "runtime-*.log"))
+		files, err := filepath.Glob(filepath.Join(root, "log", "runtime-*.log"))
 		if err != nil || len(files) != 1 {
 			t.Fatalf("missing runtime log: %v", err)
 		}

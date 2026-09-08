@@ -76,7 +76,7 @@ func TestRuntimeLogCorruptionAndUnknownFilesArePreserved(t *testing.T) {
 	defer w.Close()
 	now := time.Now().UTC()
 	w.now = func() time.Time { return now }
-	directory := filepath.Join(root, "log", "运行日志")
+	directory := filepath.Join(root, "log")
 	name := prefix + now.Add(-40*24*time.Hour).Format("2006-01-02") + ".log.gz"
 	if err := os.WriteFile(filepath.Join(directory, name), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)

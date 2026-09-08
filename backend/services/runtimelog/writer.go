@@ -42,13 +42,12 @@ func New(root string) (*Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	directory, err = runtimepath.SecureDirectory(directory, "运行日志")
-	if err != nil {
-		return nil, err
-	}
 	handle, err := os.OpenRoot(directory)
 	if err != nil {
 		return nil, err
+	}
+	if err := migrateLegacyLogs(handle); err != nil {
+		return nil, errors.Join(err, handle.Close())
 	}
 	return &Writer{root: handle, now: time.Now}, nil
 }
