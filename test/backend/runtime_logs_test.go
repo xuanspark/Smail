@@ -49,6 +49,7 @@ func TestRuntimeLogStartupPresentation(t *testing.T) {
 		header + "[" + source + ":39]***\t未知启动消息",
 		header + "[other/app.go:39]***\tBuild Date: 保留业务消息",
 		header + "[" + source + ":39]Build Date: 不属于横幅",
+		header + "[" + source + ":39]***\tBuild Date: old {\"error\":\"必须保留\"}",
 		strings.Replace(header, "[info]", "[warning]", 1) + "[" + source + ":39]***\tBuild Date: 保留警告",
 		strings.Replace(header, "[info]", "[error]", 1) + "[" + source + ":39]********",
 		"[2026-09-08T14:55:23Z] 未知格式保留",

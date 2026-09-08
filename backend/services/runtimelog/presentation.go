@@ -30,6 +30,10 @@ func legacyStartupNoise(source, message string) bool {
 		return false
 	}
 	message = strings.TrimSpace(message)
+	// 新格式器可能在横幅文案后附带结构化字段；未知附加信息不得按旧横幅丢弃。
+	if strings.ContainsAny(message, "{}") {
+		return false
+	}
 	if !strings.HasPrefix(message, "***\t") && !strings.HasPrefix(message, "*** ") {
 		return false
 	}
