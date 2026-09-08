@@ -187,4 +187,9 @@
   .config-page[data-config-page="mail"] .editor-footer .action-row {
     margin-top: 0;
   }
+
+  .config-page[data-config-page="mail"] .editor-footer {
+    margin-top: 4px;
+    padding-top: 4px;
+  }
 }

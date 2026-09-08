@@ -94,20 +94,38 @@
 /* 邮件服务页在桌面抽屉中采用紧凑双列，移除策略后可在常见高度内完整展示。 */
 @container config-main (min-width: 360px) {
   .config-form[data-form-section="mail"] {
-    gap: 8px;
+    gap: 4px;
   }
 
   .config-form[data-form-section="mail"] .form-grid {
-    gap: 8px 12px;
+    gap: 5px 12px;
   }
 
   .config-form[data-form-section="mail"] .form-group + .form-group {
-    margin-top: 8px;
-    padding-top: 10px;
+    margin-top: 4px;
+    padding-top: 6px;
   }
 
   .config-form[data-form-section="mail"] .form-group-heading {
-    margin-bottom: 6px;
+    margin-bottom: 2px;
+  }
+
+  .config-form[data-form-section="mail"] :deep(.config-field) {
+    gap: 2px;
+  }
+
+  .config-form[data-form-section="mail"] :deep(.field-label) {
+    gap: 4px;
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+  }
+
+  .config-form[data-form-section="mail"] :deep(.field-port-guide) {
+    min-height: 18px;
+    gap: 4px 8px;
+    font-size: 11px;
+    line-height: 18px;
   }
 }
 

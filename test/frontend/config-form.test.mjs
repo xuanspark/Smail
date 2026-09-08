@@ -89,6 +89,21 @@ test('邮件服务页面只管理监听和中继，邮件策略使用独立表�
   assert.ok(validateFormConfig('mail', { ...config, listener: { ...config.listener, tlsPort: 587 } })['listener.tlsPort'])
 })
 
+test('邮件服务全部启用时使用紧凑双列布局并完整保留字段与端口提示', () => {
+  const formCss = readFileSync(new URL('ConfigForm/ConfigForm.css', root), 'utf8')
+  const editorCss = readFileSync(new URL('ConfigEditor/ConfigEditor.css', root), 'utf8')
+  const compactBlock = formCss.match(
+    /@container config-main \(min-width: 360px\) \{([\s\S]*?)\n\}/
+  )?.[1] || ''
+
+  assert.match(compactBlock, /\.config-form\[data-form-section="mail"\] \.form-grid\s*\{[\s\S]*?gap: 5px 12px;/)
+  assert.match(compactBlock, /:deep\(\.field-label\)[\s\S]*?white-space: nowrap;/)
+  assert.match(compactBlock, /:deep\(\.field-port-guide\)[\s\S]*?min-height: 18px;/)
+  assert.doesNotMatch(compactBlock, /display:\s*none|visibility:\s*hidden/)
+  assert.match(formCss, /@media \(max-width: 768px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/)
+  assert.match(editorCss, /\.config-page\[data-config-page="mail"\] \.editor-footer\s*\{\s*margin-top: 4px;\s*padding-top: 4px;/)
+})
+
 test('三个插件页面只展示和编辑自身字段，完整保留其他插件和未知字段', () => {
   const config = { meta: { generation: 9 }, plugins: {
     spam_block: { enabled: false, settings: { threshold: 20 }, secretStatus: { configured: true } },
