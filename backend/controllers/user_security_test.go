@@ -451,3 +451,154 @@ func TestManagedExternalEmailChangeInvalidatesPreviousChallenge(t *testing.T) {
 		t.Fatalf("new challenge was not valid: %v", err)
 	}
 }
+
+func TestOwnExternalEmailChangeReplacesOnlyAfterSuccessfulVerification(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	oldRuntime := currentSecurityRuntime()
+	testRoot := t.TempDir()
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		config.Instance = oldConfig
+		db.Instance = oldDB
+		ConfigureSecurityRuntime(oldRuntime.verification, oldRuntime.external, oldRuntime.recovery, oldRuntime.credentials)
+		ConfigureWebAuthnRuntime(oldRuntime.webauthn)
+	})
+
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "own-external-email.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Account: "email-self", Name: "Email Self", SessionVersion: 1, SecurityVersion: 1}
+	user.ApplyRole(access.RoleUser)
+	if err := auth.SetPassword(&user, "UserPass123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+
+	vault := externalemail.NewVaultWithKeys(
+		[]byte("01234567890123456789012345678901"),
+		[]byte("abcdefabcdefabcdefabcdefabcdefab"),
+	)
+	external, err := externalemail.NewRepository(db.Instance, vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldBinding, err := external.Bind(externalemail.BindRequest{
+		UserID: user.ID,
+		Email:  "old@example.com",
+		Type:   models.ExternalEmailTypePrimary,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := external.Verify(user.ID, oldBinding.ID); err != nil {
+		t.Fatal(err)
+	}
+	store, err := verification.NewStore(32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuedCodes := make(map[string]string)
+	verificationService, err := verification.NewService(store, func(challenge verification.Challenge, code string) error {
+		issuedCodes[challenge.ID] = code
+		return nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ConfigureSecurityRuntime(verificationService, external, nil, nil)
+
+	ctx := &appcontext.Context{
+		UserID:      user.ID,
+		UserAccount: user.Account,
+		Role:        access.RoleUser,
+		RecentAuth:  true,
+	}
+	changeRecorder := httptest.NewRecorder()
+	changeRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/security/external-email/change",
+		strings.NewReader(`{"email":"new@example.com","type":"primary"}`),
+	)
+	ChangeOwnExternalEmail(ctx, changeRecorder, changeRequest)
+	var changed struct {
+		ErrorNo int `json:"errorNo"`
+		Data    struct {
+			BindingID   int    `json:"binding_id"`
+			ChallengeID string `json:"challenge_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(changeRecorder.Body.Bytes(), &changed); err != nil {
+		t.Fatal(err)
+	}
+	if changed.ErrorNo != 0 || changed.Data.BindingID <= 0 || changed.Data.ChallengeID == "" {
+		t.Fatalf("unexpected own external email response: %s", changeRecorder.Body.String())
+	}
+
+	assertExternalEmailStatus(t, external, user.ID, "old@example.com", models.ExternalEmailStatusVerified)
+	assertExternalEmailStatus(t, external, user.ID, "new@example.com", models.ExternalEmailStatusPending)
+
+	wrongRecorder := httptest.NewRecorder()
+	wrongRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/security/external-email/change/verify",
+		strings.NewReader(`{"id":"`+changed.Data.ChallengeID+`","binding_id":`+itoa(changed.Data.BindingID)+`,"email":"new@example.com","code":"00000000"}`),
+	)
+	VerifyOwnExternalEmail(ctx, wrongRecorder, wrongRequest)
+	var wrongResult struct {
+		ErrorNo int `json:"errorNo"`
+	}
+	if err := json.Unmarshal(wrongRecorder.Body.Bytes(), &wrongResult); err != nil {
+		t.Fatal(err)
+	}
+	if wrongResult.ErrorNo == 0 {
+		t.Fatalf("wrong verification code was accepted: %s", wrongRecorder.Body.String())
+	}
+	assertExternalEmailStatus(t, external, user.ID, "old@example.com", models.ExternalEmailStatusVerified)
+	assertExternalEmailStatus(t, external, user.ID, "new@example.com", models.ExternalEmailStatusPending)
+
+	verifyRecorder := httptest.NewRecorder()
+	verifyRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/security/external-email/change/verify",
+		strings.NewReader(`{"id":"`+changed.Data.ChallengeID+`","binding_id":`+itoa(changed.Data.BindingID)+`,"email":"new@example.com","code":"`+issuedCodes[changed.Data.ChallengeID]+`"}`),
+	)
+	VerifyOwnExternalEmail(ctx, verifyRecorder, verifyRequest)
+	var verified struct {
+		ErrorNo int `json:"errorNo"`
+	}
+	if err := json.Unmarshal(verifyRecorder.Body.Bytes(), &verified); err != nil {
+		t.Fatal(err)
+	}
+	if verified.ErrorNo != 0 {
+		t.Fatalf("valid verification code failed: %s", verifyRecorder.Body.String())
+	}
+	assertExternalEmailStatus(t, external, user.ID, "old@example.com", models.ExternalEmailStatusDisabled)
+	assertExternalEmailStatus(t, external, user.ID, "new@example.com", models.ExternalEmailStatusVerified)
+}
+
+func assertExternalEmailStatus(t *testing.T, repository *externalemail.Repository, userID int, email, status string) {
+	t.Helper()
+	items, err := repository.List(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		decrypted, decryptErr := repository.Decrypt(item)
+		if decryptErr != nil {
+			t.Fatal(decryptErr)
+		}
+		if decrypted == email {
+			if item.Status != status {
+				t.Fatalf("external email %s status = %s, want %s", email, item.Status, status)
+			}
+			return
+		}
+	}
+	t.Fatalf("external email %s was not found", email)
+}

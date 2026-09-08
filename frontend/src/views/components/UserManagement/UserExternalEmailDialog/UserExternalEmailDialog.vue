@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="visible"
-    :title="selfManaged ? '编辑我的外部邮箱' : '编辑外部邮箱'"
+    :title="props.selfManaged ? '编辑我的外部邮箱' : '编辑外部邮箱'"
     width="min(520px, calc(100vw - 32px))"
     :close-on-click-modal="false"
     :close-on-press-escape="!busy"

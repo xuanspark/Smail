@@ -93,6 +93,30 @@ func TestBindExternalEmailReturnsStableRecentAuthenticationCode(t *testing.T) {
 	}
 }
 
+func TestChangeOwnExternalEmailRequiresRecentAuthentication(t *testing.T) {
+	previous := securityRuntime
+	securityRuntime.external = &externalemail.Repository{}
+	securityRuntime.verification = &verification.Service{}
+	t.Cleanup(func() { securityRuntime = previous })
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/security/external-email/change",
+		strings.NewReader(`{"email":"backup@example.com","type":"primary"}`),
+	)
+	ChangeOwnExternalEmail(&appcontext.Context{UserID: 1, UserAccount: "alice"}, recorder, request)
+
+	var result response.Response
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON response: %v", err)
+	}
+	data, ok := result.Data.(map[string]any)
+	if result.ErrorNo != response.NoAccessPrivileges || !ok || data["code"] != string(access.CodeRecentAuthRequired) {
+		t.Fatalf("recent authentication response = %+v", result)
+	}
+}
+
 func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	_, _, engine, user, _ := newPublicSecurityFixture(t)
 	credentialService, err := credentials.NewService(engine)

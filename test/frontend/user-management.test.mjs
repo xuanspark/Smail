@@ -14,7 +14,14 @@ function loadStatusHelpers() {
     .replace(/^import .*$/gm, '')
     .replace(/export \{[\s\S]*?\}\s*$/, '')
     .replaceAll('export ', '')
-  return compileFunction(`${source}\nreturn { roleMeta, recoveryCodeMeta, externalEmailMeta, accountStatusMeta }`)()
+  return compileFunction(`${source}\nreturn { roleMeta, recoveryCodeMeta, externalEmailMeta, accountStatusMeta, isSameUser, canManageRecoveryCode }`)()
+}
+
+function loadExternalEmailHelpers() {
+  const source = read('UserExternalEmailDialog/UserExternalEmailDialog.js')
+  const helper = source.match(/export function externalEmailEndpoints\(selfManaged\) \{[\s\S]*?\n\}/)?.[0]
+  assert.ok(helper)
+  return compileFunction(`${helper.replace('export ', '')}\nreturn { externalEmailEndpoints }`)()
 }
 
 test('用户管理状态映射使用明确的中文文案', () => {
@@ -66,6 +73,57 @@ test('用户安全信息使用独立弹窗并调用固定管理接口', () => {
 	assert.match(externalSource, /\/api\/v1\/user\/security\/external-email\/change/)
 	assert.match(externalSource, /\/api\/v1\/user\/security\/external-email\/verify/)
 	assert.doesNotMatch(externalSource, /\/api\/v1\/security\/external-email\/bind/)
+})
+
+test('当前用户判断优先使用用户 ID 并保留账号兼容回退', () => {
+  const { isSameUser } = loadStatusHelpers()
+  assert.equal(isSameUser({ ID: 7, Account: 'same' }, { id: 7, account: 'other' }), true)
+  assert.equal(isSameUser({ ID: 7, Account: 'same' }, { id: 8, account: 'same' }), false)
+  assert.equal(isSameUser({ Account: 'same' }, { account: 'same' }), true)
+  assert.equal(isSameUser({ Account: 'same' }, { account: 'other' }), false)
+})
+
+test('超级管理员安全码只能在部署端管理，普通用户仍使用独立弹窗', () => {
+  const { canManageRecoveryCode } = loadStatusHelpers()
+  assert.equal(canManageRecoveryCode({ ID: 1, Role: 'super_admin' }), false)
+  assert.equal(canManageRecoveryCode({ ID: 2, Role: 'admin' }), true)
+  assert.equal(canManageRecoveryCode({ ID: 3, Role: 'user' }), true)
+  assert.equal(canManageRecoveryCode(null), false)
+
+  const source = read('UserManagement.vue')
+  assert.match(source, /部署端管理/)
+  assert.match(source, /仅支持本机管理/)
+  assert.match(source, /:disabled="!recoveryCodeWebManaged"/)
+  assert.match(source, /:self-managed="editingCurrentUser"/)
+})
+
+test('编辑外部邮箱按本人和代管场景使用不同的验证码接口', () => {
+  const { externalEmailEndpoints } = loadExternalEmailHelpers()
+  assert.deepEqual(externalEmailEndpoints(true), {
+    list: '/api/v1/security/external-email/list',
+    change: '/api/v1/security/external-email/change',
+    verify: '/api/v1/security/external-email/change/verify',
+  })
+  assert.deepEqual(externalEmailEndpoints(false), {
+    list: '/api/v1/user/security/external-email/list',
+    change: '/api/v1/user/security/external-email/change',
+    verify: '/api/v1/user/security/external-email/verify',
+  })
+
+  const dialogSource = read('UserExternalEmailDialog/UserExternalEmailDialog.vue')
+  assert.match(dialogSource, /编辑我的外部邮箱/)
+  assert.match(dialogSource, /props\.selfManaged/)
+  assert.match(dialogSource, /append-to-body/)
+  assert.match(dialogSource, /destroy-on-close/)
+})
+
+test('普通用户编辑请求不直接携带安全码或外部邮箱', () => {
+  const source = read('UserManagement.js')
+  const submitStart = source.indexOf('const submit = function')
+  const editRequestEnd = source.indexOf(".then(res =>", source.indexOf("http.post('/api/v1/user/edit', newData)", submitStart))
+  const submitSource = source.slice(submitStart, editRequestEnd)
+  assert.match(submitSource, /\/api\/v1\/user\/edit/)
+  assert.doesNotMatch(submitSource, /recovery_code|recoveryCode|external_email|externalEmail/)
 })
 
 test('用户管理样式可编译并保持紧凑表格布局', () => {
