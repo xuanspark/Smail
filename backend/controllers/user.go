@@ -106,6 +106,50 @@ type userListRequest struct {
 	PageSize    int `json:"page_size"`
 }
 
+type userListItem struct {
+	ID                      int         `json:"ID"`
+	Account                 string      `json:"Account"`
+	Name                    string      `json:"Name"`
+	Disabled                int         `json:"Disabled"`
+	Role                    access.Role `json:"Role"`
+	IsAdmin                 int         `json:"IsAdmin"`
+	MustChangePassword      int         `json:"must_change_password"`
+	RecoveryCodeConfigured  bool        `json:"RecoveryCodeConfigured"`
+	ExternalEmailEnabled    bool        `json:"ExternalEmailEnabled"`
+	ExternalEmailConfigured bool        `json:"ExternalEmailConfigured"`
+}
+
+func loadUserSecurityStatus(users []models.User) (map[int]bool, map[int]bool, error) {
+	recoveryConfigured := make(map[int]bool, len(users))
+	externalEmailConfigured := make(map[int]bool, len(users))
+	if len(users) == 0 {
+		return recoveryConfigured, externalEmailConfigured, nil
+	}
+
+	userIDs := make([]int, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.ID)
+	}
+
+	var recoveryCodes []models.RecoveryCode
+	if err := db.Instance.Cols("user_id").In("user_id", userIDs).Where("used_at IS NULL").Find(&recoveryCodes); err != nil {
+		return nil, nil, err
+	}
+	for _, recoveryCode := range recoveryCodes {
+		recoveryConfigured[recoveryCode.UserID] = true
+	}
+
+	var externalEmails []models.ExternalEmail
+	if err := db.Instance.Cols("user_id").In("user_id", userIDs).Where("status = ?", models.ExternalEmailStatusVerified).Find(&externalEmails); err != nil {
+		return nil, nil, err
+	}
+	for _, externalEmail := range externalEmails {
+		externalEmailConfigured[externalEmail.UserID] = true
+	}
+
+	return recoveryConfigured, externalEmailConfigured, nil
+}
+
 func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if err := authorizeCapability(ctx, access.CapabilityUserRead, "", false); err != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
@@ -131,10 +175,31 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		response.NewErrorResponse(response.ServerError, "查询失败", "").FPrint(w)
 		return
 	}
+	recoveryConfigured, externalEmailConfigured, err := loadUserSecurityStatus(users)
+	if err != nil {
+		log.WithContext(ctx).WithError(err).Error("load user security status failed")
+		response.NewErrorResponse(response.ServerError, "读取用户安全状态失败", "").FPrint(w)
+		return
+	}
+	items := make([]userListItem, 0, len(users))
+	for _, user := range users {
+		items = append(items, userListItem{
+			ID:                      user.ID,
+			Account:                 user.Account,
+			Name:                    user.Name,
+			Disabled:                user.Disabled,
+			Role:                    user.EffectiveRole(),
+			IsAdmin:                 user.IsAdmin,
+			MustChangePassword:      user.MustChangePassword,
+			RecoveryCodeConfigured:  recoveryConfigured[user.ID],
+			ExternalEmailEnabled:    user.ExternalEmailEnabled == 1,
+			ExternalEmailConfigured: externalEmailConfigured[user.ID],
+		})
+	}
 	response.NewSuccessResponse(map[string]any{
 		"current_page": reqData.CurrentPage,
 		"total_page":   cast.ToInt(math.Ceil(cast.ToFloat64(totalNum) / cast.ToFloat64(reqData.PageSize))),
-		"list":         users,
+		"list":         items,
 	}).FPrint(w)
 }
 

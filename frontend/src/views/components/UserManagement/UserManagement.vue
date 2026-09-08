@@ -7,22 +7,58 @@
 
     <div class="table-container">
       <el-table :data="userList" class="modern-table" style="width: 100%" empty-text="暂无用户">
-        <el-table-column label="ID" prop="ID" width="80" />
-        <el-table-column :label="lang.account" prop="Account" min-width="150" show-overflow-tooltip />
-        <el-table-column :label="lang.user_name" prop="Name" min-width="120" show-overflow-tooltip />
-        <el-table-column :label="lang.disabled" prop="Disabled" width="120">
+        <el-table-column label="ID" prop="ID" width="44" />
+        <el-table-column :label="lang.account" prop="Account" width="88" show-overflow-tooltip />
+        <el-table-column :label="lang.user_name" prop="Name" width="76" show-overflow-tooltip />
+        <el-table-column label="权限级别" width="100">
           <template #default="scope">
             <el-tag
-              :type="scope.row.Disabled === 1 ? 'info' : 'success'"
+              :type="roleMeta(scope.row.Role).type"
+              size="small"
+              effect="light"
+              class="status-tag role-tag"
+            >
+              {{ roleMeta(scope.row.Role).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="安全码" width="72">
+          <template #default="scope">
+            <el-tag
+              :type="recoveryCodeMeta(scope.row.RecoveryCodeConfigured).type"
               size="small"
               effect="plain"
               class="status-tag"
             >
-              {{ scope.row.Disabled === 1 ? lang.disabled : lang.enabled }}
+              {{ recoveryCodeMeta(scope.row.RecoveryCodeConfigured).label }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column align="right" width="100">
+        <el-table-column label="外部邮箱" width="76">
+          <template #default="scope">
+            <el-tag
+              :type="externalEmailMeta(scope.row.ExternalEmailEnabled, scope.row.ExternalEmailConfigured).type"
+              size="small"
+              effect="plain"
+              class="status-tag"
+            >
+              {{ externalEmailMeta(scope.row.ExternalEmailEnabled, scope.row.ExternalEmailConfigured).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="账号状态" width="72">
+          <template #default="scope">
+            <el-tag
+              :type="accountStatusMeta(scope.row.Disabled).type"
+              size="small"
+              effect="plain"
+              class="status-tag"
+            >
+              {{ accountStatusMeta(scope.row.Disabled).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column align="right" width="68">
           <template #header>
             <el-button type="primary" size="small" @click="createUser" class="new-btn" plain>
               <el-icon><Plus /></el-icon> 新建
@@ -47,7 +83,7 @@
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="currentPage"
-        small
+        size="small"
         background
         layout="prev, pager, next"
         :page-count="totalPage"
@@ -115,7 +151,11 @@ const {
   title,
   submit,
   editModel,
-  editUserInfo
+  editUserInfo,
+  roleMeta,
+  recoveryCodeMeta,
+  externalEmailMeta,
+  accountStatusMeta
 } = usePage();
 </script>
 

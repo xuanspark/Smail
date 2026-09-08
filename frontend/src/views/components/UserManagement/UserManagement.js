@@ -8,6 +8,37 @@ import {ElNotification} from "element-plus";
 
 import {Plus} from "@element-plus/icons-vue";
 
+const roleOptions = {
+  super_admin: { label: '超级管理员', type: 'danger' },
+  admin: { label: '管理员', type: 'primary' },
+  user: { label: '普通用户', type: 'info' }
+}
+
+export function roleMeta(role) {
+  return roleOptions[role] || { label: '未知权限', type: 'warning' }
+}
+
+export function recoveryCodeMeta(configured) {
+  return configured
+    ? { label: '已开启', type: 'success' }
+    : { label: '未开启', type: 'info' }
+}
+
+export function externalEmailMeta(enabled, configured) {
+  if (!enabled) {
+    return { label: '已关闭', type: 'warning' }
+  }
+  return configured
+    ? { label: '已绑定', type: 'success' }
+    : { label: '未绑定', type: 'info' }
+}
+
+export function accountStatusMeta(disabled) {
+  return disabled === 1
+    ? { label: '已禁用', type: 'danger' }
+    : { label: '正常', type: 'success' }
+}
+
 export function usePage() {
   const userList = reactive([])
   
@@ -121,7 +152,11 @@ export function usePage() {
     reflushList,
     handleEdit,
     createUser,
-    submit
+    submit,
+    roleMeta,
+    recoveryCodeMeta,
+    externalEmailMeta,
+    accountStatusMeta
   }
 }
 

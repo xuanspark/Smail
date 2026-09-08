@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
@@ -87,6 +89,81 @@ func TestEditUserProtectsAdministrativeCredentialsAndRevokesUserSessions(t *test
 	}
 	if disabledUser.Disabled != 1 || disabledUser.SessionVersion != resetUser.SessionVersion+1 {
 		t.Fatalf("disabling a user did not revoke existing sessions: %+v", disabledUser)
+	}
+}
+
+func TestUserListReturnsNormalizedRolesAndSecurityStatus(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	testRoot := t.TempDir()
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		config.Instance = oldConfig
+		db.Instance = oldDB
+	})
+
+	config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "user-list.db")}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	legacyAdmin := models.User{Account: "legacy-admin", Name: "Legacy", IsAdmin: 1, ExternalEmailEnabled: 1, SessionVersion: 1, SecurityVersion: 1}
+	regularUser := models.User{Account: "regular-list", Name: "Regular", Role: string(access.RoleUser), ExternalEmailEnabled: 0, SessionVersion: 1, SecurityVersion: 1}
+	if err := auth.SetPassword(&legacyAdmin, "AdminPass123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SetPassword(&regularUser, "UserPass123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&legacyAdmin, &regularUser); err != nil {
+		t.Fatal(err)
+	}
+	usedAt := time.Now().UTC()
+	fixtures := []any{
+		&models.RecoveryCode{UserID: legacyAdmin.ID, CodeHash: "active", CodeVersion: 1},
+		&models.RecoveryCode{UserID: regularUser.ID, CodeHash: "used", CodeVersion: 1, UsedAt: &usedAt},
+		&models.ExternalEmail{UserID: legacyAdmin.ID, EmailCiphertext: "ciphertext-verified", EmailFingerprint: "verified-email", EmailType: models.ExternalEmailTypePrimary, Status: models.ExternalEmailStatusVerified},
+		&models.ExternalEmail{UserID: regularUser.ID, EmailCiphertext: "ciphertext-pending", EmailFingerprint: "pending-email", EmailType: models.ExternalEmailTypePrimary, Status: models.ExternalEmailStatusPending},
+	}
+	for _, fixture := range fixtures {
+		if _, err := db.Instance.Insert(fixture); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx := &appcontext.Context{UserID: legacyAdmin.ID, UserAccount: legacyAdmin.Account, IsAdmin: true, Lang: "zhCn"}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/user/list", strings.NewReader(`{"current_page":1,"page_size":15}`))
+	UserList(ctx, recorder, request)
+	var result struct {
+		ErrorNo int `json:"errorNo"`
+		Data    struct {
+			List []userListItem `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ErrorNo != 0 || len(result.Data.List) != 2 {
+		t.Fatalf("unexpected user list response: %s", recorder.Body.String())
+	}
+	items := make(map[string]userListItem, len(result.Data.List))
+	for _, item := range result.Data.List {
+		items[item.Account] = item
+	}
+	adminItem := items[legacyAdmin.Account]
+	if adminItem.Role != access.RoleSuperAdmin || !adminItem.RecoveryCodeConfigured || !adminItem.ExternalEmailEnabled || !adminItem.ExternalEmailConfigured {
+		t.Fatalf("legacy administrator status was not normalized: %+v", adminItem)
+	}
+	regularItem := items[regularUser.Account]
+	if regularItem.Role != access.RoleUser || regularItem.RecoveryCodeConfigured || regularItem.ExternalEmailEnabled || regularItem.ExternalEmailConfigured {
+		t.Fatalf("regular user status was incorrect: %+v", regularItem)
+	}
+	for _, secret := range []string{"AdminPass123", "UserPass123", "ciphertext-verified", "ciphertext-pending", "active", "used"} {
+		if strings.Contains(recorder.Body.String(), secret) {
+			t.Fatalf("user list exposed sensitive value %q", secret)
+		}
 	}
 }
 
