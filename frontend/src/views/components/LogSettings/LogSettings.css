@@ -43,7 +43,7 @@
 
 .log-categories {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   flex-shrink: 0;
   padding: 4px;
   border-radius: 10px;
@@ -241,6 +241,14 @@
   overflow-wrap: anywhere;
   font-size: 13px;
   color: var(--el-text-color-primary);
+}
+
+.log-action {
+  display: block;
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .log-source {

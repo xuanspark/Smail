@@ -71,7 +71,7 @@ func Start(root string) (*Writer, error) {
 			err := w.Maintain(bounded, w.now())
 			stop()
 			if err != nil && ctx.Err() == nil {
-				log.WithError(err).Error("运行日志维护失败，源文件保留并在下一轮重试")
+				log.WithError(err).WithFields(log.Fields{"action": "压缩与清理运行日志", "result": "failure"}).Error("运行日志维护失败，源文件保留并在下一轮重试")
 			}
 			select {
 			case <-ctx.Done():

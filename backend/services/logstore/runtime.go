@@ -23,7 +23,7 @@ func Record(ctx context.Context, entry Entry) {
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := store.Write(bounded, entry); err != nil {
-		log.WithError(err).Error("业务日志写入失败")
+		log.WithError(err).WithFields(log.Fields{"action": "写入业务日志", "object": entry.Kind, "result": "failure"}).Error("业务日志写入失败")
 	}
 }
 
@@ -47,7 +47,7 @@ func Start(store *Store) *Runtime {
 			_, err := store.Cleanup(bounded, time.Now())
 			stop()
 			if err != nil && ctx.Err() == nil {
-				log.WithError(err).Error("过期业务日志清理失败，将在下一轮重试")
+				log.WithError(err).WithFields(log.Fields{"action": "清理过期业务日志", "result": "failure"}).Error("过期业务日志清理失败，将在下一轮重试")
 			}
 			select {
 			case <-ctx.Done():

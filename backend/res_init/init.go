@@ -187,7 +187,7 @@ func Init(serverVersion string) error {
 			return err
 		}
 		if err := startPluginConfigMigration(); err != nil {
-			log.WithError(err).Warn("plugin secret migration failed; affected plugins remain disabled")
+			log.WithError(err).WithFields(log.Fields{"action": "迁移插件凭据", "result": "failure"}).Warn("插件凭据迁移失败，受影响的插件保持禁用")
 		}
 		if err := session.Init(); err != nil {
 			return err
@@ -246,24 +246,24 @@ func Init(serverVersion string) error {
 			startService(serviceErrors, "IMAP TLS", imap_server.StarTLS)
 		}
 
-		log.Info("邮箱服务已启动")
+		log.WithFields(log.Fields{"action": "启动邮箱监听", "object": "SMTP / IMAP / POP3", "result": "started"}).Info("邮箱监听任务已提交，具体监听结果由各服务报告")
 		restart.SetCurrent(restart.NewSignalTrigger(signal.RestartChan))
 
 		select {
 		case err := <-serviceErrors:
-			log.WithError(err).Error("邮箱服务运行失败")
+			log.WithError(err).WithFields(log.Fields{"action": "运行邮箱服务", "result": "failure"}).Error("邮箱服务运行失败")
 			stopServices()
 			return err
 		case <-signal.RestartChan:
-			log.Infof("Server Restart!")
+			log.WithFields(log.Fields{"action": "重启服务", "result": "started"}).Info("已收到服务重启请求")
 			if err := stopServices(); err != nil {
 				return err
 			}
 		case <-signal.StopChan:
-			log.Infof("Server Stop!")
+			log.WithFields(log.Fields{"action": "停止服务", "result": "started"}).Info("已收到服务停止请求")
 			return stopServices()
 		}
-		log.Infof("Server Stop Success!")
+		log.WithFields(log.Fields{"action": "停止旧服务", "result": "success"}).Info("旧服务已停止，等待重新初始化")
 		time.Sleep(5 * time.Second)
 
 	}
@@ -344,7 +344,7 @@ func startVerificationRuntime() error {
 	controllers.ConfigureSecurityRuntime(service, external, recover, credential)
 	credentialService = credential
 	verificationRuntime = runtime
-	log.Info("安全验证码服务已启动，已配置中继时优先使用中继，否则使用项目自身邮件投递")
+	log.WithFields(log.Fields{"action": "初始化验证码服务", "result": "success"}).Info("安全验证码服务已启动，已配置中继时优先使用中继，否则使用项目自身邮件投递")
 	return nil
 }
 
@@ -384,7 +384,7 @@ func startWebAuthnRuntime() error {
 	}
 	webAuthnRuntimeService = service
 	controllers.ConfigureWebAuthnRuntime(service)
-	log.Info("WebAuthn service started")
+	log.WithFields(log.Fields{"action": "初始化通行密钥服务", "result": "success"}).Info("通行密钥服务已启动")
 	return nil
 }
 
@@ -411,7 +411,7 @@ func startAdminResetControlWithListener(development bool, path string, listen fu
 		return nil
 	}
 	if development {
-		log.Warn("开发模式：已停用本机超级管理员密码重置通道，后端无需为此提升权限；正式部署请移除开发参数")
+		log.WithFields(log.Fields{"action": "启动管理员恢复通道", "result": "skipped"}).Warn("开发模式：已停用本机超级管理员密码重置通道，后端无需为此提升权限；正式部署请移除开发参数")
 		return nil
 	}
 	if path == "" {
@@ -435,10 +435,10 @@ func startAdminResetControlWithListener(development bool, path string, listen fu
 		}, adminreset.NewSessionGuard(2*time.Minute))
 		serveErrors <- err
 		if err != nil {
-			log.WithError(err).Error("管理员重置通道启动失败")
+			log.WithError(err).WithFields(log.Fields{"action": "运行管理员恢复通道", "result": "failure"}).Error("管理员恢复通道运行失败")
 		}
 	}()
-	log.Info("管理员重置通道已启动")
+	log.WithFields(log.Fields{"action": "启动管理员恢复通道", "result": "started"}).Info("管理员恢复通道已创建，开始处理本机请求")
 	return nil
 }
 
@@ -449,7 +449,7 @@ func stopAdminResetControl() {
 	}
 	if adminResetControl != nil {
 		if err := adminResetControl.Close(); err != nil {
-			log.WithError(err).Warn("关闭管理员重置通道失败")
+			log.WithError(err).WithFields(log.Fields{"action": "停止管理员恢复通道", "result": "failure"}).Warn("关闭管理员恢复通道失败")
 		}
 		adminResetControl = nil
 		adminResetServeErrors = nil
@@ -484,7 +484,7 @@ func waitHTTPReady(serviceErrors <-chan error) error {
 		resp, err := client.Get(url)
 		if err == nil && resp != nil && resp.StatusCode == http.StatusOK {
 			_ = resp.Body.Close()
-			log.Infof("HTTP ready: %s", url)
+			log.WithFields(log.Fields{"action": "检查 HTTP 就绪状态", "result": "success"}).Infof("HTTP 服务健康检查通过：%s", url)
 			return nil
 		}
 		if resp != nil {
@@ -497,6 +497,6 @@ func waitHTTPReady(serviceErrors <-chan error) error {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	log.Warnf("HTTP not ready after 90s, skipping immediate SSL update")
+	log.WithFields(log.Fields{"action": "检查 HTTP 就绪状态", "result": "failure"}).Warn("HTTP 服务九十秒内未就绪，跳过即时证书更新")
 	return nil
 }

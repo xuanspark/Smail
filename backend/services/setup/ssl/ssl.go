@@ -433,7 +433,7 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 		Bundle:  true,
 	}
 
-	log.Infof("wait ssl renew")
+	log.WithFields(log.Fields{"action": "续期 TLS 证书", "result": "started"}).Info("开始请求续期证书")
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
 		return errors.Wrap(err)
@@ -500,22 +500,23 @@ func generateCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config, newAc
 	as := async.New(nil)
 
 	as.Process(func(params any) {
-		log.Infof("wait ssl")
+		log.WithFields(log.Fields{"action": "申请 TLS 证书", "result": "started"}).Info("开始向证书颁发机构申请证书")
 		certificates, err := client.Certificate.Obtain(request)
 		if err != nil {
-			log.WithError(err).Error("certificate issuance failed")
+			log.WithError(err).WithFields(log.Fields{"action": "申请 TLS 证书", "result": "failure"}).Error("证书申请失败")
 			return
 		}
-		log.Infof("证书校验通过！")
+		log.WithFields(log.Fields{"action": "申请 TLS 证书", "result": "success"}).Info("已取得证书，开始校验并保存")
 		if err := writeCertificateFiles(cfg, certificates.PrivateKey, certificates.Certificate, certificates.IssuerCertificate); err != nil {
-			log.WithError(err).Error("certificate storage failed")
+			log.WithError(err).WithFields(log.Fields{"action": "保存 TLS 证书", "result": "failure"}).Error("证书保存失败")
 			return
 		}
 
 		if err := setup.Finish(); err != nil {
-			log.WithError(err).Error("finish setup after certificate issuance failed")
+			log.WithError(err).WithFields(log.Fields{"action": "完成证书初始化", "result": "failure"}).Error("证书已保存，但完成初始化失败")
 			return
 		}
+		log.WithFields(log.Fields{"action": "完成证书初始化", "result": "success"}).Info("证书已保存并完成初始化")
 
 	}, nil)
 
@@ -602,15 +603,16 @@ func Update(needRestart bool) {
 
 		if days < 30 || err != nil || nameMatchFail {
 			if err != nil {
-				log.Errorf("SSL Check Error, Update SSL Certificate. Error Info :%+v", err)
+				log.WithError(err).WithFields(log.Fields{"action": "检查 TLS 证书", "result": "failure"}).Warn("证书检查失败，准备重新申请")
 			} else {
-				log.Infof("SSL certificate remaining time is only %d days, renew SSL certificate.", days)
+				log.WithFields(log.Fields{"action": "检查 TLS 证书", "result": "recorded", "remainingDays": days}).Info("证书需要更新，准备重新申请")
 			}
 			err = GenSSL(true)
 			if err != nil {
-				log.Errorf("SSL Update Error! %+v", err)
+				log.WithError(err).WithFields(log.Fields{"action": "更新 TLS 证书", "result": "failure"}).Error("证书更新失败")
 				return
 			}
+			log.WithFields(log.Fields{"action": "更新 TLS 证书", "result": "success"}).Info("证书已更新并保存")
 			if needRestart {
 				// 更新完证书，重启服务
 				signal.RestartChan <- true

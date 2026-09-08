@@ -212,3 +212,28 @@ test('本页级别统计准确，压缩文件大小和空页区间明确', () =>
   assert.match(read('LogSettings.vue'), /本页日志统计/)
   assert.doesNotMatch(read('LogSettings.vue'), /lines\.join/)
 })
+
+test('运行日志明确展示结构化操作和结果，不把级别或开始事件当作成功', () => {
+  const header = '[2026-09-08T14:55:23Z] [warning][2026-09-08 22:55:23][app.go:39]'
+  const data = { logSchema: 1, action: '启动服务', result: 'started', object: 'HTTP' }
+  const raw = `${header}开始启动 @event ${JSON.stringify(data)}`
+  const row = parseRuntimeLine(raw, 1)
+  assert.equal(row.action, '启动服务')
+  assert.equal(row.result, 'started')
+  assert.equal(row.outcome, '开始启动')
+  assert.equal(row.object, 'HTTP')
+  assert.equal(row.raw, raw)
+  for (const message of ['旧启动成功', '正文 {"result":"success"}', '截断 @event {"logSchema":1', '内容 @event null']) {
+    const old = parseRuntimeLine(header + message, 1)
+    assert.equal(old.result, 'unknown')
+    assert.equal(old.outcome, message)
+  }
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }))
+  assert.equal(page.resultLabel('pending'), '待验证')
+  assert.equal(page.resultLabel('accepted'), '对端接收')
+  assert.equal(page.resultLabel('partial'), '部分接收')
+  assert.equal(page.displayOutcome({ payload: {} }), '历史记录未提供结果说明')
+  assert.equal(page.displayObject({ payload: { stage: '解析邮件' } }), '解析邮件')
+  assert.match(read('LogSettings.vue'), /runtimeDetail\.action/)
+  assert.match(read('LogSettings.vue'), /runtimeDetail\.result/)
+})

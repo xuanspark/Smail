@@ -53,8 +53,24 @@ export function parseRuntimeLine(line, sequence) {
   // 历史启动信息只简化摘要，详情仍保留完整消息和原始记录。
   const summary = legacyStartup ? '服务启动' : separator ? '启动分隔线' : message.trim() || '（空消息）'
   const sourceShort = source.replace(/^git\.pcux\.cn\/xuans\/Smail\//, '')
+  let event = {}
+  let content = summary
+  const boundary = message.lastIndexOf(' @event ')
+  if (boundary >= 0) {
+    try {
+      const parsed = JSON.parse(message.slice(boundary + 8))
+      if (parsed?.logSchema === 1 && typeof parsed.action === 'string' && typeof parsed.result === 'string') {
+        event = parsed
+        content = message.slice(0, boundary).trim() || '（无补充说明）'
+      }
+    } catch {
+      // 旧日志或截断记录保留原文，不能猜测结果。
+    }
+  }
   return {
     sequence, raw, createdAt, level, source, sourceShort, requestId, message, summary,
+    action: event.action || '历史运行事件', result: event.result || 'unknown',
+    object: event.object || event.section || '', outcome: event.outcome || content,
     ...timeParts(createdAt), ...levels[level]
   }
 }

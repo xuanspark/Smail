@@ -31,8 +31,10 @@ export function useLogs() {
   ]
   const isRuntime = computed(() => category.value === 'runtime')
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
-  const resultLabel = value => ({ success: '成功', failure: '失败', unknown: '结果未知', accepted: '已接收' }[value] || value)
-  const actionLabel = value => ({ update: '保存配置', rollback: '回滚配置', migration: '迁移配置' }[value] || value)
+  const resultLabel = value => ({ success: '成功', failure: '失败', unknown: '未确认', accepted: '对端接收', pending: '待验证', started: '已开始', recorded: '状态记录', partial: '部分接收', discarded: '已丢弃', skipped: '已跳过' }[value] || value || '未记录')
+  const actionLabel = value => ({ update: '保存配置', rollback: '回滚配置', migration: '迁移配置' }[value] || value || '未记录操作')
+  const displayObject = item => item.payload?.object || item.payload?.stage || '未记录对象'
+  const displayOutcome = item => item.payload?.outcome || '历史记录未提供结果说明'
   const displayActor = item => item.payload?.actorName || (item.actorId && item.actorId !== '0' ? item.actorId : '系统')
   const details = computed(() => detail.value?.payload || {})
   const runtimeRows = computed(() => lines.value.map((line, index) => parseRuntimeLine(line, offset.value + index + 1)))
@@ -40,7 +42,7 @@ export function useLogs() {
   const visibleCount = computed(() => isRuntime.value ? lines.value.length : items.value.length)
   const pageRange = computed(() => visibleCount.value ? `第 ${offset.value + 1}–${offset.value + visibleCount.value} 条` : '暂无记录')
   const currentCategory = computed(() => categories.find(item => item.value === category.value)?.label)
-  const resultType = value => ({ success: 'success', accepted: 'success', failure: 'danger' }[value] || 'info')
+  const resultType = value => ({ success: 'success', accepted: 'primary', failure: 'danger', pending: 'warning', partial: 'warning', discarded: 'warning', started: 'primary' }[value] || 'info')
   const runtimeRowClass = ({ row }) => ['warning', 'danger'].includes(row.type) ? `log-row-${row.type}` : ''
 
   function requireData(result) {
@@ -126,6 +128,6 @@ export function useLogs() {
     hasMore, actorId, dateRange, detail, details, isRuntime,
     runtimeDetail, runtimeRows, runtimeSummary, visibleCount, pageRange,
     currentCategory, resultType, runtimeRowClass, timeParts,
-    formatTime, resultLabel, actionLabel, displayActor, search, recent, next, previous
+    formatTime, resultLabel, actionLabel, displayActor, displayObject, displayOutcome, search, recent, next, previous
   }
 }

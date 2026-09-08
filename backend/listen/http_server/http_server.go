@@ -274,7 +274,7 @@ func HttpStart() error {
 		IdleTimeout:       time.Second * 30,
 		MaxHeaderBytes:    16 << 10,
 	}
-	log.Infof("HTTP server started on port %d", httpPort)
+	log.WithFields(log.Fields{"action": "启动 HTTP 监听", "object": fmt.Sprintf(":%d", httpPort), "result": "started"}).Info("开始绑定监听端口")
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}

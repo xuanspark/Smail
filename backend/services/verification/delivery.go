@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"git.pcux.cn/xuans/Smail/services/logstore"
 	smailsmtp "git.pcux.cn/xuans/Smail/utils/smtp"
 )
 
@@ -58,7 +59,17 @@ func (d *SMTPDelivery) Delivery() Delivery {
 		}
 		message := buildCodeMessage(d.settings.From, challenge.Email, code, challenge.Purpose)
 		defer clearBytes(message)
-		return d.send(d.settings, challenge.Email, message)
+		err := d.send(d.settings, challenge.Email, message)
+		result := "accepted"
+		details := logstore.MailDetails{Trigger: "系统安全验证邮件", Stage: "SMTP 中继投递", AcceptedCount: 1}
+		if err != nil {
+			result = "failure"
+			details.AcceptedCount = 0
+			details.Outcome = logstore.MailFailureReason(err)
+		}
+		// 只记录发送元数据，不保存外部邮箱、验证码、邮件内容及中继凭据。
+		logstore.MailResult(0, "outbound", d.settings.From, 1, len(message), result, details)
+		return err
 	}
 }
 

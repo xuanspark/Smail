@@ -21,6 +21,8 @@ func (RuntimeConfigLogWriter) WriteConfigAudit(_ context.Context, event ConfigAu
 		ConfigOperationMigration: "迁移配置",
 	}[event.Operation]
 	entry := log.WithFields(log.Fields{
+		"action":         action,
+		"object":         event.Section,
 		"operation":      event.Operation,
 		"section":        event.Section,
 		"actorId":        event.ActorID,

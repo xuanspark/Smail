@@ -35,7 +35,7 @@ func Start() error {
 	}
 	instance = server
 	imapPort := config.CurrentMailPorts().IMAP
-	log.Infof("IMAP With STARTTLS Server Start On Port :%d", imapPort)
+	log.WithFields(log.Fields{"action": "启动 IMAP STARTTLS 监听", "object": fmt.Sprintf(":%d", imapPort), "result": "started"}).Info("开始绑定监听端口")
 	if err := instance.ListenAndServe(fmt.Sprintf(":%d", imapPort)); err != nil {
 		return fmt.Errorf("serve IMAP STARTTLS: %w", err)
 	}
@@ -50,7 +50,7 @@ func StarTLS() error {
 	}
 	instanceTLS = server
 	imapTLSPort := config.CurrentMailPorts().IMAP
-	log.Infof("IMAP With TLS Server Start On Port :%d", imapTLSPort)
+	log.WithFields(log.Fields{"action": "启动 IMAP TLS 监听", "object": fmt.Sprintf(":%d", imapTLSPort), "result": "started"}).Info("开始绑定监听端口")
 	if err := instanceTLS.ListenAndServeTLS(fmt.Sprintf(":%d", imapTLSPort)); err != nil {
 		return fmt.Errorf("serve IMAP TLS: %w", err)
 	}

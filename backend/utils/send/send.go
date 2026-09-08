@@ -17,8 +17,10 @@ import (
 	"net"
 	"net/mail"
 	"net/textproto"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type mxDomain struct {
@@ -77,23 +79,33 @@ func forwardData(ctx *context.Context, fromDomain string, data []byte, forwardAd
 		{EmailAddress: forwardAddress},
 	}
 
-	err, _ := doSend(ctx, fromDomain, data, to, from)
+	err, _ := doSend(ctx, fromDomain, data, to, from, "邮件规则转发")
 	return err
 }
 
 func Send(ctx *context.Context, e *parsemail.Email) (error, map[string]error) {
+	return SendTriggered(ctx, e, "SMTP 客户端提交")
+}
 
+// SendTriggered 显式标记业务发起方，不从邮件主题或内容推断来源。
+func SendTriggered(ctx *context.Context, e *parsemail.Email, trigger string) (error, map[string]error) {
 	_, fromDomain := e.From.GetDomainAccount()
 
 	b, err := e.BuildBytes(ctx, true)
 	if err != nil {
+		userID := 0
+		if ctx != nil {
+			userID = ctx.UserID
+		}
+		logstore.MailResult(userID, "outbound", e.From.EmailAddress, len(e.To)+len(e.Cc)+len(e.Bcc), 0, "failure",
+			logstore.MailDetails{Trigger: trigger, Stage: "构建待发邮件", Outcome: "邮件编码或签名失败，未开始对外投递"})
 		return fmt.Errorf("build message: %w", err), nil
 	}
 
 	var to []*parsemail.User
 	to = append(append(append(to, e.To...), e.Cc...), e.Bcc...)
 
-	return doSend(ctx, fromDomain, b, to, e.From.EmailAddress)
+	return doSend(ctx, fromDomain, b, to, e.From.EmailAddress, trigger)
 
 }
 
@@ -120,17 +132,41 @@ func parseRecipientAddress(user *parsemail.User) (string, string, error) {
 	return address, domain, nil
 }
 
-func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemail.User, from string) (sendErr error, recipientErrors map[string]error) {
+func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemail.User, from string, triggers ...string) (sendErr error, recipientErrors map[string]error) {
+	var accepted atomic.Int64
+	trigger := "邮件发送"
+	if len(triggers) > 0 {
+		trigger = triggers[0]
+	}
 	defer func() {
-		result := "success"
-		if sendErr != nil || len(recipientErrors) > 0 {
-			result = "failure"
-		}
+		result := deliveryLogResult(int(accepted.Load()), len(to), sendErr != nil || len(recipientErrors) > 0)
 		userID := 0
 		if ctx != nil {
 			userID = ctx.UserID
 		}
-		logstore.MailResult(userID, "outbound", from, len(to), len(data), result)
+		details := logstore.MailDetails{Trigger: trigger, Stage: "对外投递", AcceptedCount: int(accepted.Load())}
+		if result == "failure" || result == "partial" {
+			details.Outcome = logstore.MailFailureReason(sendErr)
+			// 多域名失败按类别去重并排序，避免随机挑选某一个错误误导排查。
+			reasons := make(map[string]bool)
+			for _, cause := range recipientErrors {
+				if cause != nil {
+					reasons[logstore.MailFailureReason(cause)] = true
+				}
+			}
+			if len(reasons) > 0 {
+				messages := make([]string, 0, len(reasons))
+				for reason := range reasons {
+					messages = append(messages, reason)
+				}
+				sort.Strings(messages)
+				details.Outcome = strings.Join(messages, "；")
+			}
+			if result == "partial" {
+				details.Outcome = "部分收件人已被对端接收；其余投递失败：" + details.Outcome
+			}
+		}
+		logstore.MailResult(userID, "outbound", from, len(to), len(data), result, details)
 	}()
 	if len(to) == 0 {
 		err := errors.New("no recipients")
@@ -221,6 +257,8 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				err := smtp.SendMailUnsafe("localhost", domain.mxHost+":25", nil, from, fromDomain, buildAddress(tos), data)
 				if err != nil {
 					recordFailure(err)
+				} else {
+					accepted.Add(int64(len(tos)))
 				}
 				return
 			}
@@ -228,6 +266,7 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			// 优先尝试25端口，starttls方式投递
 			err := smtp.SendMail("", domain.mxHost+":25", nil, from, fromDomain, buildAddress(tos), data)
 			if err == nil {
+				accepted.Add(int64(len(tos)))
 				return
 			}
 			if isCertificateVerificationError(err) {
@@ -243,6 +282,7 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			// 再试用587投递
 			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":587", nil, from, fromDomain, buildAddress(tos), data)
 			if err == nil {
+				accepted.Add(int64(len(tos)))
 				return
 			}
 			if isCertificateVerificationError(err) {
@@ -258,6 +298,7 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			// 再次尝试465投递
 			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":465", nil, from, fromDomain, buildAddress(tos), data)
 			if err == nil {
+				accepted.Add(int64(len(tos)))
 				return
 			}
 			if isCertificateVerificationError(err) {
@@ -291,6 +332,20 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 		return errors.New("以下收件人投递失败：" + array.Join(errEmailAddress, ",")), orgMap
 	}
 	return nil, orgMap
+}
+
+// deliveryLogResult 以实际接收人数为依据，不把函数正常返回等同于全部投递成功。
+func deliveryLogResult(accepted, total int, failed bool) string {
+	if accepted > 0 {
+		if accepted == total && !failed {
+			return "accepted"
+		}
+		return "partial"
+	}
+	if failed {
+		return "failure"
+	}
+	return "unknown"
 }
 
 func allowUnsafeSMTP(domain mxDomain) bool {

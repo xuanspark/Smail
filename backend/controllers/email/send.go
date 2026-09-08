@@ -285,7 +285,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 
 	async.New(ctx).Process(func(p any) {
 		errMsg := ""
-		err, sendErr := send.Send(ctx, e)
+		err, sendErr := send.SendTriggered(ctx, e, "网页写信")
 
 		log.WithContext(ctx).Debugf("插件执行--SendAfter")
 

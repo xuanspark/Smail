@@ -34,7 +34,7 @@ func StartWithTls() error {
 	instanceTls = gopop.NewPop3Server(port, "pop."+domains.Primary, true, tlsConfig, action{})
 	instanceTls.ConnectAliveTime = 5 * time.Minute
 
-	log.Infof("POP3 With TLS Server Start On Port :%d", port)
+	log.WithFields(log.Fields{"action": "启动 POP3 TLS 监听", "object": fmt.Sprintf(":%d", port), "result": "started"}).Info("开始绑定监听端口")
 
 	err = instanceTls.Start()
 	if err != nil {
@@ -63,7 +63,7 @@ func Start() error {
 	port := config.CurrentMailPorts().POP3
 	instance = gopop.NewPop3Server(port, "pop."+domains.Primary, false, tlsConfig, action{})
 	instance.ConnectAliveTime = 5 * time.Minute
-	log.Infof("POP3 Server Start On Port :%d", port)
+	log.WithFields(log.Fields{"action": "启动 POP3 STLS 监听", "object": fmt.Sprintf(":%d", port), "result": "started"}).Info("开始绑定监听端口")
 
 	err = instance.Start()
 	if err != nil {

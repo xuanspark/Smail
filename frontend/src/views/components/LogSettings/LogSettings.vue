@@ -58,10 +58,16 @@
             <el-tag :type="row.type" size="small" effect="light" class="log-level-tag">{{ row.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="日志内容" min-width="170">
+        <el-table-column label="操作与结果说明" min-width="170">
           <template #default="{ row }">
-            <div class="log-message">{{ row.summary }}</div>
-            <div v-if="row.sourceShort" class="log-source">{{ row.sourceShort }}</div>
+            <strong class="log-action">{{ row.action }}</strong>
+            <div class="log-message">{{ row.outcome }}</div>
+            <div v-if="row.object" class="log-source">对象：{{ row.object }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="结果" width="92" align="center">
+          <template #default="{ row }">
+            <el-tag :type="resultType(row.result)" size="small" class="log-level-tag">{{ resultLabel(row.result) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="详情" width="60" align="center">
@@ -76,8 +82,12 @@
             <div class="log-time"><strong>{{ timeParts(row.createdAt).time }}</strong><span>{{ timeParts(row.createdAt).date }}</span></div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="125" show-overflow-tooltip>
-          <template #default="{ row }">{{ actionLabel(row.action) }}</template>
+        <el-table-column label="操作与结果说明" min-width="170">
+          <template #default="{ row }">
+            <strong class="log-action">{{ actionLabel(row.action) }}</strong>
+            <div class="log-message">{{ displayOutcome(row) }}</div>
+            <div class="log-source">{{ displayObject(row) }}</div>
+          </template>
         </el-table-column>
         <el-table-column label="操作者" min-width="85" show-overflow-tooltip>
           <template #default="{ row }">{{ displayActor(row) }}</template>
@@ -113,6 +123,10 @@
           <span class="runtime-detail-sequence">第 {{ runtimeDetail.sequence }} 条</span>
         </div>
         <dl class="log-detail-grid runtime-detail-meta">
+          <dt>触发操作</dt><dd>{{ runtimeDetail.action }}</dd>
+          <dt>操作对象</dt><dd>{{ runtimeDetail.object || '未记录' }}</dd>
+          <dt>操作结果</dt><dd>{{ resultLabel(runtimeDetail.result) }}</dd>
+          <dt>结果说明</dt><dd>{{ runtimeDetail.outcome }}</dd>
           <dt>代码来源</dt><dd>{{ runtimeDetail.source || '未记录' }}</dd>
           <template v-if="runtimeDetail.requestId">
             <dt>请求标识</dt><dd>{{ runtimeDetail.requestId }}</dd>
@@ -129,15 +143,23 @@
     <el-dialog :model-value="Boolean(detail)" title="日志详情" width="min(760px, 92vw)" append-to-body @close="detail = null">
       <template v-if="detail">
         <p>{{ formatTime(detail.createdAt) }} · {{ displayActor(detail) }} · {{ actionLabel(detail.action) }}</p>
+        <dl class="log-detail-grid">
+          <dt>触发操作</dt><dd>{{ actionLabel(detail.action) }}</dd>
+          <dt>触发来源</dt><dd>{{ details.trigger || '未记录' }}</dd>
+          <dt>{{ category === 'mail' ? '处理阶段' : '操作对象' }}</dt><dd>{{ displayObject(detail) }}</dd>
+          <dt>操作结果</dt><dd>{{ resultLabel(detail.result) }}</dd>
+          <dt>结果说明</dt><dd>{{ displayOutcome(detail) }}</dd>
+        </dl>
         <dl v-if="category === 'mail'" class="log-detail-grid">
           <dt>发件人</dt><dd>{{ details.sender || '—' }}</dd>
           <dt>收件人数</dt><dd>{{ details.recipientCount }}</dd>
           <dt>邮件大小</dt><dd>{{ details.bytes }} 字节</dd>
-          <dt>结果</dt><dd>{{ resultLabel(detail.result) }}</dd>
+          <dt>对端接收人数</dt><dd>{{ details.acceptedCount ?? '未记录' }}</dd>
         </dl>
         <dl v-else class="log-detail-grid">
           <dt>权限角色</dt><dd>{{ details.actorRole || '—' }}</dd>
           <dt>结果代码</dt><dd>{{ details.errorCode ?? '—' }}</dd>
+          <dt>HTTP 状态</dt><dd>{{ details.httpStatus || '未记录' }}</dd>
         </dl>
       </template>
     </el-dialog>
@@ -152,7 +174,7 @@ const {
   hasMore, actorId, dateRange, detail, details, isRuntime,
   runtimeDetail, runtimeRows, runtimeSummary, pageRange,
   currentCategory, resultType, runtimeRowClass, timeParts,
-  formatTime, resultLabel, actionLabel, displayActor, search, recent, next, previous
+  formatTime, resultLabel, actionLabel, displayActor, displayObject, displayOutcome, search, recent, next, previous
 } = useLogs()
 </script>
 

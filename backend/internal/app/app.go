@@ -36,7 +36,7 @@ func Run() (err error) {
 		build.Version = "TestVersion"
 	}
 
-	log.Infof("服务启动，版本：%s", build.Version)
+	log.WithFields(log.Fields{"action": "启动主服务", "object": "Smail", "result": "started"}).Infof("服务启动，版本：%s", build.Version)
 
 	// 启动定时任务。
 	go cron_server.Start()
@@ -46,7 +46,7 @@ func Run() (err error) {
 		return err
 	}
 
-	log.Warnf("Server Stoped \n")
+	log.WithFields(log.Fields{"action": "停止主服务", "object": "Smail", "result": "success"}).Info("主服务已停止")
 	return nil
 }
 
@@ -56,7 +56,7 @@ func finishRuntimeLogs(writer *runtimelog.Writer, runErr *error) {
 		*runErr = fmt.Errorf("服务启动异常: %v", recovered)
 	}
 	if *runErr != nil {
-		log.WithError(*runErr).Error("服务因致命错误停止")
+		log.WithError(*runErr).WithFields(log.Fields{"action": "运行主服务", "object": "Smail", "result": "failure"}).Error("服务因致命错误停止")
 	}
 	if err := writer.Close(); err != nil {
 		log.WithError(err).Error("关闭运行日志失败")

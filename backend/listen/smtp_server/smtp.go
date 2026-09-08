@@ -50,7 +50,7 @@ func StartWithTLSNew() error {
 	// Configure the TLS support for STARTTLS
 	instanceTlsNew.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
 
-	log.Println("Starting Smtp With STARTTLS Server Port:", instanceTlsNew.Addr)
+	log.WithFields(log.Fields{"action": "启动 SMTP STARTTLS 监听", "object": instanceTlsNew.Addr, "result": "started"}).Info("开始绑定监听端口")
 	// 提交端口使用 STARTTLS（先连接，再升级 TLS），而非隐式 TLS。
 	if err := instanceTlsNew.ListenAndServe(); err != nil && !errors.Is(err, smtp.ErrServerClosed) {
 		return fmt.Errorf("serve SMTP STARTTLS: %w", err)
@@ -87,7 +87,7 @@ func StartWithTLS() error {
 	// Configure the TLS support
 	instanceTls.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
 
-	log.Println("Starting Smtp With SSL Server Port:", instanceTls.Addr)
+	log.WithFields(log.Fields{"action": "启动 SMTP TLS 监听", "object": instanceTls.Addr, "result": "started"}).Info("开始绑定监听端口")
 	if err := instanceTls.ListenAndServeTLS(); err != nil && !errors.Is(err, smtp.ErrServerClosed) {
 		return fmt.Errorf("serve SMTP TLS: %w", err)
 	}
@@ -123,7 +123,7 @@ func Start() error {
 	// Configure the TLS support
 	instance.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
 
-	log.Println("Starting Smtp Server Port:", instance.Addr)
+	log.WithFields(log.Fields{"action": "启动 SMTP 收信监听", "object": instance.Addr, "result": "started"}).Info("开始绑定监听端口")
 	if err := instance.ListenAndServe(); err != nil && !errors.Is(err, smtp.ErrServerClosed) {
 		return fmt.Errorf("serve SMTP: %w", err)
 	}

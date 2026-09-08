@@ -47,7 +47,7 @@ func HttpsStart() error {
 	}
 	httpCfg := config.CurrentHTTPConfig()
 	if httpCfg.TLSMode == config.HTTPSTLSModeProxy {
-		log.Info("HTTPS 使用反向代理终止模式，跳过 Smail 内部 HTTPS 监听")
+		log.WithFields(log.Fields{"action": "启动内置 HTTPS 监听", "result": "skipped"}).Info("HTTPS 由反向代理处理，跳过内置监听")
 		return nil
 	}
 	mux := http.NewServeMux()
@@ -82,10 +82,10 @@ func HttpsStart() error {
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          nullLog,
 	}
-	log.Infof("HTTPS server started on port %d", httpsPort)
+	log.WithFields(log.Fields{"action": "启动 HTTPS 监听", "object": httpsServer.Addr, "result": "started"}).Info("开始绑定监听端口")
 	if err := httpsServer.ListenAndServeTLS(certificatePath, privateKeyPath); err != nil {
 		if errors.Is(err, http.ErrServerClosed) {
-			log.Infof("HTTPS server closed normally on port %d", httpsPort)
+			log.WithFields(log.Fields{"action": "停止 HTTPS 监听", "object": httpsServer.Addr, "result": "success"}).Info("监听已正常关闭")
 			return nil
 		}
 		return fmt.Errorf("serve HTTPS on port %d: %w", httpsPort, err)

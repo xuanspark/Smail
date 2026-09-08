@@ -41,15 +41,25 @@ const DropUnknownRecipientEmails = true
 
 func (s *Session) Data(r io.Reader) (resultErr error) {
 	messageBytes := 0
+	result := "unknown"
+	details := logstore.MailDetails{Trigger: "SMTP 收信", Stage: "读取邮件内容"}
 	defer func() {
-		result, direction := "success", "inbound"
+		direction := "inbound"
 		if resultErr != nil {
 			result = "failure"
 		}
 		if s.Ctx.UserID > 0 {
 			direction = "submission"
+			details.Trigger = "SMTP 客户端提交"
 		}
-		logstore.MailResult(s.Ctx.UserID, direction, s.From, len(s.To), messageBytes, result)
+		if result == "failure" {
+			details.Outcome = details.Stage + "失败"
+			var protocol *smtp.SMTPError
+			if oerrors.As(resultErr, &protocol) {
+				details.Outcome += fmt.Sprintf("，SMTP 状态码 %d", protocol.Code)
+			}
+		}
+		logstore.MailResult(s.Ctx.UserID, direction, s.From, len(s.To), messageBytes, result, details)
 	}()
 
 	ctx := s.Ctx
@@ -68,6 +78,7 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 
 	log.WithContext(ctx).Debugf("message_bytes=%d", len(emailData))
 
+	details.Stage = "执行收信解析前插件"
 	log.WithContext(ctx).Debugf("开始执行插件ReceiveParseBefore！")
 	for _, hook := range hooks.Snapshot() {
 		if hook == nil {
@@ -80,6 +91,7 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 	if len(emailData) > maxSMTPMessageBytes {
 		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message size exceeds fixed maximum message size"}
 	}
+	details.Stage = "解析与校验邮件"
 	email, err := parsemail.NewEmailFromReader(s.To, bytes.NewReader(emailData), len(emailData))
 	if err != nil {
 		log.WithContext(ctx).Warnf("audit_event=message_parse_failed message_bytes=%d error=%v", len(emailData), err)
@@ -104,10 +116,12 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 
 	// 判断是收信还是转发，只要是登陆了，都当成转发处理
 	if s.Ctx.UserID > 0 {
+		details.Stage = "校验发件权限"
 		if !authorizedSubmissionEmail(email, s.From, ctx) {
 			return oerrors.New("No Auth")
 		}
 
+		details.Stage = "执行发信前插件"
 		log.WithContext(ctx).Debugf("开始执行插件SendBefore！")
 		for _, hook := range hooks.Snapshot() {
 			if hook == nil {
@@ -124,12 +138,18 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 			return oerrors.New("No Auth")
 		}
 
-		return s.deliverOutgoingEmail(email, send.Send)
+		details.Stage = "保存并投递客户端邮件"
+		resultErr = s.deliverOutgoingEmail(email, send.Send)
+		if resultErr == nil {
+			result = "accepted"
+		}
+		return resultErr
 
 	} else {
 		// 收件
 		var dkimStatus, SPFStatus bool
 
+		details.Stage = "验证收信身份与插件处理"
 		// DKIM校验
 		dkimStatus = parsemail.Check(ctx, bytes.NewReader(emailData))
 
@@ -158,11 +178,17 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 			email.Status = 3
 		}
 
+		details.Stage = "保存收到的邮件"
 		users, dbEmail, saveErr := saveEmail(ctx, len(emailData), email, 0, 0, s.To, SPFStatus, dkimStatus)
 		if saveErr != nil {
 			log.WithContext(ctx).Errorf("CRITICAL audit_event=initial_persist_failed direction=inbound msg_id=%q error=%v", email.MsgID, saveErr)
 			return localPersistenceSMTPError()
 		}
+		if dbEmail == nil {
+			result = "discarded"
+			return nil
+		}
+		details.Stage = "执行收信规则与通知"
 
 		if email.MessageId > 0 {
 			ruleBaseContext := ctx.Context
@@ -175,19 +201,19 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 			log.WithContext(ctx).Debugf("开始执行邮件规则！")
 			for _, user := range users {
 				if ruleExecutionContext.Err() != nil {
-					log.WithContext(ctx).Warn("email rule processing budget exceeded")
+					log.WithContext(ctx).WithFields(log.Fields{"action": "执行收信规则", "result": "failure"}).Warn("规则处理超时，已停止后续规则")
 					break
 				}
 				// 执行邮件规则
 				rs, ruleErr := rule.GetAllRules(&ruleContext, user.ID)
 				if ruleErr != nil {
-					log.WithContext(ctx).WithField("user_id", user.ID).WithError(ruleErr).Error("load email rules failed")
+					log.WithContext(ctx).WithFields(log.Fields{"action": "读取收信规则", "result": "failure", "user_id": user.ID}).WithError(ruleErr).Error("读取收信规则失败")
 					continue
 				}
 				for _, r := range rs {
 					if rule.MatchRule(&ruleContext, r, email) {
 						if err := rule.DoRule(&ruleContext, r, email, user, emailData); err != nil {
-							log.WithContext(ctx).WithField("user_id", user.ID).WithError(err).Error("execute email rule failed")
+							log.WithContext(ctx).WithFields(log.Fields{"action": "执行收信规则", "result": "failure", "user_id": user.ID}).WithError(err).Error("执行收信规则失败")
 						}
 					}
 				}
@@ -216,12 +242,15 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 		// IDLE命令通知
 		for _, user := range users {
 			if err := imap_server.IdleNotice(ctx, user.ID, dbEmail); err != nil {
-				log.WithContext(ctx).WithError(err).Error("send IMAP IDLE notification failed")
+				log.WithContext(ctx).WithFields(log.Fields{"action": "通知 IMAP 客户端新邮件", "result": "failure"}).WithError(err).Error("邮件已保存，但新邮件通知失败")
 			}
 		}
 
 	}
 
+	result = "success"
+	details.Stage = "接收并保存邮件"
+	details.Outcome = "邮件已写入本地邮箱；规则与通知的异常单独记录在运行日志"
 	return nil
 }
 

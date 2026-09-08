@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/db/migration"
@@ -69,8 +70,61 @@ func TestOperationLogUsesCompletedIdentityWithoutSensitivePayload(t *testing.T) 
 		if err := json.Unmarshal(entry.Payload, &payload); err != nil {
 			t.Fatal(err)
 		}
-		if entry.Result != "success" || payload["actorName"] != "audit-probe" || len(payload) != 3 {
+		if entry.Result != "success" || payload["actorName"] != "audit-probe" || len(payload) != 7 || payload["outcome"] != "操作已完成" || payload["trigger"] == "" || payload["object"] == "" || strings.Contains(string(entry.Payload), "must-not-store") {
 			t.Fatalf("incorrect or excessive audit metadata: %+v", payload)
 		}
+	}
+}
+
+func TestOperationResponseDistinguishesPendingHTTPFailureAndUnknown(t *testing.T) {
+	database, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "results.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	migrations := migration.DefaultMigrations()
+	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
+		if _, err := database.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := logstore.New(database, migration.DialectSQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := logstore.Start(store)
+	defer runtime.Stop()
+	for _, item := range []struct {
+		name, want string
+		write      func(http.ResponseWriter)
+	}{
+		{"pending", "pending", func(w http.ResponseWriter) {
+			response.NewSuccessResponse(map[string]any{"pending": true, "challenge_id": "private-challenge"}).FPrint(w)
+		}},
+		{"failure", "failure", func(w http.ResponseWriter) {
+			response.NewErrorResponse(response.ParamsError, "private-detail", "private-code").FPrint(w)
+		}},
+		{"http", "failure", func(w http.ResponseWriter) { http.Error(w, "private-detail", http.StatusForbidden) }},
+		{"unknown", "unknown", func(w http.ResponseWriter) { _, _ = w.Write([]byte("not-a-business-response")) }},
+	} {
+		ctx := &appcontext.Context{UserID: 42, UserAccount: item.name}
+		writer, finish := operationLog(ctx, httptest.NewRequest("POST", "/api/v1/login?password=private-query", strings.NewReader("private-request")), httptest.NewRecorder())
+		item.write(writer)
+		finish()
+		entries, err := store.Query(context.Background(), logstore.Query{Kind: "operation", Limit: 1})
+		if err != nil || len(entries) != 1 {
+			t.Fatal(err)
+		}
+		entry := entries[0]
+		if entry.Result != item.want || strings.Contains(string(entry.Payload), "private-") || strings.Contains(string(entry.Payload), "not-a-business-response") {
+			t.Fatalf("结果错误或泄露请求：%s %+v", item.name, entry)
+		}
+	}
+	before, _ := store.Query(context.Background(), logstore.Query{Kind: "operation"})
+	_, finish := operationLog(&appcontext.Context{}, httptest.NewRequest("POST", "/api/v1/email/list", nil), httptest.NewRecorder())
+	finish()
+	after, _ := store.Query(context.Background(), logstore.Query{Kind: "operation"})
+	if len(before) != len(after) {
+		t.Fatal("只读查询不能新增操作记录")
 	}
 }

@@ -112,7 +112,7 @@ func deliverVerificationWithProjectMail(challenge verification.Challenge, code s
 		Context: context.Background(),
 		Values:  make(map[string]any),
 	}
-	if deliveryErr, _ := send.Send(ctx, message); deliveryErr != nil {
+	if deliveryErr, _ := send.SendTriggered(ctx, message, "系统安全验证邮件"); deliveryErr != nil {
 		return fmt.Errorf("%w: project mail delivery failed", verification.ErrMailDeliveryFailed)
 	}
 	return nil

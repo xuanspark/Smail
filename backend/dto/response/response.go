@@ -31,6 +31,13 @@ func (p *Response) FPrint(w http.ResponseWriter) {
 	if observer, ok := w.(interface{ ObserveResult(int) }); ok {
 		observer.ObserveResult(p.ErrorNo)
 	}
+	// 仅通知经过业务确认的中间状态，不向日志观察器传递响应载荷或验证凭据。
+	if observer, ok := w.(interface{ ObservePending(bool) }); ok && p.ErrorNo == 0 {
+		if data, ok := p.Data.(map[string]any); ok {
+			pending, _ := data["pending"].(bool)
+			observer.ObservePending(pending)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write(bytesData); err != nil {
 		log.WithError(err).Error("write HTTP response failed")
