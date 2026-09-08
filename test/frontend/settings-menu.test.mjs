@@ -49,17 +49,21 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
     hasCapability: value => capabilities.has(value)
   })
   const page = createPage(computed, ref, () => {}, () => {}, { innerWidth: 1440 }, () => store,
-    { security: '安全' }, () => ({}), ...names.map(name => ({ name })))
+    { security: '安全', plugin_settings: '插件配置' }, () => ({}), ...names.map(name => ({ name })))
   assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'group', 'rule'])
   assert.equal(page.settingsMenu.value.find(item => item.key === 'third-party').label, '邮件客户端')
   assert.equal(page.activeSettings.value.label, '安全')
   capabilities.add('config.read')
   store.settingsActiveTab = 'config'
   assert.equal(page.activeSettings.value.label, '配置管理')
-  assert.equal(page.settingsMenu.value.length, 5)
+  assert.equal(page.settingsMenu.value.length, 6)
+  assert.equal(page.settingsMenu.value.find(item => item.key === 'plugins').label, '插件配置')
   assert.ok(page.settingsMenu.value.every(item => item.icon && item.hint))
   capabilities.delete('config.read')
   assert.equal(page.activeSettings.value, undefined)
+  assert.equal(page.settingsMenu.value.some(item => item.key === 'plugins'), false)
+  capabilities.add('plugin.read')
+  assert.equal(page.settingsMenu.value.some(item => item.key === 'plugins'), true)
 })
 
 test('三级菜单只发送当前分组的可见子项，选中状态仍由父页面确认', () => {
@@ -79,7 +83,7 @@ test('三级菜单只发送当前分组的可见子项，选中状态仍由父�
 })
 
 test('菜单模板可编译并保留按钮、当前项语义及原有选区处理器', () => {
-  for (const name of ['HomeHeader', 'SettingsSubmenu', 'SecuritySettings', 'ConfigSettings']) {
+  for (const name of ['HomeHeader', 'SettingsSubmenu', 'SecuritySettings', 'ConfigSettings', 'PluginSettings']) {
     const source = read(`${name}/${name}.vue`)
     const { descriptor, errors } = parse(source)
     assert.deepEqual(errors, [])
@@ -88,7 +92,7 @@ test('菜单模板可编译并保留按钮、当前项语义及原有选区处�
   const submenu = read('SettingsSubmenu/SettingsSubmenu.vue')
   assert.match(submenu, /<button[\s\S]*type="button"/)
   assert.match(submenu, /:aria-current="modelValue === item.value \? 'page' : undefined"/)
-  for (const name of ['SecuritySettings', 'ConfigSettings']) {
+  for (const name of ['SecuritySettings', 'ConfigSettings', 'PluginSettings']) {
     assert.match(read(`${name}/${name}.vue`), /<SettingsSubmenu[\s\S]*@select="selectSection"/)
   }
   assert.match(read('HomeHeader/HomeHeader.vue'), /globalStatus.settingsDrawerVisible && globalStatus.settingsActiveTab === item.key/)
@@ -108,8 +112,7 @@ test('一级标签样式不会穿透到插件内部，抽屉样式可命中传�
 test('两级菜单分别提供选中、非选中悬停和键盘焦点样式', () => {
   for (const path of [
     'HomeHeader/HomeHeader.css',
-    'SettingsSubmenu/SettingsSubmenu.css',
-    'PluginSettings/PluginSettings.css'
+    'SettingsSubmenu/SettingsSubmenu.css'
   ]) {
     const source = read(path)
     assert.match(source, /:hover:not\(/)

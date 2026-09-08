@@ -3,7 +3,6 @@ import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import BaseConfig from './BaseConfig/BaseConfig.vue'
 import EmailConfig from './EmailConfig/EmailConfig.vue'
 import SslConfig from './SslConfig/SslConfig.vue'
-import PluginsConfig from './PluginsConfig/PluginsConfig.vue'
 import ConfigMaintenance from './ConfigMaintenance/ConfigMaintenance.vue'
 
 export function useNavigation() {
@@ -15,12 +14,7 @@ export function useNavigation() {
   const pages = [
     { value: 'base', label: '基础配置', component: BaseConfig },
     { value: 'mail', label: '邮件服务', component: EmailConfig },
-    { value: 'ssl', label: 'SSL 配置', component: SslConfig },
-    { value: 'plugins', label: '插件配置', children: [
-      { value: 'spam_block', label: '垃圾邮件拦截', component: PluginsConfig },
-      { value: 'telegram_push', label: 'Telegram 推送', component: PluginsConfig },
-      { value: 'wechat_push', label: '微信推送', component: PluginsConfig }
-    ] }
+    { value: 'ssl', label: 'SSL 配置', component: SslConfig }
   ]
   const tools = [
     { value: 'migration', label: '数据库迁移', capability: 'database.migrate' },

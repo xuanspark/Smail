@@ -1,80 +1,80 @@
-import { computed, reactive, ref } from 'vue'
-
+import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue'
 import { http } from '@/utils/axios'
-
-import lang from '../../../i18n/i18n'
+import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 
 export function usePage() {
-  const pluginList = reactive({})
-  const pluginFrames = ref([])
+  const store = useGlobalStatusStore()
+  const selectedSection = ref(store.hasCapability('config.read') ? 'spam_block' : 'telegram-user')
+  const currentPage = ref(null)
+  const pageHost = ref(null)
+  const switching = ref(false)
+  const externalPlugins = ref([])
+  const loading = ref(false)
+  const errorMessage = ref('')
+  let disposed = false
 
-  const pluginLogicalID = name => {
-    const aliases = {
-      SpamBlock: 'spam_block',
-      WechatPush: 'wechat_push',
-      TelegramPush: 'telegram_push'
+  // 全局配置不依赖正在运行的插件列表，未启用的插件也必须可以配置。
+  const sectionOptions = computed(() => store.hasCapability('config.read') ? [
+    { value: 'spam_block', label: '垃圾邮件拦截', kind: 'config' },
+    { value: 'telegram_push', label: 'Telegram 推送', kind: 'config' },
+    { value: 'wechat_push', label: '微信推送', kind: 'config' }
+  ] : [])
+  const accountOptions = computed(() => store.hasCapability('plugin.read') && store.hasCapability('plugin.write_own')
+    ? [{ value: 'telegram-user', label: 'Telegram 通知', kind: 'account' }]
+    : [])
+  const canReadExternal = () => store.hasCapability('config.read') && store.hasCapability('plugin.read')
+  const externalOptions = computed(() => canReadExternal() ? externalPlugins.value : [])
+  const visiblePages = () => [...sectionOptions.value, ...accountOptions.value, ...externalOptions.value]
+  const activePage = computed(() => visiblePages().find(item => item.value === selectedSection.value))
+  const beforeLeave = () => currentPage.value?.beforeLeave?.() ?? true
+  const selectSection = async value => {
+    const visible = () => visiblePages().some(item => item.value === value)
+    if (disposed || switching.value || value === selectedSection.value || !visible()) return
+    switching.value = true
+    try {
+      if (!await beforeLeave() || disposed || !visible()) return
+      selectedSection.value = value
+      await nextTick()
+      pageHost.value?.closest('.el-tabs__content')?.scrollTo({ top: 0 })
+      pageHost.value?.focus({ preventScroll: true })
+    } finally {
+      switching.value = false
     }
-    return aliases[name] || name
   }
 
-  const pluginEntries = computed(() => {
-    const order = {
-      spam_block: 1,
-      telegram_push: 2,
-      wechat_push: 3
-    }
-    const labels = {
-      spam_block: {
-        label: '垃圾邮件拦截',
-        description: '模型识别与过滤策略'
-      },
-      telegram_push: {
-        label: 'Telegram 推送',
-        description: '邮件通知与消息推送'
-      },
-      wechat_push: {
-        label: '微信推送',
-        description: '插件页面与推送参数'
+  const load = async () => {
+    if (disposed || loading.value || !canReadExternal()) return
+    loading.value = true
+    errorMessage.value = ''
+    try {
+      const response = await http.get('/api/v1/plugin/list')
+      if (disposed || !canReadExternal()) return
+      if (response?.errorNo !== 0 || !Array.isArray(response.data)) {
+        throw new Error(response?.errorMsg || '其他插件列表读取失败')
       }
-    }
-
-    return Object.entries(pluginList)
-      .map(([name, src]) => {
-        const logicalID = pluginLogicalID(name)
-        const metadata = labels[logicalID] || {
+      const builtins = new Set([
+        'spam_block', 'telegram_push', 'wechat_push',
+        'SpamBlock', 'TelegramPush', 'WechatPush', 'WeChatPushHook'
+      ])
+      externalPlugins.value = [...new Set(response.data)]
+        .filter(name => typeof name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(name) && !builtins.has(name))
+        .map(name => ({
+          value: `external:${name}`,
           label: name,
-          description: '插件配置页面'
-        }
-
-        return {
-          name,
-          src,
-          logicalID,
-          label: metadata.label,
-          description: metadata.description
-        }
-      })
-      .sort((left, right) => (order[left.logicalID] || 99) - (order[right.logicalID] || 99))
-  })
-
-  http.get('/api/v1/plugin/list').then(response => {
-    if (Array.isArray(response.data) && response.data.length > 0) {
-      for (const name of response.data) {
-        if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(name)) {
-          continue
-        }
-        pluginList[name] = `/api/v1/plugin/settings/${encodeURIComponent(name)}/index.html`
-      }
+          kind: 'external',
+          src: `/api/v1/plugin/settings/${encodeURIComponent(name)}/index.html`
+        }))
+    } catch (error) {
+      if (!disposed && canReadExternal()) errorMessage.value = error.message || '其他插件列表读取失败'
+    } finally {
+      loading.value = false
     }
-  })
+  }
 
+  onMounted(load)
+  onBeforeUnmount(() => { disposed = true })
   return {
-    ref,
-    reactive,
-    http,
-    lang,
-    pluginList,
-    pluginEntries,
-    pluginFrames
+    sectionOptions, accountOptions, externalOptions, selectedSection, activePage,
+    currentPage, pageHost, selectSection, beforeLeave, load, loading, errorMessage
   }
 }

@@ -8,7 +8,7 @@ import { computed, reactive, ref } from './vue.mjs'
 const root = new URL('../../frontend/src/views/components/PluginSettings/', import.meta.url)
 const source = readFileSync(new URL('TelegramSettings/TelegramSettings.js', root), 'utf8')
 const create = compileFunction(source.replace(/^import .*$/gm, '').replace('export function ', 'function ') + '\nreturn useTelegramSettings()',
-  ['computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'http'])
+  ['computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'http', 'ElMessageBox'])
 
 test('Telegram 原生设置保留版本、限制用户字段，不依赖插件 iframe', async () => {
   const requests = []
@@ -66,7 +66,7 @@ test('Telegram 模板独立编译，其他插件继续保持 sandbox 隔离', ()
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
   const parent = readFileSync(new URL('PluginSettings.vue', root), 'utf8')
-  assert.match(parent, /TelegramSettings v-else-if="entry.logicalID === 'telegram_push'"/)
+  assert.match(parent, /TelegramSettings v-else-if="activePage\?\.kind === 'account'"/)
   assert.match(parent, /sandbox="allow-scripts"/)
   assert.doesNotMatch(parent, /allow-same-origin/)
   const { descriptor, errors } = parse(readFileSync(new URL('TelegramSettings/TelegramSettings.vue', root), 'utf8'))
@@ -74,4 +74,33 @@ test('Telegram 模板独立编译，其他插件继续保持 sandbox 隔离', ()
   assert.doesNotThrow(() => compileScript(descriptor, { id: 'telegram-settings', inlineTemplate: true }))
   assert.deepEqual(compileStyle({ source: readFileSync(new URL('TelegramSettings/TelegramSettings.css', root), 'utf8'), id: 'telegram-settings', scoped: true }).errors, [])
   assert.doesNotMatch(source, /window\.parent|parent\.document|postMessage|localStorage/)
+})
+
+test('Telegram 通知编辑在切页和重新加载前确认，取消保留输入，保存后解除保护', async () => {
+  let cancel = true
+  let reads = 0
+  let prompts = 0
+  const page = create(computed, () => {}, () => {}, reactive, ref, { success() {} }, {
+    get: async url => {
+      reads++
+      return { errorNo: 0, data: url.endsWith('/bot') ? {} : { version: 1, settings: { chatId: '123' } } }
+    },
+    put: async (url, body) => ({ errorNo: 0, data: { version: 2, settings: body.settings } })
+  }, { confirm: async () => { prompts++; if (cancel) throw new Error('取消') } })
+  await page.load()
+  assert.equal(await page.beforeLeave(), true)
+  page.settings.chatId = '456'
+  assert.equal(await page.beforeLeave(), false)
+  await page.refresh()
+  assert.equal(reads, 2)
+  assert.equal(page.settings.chatId, '456')
+  cancel = false
+  assert.equal(await page.beforeLeave(), true)
+  await page.submit('save')
+  assert.equal(page.hasChanges.value, false)
+  const count = prompts
+  assert.equal(await page.beforeLeave(), true)
+  assert.equal(prompts, count)
+  page.working.value = 'save'
+  assert.equal(await page.beforeLeave(), false)
 })

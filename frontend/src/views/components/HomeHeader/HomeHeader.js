@@ -53,7 +53,8 @@ export function usePage() {
     { key: 'rule', label: lang.rule_setting, hint: '邮件处理规则', icon: Filter, component: RuleSettings, capability: 'user.read' },
     { key: 'users', label: lang.user_management, hint: '账号与权限管理', icon: User, component: UserManagement, capability: 'user.manage' },
     { key: 'plugins', label: lang.plugin_settings, hint: '扩展功能管理', icon: Grid, component: PluginSettings, capability: 'plugin.read' },
-  ].filter(item => globalStatus.hasCapability(item.capability)))
+  ].filter(item => globalStatus.hasCapability(item.capability) ||
+    (item.key === 'plugins' && globalStatus.hasCapability('config.read'))))
 
   const activeSettings = computed(() => settingsMenu.value.find(item => item.key === globalStatus.settingsActiveTab))
   const settingsPages = new Map()

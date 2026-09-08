@@ -8,7 +8,7 @@ const lang = {
     "newUser": "新增用户",
     "editUser": "编辑用户",
     "user_management": "用户管理",
-    "plugin_settings": "插件设置",
+    "plugin_settings": "插件配置",
     "lang": "zhCn",
     "submit": "提交",
     "compose": "发件",

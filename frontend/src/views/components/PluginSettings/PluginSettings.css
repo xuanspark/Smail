@@ -1,34 +1,19 @@
-.settings-card {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-header {
-  margin-bottom: 18px;
-}
-
-.settings-header h3 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--pm-text-primary);
-  margin: 0 0 6px;
-}
-
-.settings-desc {
-  font-size: 14px;
-  color: var(--pm-text-secondary);
-  margin: 0;
-}
-
-.plugin-container {
-  flex: 1;
+.plugin-settings {
   min-width: 0;
 }
 
-.plugin-list {
+.plugin-list-error {
   display: grid;
-  gap: 12px;
+  justify-items: start;
+  gap: 8px;
+  padding: 8px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plugin-settings :deep(.telegram-settings) {
+  padding: 0;
 }
 
 .plugin-section {
@@ -55,29 +40,7 @@
   background: var(--pm-bg-primary);
 }
 
-.plugin-section-title {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 12px;
-}
-
-.plugin-section-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  border-radius: 9px;
-  color: var(--pm-primary-color);
-  background: color-mix(in srgb, var(--pm-primary-color) 12%, var(--pm-bg-secondary));
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .04em;
-}
-
-.plugin-section-header h4 {
+.plugin-section-header h3 {
   overflow: hidden;
   margin: 0 0 2px;
   color: var(--pm-text-primary);
@@ -87,37 +50,12 @@
   white-space: nowrap;
 }
 
-.plugin-section-header p {
-  margin: 0;
-  color: var(--pm-text-secondary);
-  font-size: 12px;
-}
-
-.plugin-section-status {
-  flex: 0 0 auto;
-  padding: 4px 9px;
-  border: 1px solid color-mix(in srgb, #16a34a 22%, var(--pm-border-color));
-  border-radius: 999px;
-  color: #15803d;
-  background: #f0fdf4;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.plugin-section-status.is-active {
-  font-weight: 600;
-}
-
 .plugin-section :deep(button:focus-visible),
 .plugin-section :deep(input:focus-visible),
 .plugin-section :deep(textarea:focus-visible),
 .plugin-section :deep(select:focus-visible) {
   outline: 2px solid var(--pm-primary-color);
   outline-offset: 2px;
-}
-
-.plugin-section-content {
-  min-width: 0;
 }
 
 .iframe-wrapper {
@@ -133,31 +71,9 @@ iframe {
   border: 0;
 }
 
-.empty-state {
-  display: flex;
-  min-height: 260px;
-  justify-content: center;
-  align-items: center;
-  border: 1px dashed var(--pm-border-color);
-  border-radius: var(--pm-radius-md);
-  background: var(--pm-bg-secondary);
-}
-
 @media (max-width: 768px) {
-  .settings-header {
-    margin-bottom: 14px;
-  }
-
-  .plugin-list {
-    gap: 10px;
-  }
-
   .plugin-section-header {
     padding: 10px 12px;
-  }
-
-  .plugin-section-status {
-    display: none;
   }
 
   .iframe-wrapper {

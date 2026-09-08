@@ -27,7 +27,7 @@
     </el-form>
     <p class="telegram-hint">启用正文或附件后，相应内容会发送到 Telegram，请确认聊天对象和隐私需求。</p>
     <footer class="telegram-actions">
-      <el-button :disabled="!!working" @click="load">重新加载</el-button>
+      <el-button :disabled="!!working" @click="refresh">重新加载</el-button>
       <el-button :disabled="!ready || !!working || !settings.chatId.trim()" @click="submit('test')">发送测试消息</el-button>
       <el-button type="primary" :disabled="!ready || !!working" @click="submit('save')">保存设置</el-button>
     </footer>
@@ -37,7 +37,9 @@
 <script setup>
 import { useTelegramSettings } from './TelegramSettings.js'
 
-const { settings, ready, working, errorMessage, botLink, load, submit } = useTelegramSettings()
+const { settings, ready, working, errorMessage, botLink, refresh, submit, beforeLeave } = useTelegramSettings()
+
+defineExpose({ beforeLeave })
 </script>
 
 <style scoped src="./TelegramSettings.css"></style>

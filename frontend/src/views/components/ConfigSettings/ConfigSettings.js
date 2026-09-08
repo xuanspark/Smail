@@ -83,7 +83,7 @@ export function usePage(pageKey = 'base') {
       const scope = pending.payload && loadedText.value
         ? (changed.length ? `上次未完成的保存涉及：${changed.join('、')}。` : '上次未完成保存的插件运行配置未变化。')
         : '上次未完成保存的内容尚未完整读取，请刷新后核对。'
-      return `${scope}三个插件共用一组运行配置，请在对应三级菜单核对；完成保存时会统一生效，其他插件的原有配置会保留。`
+      return `${scope}三个插件共用一组运行配置，请在“插件配置”的对应页面核对；完成保存时会统一生效，其他插件的原有配置会保留。`
     }
     if (pending?.section !== 'mail' || apiSection() !== 'mail') return ''
     const active = readFormConfig(loadedText.value)

@@ -1,5 +1,5 @@
 import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 
 const endpoint = '/api/v1/plugin/settings/telegram_push'
@@ -18,6 +18,8 @@ export function useTelegramSettings() {
   const working = ref('')
   const errorMessage = ref('')
   const botUsername = ref('')
+  const savedSettings = ref('')
+  const hasChanges = computed(() => ready.value && JSON.stringify(settings) !== savedSettings.value)
   let disposed = false
   const botLink = computed(() => /^[a-zA-Z0-9_]{5,32}$/.test(botUsername.value)
     ? `https://t.me/${botUsername.value}` : '')
@@ -34,7 +36,20 @@ export function useTelegramSettings() {
       settings[key] = key === 'chatId' ? String(data.settings[key] || '') : data.settings[key] === true
     }
     version.value = data.version
+    savedSettings.value = JSON.stringify(settings)
     ready.value = true
+  }
+  const beforeLeave = async () => {
+    if (working.value) return false
+    if (!hasChanges.value) return true
+    try {
+      await ElMessageBox.confirm('当前通知设置尚未保存，确定离开吗？', '未保存的更改', {
+        type: 'warning', confirmButtonText: '离开', cancelButtonText: '继续编辑'
+      })
+      return true
+    } catch {
+      return false
+    }
   }
   const load = async () => {
     if (working.value || disposed) return
@@ -83,8 +98,22 @@ export function useTelegramSettings() {
       working.value = ''
     }
   }
+  const refresh = async () => {
+    if (await beforeLeave()) await load()
+  }
+  const preventUnload = event => {
+    if (!hasChanges.value && !working.value) return
+    event.preventDefault()
+    event.returnValue = ''
+  }
 
-  onMounted(load)
-  onBeforeUnmount(() => { disposed = true })
-  return { settings, version, ready, working, errorMessage, botLink, load, submit }
+  onMounted(() => {
+    if (typeof window !== 'undefined') window.addEventListener('beforeunload', preventUnload)
+    load()
+  })
+  onBeforeUnmount(() => {
+    disposed = true
+    if (typeof window !== 'undefined') window.removeEventListener('beforeunload', preventUnload)
+  })
+  return { settings, version, ready, working, errorMessage, botLink, load, refresh, submit, beforeLeave, hasChanges }
 }

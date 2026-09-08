@@ -1,46 +1,56 @@
 <template>
-  <div class="settings-card">
-    <div class="settings-header">
-      <h3>{{ lang.extensions }}</h3>
-      <p class="settings-desc">{{ lang.extensions_desc }}</p>
-    </div>
-
-    <div class="plugin-container">
-      <div v-if="pluginEntries.length" class="plugin-list">
-        <section
-          v-for="(entry, index) in pluginEntries"
-          :key="entry.src"
-          class="plugin-section"
-        >
-          <header class="plugin-section-header">
-            <div class="plugin-section-title">
-              <span class="plugin-section-index">{{ String(index + 1).padStart(2, '0') }}</span>
-              <div>
-                <h4>{{ entry.label }}</h4>
-                <p>{{ entry.description }}</p>
-              </div>
-            </div>
-            <span class="plugin-section-status is-active">已启用</span>
-          </header>
-
-          <div class="plugin-section-content">
-            <SpamBlockSettings v-if="entry.logicalID === 'spam_block'" />
-            <TelegramSettings v-else-if="entry.logicalID === 'telegram_push'" />
-            <div v-else class="iframe-wrapper">
-              <iframe
-                :src="entry.src"
-                sandbox="allow-scripts"
-                referrerpolicy="no-referrer"
-                ref="pluginFrames"
-                :data-plugin="entry.name"
-                :title="entry.name"
-              />
-            </div>
+  <div class="config-settings plugin-settings">
+    <div class="config-workspace">
+      <aside class="config-navigation">
+        <SettingsSubmenu
+          v-if="sectionOptions.length"
+          title="插件配置"
+          caption="运行配置"
+          :items="sectionOptions"
+          :model-value="selectedSection"
+          @select="selectSection"
+        />
+        <SettingsSubmenu
+          v-if="accountOptions.length"
+          title="账号通知"
+          caption="当前账号"
+          :items="accountOptions"
+          :model-value="selectedSection"
+          @select="selectSection"
+        />
+        <SettingsSubmenu
+          v-if="externalOptions.length"
+          title="其他插件"
+          :items="externalOptions"
+          :model-value="selectedSection"
+          @select="selectSection"
+        />
+        <div v-if="errorMessage" class="plugin-list-error" role="alert">
+          <span>{{ errorMessage }}</span>
+          <el-button size="small" :loading="loading" @click="load">重试</el-button>
+        </div>
+      </aside>
+      <div ref="pageHost" class="config-main" :aria-label="activePage?.label" tabindex="-1">
+        <PluginsConfig
+          v-if="activePage?.kind === 'config'"
+          :key="selectedSection"
+          ref="currentPage"
+          :page-key="selectedSection"
+        />
+        <TelegramSettings v-else-if="activePage?.kind === 'account'" ref="currentPage" />
+        <section v-else-if="activePage?.kind === 'external'" class="plugin-section">
+          <header class="plugin-section-header"><h3>{{ activePage.label }}</h3></header>
+          <div class="iframe-wrapper">
+            <iframe
+              :key="activePage.value"
+              :src="activePage.src"
+              sandbox="allow-scripts"
+              referrerpolicy="no-referrer"
+              :title="activePage.label"
+            />
           </div>
         </section>
-      </div>
-      <div v-else class="empty-state">
-        <el-empty :description="lang.no_plugins_installed" :image-size="120" />
+        <el-empty v-else description="当前账号没有可访问的插件配置" :image-size="100" />
       </div>
     </div>
   </div>
@@ -48,13 +58,17 @@
 
 <script setup>
 import { usePage } from './PluginSettings.js'
-import SpamBlockSettings from './SpamBlockSettings/SpamBlockSettings.vue'
+import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
+import PluginsConfig from '../ConfigSettings/PluginsConfig/PluginsConfig.vue'
 import TelegramSettings from './TelegramSettings/TelegramSettings.vue'
 
 const {
-  lang,
-  pluginEntries
+  sectionOptions, accountOptions, externalOptions, selectedSection, activePage,
+  currentPage, pageHost, selectSection, beforeLeave, load, loading, errorMessage
 } = usePage()
+
+defineExpose({ beforeLeave })
 </script>
 
+<style scoped src="../ConfigSettings/ConfigSettings.css"></style>
 <style scoped src="./PluginSettings.css"></style>
