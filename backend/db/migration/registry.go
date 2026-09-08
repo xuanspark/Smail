@@ -26,6 +26,7 @@ func DefaultMigrations() []Migration {
 		DefineCustom(14, "expand_imap_deleted_flag", "expand_imap_deleted_flag_v1", applyIMAPDeletedFlagSchema),
 		DefineCustom(15, "expand_security_setup", "expand_security_setup_v1", applySecuritySetupSchema),
 		DefineCustom(16, "expand_user_security_preferences", "expand_user_security_preferences_v1", applyUserSecurityPreferencesSchema),
+		DefineForDialects(17, "create_managed_logs", logStatements()),
 	}
 }
 

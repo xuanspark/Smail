@@ -8,6 +8,7 @@ import (
 	"git.pcux.cn/xuans/Smail/internal/buildinfo"
 	"git.pcux.cn/xuans/Smail/listen/cron_server"
 	"git.pcux.cn/xuans/Smail/res_init"
+	"git.pcux.cn/xuans/Smail/services/runtimelog"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	log "github.com/sirupsen/logrus"
 )
@@ -23,6 +24,11 @@ func Run() error {
 	if err := config.Init(); err != nil {
 		return err
 	}
+	runtimeLogs, err := runtimelog.Start(config.ROOT_PATH)
+	if err != nil {
+		return fmt.Errorf("启动运行日志失败: %w", err)
+	}
+	defer runtimeLogs.Close()
 	config.MaintainManagedSSLHistory()
 
 	build := buildinfo.Current()

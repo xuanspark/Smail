@@ -26,20 +26,20 @@ const (
 )
 
 type ConfigAuditEvent struct {
-	ID                 string          `json:"id"`
-	Operation          ConfigOperation `json:"operation"`
-	Section            Section         `json:"section,omitempty"`
-	ActorID            string          `json:"actorId"`
-	ActorRole          string          `json:"actorRole"`
-	ActorName          string          `json:"actorName,omitempty"`
+	ID                 string              `json:"id"`
+	Operation          ConfigOperation     `json:"operation"`
+	Section            Section             `json:"section,omitempty"`
+	ActorID            string              `json:"actorId"`
+	ActorRole          string              `json:"actorRole"`
+	ActorName          string              `json:"actorName,omitempty"`
 	Changes            []ConfigAuditChange `json:"changes,omitempty"`
-	FromGeneration     uint64          `json:"fromGeneration"`
-	ToGeneration       uint64          `json:"toGeneration"`
-	TargetGeneration   uint64          `json:"targetGeneration,omitempty"`
-	ChangedFields      []string        `json:"changedFields,omitempty"`
-	ConfirmationMethod string          `json:"confirmationMethod,omitempty"`
-	Result             string          `json:"result"`
-	CreatedAt          time.Time       `json:"createdAt"`
+	FromGeneration     uint64              `json:"fromGeneration"`
+	ToGeneration       uint64              `json:"toGeneration"`
+	TargetGeneration   uint64              `json:"targetGeneration,omitempty"`
+	ChangedFields      []string            `json:"changedFields,omitempty"`
+	ConfirmationMethod string              `json:"confirmationMethod,omitempty"`
+	Result             string              `json:"result"`
+	CreatedAt          time.Time           `json:"createdAt"`
 }
 type ConfigAuditWriter interface {
 	WriteConfigAudit(context.Context, ConfigAuditEvent) error
@@ -107,6 +107,7 @@ func (w *MemoryAuditWriter) Query(ctx context.Context, query ConfigAuditQuery) (
 		}
 		copyEvent := event
 		copyEvent.ChangedFields = append([]string(nil), event.ChangedFields...)
+		copyEvent.Changes = append([]ConfigAuditChange(nil), event.Changes...)
 		result = append(result, copyEvent)
 		if len(result) >= limit {
 			break
@@ -141,6 +142,7 @@ func (w *MemoryAuditWriter) Events() []ConfigAuditEvent {
 	copy(result, w.events)
 	for index := range result {
 		result[index].ChangedFields = append([]string(nil), result[index].ChangedFields...)
+		result[index].Changes = append([]ConfigAuditChange(nil), result[index].Changes...)
 	}
 	return result
 }

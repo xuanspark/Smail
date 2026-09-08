@@ -28,6 +28,9 @@ func (p *Response) FPrint(w http.ResponseWriter) {
 		http.Error(w, "\u54cd\u5e94\u5e8f\u5217\u5316\u5931\u8d25", http.StatusInternalServerError)
 		return
 	}
+	if observer, ok := w.(interface{ ObserveResult(int) }); ok {
+		observer.ObserveResult(p.ErrorNo)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write(bytesData); err != nil {
 		log.WithError(err).Error("write HTTP response failed")

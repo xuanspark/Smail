@@ -7,6 +7,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/consts"
@@ -119,7 +120,18 @@ func parseRecipientAddress(user *parsemail.User) (string, string, error) {
 	return address, domain, nil
 }
 
-func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemail.User, from string) (error, map[string]error) {
+func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemail.User, from string) (sendErr error, recipientErrors map[string]error) {
+	defer func() {
+		result := "success"
+		if sendErr != nil || len(recipientErrors) > 0 {
+			result = "failure"
+		}
+		userID := 0
+		if ctx != nil {
+			userID = ctx.UserID
+		}
+		logstore.MailResult(userID, "outbound", from, len(to), len(data), result)
+	}()
 	if len(to) == 0 {
 		err := errors.New("no recipients")
 		return err, map[string]error{"recipients": err}

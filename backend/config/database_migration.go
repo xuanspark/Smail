@@ -9,6 +9,14 @@ import (
 
 var ErrDatabaseMigrationTarget = errors.New("database migration target is invalid")
 
+type migrationAuditKey struct{}
+
+// WithMigrationAuditWriter 仅供持有迁移目标连接的执行器设置迁移审计去向。
+// 普通配置更新不读取该上下文值，HTTP 请求不能指定审计数据库。
+func WithMigrationAuditWriter(ctx context.Context, writer ConfigAuditWriter) context.Context {
+	return context.WithValue(ctx, migrationAuditKey{}, writer)
+}
+
 // SwitchDatabase 提交已完成复制与校验的目标连接，保留旧库并标记重启。
 // 普通配置编辑不能绕过本迁移入口切换数据库类型。
 func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration uint64, target DatabaseConfig, actor AuditActor) error {
@@ -91,7 +99,7 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if !sameDatabaseConnection(current.Root.Database, target) {
 		changedField = "root.database"
 	}
-	return m.writeAudit(ctx, ConfigAuditEvent{
+	event := ConfigAuditEvent{
 		Operation:        ConfigOperationMigration,
 		Section:          SectionRoot,
 		ActorID:          actor.UserID,
@@ -104,7 +112,14 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 		ChangedFields:    []string{changedField},
 		Result:           "success",
 		CreatedAt:        now,
-	})
+	}
+	if writer, ok := ctx.Value(migrationAuditKey{}).(ConfigAuditWriter); ok && writer != nil {
+		if err := writer.WriteConfigAudit(ctx, event); err != nil {
+			return errors.Join(ErrAuditWrite, err)
+		}
+		return nil
+	}
+	return m.writeAudit(ctx, event)
 }
 
 // SameDatabaseLocation 不把用户名或密码不同误认为不同数据库。

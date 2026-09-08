@@ -177,7 +177,9 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 				response.NewErrorResponse(response.NeedSetup, "", "").FPrint(w)
 				return
 			}
-			h(ctx, w, r)
+			observed, finish := operationLog(ctx, r, w)
+			defer finish()
+			h(ctx, observed, r)
 		})).ServeHTTP(w, r)
 	}
 }

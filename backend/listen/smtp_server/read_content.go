@@ -20,6 +20,7 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/listen/imap_server"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/services/rule"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/async"
@@ -38,13 +39,25 @@ import (
 // 注意：此开关只能通过修改代码来更改，不暴露给用户配置
 const DropUnknownRecipientEmails = true
 
-func (s *Session) Data(r io.Reader) error {
+func (s *Session) Data(r io.Reader) (resultErr error) {
+	messageBytes := 0
+	defer func() {
+		result, direction := "success", "inbound"
+		if resultErr != nil {
+			result = "failure"
+		}
+		if s.Ctx.UserID > 0 {
+			direction = "submission"
+		}
+		logstore.MailResult(s.Ctx.UserID, direction, s.From, len(s.To), messageBytes, result)
+	}()
 
 	ctx := s.Ctx
 
 	log.WithContext(ctx).Debugf("收到邮件")
 
 	emailData, err := io.ReadAll(io.LimitReader(r, maxSMTPMessageBytes+1))
+	messageBytes = len(emailData)
 	if err != nil {
 		log.WithContext(ctx).Error("邮件内容无法读取", err)
 		return err

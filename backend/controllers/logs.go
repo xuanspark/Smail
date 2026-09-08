@@ -1,0 +1,93 @@
+package controllers
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+
+	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/logstore"
+	"git.pcux.cn/xuans/Smail/services/runtimelog"
+	appcontext "git.pcux.cn/xuans/Smail/utils/context"
+)
+
+func logQueryError(w http.ResponseWriter, err error) {
+	response.NewErrorResponse(response.ServerError, "日志查询失败，请检查日志存储状态", "LOG_QUERY_FAILED").FPrint(w)
+}
+
+// GetLogs 只读日志入口，授权在服务端检查，不依赖导航隐藏。
+func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
+	if err := authorizeCapability(ctx, access.CapabilityAuditRead, "", false); err != nil {
+		writeConfigAccessError(w, err)
+		return
+	}
+	values := req.URL.Query()
+	limit, offset := 50, 0
+	var err error
+	if values.Has("limit") {
+		limit, err = strconv.Atoi(values.Get("limit"))
+	}
+	if err == nil && values.Has("offset") {
+		offset, err = strconv.Atoi(values.Get("offset"))
+	}
+	if err != nil || limit < 1 || limit > 500 || offset < 0 || offset > 100000 {
+		writeConfigError(w, config.ErrInvalidAuditQuery)
+		return
+	}
+	bounded, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	defer cancel()
+	if values.Get("kind") == "runtime" {
+		writer := runtimelog.Current()
+		if writer == nil {
+			logQueryError(w, runtimelog.ErrInvalid)
+			return
+		}
+		if values.Get("file") == "" {
+			files, err := writer.Files()
+			if err != nil {
+				logQueryError(w, err)
+				return
+			}
+			response.NewSuccessResponse(map[string]any{"files": files}).FPrint(w)
+			return
+		}
+		page, err := writer.Read(bounded, values.Get("file"), offset, limit)
+		if err != nil {
+			logQueryError(w, err)
+			return
+		}
+		response.NewSuccessResponse(page).FPrint(w)
+		return
+	}
+	query := logstore.Query{Kind: values.Get("kind"), ActorID: values.Get("actorId"), Limit: limit + 1, Offset: offset}
+	for _, item := range []struct {
+		name   string
+		target *time.Time
+	}{{"from", &query.From}, {"to", &query.To}} {
+		if values.Get(item.name) != "" {
+			*item.target, err = time.Parse(time.RFC3339Nano, values.Get(item.name))
+			if err != nil {
+				writeConfigError(w, config.ErrInvalidAuditQuery)
+				return
+			}
+		}
+	}
+	if query.Kind != "config" && query.Kind != "operation" && query.Kind != "mail" {
+		writeConfigError(w, config.ErrInvalidAuditQuery)
+		return
+	}
+	store := logstore.Current()
+	items, err := store.Query(bounded, query)
+	if err != nil {
+		logQueryError(w, err)
+		return
+	}
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	response.NewSuccessResponse(map[string]any{"items": items, "hasMore": hasMore, "retentionDays": 30}).FPrint(w)
+}

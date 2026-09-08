@@ -12,6 +12,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db/migration"
+	"git.pcux.cn/xuans/Smail/services/logstore"
 )
 
 // PortableExecutor 使用版本化目标结构复制业务数据，不拼接用户提供的 SQL。
@@ -220,7 +221,13 @@ func (e *PortableExecutor) Run(ctx context.Context, plan Plan, update func(Statu
 	if err := update(StatusSwitching); err != nil {
 		return err
 	}
-	err = e.switchConfig(ctx, plan.expectedGeneration, plan.targetConfig, plan.actor)
+	// 源库此时仍持有写锁，切换审计必须写入已复制且校验完成的目标库。
+	logStore, err := logstore.New(target, dialect)
+	if err != nil {
+		return err
+	}
+	switchContext := config.WithMigrationAuditWriter(ctx, &logstore.AuditWriter{Store: logStore})
+	err = e.switchConfig(switchContext, plan.expectedGeneration, plan.targetConfig, plan.actor)
 	if err != nil && isKnownSwitchRejection(err) {
 		return err
 	}

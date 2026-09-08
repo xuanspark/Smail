@@ -777,7 +777,9 @@ func (m *ConfigManager) writeAudit(ctx context.Context, event ConfigAuditEvent) 
 
 func changedFields(current, candidate RuntimeConfig, section Section) []string {
 	var fields []string
-	for _, change := range AuditChanges(current, candidate) { fields = append(fields, change.Field) }
+	for _, change := range AuditChanges(current, candidate) {
+		fields = append(fields, change.Field)
+	}
 	return fields
 }
 

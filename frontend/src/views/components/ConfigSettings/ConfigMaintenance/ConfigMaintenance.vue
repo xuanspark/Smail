@@ -164,7 +164,13 @@
             <div v-for="{ entry: item } in auditRows" :key="item.id || `${item.createdAt}-${item.operation}`" class="audit-item">
               <div>
                 <strong>{{ operationLabel(item.operation) }}</strong>
-                <span>{{ sectionLabel(item.section) }} · {{ item.actorId || '系统' }}</span>
+                <span>{{ sectionLabel(item.section) }} · {{ item.actorName || item.actorId || '系统' }}</span>
+                <details v-if="item.changes?.length" class="audit-changes">
+                  <summary>{{ item.changes.length }} 个字段变更</summary>
+                  <p v-for="change in item.changes" :key="change.field">
+                    {{ change.field }}：{{ change.before }} → {{ change.after }}
+                  </p>
+                </details>
               </div>
               <time>{{ formatTime(item.createdAt) }}</time>
             </div>

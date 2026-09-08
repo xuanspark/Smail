@@ -17,10 +17,11 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
+	"git.pcux.cn/xuans/Smail/utils/logpolicy"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
-const ConfigAuditRetention = 365 * 24 * time.Hour
+const ConfigAuditRetention = logpolicy.Retention
 
 var (
 	ErrAuditStorageUnavailable = errors.New("configuration audit storage unavailable")
@@ -296,6 +297,7 @@ func normalizeAuditEvent(event ConfigAuditEvent) (ConfigAuditEvent, error) {
 	event.ActorRole = strings.TrimSpace(event.ActorRole)
 	event.ConfirmationMethod = strings.ToLower(strings.TrimSpace(event.ConfirmationMethod))
 	event.ChangedFields = append([]string(nil), event.ChangedFields...)
+	event.Changes = append([]ConfigAuditChange(nil), event.Changes...)
 	if err := validateAuditEvent(event); err != nil {
 		return ConfigAuditEvent{}, err
 	}
@@ -326,15 +328,25 @@ func validateAuditEvent(event ConfigAuditEvent) error {
 	if event.Result != "success" && event.Result != "failure" {
 		return ErrAuditEventInvalid
 	}
-	if strings.ContainsAny(event.ActorID+event.ActorRole+event.ConfirmationMethod, "\r\n") || len(event.ActorID) > 128 || len(event.ActorRole) > 64 {
+	if strings.ContainsAny(event.ActorID+event.ActorRole+event.ActorName+event.ConfirmationMethod, "\r\n") || len(event.ActorID) > 128 || len(event.ActorRole) > 64 || len(event.ActorName) > 256 {
 		return ErrAuditEventInvalid
 	}
 	for _, field := range event.ChangedFields {
-		if field == "" || len(field) > 64 || strings.ContainsAny(field, "\r\n") {
+		if field == "" || len(field) > 1024 || strings.ContainsAny(field, "\r\n") {
+			return ErrAuditEventInvalid
+		}
+	}
+	for _, change := range event.Changes {
+		if change.Field == "" || len(change.Field) > 1024 || strings.ContainsAny(change.Field, "\r\n") || len([]rune(change.Before)) > 513 || len([]rune(change.After)) > 513 {
 			return ErrAuditEventInvalid
 		}
 	}
 	return nil
+}
+
+// NormalizeConfigAuditEvent 供数据库审计复用同一套标识、校验和复制规则。
+func NormalizeConfigAuditEvent(event ConfigAuditEvent) (ConfigAuditEvent, error) {
+	return normalizeAuditEvent(event)
 }
 
 func auditEventMatches(event ConfigAuditEvent, query ConfigAuditQuery) bool {

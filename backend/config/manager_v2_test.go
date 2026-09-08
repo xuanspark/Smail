@@ -1771,7 +1771,8 @@ func TestConfigManagerWritesRedactedAuditAndDegradesOnAuditFailure(t *testing.T)
 		t.Fatal(err)
 	}
 	events := writer.Events()
-	if len(events) != 1 || events[0].Section != SectionEmail || len(events[0].ChangedFields) != 1 || events[0].ChangedFields[0] != string(SectionEmail) {
+	// 原样保存只记录操作，不能伪造业务字段发生变更。
+	if len(events) != 1 || events[0].Section != SectionEmail || len(events[0].ChangedFields) != 0 || len(events[0].Changes) != 0 {
 		t.Fatalf("unexpected audit events: %+v", events)
 	}
 	if events[0].Result != "success" || events[0].ToGeneration != 2 {

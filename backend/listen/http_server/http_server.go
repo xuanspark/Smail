@@ -110,6 +110,7 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/v1/config/", limitBody(4<<20, contextIterceptor(configRoute)))
 	mux.HandleFunc("/api/v1/audits/config", limitBody(1<<20, contextIterceptor(configAuditRoute)))
 	mux.HandleFunc("/api/v1/audits/config/", limitBody(1<<20, contextIterceptor(configAuditSubRoute)))
+	mux.HandleFunc("/api/v1/logs", onlyMethod(http.MethodGet, contextIterceptor(controllers.GetLogs)))
 	mux.HandleFunc("/api/v1/database/migrations/preview", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.PreviewDatabaseMigration))))
 	mux.HandleFunc("/api/v1/database/migrations", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.ExecuteDatabaseMigration))))
 	mux.HandleFunc("/api/v1/database/migrations/", contextIterceptor(databaseMigrationSubRoute))

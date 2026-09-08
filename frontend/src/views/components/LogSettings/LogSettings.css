@@ -1,0 +1,94 @@
+.log-settings {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+.log-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.log-heading h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.log-heading span,
+.log-pagination span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.log-categories {
+  flex-wrap: wrap;
+}
+
+.log-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.log-filters :deep(.el-date-editor) {
+  flex: 2 1 290px;
+  min-width: 0;
+  width: auto;
+}
+
+.log-filters .el-input {
+  flex: 1 1 130px;
+  max-width: 190px;
+}
+
+.log-filters .el-select {
+  flex: 1;
+  min-width: 200px;
+}
+
+.log-content {
+  flex: 1;
+  min-height: 160px;
+  overflow: hidden;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+
+.runtime-lines {
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px;
+  font: 12px/1.7 Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--el-fill-color-light);
+}
+
+.log-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.log-detail-grid {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.log-detail-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

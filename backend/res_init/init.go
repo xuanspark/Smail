@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/controllers"
 	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/hooks"
 	"git.pcux.cn/xuans/Smail/listen/http_server"
@@ -23,6 +24,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
+	"git.pcux.cn/xuans/Smail/services/logstore"
 	pluginservice "git.pcux.cn/xuans/Smail/services/plugin"
 	"git.pcux.cn/xuans/Smail/services/recovery"
 	"git.pcux.cn/xuans/Smail/services/restart"
@@ -44,6 +46,7 @@ var adminResetServeErrors chan error
 var verificationRuntime *verification.Runtime
 var credentialService *credentials.Service
 var webAuthnRuntimeService *webauthnservice.Service
+var logRuntime *logstore.Runtime
 
 func startConfigManager() error {
 	root := filepath.Join(config.ROOT_PATH, "config")
@@ -72,10 +75,20 @@ func startConfigManager() error {
 		dbmigration.SetCurrent(nil)
 		return nil
 	}
-	manager, err := config.NewConfigManager(config.ROOT_PATH, config.ConfigLoaderOptions{Validation: config.RuntimeValidationOptions{
+	security := config.ConfigSecurity{}
+	if store := logstore.Current(); store != nil {
+		audit := &logstore.AuditWriter{Store: store}
+		importCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := audit.ImportLegacy(importCtx, config.ROOT_PATH); err != nil {
+			return fmt.Errorf("迁移旧配置审计失败，源文件已保留: %w", err)
+		}
+		security.Audit = audit
+	}
+	manager, err := config.NewConfigManagerWithSecurity(config.ROOT_PATH, config.ConfigLoaderOptions{Validation: config.RuntimeValidationOptions{
 		HasSuperAdmin: true,
 		Production:    !config.DevelopmentMode,
-	}})
+	}}, security)
 	if err != nil {
 		return fmt.Errorf("load partitioned configuration: %w", err)
 	}
@@ -97,6 +110,8 @@ func startConfigManager() error {
 }
 
 func stopConfigManager() {
+	logRuntime.Stop()
+	logRuntime = nil
 	dbmigration.Current().Close()
 	config.SetRuntimeManager(nil)
 	dbmigration.SetCurrent(nil)
@@ -166,7 +181,18 @@ func Init(serverVersion string) error {
 		if err := db.Init(serverVersion); err != nil {
 			return err
 		}
+		dialect, err := migration.ParseDialect(cfg.DbType)
+		if err != nil {
+			return err
+		}
+		store, err := logstore.New(db.Instance.DB().DB, dialect)
+		if err != nil {
+			return err
+		}
+		logRuntime = logstore.Start(store)
 		if err := startConfigManager(); err != nil {
+			logRuntime.Stop()
+			logRuntime = nil
 			return err
 		}
 		if err := startPluginConfigMigration(); err != nil {
@@ -273,6 +299,8 @@ func stopServices() error {
 	// 先关闭业务入口，再撤下安全服务及会话清理器，避免新请求读取停止中的依赖。
 	stopVerificationRuntime()
 	session.Stop()
+	logRuntime.Stop()
+	logRuntime = nil
 	// 关闭连接池后还要等待借出的连接归还，不能提前解除迁移源锁。
 	if db.Instance != nil {
 		_ = db.Instance.Close()
