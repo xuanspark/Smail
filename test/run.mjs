@@ -6,8 +6,8 @@ import path from 'node:path'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const [suite = 'all', ...extra] = process.argv.slice(2)
-if (!['all', 'frontend', 'backend'].includes(suite)) {
-  console.error('用法：node test/run.mjs [all|frontend|backend] [Go 测试参数]')
+if (!['all', 'frontend', 'backend', 'deployment'].includes(suite)) {
+  console.error('用法：node test/run.mjs [all|frontend|backend|deployment] [Go 测试参数]')
   process.exit(2)
 }
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -31,14 +31,21 @@ async function run(name, command, args, cwd) {
 }
 
 let result = 0
-if (suite !== 'backend') {
+if (suite === 'all' || suite === 'frontend') {
   const tests = (await readdir(path.join(root, 'test', 'frontend')))
     .filter(name => name.endsWith('.test.mjs'))
     .map(name => path.join(root, 'test', 'frontend', name))
   if (!tests.length) throw new Error('没有找到前端测试，拒绝空测试通过')
   result = await run('frontend', process.execPath, ['--test', ...tests], path.join(root, 'frontend'))
 }
-if (suite !== 'frontend' && result === 0) {
+if ((suite === 'all' || suite === 'deployment') && result === 0) {
+  const tests = (await readdir(path.join(root, 'test', 'deployment')))
+    .filter(name => name.endsWith('.test.mjs'))
+    .map(name => path.join(root, 'test', 'deployment', name))
+  if (!tests.length) throw new Error('没有找到部署测试，拒绝空测试通过')
+  result = await run('deployment', process.execPath, ['--test', ...tests], root)
+}
+if ((suite === 'all' || suite === 'backend') && result === 0) {
   const args = extra[0] === '--' ? extra.slice(1) : extra
   // 独立回归源码集中放在 test/backend，通过 overlay 保留同包测试语义。
   const replacements = {
@@ -59,7 +66,17 @@ if (suite !== 'frontend' && result === 0) {
   await writeFile(overlay, JSON.stringify({ Replace }, null, 2) + '\n')
   // 显式传入的审查 overlay 保持原有行为，默认入口自动包含本轮回归。
   const overlayArgs = args.some(arg => arg === '-overlay' || arg.startsWith('-overlay=')) ? [] : [`-overlay=${overlay}`]
-  result = await run('backend', 'go', ['test', ...overlayArgs, ...(args.length ? args : ['./...'])], path.join(root, 'backend'))
+  const goArguments = ['test', ...overlayArgs, ...(args.length ? args : ['./...'])]
+  if (process.platform === 'win32') {
+    const invocation = path.join(directory, 'go-invocation.json')
+    await writeFile(invocation, JSON.stringify({ arguments: goArguments }, null, 2) + '\n')
+    result = await run('backend', 'powershell.exe', [
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+      path.join(root, 'test', 'deployment', 'run-go.ps1'), '-InvocationFile', invocation,
+    ], root)
+  } else {
+    result = await run('backend', 'go', goArguments, path.join(root, 'backend'))
+  }
 }
 console.log(`测试记录：${path.relative(root, directory)}`)
 process.exitCode = result

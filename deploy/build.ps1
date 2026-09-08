@@ -2,6 +2,9 @@
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'workspace-lock.ps1')
+$workspaceLock = Enter-SmailWorkspaceLock -Root $root
+try {
 $fingerprint = & node (Join-Path $PSScriptRoot 'build-state.mjs') fingerprint
 if ($LASTEXITCODE -ne 0) { throw '无法计算源码指纹' }
 $output = Join-Path $root 'out\backend'
@@ -62,3 +65,7 @@ if (-not $SkipFrontend) {
     if ($LASTEXITCODE -ne 0) { throw '编译产物封存失败，禁止部署或启动旧包' }
 }
 Write-Output '构建完成：out/frontend、out/backend 和 out/plugins，包含三个内置插件。正式发行请使用 Makefile 的跨平台构建目标。'
+} finally {
+    $workspaceLock.ReleaseMutex()
+    $workspaceLock.Dispose()
+}
