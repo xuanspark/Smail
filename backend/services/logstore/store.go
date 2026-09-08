@@ -92,6 +92,9 @@ func replacePlaceholders(statement string, index *int) string {
 
 // Write 只接受业务点构造的脱敏载荷，禁止直接传入 HTTP 请求或邮件正文。
 func (s *Store) Write(ctx context.Context, entry Entry) error {
+	if entry.Kind == "config" {
+		return ErrInvalid
+	}
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}

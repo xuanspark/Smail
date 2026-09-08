@@ -94,7 +94,7 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 		response.NewSuccessResponse(page).FPrint(w)
 		return
 	}
-	if query.Kind != "config" && query.Kind != "operation" && query.Kind != "mail" {
+	if query.Kind != "operation" && query.Kind != "mail" {
 		writeConfigError(w, config.ErrInvalidAuditQuery)
 		return
 	}

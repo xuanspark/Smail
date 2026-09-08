@@ -76,15 +76,6 @@ func startConfigManager() error {
 		return nil
 	}
 	security := config.ConfigSecurity{}
-	if store := logstore.Current(); store != nil {
-		audit := &logstore.AuditWriter{Store: store}
-		importCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		if err := audit.ImportLegacy(importCtx, config.ROOT_PATH); err != nil {
-			return fmt.Errorf("迁移旧配置审计失败，源文件已保留: %w", err)
-		}
-		security.Audit = audit
-	}
 	manager, err := config.NewConfigManagerWithSecurity(config.ROOT_PATH, config.ConfigLoaderOptions{Validation: config.RuntimeValidationOptions{
 		HasSuperAdmin: true,
 		Production:    !config.DevelopmentMode,

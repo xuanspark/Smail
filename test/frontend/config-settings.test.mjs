@@ -60,61 +60,46 @@ function deferred() {
 }
 
 for (const cancelled of [false, true]) {
-  test(`审计导出身份过期后确认密码再重试，取消不误报失败：取消=${cancelled}`, async context => {
-    const originalDocument = globalThis.document
-    let downloads = 0
-    globalThis.document = { createElement: () => ({ click: () => { downloads++ } }) }
-    context.after(() => { globalThis.document = originalDocument })
+  test(`共享身份确认保留单次重试，移除审计不影响其他操作：取消=${cancelled}`, async () => {
     const requests = []
     let prompts = 0
-    const { page, messages, successes } = fixture(() => {}, 'audit', {
+    const helpers = compileRecentAuthentication({
       prompt: async () => {
         prompts++
         if (cancelled) throw 'cancel'
         return { value: 'test-password' }
-      },
-      http: {
-        post: async (url, body) => {
-          requests.push(url)
-          if (url.endsWith('/reauth')) {
-            assert.equal(body.password, 'test-password')
-            return { errorNo: 0 }
-          }
-          if (requests.length === 1) {
-            throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
-          }
-          return new Blob(['action\nupdate'], { type: 'text/csv' })
-        }
+      }
+    }, {
+      post: async (url, body) => {
+        requests.push(url)
+        assert.equal(body.password, 'test-password')
+        return { errorNo: 0 }
       }
     })
-    await page.exportAudit('csv')
+    let attempts = 0
+    const action = helpers.requestWithRecentAuthentication(async () => {
+      if (++attempts === 1) throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
+      return { errorNo: 0 }
+    })
+    if (cancelled) await assert.rejects(action, error => helpers.isRecentAuthenticationCancelled(error))
+    else assert.equal((await action).errorNo, 0)
     assert.equal(prompts, 1)
-    assert.equal(downloads, cancelled ? 0 : 1)
-    assert.deepEqual(messages, [])
-    assert.equal(successes.length, cancelled ? 0 : 1)
-    assert.equal(page.working.value, '')
-    assert.deepEqual(requests, cancelled
-      ? ['/api/v1/audits/config']
-      : ['/api/v1/audits/config', '/api/v1/security/reauth', '/api/v1/audits/config'])
+    assert.equal(attempts, cancelled ? 1 : 2)
+    assert.deepEqual(requests, cancelled ? [] : ['/api/v1/security/reauth'])
   })
 }
 
-test('审计导出确认身份后仍被拒绝时只重试一次，不能下载错误文件', async () => {
-  let exports = 0
-  const { page, messages } = fixture(() => {}, 'audit', {
-    prompt: async () => ({ value: 'test-password' }),
-    http: {
-      post: async url => {
-        if (url.endsWith('/reauth')) return { errorNo: 0 }
-        exports++
-        throw Object.assign(new Error('需要最近认证'), { apiErrorCode: 'RECENT_AUTH_REQUIRED' })
-      }
-    }
-  })
-  await page.exportAudit('csv')
-  assert.equal(exports, 2)
-  assert.deepEqual(messages, ['需要最近认证'])
-  assert.equal(page.working.value, '')
+test('移除配置审计查询、导出和维护面板，不保留隐藏请求', async () => {
+  const requests = []
+  const { page } = fixture(async path => {
+    requests.push(path)
+    return { errorNo: 0, data: { available: true } }
+  }, 'audit')
+  await page.loadAll()
+  assert.deepEqual(requests, ['/api/v1/config/status'])
+  assert.equal(page.loadAudit, undefined)
+  assert.equal(page.exportAudit, undefined)
+  assert.doesNotMatch(source, /audits\/config|auditItems|canExportAudit/)
 })
 
 test('证书页从状态接口读取生效反代模式，不额外加载基础配置', async () => {
@@ -210,12 +195,9 @@ test('配置页不加载备份或审计，维护页失败只显示本页错误',
   assert.equal(page.editorText.value, '{}')
   assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/base'])
   const backup = fixture(get, 'backups').page
-  const audit = fixture(get, 'audit').page
-  await Promise.all([backup.loadAll(), audit.loadAll()])
+  await backup.loadAll()
   assert.equal(backup.backupsError.value, '配置服务暂时不可用')
-  assert.equal(audit.auditError.value, '配置服务暂时不可用')
   assert.equal(backup.editorText.value, '')
-  assert.equal(audit.editorText.value, '')
   assert.deepEqual(messages, [])
   await page.loadBackups()
   assert.deepEqual(messages, [])
@@ -229,24 +211,19 @@ test('附属模块失败清除旧数据和回滚选择，重试成功清除错�
     return { errorNo: 0, data: [{ generation: 2 }] }
   })
   page.backups.value = [{ generation: 1 }]
-  page.auditItems.value = [{ id: 'old' }]
   page.rollbackGeneration.value = 1
   page.rollbackPreview.value = { targetGeneration: 1 }
   page.rollbackConfirmed.value = true
-  await Promise.all([page.loadBackups(), page.loadAudit()])
+  await page.loadBackups()
   assert.deepEqual(page.backups.value, [])
-  assert.deepEqual(page.auditItems.value, [])
   assert.equal(page.rollbackGeneration.value, 0)
   assert.equal(page.rollbackPreview.value, null)
   assert.equal(page.rollbackConfirmed.value, false)
   fail = false
-  await Promise.all([page.loadBackups(), page.loadAudit()])
+  await page.loadBackups()
   assert.equal(page.backupsError.value, '')
-  assert.equal(page.auditError.value, '')
   assert.equal(page.backups.value.length, 1)
-  assert.equal(page.auditItems.value.length, 1)
   assert.equal(page.backupsLoading.value, false)
-  assert.equal(page.auditLoading.value, false)
 })
 
 test('状态请求失败后可重试恢复，不保留不可用提示', async () => {
@@ -478,10 +455,10 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
   assert.match(template, /v-if="canWrite" class="editor-footer"/)
   assert.doesNotMatch(template, /v-model="confirmed"/)
   assert.doesNotMatch(template, /maintenance-panel|migration-panel|rollback-panel|audit-panel/)
-  for (const [key, capability] of [['migration', 'canMigrate'], ['restart', 'canRestart'], ['backups', 'canRollback'], ['audit', 'canAudit']]) {
+  for (const [key, capability] of [['migration', 'canMigrate'], ['restart', 'canRestart'], ['backups', 'canRollback']]) {
     assert.ok(maintenance.includes(`pageKey === '${key}' && ${capability}`))
   }
-  assert.match(maintenance, /v-if="canExportAudit"/)
+  assert.doesNotMatch(maintenance, /audit-panel|canExportAudit|loadAudit/)
   for (const name of ['BaseConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']) {
     const page = readFileSync(new URL(`${name}/${name}.vue`, root), 'utf8')
     const { descriptor, errors } = parse(page)

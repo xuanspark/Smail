@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -15,6 +16,23 @@ import (
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	_ "modernc.org/sqlite"
 )
+
+func TestRetiredConfigAuditRoutesReturnGone(t *testing.T) {
+	for _, path := range []string{"/api/v1/audits/config", "/api/v1/audits/config/export", "/api/v1/audits/config/audit-00000000000000000000000000000000"} {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			request := httptest.NewRequest(method, path, nil)
+			recorder := httptest.NewRecorder()
+			if path == "/api/v1/audits/config" {
+				configAuditRoute(&appcontext.Context{}, recorder, request)
+			} else {
+				configAuditSubRoute(&appcontext.Context{}, recorder, request)
+			}
+			if recorder.Code != http.StatusGone || recorder.Header().Get("Cache-Control") != "no-store" || recorder.Header().Get("Content-Disposition") != "" {
+				t.Fatalf("已停用入口仍可查询或导出：%s %s", method, path)
+			}
+		}
+	}
+}
 
 func TestOperationLogUsesCompletedIdentityWithoutSensitivePayload(t *testing.T) {
 	database, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "operations.db"))

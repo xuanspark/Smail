@@ -135,15 +135,7 @@ type ConfigManager struct {
 }
 
 func NewConfigManager(root string, options ConfigLoaderOptions) (*ConfigManager, error) {
-	audit, err := NewFileAuditWriter(root)
-	if err != nil {
-		return nil, err
-	}
-	return newConfigManager(root, options, ConfigSecurity{
-		Authorize: DefaultConfigAuthorization,
-		Confirm:   DefaultConfigConfirmation,
-		Audit:     audit,
-	})
+	return NewConfigManagerWithSecurity(root, options, ConfigSecurity{})
 }
 
 func NewConfigManagerWithSecurity(root string, options ConfigLoaderOptions, security ConfigSecurity) (*ConfigManager, error) {
@@ -154,11 +146,7 @@ func NewConfigManagerWithSecurity(root string, options ConfigLoaderOptions, secu
 		security.Confirm = DefaultConfigConfirmation
 	}
 	if security.Audit == nil {
-		audit, err := NewFileAuditWriter(root)
-		if err != nil {
-			return nil, err
-		}
-		security.Audit = audit
+		security.Audit = RuntimeConfigLogWriter{}
 	}
 	return newConfigManager(root, options, security)
 }

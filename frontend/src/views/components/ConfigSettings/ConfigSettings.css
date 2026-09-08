@@ -177,19 +177,14 @@
 .confirmation-check :deep(.el-checkbox__input) {
   margin-top: 3px;
 }
-.action-row,
-.audit-actions {
+.action-row {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
 }
-.action-row > .el-button,
-.audit-actions > .el-button {
+.action-row > .el-button {
   margin-left: 0;
-}
-.audit-actions {
-  margin-top: 0;
 }
 .maintenance-heading {
   display: flex;
@@ -315,37 +310,6 @@
   margin: 0;
   padding-left: 18px;
 }
-.audit-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-.audit-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px 12px;
-  border-radius: var(--pm-radius-sm);
-  background: var(--pm-bg-primary);
-}
-.audit-item div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.audit-item strong {
-  color: var(--pm-text-primary);
-}
-.audit-item span,
-.audit-item time {
-  color: var(--pm-text-secondary);
-  font-size: 13px;
-}
-.audit-item time {
-  flex: none;
-}
 @container config-main (max-width: 620px) {
   .secret-editor {
     grid-template-columns: minmax(0, 1fr);
@@ -362,12 +326,7 @@
   .maintenance-summary {
     flex-wrap: wrap;
   }
-  .audit-item {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .action-row .el-button,
-  .audit-actions .el-button {
+  .action-row .el-button {
     flex: 1;
     min-width: 110px;
   }

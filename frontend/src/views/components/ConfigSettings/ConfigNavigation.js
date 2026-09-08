@@ -19,8 +19,7 @@ export function useNavigation() {
   const tools = [
     { value: 'migration', label: '数据库迁移', capability: 'database.migrate' },
     { value: 'restart', label: '服务重启', capability: 'service.restart' },
-    { value: 'backups', label: '备份与回滚', capability: 'config.rollback' },
-    { value: 'audit', label: '配置审计', capability: 'audit.read' }
+    { value: 'backups', label: '备份与回滚', capability: 'config.rollback' }
   ]
   const sectionOptions = computed(() => store.hasCapability('config.read') ? pages : [])
   const maintenanceOptions = computed(() => store.hasCapability('config.read')

@@ -26,14 +26,6 @@ const serviceLabels = {
 }
 
 const sectionLabels = Object.fromEntries(sections.map(item => [item.value, item.label]))
-const operationLabels = {
-  validate: '验证配置',
-  update: '保存配置',
-  apply: '应用配置',
-  rollback_preview: '预览回滚',
-  rollback_ticket: '签发回滚票据',
-  rollback: '执行回滚'
-}
 
 export function usePage(pageKey = 'base') {
   const isConfigPage = sections.some(item => item.value === pageKey)
@@ -45,9 +37,7 @@ export function usePage(pageKey = 'base') {
   const saveFlow = ref('')
   const busy = computed(() => !!working.value || !!saveFlow.value)
   const backupsLoading = ref(false)
-  const auditLoading = ref(false)
   const backupsError = ref('')
-  const auditError = ref('')
   const status = reactive({
     setupState: '',
     tlsMode: '',
@@ -116,7 +106,6 @@ export function usePage(pageKey = 'base') {
   const rollbackGeneration = ref(0)
   const rollbackConfirmed = ref(false)
   const rollbackPreview = ref(null)
-  const auditItems = ref([])
   const databaseConfig = reactive({ type: '', name: '', localRef: '' })
   const migrationTargetName = ref('')
   const migrationTarget = reactive({ type: 'sqlite', host: '127.0.0.1', port: 3306, username: '', password: '' })
@@ -161,8 +150,6 @@ export function usePage(pageKey = 'base') {
 
   const canWrite = computed(() => globalStatus.hasCapability('config.write_global'))
   const canRollback = computed(() => globalStatus.hasCapability('config.rollback'))
-  const canAudit = computed(() => globalStatus.hasCapability('audit.read'))
-  const canExportAudit = computed(() => globalStatus.hasCapability('audit.export'))
   const canMigrate = computed(() => globalStatus.hasCapability('database.migrate'))
   const canRestart = computed(() => globalStatus.hasCapability('service.restart'))
   const stateLabel = computed(() => ({ new: '未初始化', bootstrap: '初始化中', ready: '就绪', degraded: '降级' }[status.setupState] || status.setupState || '未知'))
@@ -208,7 +195,6 @@ export function usePage(pageKey = 'base') {
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-'
   const serviceLabel = value => serviceLabels[value] || value
   const sectionLabel = value => sectionLabels[value] || value || '-'
-  const operationLabel = value => operationLabels[value] || value || '-'
   const migrationStatusLabels = {
     previewed: '已生成预览',
     created: '已创建',
@@ -343,22 +329,6 @@ export function usePage(pageKey = 'base') {
       backupsError.value = error.message || '配置备份读取失败'
     } finally {
       backupsLoading.value = false
-    }
-  }
-
-  const loadAudit = async () => {
-    if (!canAudit.value) return
-    auditLoading.value = true
-    auditError.value = ''
-    try {
-      const response = await http.get('/api/v1/audits/config?limit=50')
-      notifyResponseError(response, '配置审计读取失败')
-      auditItems.value = Array.isArray(response.data) ? response.data : []
-    } catch (error) {
-      auditItems.value = []
-      auditError.value = error.message || '配置审计读取失败'
-    } finally {
-      auditLoading.value = false
     }
   }
 
@@ -499,7 +469,6 @@ export function usePage(pageKey = 'base') {
       if (isConfigPage || (pageKey === 'migration' && canMigrate.value)) await loadSection()
       if (isConfigPage) await loadPending()
       if (pageKey === 'backups') await loadBackups()
-      if (pageKey === 'audit') await loadAudit()
     } catch (error) {
       availabilityError.value = error.message || '配置管理数据读取失败'
     } finally {
@@ -723,38 +692,6 @@ export function usePage(pageKey = 'base') {
     }
   }
 
-  const exportAudit = async format => {
-    if (!canExportAudit.value || working.value) return
-    working.value = format === 'csv' ? 'export-csv' : 'export'
-    try {
-      const response = await requestWithRecentAuthentication(() => http.post(
-        '/api/v1/audits/config', { format, limit: 500 }, { responseType: 'blob' }
-      ))
-      if (!(response instanceof Blob)) {
-        throw new Error(response?.errorMsg || '审计导出响应格式不正确')
-      }
-      // Blob 请求也可能返回 JSON 业务错误，不能把错误响应当作审计文件下载。
-      if (response.type.includes('json') || format === 'json') {
-        const payload = JSON.parse(await response.text())
-        if (payload && !Array.isArray(payload) && Object.hasOwn(payload, 'errorNo') && payload.errorNo !== 0) {
-          throw new Error(payload.errorMsg || '审计导出失败')
-        }
-      }
-      const blob = response
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `smail-config-audit.${format}`
-      anchor.click()
-      URL.revokeObjectURL(url)
-      ElMessage.success('审计记录已导出')
-    } catch (error) {
-      if (!isRecentAuthenticationCancelled(error)) ElMessage.error(error.message || '审计导出失败')
-    } finally {
-      working.value = ''
-    }
-  }
-
   const beforeLeave = async () => {
     if (busy.value) {
       ElMessage.warning('当前操作尚未完成，请稍后再切换页面')
@@ -795,11 +732,11 @@ export function usePage(pageKey = 'base') {
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
     selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,
     sectionError, saveError, sensitiveHint, secretField, secretValue,
-    confirmed, savedGeneration, pendingCandidate, managePending, validationResult, canWrite, canRollback, canAudit, canExportAudit,
+    confirmed, savedGeneration, pendingCandidate, managePending, validationResult, canWrite, canRollback,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
-    auditLoading, auditError, auditItems, loadAll, loadSection, validateConfig, saveConfig, applyConfig, saveAndApply, continuePending,
-    loadBackups, previewRollback, executeRollback, loadAudit, exportAudit, formatTime,
-    serviceLabel, sectionLabel, operationLabel, databaseConfig, databaseTypeLabel, canMigrate,
+    loadAll, loadSection, validateConfig, saveConfig, applyConfig, saveAndApply, continuePending,
+    loadBackups, previewRollback, executeRollback, formatTime,
+    serviceLabel, sectionLabel, databaseConfig, databaseTypeLabel, canMigrate,
     migrationTargetName, migrationPreview, migrationToken, migrationRecord, migrationStatusLabel, migrationStatusType,
     migrationTarget, migrationReady, migrationError, invalidateMigration, changeMigrationType,
     previewDatabaseMigration, loadMigrationStatus, executeDatabaseMigration, canRestart, restartPreview,

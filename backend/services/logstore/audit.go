@@ -5,28 +5,13 @@ import (
 	"encoding/json"
 
 	"git.pcux.cn/xuans/Smail/config"
-	"git.pcux.cn/xuans/Smail/utils/logpolicy"
 )
 
 type AuditWriter struct{ Store *Store }
 
 func (w *AuditWriter) WriteConfigAudit(ctx context.Context, event config.ConfigAuditEvent) error {
-	if w == nil || w.Store == nil {
-		return ErrUnavailable
-	}
-	normalized, err := config.NormalizeConfigAuditEvent(event)
-	if err != nil {
-		return err
-	}
-	payload, err := json.Marshal(normalized)
-	if err != nil {
-		return err
-	}
-	return w.Store.Write(ctx, Entry{
-		ID: normalized.ID, CreatedAt: normalized.CreatedAt, Kind: "config",
-		ActorID: normalized.ActorID, Action: string(normalized.Operation),
-		Section: string(normalized.Section), Result: normalized.Result, Payload: payload,
-	})
+	// 旧调用方也转到运行日志，避免再次接入数据库审计。
+	return (config.RuntimeConfigLogWriter{}).WriteConfigAudit(ctx, event)
 }
 
 func (w *AuditWriter) Query(ctx context.Context, query config.ConfigAuditQuery) ([]config.ConfigAuditEvent, error) {
@@ -70,15 +55,7 @@ func (w *AuditWriter) ExportCSV(ctx context.Context, query config.ConfigAuditQue
 	return config.ExportConfigAuditCSV(items)
 }
 
-func (w *AuditWriter) ImportLegacy(ctx context.Context, root string) error {
-	if w == nil || w.Store == nil {
-		return ErrUnavailable
-	}
-	legacy, err := config.NewFileAuditWriter(root)
-	if err != nil {
-		return err
-	}
-	return legacy.Visit(ctx, logpolicy.Cutoff(w.Store.now()), func(event config.ConfigAuditEvent) error {
-		return w.WriteConfigAudit(ctx, event)
-	})
+func (w *AuditWriter) ImportLegacy(_ context.Context, _ string) error {
+	// 独立配置审计已停用，历史文件留在原处，不再导入数据库或重复输出。
+	return nil
 }

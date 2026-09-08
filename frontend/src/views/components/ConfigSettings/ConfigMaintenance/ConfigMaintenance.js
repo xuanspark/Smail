@@ -9,7 +9,6 @@ export function useMaintenance(pageKey) {
     page.rollbackPreview.value = null
     page.rollbackConfirmed.value = false
   }
-  const auditPagination = usePagination(page.auditItems, 6)
   const backupPagination = usePagination(page.backups, 6)
-  return { ...page, selectBackup, auditPagination, backupPagination }
+  return { ...page, selectBackup, backupPagination }
 }

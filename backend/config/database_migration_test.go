@@ -12,7 +12,8 @@ import (
 func TestConfigManagerSwitchDatabaseCommitsSQLiteReference(t *testing.T) {
 	root := t.TempDir()
 	writeRuntimeFixture(t, root, validRuntimeConfig())
-	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
+	audit := &MemoryAuditWriter{}
+	manager, err := NewConfigManagerWithSecurity(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}, ConfigSecurity{Audit: audit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +30,6 @@ func TestConfigManagerSwitchDatabaseCommitsSQLiteReference(t *testing.T) {
 	if len(status.PendingRestart) != 1 || status.PendingRestart[0] != ServiceDatabase {
 		t.Fatalf("pending restart services = %+v", status.PendingRestart)
 	}
-	audit := manager.security.Audit.(*FileAuditWriter)
 	events, err := audit.Query(context.Background(), ConfigAuditQuery{Operation: ConfigOperationMigration, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,8 @@ func TestConfigManagerSwitchAcrossTypesPersistsAndRedactsAudit(t *testing.T) {
 			root := t.TempDir()
 			writeRuntimeFixture(t, root, validRuntimeConfig())
 			options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
-			manager, err := NewConfigManager(root, options)
+			audit := &MemoryAuditWriter{}
+			manager, err := NewConfigManagerWithSecurity(root, options, ConfigSecurity{Audit: audit})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +65,7 @@ func TestConfigManagerSwitchAcrossTypesPersistsAndRedactsAudit(t *testing.T) {
 			if got := reloaded.Snapshot(); got.Generation != 2 || got.Root.Database != target {
 				t.Fatal("target configuration was not persisted")
 			}
-			events, err := manager.security.Audit.(*FileAuditWriter).Query(context.Background(), ConfigAuditQuery{Operation: ConfigOperationMigration, Limit: 10})
+			events, err := audit.Query(context.Background(), ConfigAuditQuery{Operation: ConfigOperationMigration, Limit: 10})
 			if err != nil || len(events) != 1 {
 				t.Fatal("migration audit missing")
 			}

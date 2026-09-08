@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func testStore(t *testing.T) *Store {
 func TestLogStoreEmptyEntriesAreNotInserted(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	for _, kind := range []string{"config", "operation", "mail"} {
+	for _, kind := range []string{"operation", "mail"} {
 		for _, payload := range []string{`{}`, `null`, `[]`, `" "`, `{"message":"***"}`} {
 			if err := s.Write(ctx, Entry{Kind: kind, CreatedAt: time.Now(), Action: "---", Payload: []byte(payload)}); err != nil {
 				t.Fatal(err)
@@ -129,7 +130,7 @@ func TestLogRetentionBoundariesAndBusinessSafety(t *testing.T) {
 	}
 }
 
-func TestLogDialectStatementsAndAuditReplay(t *testing.T) {
+func TestLogDialectStatementsAndRetiredAuditWriter(t *testing.T) {
 	s := testStore(t)
 	for _, dialect := range []migration.Dialect{migration.DialectSQLite, migration.DialectMySQL, migration.DialectPostgres} {
 		s.dialect = dialect
@@ -158,11 +159,38 @@ func TestLogDialectStatementsAndAuditReplay(t *testing.T) {
 		}
 	}
 	items, err := audit.Query(context.Background(), config.ConfigAuditQuery{})
-	if err != nil || len(items) != 1 || items[0].Changes[0].After != "debug" {
-		t.Fatalf("audit: %+v, %v", items, err)
+	if err != nil || len(items) != 0 {
+		t.Fatalf("已停用的配置审计仍写入数据库：%+v, %v", items, err)
 	}
-	data, err := audit.ExportCSV(context.Background(), config.ConfigAuditQuery{})
-	if err != nil || !strings.Contains(string(data), "tester") || !strings.Contains(string(data), "debug") {
-		t.Fatalf("csv: %s, %v", data, err)
+	if err := s.Write(context.Background(), Entry{Kind: "config", CreatedAt: time.Now(), Payload: []byte(`{}`)}); err != ErrInvalid {
+		t.Fatal("数据库写入入口必须拒绝配置审计")
+	}
+}
+
+func TestRetiredAuditImportPreservesLegacyFiles(t *testing.T) {
+	s := testStore(t)
+	root := t.TempDir()
+	directory := filepath.Join(root, "log")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "config-audit-v2.jsonl")
+	history := []byte("旧审计内容不再解析或导入\n")
+	if err := os.WriteFile(path, history, 0600); err != nil {
+		t.Fatal(err)
+	}
+	audit := &AuditWriter{Store: s}
+	for index := 0; index < 2; index++ {
+		if err := audit.ImportLegacy(context.Background(), root); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != string(history) {
+		t.Fatal("旧审计文件被修改")
+	}
+	var count int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM operation_log").Scan(&count); err != nil || count != 0 {
+		t.Fatal("已停用的旧审计导入仍写入数据库")
 	}
 }

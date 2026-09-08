@@ -25,6 +25,13 @@ test('日志页面使用共享 HTTP 客户端的命名导出', () => {
   assert.match(read('LogSettings.js'), /import\s*\{\s*http\s*\}\s*from\s*['"]@\/utils\/axios['"]/)
 })
 
+test('日志分类移除配置审计，保留操作、收发信与运行日志', () => {
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }))
+  assert.deepEqual(page.categories.map(item => item.value), ['operation', 'mail', 'runtime'])
+  assert.equal(page.category.value, 'operation')
+  assert.doesNotMatch(read('LogSettings.vue'), /category === 'config'|changes\.length/)
+})
+
 test('日志页面模板和样式能编译，详情不使用原始 HTML 渲染', () => {
   const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
   const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')

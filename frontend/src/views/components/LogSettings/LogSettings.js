@@ -3,7 +3,7 @@ import { http } from '@/utils/axios'
 import { parseRuntimeLine, summarizeRuntime, timeParts } from './RuntimeLog.js'
 
 export function useLogs() {
-  const category = ref('config')
+  const category = ref('operation')
   const loading = ref(false)
   const error = ref('')
   const items = ref([])
@@ -25,7 +25,6 @@ export function useLogs() {
   let appliedFilters = {}
 
   const categories = [
-    { label: '配置审计', value: 'config' },
     { label: '操作记录', value: 'operation' },
     { label: '收发信记录', value: 'mail' },
     { label: '运行日志', value: 'runtime' }
@@ -36,7 +35,6 @@ export function useLogs() {
   const actionLabel = value => ({ update: '保存配置', rollback: '回滚配置', migration: '迁移配置' }[value] || value)
   const displayActor = item => item.payload?.actorName || (item.actorId && item.actorId !== '0' ? item.actorId : '系统')
   const details = computed(() => detail.value?.payload || {})
-  const changes = computed(() => details.value.changes || [])
   const runtimeRows = computed(() => lines.value.map((line, index) => parseRuntimeLine(line, offset.value + index + 1)))
   const runtimeSummary = computed(() => summarizeRuntime(runtimeRows.value))
   const visibleCount = computed(() => isRuntime.value ? lines.value.length : items.value.length)
@@ -125,7 +123,7 @@ export function useLogs() {
 
   return {
     category, categories, loading, error, items, lines, offset,
-    hasMore, actorId, dateRange, detail, details, changes, isRuntime,
+    hasMore, actorId, dateRange, detail, details, isRuntime,
     runtimeDetail, runtimeRows, runtimeSummary, visibleCount, pageRange,
     currentCategory, resultType, runtimeRowClass, timeParts,
     formatTime, resultLabel, actionLabel, displayActor, search, recent, next, previous

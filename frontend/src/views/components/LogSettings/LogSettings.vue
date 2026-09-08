@@ -129,15 +129,7 @@
     <el-dialog :model-value="Boolean(detail)" title="日志详情" width="min(760px, 92vw)" append-to-body @close="detail = null">
       <template v-if="detail">
         <p>{{ formatTime(detail.createdAt) }} · {{ displayActor(detail) }} · {{ actionLabel(detail.action) }}</p>
-        <el-table v-if="changes.length" :data="changes" max-height="440">
-          <el-table-column prop="field" label="变更字段" min-width="200" />
-          <el-table-column prop="before" label="修改前" min-width="150" />
-          <el-table-column prop="after" label="修改后" min-width="150" />
-        </el-table>
-        <p v-else-if="category === 'config'">
-          {{ detail.id.startsWith('legacy-') || !details.actorName ? '此记录未保存字段前后值，不补造历史详情。' : '此次保存没有业务字段变更。' }}
-        </p>
-        <dl v-else-if="category === 'mail'" class="log-detail-grid">
+        <dl v-if="category === 'mail'" class="log-detail-grid">
           <dt>发件人</dt><dd>{{ details.sender || '—' }}</dd>
           <dt>收件人数</dt><dd>{{ details.recipientCount }}</dd>
           <dt>邮件大小</dt><dd>{{ details.bytes }} 字节</dd>
@@ -157,7 +149,7 @@ import { useLogs } from './LogSettings.js'
 
 const {
   category, categories, loading, error, items, offset,
-  hasMore, actorId, dateRange, detail, details, changes, isRuntime,
+  hasMore, actorId, dateRange, detail, details, isRuntime,
   runtimeDetail, runtimeRows, runtimeSummary, pageRange,
   currentCategory, resultType, runtimeRowClass, timeParts,
   formatTime, resultLabel, actionLabel, displayActor, search, recent, next, previous

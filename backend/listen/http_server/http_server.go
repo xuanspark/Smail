@@ -223,31 +223,12 @@ func configSectionRoute(path, operation string) bool {
 }
 func configAuditRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
 	controllers.EnsureConfigRequestID(w, r)
-	switch r.Method {
-	case http.MethodGet:
-		controllers.ConfigAuditQuery(ctx, w, r)
-	case http.MethodPost:
-		controllers.ExportConfigAudit(ctx, w, r)
-	default:
-		allowRouteMethod(w, r, http.MethodGet, http.MethodPost)
-	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Error(w, "独立配置审计已停用，请查看运行日志", http.StatusGone)
 }
 
 func configAuditSubRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
-	controllers.EnsureConfigRequestID(w, r)
-	path := strings.TrimSuffix(r.URL.Path, "/")
-	switch path {
-	case "/api/v1/audits/config/export":
-		if !allowRouteMethod(w, r, http.MethodPost) {
-			return
-		}
-		controllers.ExportConfigAuditFormal(ctx, w, r)
-	default:
-		if !allowRouteMethod(w, r, http.MethodGet) {
-			return
-		}
-		controllers.GetConfigAuditDetail(ctx, w, r)
-	}
+	configAuditRoute(ctx, w, r)
 }
 
 func databaseMigrationSubRoute(ctx *context.Context, w http.ResponseWriter, r *http.Request) {

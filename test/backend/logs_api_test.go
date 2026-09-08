@@ -69,7 +69,7 @@ func TestLogsAPIRejectsUnscopedAccessAndValidatesQueries(t *testing.T) {
 			}
 		}
 	}
-	for _, query := range []string{"kind=unknown", "kind=mail&limit=501", "kind=mail&offset=-1", "kind=mail&from=invalid", "kind=mail&from=2026-09-08T00:00:00Z&to=2026-09-01T00:00:00Z"} {
+	for _, query := range []string{"kind=config", "kind=unknown", "kind=mail&limit=501", "kind=mail&offset=-1", "kind=mail&from=invalid", "kind=mail&from=2026-09-08T00:00:00Z&to=2026-09-01T00:00:00Z"} {
 		if got := call(access.RoleSuperAdmin, query); got.ErrorNo != response.ParamsError {
 			t.Fatalf("invalid query accepted: %s => %d", query, got.ErrorNo)
 		}

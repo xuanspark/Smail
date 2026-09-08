@@ -149,36 +149,6 @@
         </div>
       </section>
 
-      <section v-else-if="pageKey === 'audit' && canAudit" class="maintenance-panel audit-panel">
-        <div class="maintenance-body">
-          <div class="panel-heading">
-            <p class="heading-note">展示最近 50 条，导出最多 500 条记录。</p>
-            <div class="audit-actions">
-              <el-button size="small" :disabled="!!working" :loading="auditLoading" @click="loadAudit">查询</el-button>
-              <el-button v-if="canExportAudit" size="small" type="primary" plain :disabled="!!working" :loading="working === 'export'" @click="exportAudit('json')">导出 JSON</el-button>
-              <el-button v-if="canExportAudit" size="small" plain :disabled="!!working" :loading="working === 'export-csv'" @click="exportAudit('csv')">导出 CSV</el-button>
-            </div>
-          </div>
-          <el-alert v-if="auditError" :title="auditError" type="warning" :closable="false" show-icon />
-          <div v-else-if="auditItems.length" class="audit-list">
-            <div v-for="{ entry: item } in auditRows" :key="item.id || `${item.createdAt}-${item.operation}`" class="audit-item">
-              <div>
-                <strong>{{ operationLabel(item.operation) }}</strong>
-                <span>{{ sectionLabel(item.section) }} · {{ item.actorName || item.actorId || '系统' }}</span>
-                <details v-if="item.changes?.length" class="audit-changes">
-                  <summary>{{ item.changes.length }} 个字段变更</summary>
-                  <p v-for="change in item.changes" :key="change.field">
-                    {{ change.field }}：{{ change.before }} → {{ change.after }}
-                  </p>
-                </details>
-              </div>
-              <time>{{ formatTime(item.createdAt) }}</time>
-            </div>
-          </div>
-          <el-empty v-else-if="!auditLoading" description="暂无配置审计记录" :image-size="72" />
-          <ConfigPagination v-model:current-page="auditPage" :page-count="auditPageCount" :total="auditItems.length" label="审计记录" />
-        </div>
-      </section>
       <el-empty v-else description="当前账号无权访问此页面" />
     </template>
   </div>
@@ -201,10 +171,8 @@ const {
   canRestart, serviceLabel, restartPreview, previewRestart, requestRestart,
   canRollback, backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed,
   rollbackPreview, loadBackups, selectBackup, previewRollback, executeRollback,
-  canAudit, canExportAudit, auditLoading, auditError, auditItems, loadAudit, exportAudit,
-  formatTime, sectionLabel, operationLabel, auditPagination, backupPagination
+  formatTime, sectionLabel, backupPagination
 } = useMaintenance(props.pageKey)
-const { currentPage: auditPage, pageCount: auditPageCount, pageItems: auditRows } = auditPagination
 const { currentPage: backupPage, pageCount: backupPageCount, pageItems: backupRows } = backupPagination
 
 defineExpose({ beforeLeave })
