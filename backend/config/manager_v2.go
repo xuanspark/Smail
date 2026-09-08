@@ -279,6 +279,15 @@ func (m *ConfigManager) Validate(ctx context.Context, req ValidateRequest) (*Val
 	if err != nil {
 		return nil, err
 	}
+	if req.Section == SectionSSL {
+		if _, err := prepareCustomSSLPaths(m.loader.root, &candidate); err != nil {
+			issue, ok := SSLValidationIssue(err)
+			if !ok {
+				issue = PublicIssue{Code: "SSL_INVALID", Message: "证书校验失败，请检查证书文件"}
+			}
+			return &ValidationResult{Valid: false, Generation: current.Generation, Issues: []PublicIssue{issue}}, nil
+		}
+	}
 	setCandidateGeneration(&candidate, current.Generation+1)
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
 		return &ValidationResult{Valid: false, Generation: current.Generation, Issues: []PublicIssue{{Code: "CONFIG_INVALID", Message: err.Error()}}}, nil
@@ -312,6 +321,13 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 	if err != nil {
 		return nil, err
 	}
+	var sslMaterial *customSSLMaterial
+	if req.Section == SectionSSL {
+		sslMaterial, err = prepareCustomSSLPaths(m.loader.root, &candidate)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -332,6 +348,10 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 	if err != nil {
 		return nil, err
 	}
+	if err := sslMaterial.stage(m.loader.root, &candidate); err != nil {
+		return nil, err
+	}
+	setCandidateGeneration(&candidate, current.Generation+1)
 	m.mu.Lock()
 	m.pending = &pendingConfig{ID: id, Candidate: candidate, Section: req.Section, Actor: req.Actor, Confirmation: req.Confirmation, PreviousRestart: append([]ServiceName(nil), m.status.PendingRestart...)}
 	m.status.PendingRestart = mergeServices(m.status.PendingRestart, servicesForSection(req.Section))
@@ -396,6 +416,11 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	}
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
 		return nil, err
+	}
+	if pending.Section == SectionSSL {
+		if err := validateCustomSSLReferences(m.loader.root, candidate); err != nil {
+			return nil, err
+		}
 	}
 	if err := ValidateRuntimeSecrets(m.vault, current); err != nil {
 		return nil, err

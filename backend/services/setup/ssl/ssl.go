@@ -313,28 +313,7 @@ func sslDomains(cfg *config.Config) []string {
 	if cfg == nil {
 		return nil
 	}
-	seen := make(map[string]struct{})
-	domains := make([]string, 0, len(cfg.Domains)*3+1)
-	appendDomain := func(domain string) {
-		domain = strings.TrimSpace(domain)
-		if domain == "" {
-			return
-		}
-		if _, exists := seen[domain]; exists {
-			return
-		}
-		seen[domain] = struct{}{}
-		domains = append(domains, domain)
-	}
-	appendDomain(cfg.WebDomain)
-	appendDomain(cfg.Domain)
-	for _, domain := range cfg.Domains {
-		appendDomain(domain)
-		appendDomain("smtp." + domain)
-		appendDomain("pop." + domain)
-		appendDomain("imap." + domain)
-	}
-	return domains
+	return config.SSLCertificateDomains(cfg.Domain, cfg.WebDomain, cfg.Domains)
 }
 
 func certificateMatchesConfiguredDomains(cert *x509.Certificate, cfg *config.Config) bool {

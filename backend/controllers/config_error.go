@@ -42,6 +42,9 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 	status := http.StatusBadRequest
 	message := "配置请求未完成"
 	fields := map[string]string(nil)
+	if issue, ok := config.SSLValidationIssue(err); ok {
+		return issue.Code, http.StatusUnprocessableEntity, issue.Message, nil
+	}
 
 	var denial *access.Denial
 	switch {

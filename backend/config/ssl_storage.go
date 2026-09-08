@@ -99,6 +99,10 @@ func LoadRuntimeTLSCertificate(cfg *Config) (tls.Certificate, error) {
 
 // ImportManagedSSL 校验证书材料后写入候选目录，并原子切换 current 目录。
 func ImportManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
+	return importManagedSSLAtRoot(ROOT_PATH, mode, privateKeyPEM, certificatePEM, issuerPEM, domains)
+}
+
+func importManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
 	if !validManagedSSLMode(mode) {
 		return ManagedSSLReference{}, ErrInvalidSSLMode
 	}
@@ -106,11 +110,11 @@ func ImportManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []by
 		return ManagedSSLReference{}, err
 	}
 
-	rootPath, err := managedSSLRootPath(mode)
+	rootPath, err := managedSSLRootPathAtRoot(root, mode)
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
-	if err := ensureManagedDirectory(rootPath); err != nil {
+	if err := ensureManagedDirectoryAtRoot(root, rootPath); err != nil {
 		return ManagedSSLReference{}, err
 	}
 
@@ -199,21 +203,25 @@ func ImportManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []by
 
 // ResolveManagedSSLReferences 将内部引用解析为受控文件路径，拒绝任意路径输入。
 func ResolveManagedSSLReferences(ssl SSLConfig) (ManagedSSLReference, error) {
+	return resolveManagedSSLReferencesAtRoot(ROOT_PATH, ssl)
+}
+
+func resolveManagedSSLReferencesAtRoot(root string, ssl SSLConfig) (ManagedSSLReference, error) {
 	if !validManagedSSLMode(ssl.Mode) {
 		return ManagedSSLReference{}, ErrInvalidSSLMode
 	}
 	if ssl.CertificateRef == "" || ssl.PrivateKeyRef == "" {
 		return ManagedSSLReference{}, ErrInvalidSSLReference
 	}
-	rootPath, err := managedSSLRootPath(ssl.Mode)
+	rootPath, err := managedSSLRootPathAtRoot(root, ssl.Mode)
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
-	certificatePath, err := resolveManagedReference(rootPath, ssl.CertificateRef, "public.crt")
+	certificatePath, err := resolveManagedReferenceAtRoot(root, rootPath, ssl.CertificateRef, "public.crt")
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
-	privateKeyPath, err := resolveManagedReference(rootPath, ssl.PrivateKeyRef, "private.key")
+	privateKeyPath, err := resolveManagedReferenceAtRoot(root, rootPath, ssl.PrivateKeyRef, "private.key")
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
@@ -363,10 +371,14 @@ func validManagedSSLMode(mode string) bool {
 }
 
 func managedSSLRootPath(mode string) (string, error) {
+	return managedSSLRootPathAtRoot(ROOT_PATH, mode)
+}
+
+func managedSSLRootPathAtRoot(root string, mode string) (string, error) {
 	if !validManagedSSLMode(mode) {
 		return "", ErrInvalidSSLMode
 	}
-	rootPath, err := filepath.Abs(filepath.Clean(ROOT_PATH))
+	rootPath, err := filepath.Abs(filepath.Clean(root))
 	if err != nil {
 		return "", err
 	}
@@ -386,6 +398,10 @@ func managedSSLReference(mode, name string) string {
 }
 
 func resolveManagedReference(rootPath, reference, expectedName string) (string, error) {
+	return resolveManagedReferenceAtRoot(ROOT_PATH, rootPath, reference, expectedName)
+}
+
+func resolveManagedReferenceAtRoot(root, rootPath, reference, expectedName string) (string, error) {
 	rawReference := strings.TrimSpace(reference)
 	if rawReference == "" || strings.Contains(rawReference, `\`) || filepath.IsAbs(rawReference) || isWindowsAbsolute(rawReference) {
 		return "", ErrInvalidSSLReference
@@ -394,7 +410,7 @@ func resolveManagedReference(rootPath, reference, expectedName string) (string, 
 	if filepath.ToSlash(filepath.Clean(reference)) != rawReference {
 		return "", ErrInvalidSSLReference
 	}
-	workspaceRoot, err := filepath.Abs(filepath.Clean(ROOT_PATH))
+	workspaceRoot, err := filepath.Abs(filepath.Clean(root))
 	if err != nil {
 		return "", ErrInvalidSSLReference
 	}
@@ -424,21 +440,25 @@ func validSSLVersion(version string) bool {
 
 // StageManagedSSL 只写入独立版本，不替换现用文件；配置事务成功后引用才生效。
 func StageManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
+	return stageManagedSSLAtRoot(ROOT_PATH, mode, privateKeyPEM, certificatePEM, issuerPEM, domains)
+}
+
+func stageManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
 	if err := validateSSLMaterial(privateKeyPEM, certificatePEM, issuerPEM, domains); err != nil {
 		return ManagedSSLReference{}, err
 	}
-	root, err := managedSSLRootPath(mode)
+	managedRoot, err := managedSSLRootPathAtRoot(root, mode)
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
-	if err := ensureManagedDirectory(root); err != nil {
+	if err := ensureManagedDirectoryAtRoot(root, managedRoot); err != nil {
 		return ManagedSSLReference{}, err
 	}
 	token, err := randomStorageToken()
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
-	directory := filepath.Join(root, "version-"+token)
+	directory := filepath.Join(managedRoot, "version-"+token)
 	if err := os.Mkdir(directory, 0700); err != nil {
 		return ManagedSSLReference{}, err
 	}
@@ -461,7 +481,7 @@ func StageManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byt
 	if err := validateManagedSSLFiles(publicPath, privatePath); err != nil {
 		return ManagedSSLReference{}, err
 	}
-	rootPath, err := filepath.Abs(ROOT_PATH)
+	rootPath, err := filepath.Abs(root)
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
@@ -580,7 +600,11 @@ func removeManagedSSLDirectory(directory string) error {
 }
 
 func ensureManagedDirectory(directory string) error {
-	rootPath, err := filepath.Abs(filepath.Clean(ROOT_PATH))
+	return ensureManagedDirectoryAtRoot(ROOT_PATH, directory)
+}
+
+func ensureManagedDirectoryAtRoot(root, directory string) error {
+	rootPath, err := filepath.Abs(filepath.Clean(root))
 	if err != nil {
 		return err
 	}

@@ -203,6 +203,58 @@ func TestValidateSSLMaterialRejectsDomainExpiryAndWeakKeys(t *testing.T) {
 	}
 }
 
+func TestPrepareCustomSSLPathsImportsExternalFilesOnlyWhenSaving(t *testing.T) {
+	root := t.TempDir()
+	previousRoot := ROOT_PATH
+	ROOT_PATH = root
+	t.Cleanup(func() { ROOT_PATH = previousRoot })
+	external := t.TempDir()
+	privateKeyPEM, certificatePEM := testManagedCertificate(t, "mail.example.com", time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour), 2048)
+	privateKeyPath := filepath.Join(external, "privkey.pem")
+	certificatePath := filepath.Join(external, "fullchain.pem")
+	if err := os.WriteFile(privateKeyPath, privateKeyPEM, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(certificatePath, certificatePEM, 0600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := validRuntimeConfig()
+	runtime.Root.Domains = DomainConfig{Primary: "mail.example.com", Web: "mail.example.com"}
+	runtime.SSL.TLS = SSLConfig{
+		Management:       SSLManagementCustom,
+		Mode:             ManagedSSLModeUpload,
+		DefaultDirectory: "config/ssl",
+		CustomDirectory:  "config/ssl",
+		CertificateRef:   certificatePath,
+		PrivateKeyRef:    privateKeyPath,
+	}
+
+	material, err := prepareCustomSSLPaths(root, &runtime)
+	if err != nil {
+		t.Fatalf("校验外部证书失败: %v", err)
+	}
+	if runtime.SSL.TLS.CertificateRef == certificatePath || runtime.SSL.TLS.PrivateKeyRef == privateKeyPath {
+		t.Fatal("仅校验阶段不应保留外部证书路径")
+	}
+	managedRoot := filepath.Join(root, "config", "ssl", "managed", "upload")
+	if _, err := os.Stat(managedRoot); !os.IsNotExist(err) {
+		t.Fatalf("仅校验阶段不应创建受管目录，error = %v", err)
+	}
+
+	if err := material.stage(root, &runtime); err != nil {
+		t.Fatalf("保存外部证书失败: %v", err)
+	}
+	if runtime.SSL.TLS.CertificateRef == certificatePath || runtime.SSL.TLS.PrivateKeyRef == privateKeyPath {
+		t.Fatal("保存后不应继续使用外部证书路径")
+	}
+	if !strings.HasPrefix(runtime.SSL.TLS.CertificateRef, "config/ssl/managed/upload/version-") {
+		t.Fatalf("证书引用未切换到受管版本: %q", runtime.SSL.TLS.CertificateRef)
+	}
+	if _, err := ResolveManagedSSLReferences(runtime.SSL.TLS); err != nil {
+		t.Fatalf("受管证书引用无法解析: %v", err)
+	}
+}
+
 func TestValidateSSLMaterialAcceptsBundledIssuerWithoutDuplicateChainEntry(t *testing.T) {
 	privateKeyPEM, certificatePEM, issuerPEM := testChainedCertificate(t)
 	certificateBundle := append(append([]byte{}, certificatePEM...), issuerPEM...)

@@ -695,6 +695,46 @@ test('邮件页保持验证、保存、应用端点和代次协议，中继密�
   assert.equal(page.savedGeneration.value, 0)
 })
 
+test('自定义证书导入后使用规范化的候选引用继续应用，不误判表单已变化', async () => {
+  const requests = []
+  let pending = null
+  let active = {
+    tls: {
+      management: 'custom', mode: 'managed_upload', defaultDirectory: 'config/ssl', customDirectory: 'config/ssl',
+      certificateRef: 'D:/certs/public.crt', privateKeyRef: 'D:/certs/private.key'
+    }
+  }
+  const normalized = {
+    tls: {
+      ...active.tls,
+      certificateRef: 'config/ssl/managed/upload/version-0123456789abcdef0123456789abcdef/public.crt',
+      privateKeyRef: 'config/ssl/managed/upload/version-0123456789abcdef0123456789abcdef/private.key'
+    }
+  }
+  const { page } = fixture(async () => ({ errorNo: 0, data: active }), 'ssl', {
+    http: {
+      get: async path => ({ errorNo: 0, data: path.endsWith('/pending') ? pending : path.endsWith('/status') ? { activeGeneration: 8 } : active }),
+      put: async (path, body) => {
+        requests.push({ path, body })
+        pending = { generation: 9, candidateId: 'ssl-candidate', section: 'ssl', sameSession: true, payload: normalized }
+        return { errorNo: 0, data: pending }
+      },
+      post: async (path, body) => {
+        requests.push({ path, body })
+        active = normalized
+        pending = null
+        return { errorNo: 0, data: { generation: 9 } }
+      }
+    }
+  })
+  await page.loadAll()
+  await page.saveAndApply()
+  assert.deepEqual(requests.map(item => item.path), ['/api/v1/config/ssl', '/api/v1/config/ssl/apply'])
+  assert.deepEqual(requests[1].body, { generation: 9, candidateId: 'ssl-candidate' })
+  assert.equal(JSON.parse(page.editorText.value).tls.certificateRef, normalized.tls.certificateRef)
+  assert.equal(page.savedGeneration.value, 0)
+})
+
 test('可视化编辑按权限和工作状态保护，编辑会清除过期确认及候选代次', async () => {
   const config = {
     listener: { port: 25, starttlsPort: 587, tlsPort: 465 },

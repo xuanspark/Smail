@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,15 @@ import (
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/dbmigration"
 )
+
+func TestConfigSSLErrorUsesSafeSpecificMessage(t *testing.T) {
+	for _, failure := range []error{config.ErrSSLFileUnavailable, config.ErrSSLCertificateMismatch, config.ErrSSLCertificateExpired, config.ErrSSLCertificateDomain, config.ErrInvalidSSLReference} {
+		code, status, message, _ := configErrorDetails(fmt.Errorf("%w: /private/internal-path", failure))
+		if code != "SSL_INVALID" || status != http.StatusUnprocessableEntity || message == "" || strings.Contains(message, "/private/") || strings.Contains(message, "配置校验未通过") {
+			t.Fatalf("证书错误未正确脱敏或区分: %s %d %s", code, status, message)
+		}
+	}
+}
 
 func TestWriteConfigErrorKeepsStableAuthorizationCode(t *testing.T) {
 	recorder := httptest.NewRecorder()
