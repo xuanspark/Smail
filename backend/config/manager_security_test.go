@@ -103,8 +103,12 @@ func TestLoadManagerRewritesLegacyVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(rewritten), `"version"`) || !strings.Contains(string(rewritten), `"schemaVersion":2`) || !strings.Contains(string(rewritten), `"generation":7`) {
-		t.Fatalf("legacy configuration was not rewritten: %s", rewritten)
+	var saved RootConfig
+	if err := json.Unmarshal(rewritten, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(rewritten), `"version"`) || saved.SchemaVersion != CurrentSchemaVersion || saved.Generation != 7 {
+		t.Fatal("旧配置未正确更新版本和代次")
 	}
 }
 

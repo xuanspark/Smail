@@ -340,7 +340,7 @@ func marshalRuntimeFilesWithPluginSecrets(runtime RuntimeConfig, keepPluginSecre
 		default:
 			return nil, ErrInvalidSection
 		}
-		data, err := json.Marshal(value)
+		data, err := json.MarshalIndent(value, "", "  ")
 		if err != nil {
 			return nil, err
 		}
@@ -353,7 +353,7 @@ func marshalRuntimeFilesWithPluginSecrets(runtime RuntimeConfig, keepPluginSecre
 		references[section] = SectionRef{File: file, Schema: schema, Generation: runtime.Generation, SHA256: SectionDigest(sectionBytes[section])}
 	}
 	runtime.Root.Sections = references
-	rootData, err := json.Marshal(runtime.Root)
+	rootData, err := json.MarshalIndent(runtime.Root, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +470,7 @@ func writeTransactionManifest(directory string, manifest TransactionManifest) er
 	if err := validateTransactionManifest(manifest); err != nil {
 		return err
 	}
-	data, err := json.Marshal(manifest)
+	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -667,7 +667,7 @@ func (s *TransactionStore) createBackupAt(runtime RuntimeConfig, createdAt time.
 			return "", err
 		}
 	}
-	manifestData, err := json.Marshal(manifest)
+	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return "", err
 	}

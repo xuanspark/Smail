@@ -264,7 +264,7 @@ func refreshLegacyMigrationRoot(runtime RuntimeConfig, files map[string][]byte) 
 	runtime.Root.Generation = runtime.Generation
 	runtime.Root.SetupState = runtime.SetupState
 	runtime.Root.Sections = references
-	data, err := json.Marshal(runtime.Root)
+	data, err := json.MarshalIndent(runtime.Root, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -503,8 +503,14 @@ func TestConfigManagerMailSectionAppliesBothPartitionsWithoutMailFile(t *testing
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(data), `"generation":2`) {
-			t.Fatalf("%s was not updated to generation 2: %s", name, data)
+		var saved struct {
+			Meta SectionMeta `json:"meta"`
+		}
+		if err := json.Unmarshal(data, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.Meta.Generation != 2 {
+			t.Fatalf("%s 未更新至第二代配置", name)
 		}
 	}
 	reloaded, err := NewConfigLoader(root, options).Load()

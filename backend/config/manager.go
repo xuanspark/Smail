@@ -157,7 +157,7 @@ func BackupConfig(root string, snapshot RuntimeSnapshot, now time.Time) (string,
 	if err := pruneBackups(directory, now); err != nil {
 		return "", err
 	}
-	data, err := json.Marshal(snapshot)
+	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return "", err
 	}
@@ -301,7 +301,7 @@ func writeRootConfig(root string, value RootConfig) error {
 		return err
 	}
 	value = normalizeRootConfig(value)
-	data, err := json.Marshal(value)
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}

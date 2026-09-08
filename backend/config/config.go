@@ -314,7 +314,7 @@ func writeProtectedConfigFile(name string, cfg *Config) error {
 	}
 	stored.SSLPrivateKeyPath = persistControlledSSLPath(stored.SSLPrivateKeyPath)
 	stored.SSLPublicKeyPath = persistControlledSSLPath(stored.SSLPublicKeyPath)
-	data, err := json.Marshal(stored)
+	data, err := json.MarshalIndent(stored, "", "  ")
 	if err != nil {
 		return errors.Wrap(err)
 	}
@@ -341,7 +341,7 @@ func readConfig() (*Config, error) {
 	}
 	cfgData, err := readConfigFile("config.json")
 	if os.IsNotExist(err) {
-		data, marshalErr := json.Marshal(configData)
+		data, marshalErr := json.MarshalIndent(configData, "", "  ")
 		if marshalErr != nil {
 			return nil, errors.Wrap(marshalErr)
 		}
