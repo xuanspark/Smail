@@ -31,6 +31,8 @@ type ConfigAuditEvent struct {
 	Section            Section         `json:"section,omitempty"`
 	ActorID            string          `json:"actorId"`
 	ActorRole          string          `json:"actorRole"`
+	ActorName          string          `json:"actorName,omitempty"`
+	Changes            []ConfigAuditChange `json:"changes,omitempty"`
 	FromGeneration     uint64          `json:"fromGeneration"`
 	ToGeneration       uint64          `json:"toGeneration"`
 	TargetGeneration   uint64          `json:"targetGeneration,omitempty"`

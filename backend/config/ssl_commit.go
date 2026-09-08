@@ -139,6 +139,7 @@ func WriteSSLConfig(expected, next *Config) error {
 	return manager.writeAudit(context.Background(), ConfigAuditEvent{
 		Operation: ConfigOperationUpdate, Section: SectionSSL, ActorID: "system", ActorRole: "system",
 		FromGeneration: current.Generation, ToGeneration: candidate.Generation,
+		Changes: AuditChanges(current, candidate),
 		ChangedFields: []string{"tls"}, Result: "success", CreatedAt: now,
 	})
 }

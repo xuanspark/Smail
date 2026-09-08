@@ -56,6 +56,7 @@ type UpdateRequest struct {
 
 type AuditActor struct {
 	UserID                 string
+	Name                   string
 	Role                   string
 	SessionID              string
 	RecentAuth             bool
@@ -469,6 +470,8 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 		Section:            pending.Section,
 		ActorID:            pending.Actor.UserID,
 		ActorRole:          pending.Actor.Role,
+		ActorName:          pending.Actor.Name,
+		Changes:            AuditChanges(current, candidate),
 		FromGeneration:     current.Generation,
 		ToGeneration:       candidate.Generation,
 		ChangedFields:      changedFields(current, candidate, pending.Section),
@@ -726,6 +729,8 @@ func (m *ConfigManager) rollbackWithState(ctx context.Context, generation uint64
 		Section:            SectionRoot,
 		ActorID:            actor.UserID,
 		ActorRole:          actor.Role,
+		ActorName:          actor.Name,
+		Changes:            AuditChanges(current, candidate),
 		FromGeneration:     current.Generation,
 		ToGeneration:       candidate.Generation,
 		TargetGeneration:   generation,
@@ -771,10 +776,9 @@ func (m *ConfigManager) writeAudit(ctx context.Context, event ConfigAuditEvent) 
 }
 
 func changedFields(current, candidate RuntimeConfig, section Section) []string {
-	if current.Generation == candidate.Generation && section == "" {
-		return nil
-	}
-	return []string{string(section)}
+	var fields []string
+	for _, change := range AuditChanges(current, candidate) { fields = append(fields, change.Field) }
+	return fields
 }
 
 func servicesForSection(section Section) []ServiceName {
@@ -1075,6 +1079,7 @@ func (m *ConfigManager) MigrateLegacyPluginSecrets(ctx context.Context, importer
 		FromGeneration: current.Generation,
 		ToGeneration:   candidate.Generation,
 		ChangedFields:  []string{"plugins.legacySecret"},
+		Changes:        AuditChanges(current, candidate),
 		Result:         "success",
 		CreatedAt:      now,
 	}); err != nil {

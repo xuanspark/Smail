@@ -96,6 +96,8 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 		Section:          SectionRoot,
 		ActorID:          actor.UserID,
 		ActorRole:        actor.Role,
+		ActorName:        actor.Name,
+		Changes:          AuditChanges(current, candidate),
 		FromGeneration:   current.Generation,
 		ToGeneration:     candidate.Generation,
 		TargetGeneration: candidate.Generation,

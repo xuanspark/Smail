@@ -369,6 +369,7 @@ func configSectionFromPath(path string) (config.Section, bool) {
 
 func configActor(ctx *appcontext.Context, req *http.Request) config.AuditActor {
 	actor := config.AuditActor{UserID: strconv.Itoa(ctx.UserID), Role: string(ctx.EffectiveRole()), RecentAuth: ctx.RecentAuth, RecoveryCodeConfigured: ctx.RecoveryCodeConfigured}
+	actor.Name = ctx.UserAccount
 	if sessionManager := session.Instance; sessionManager != nil {
 		if cookie, err := req.Cookie(sessionManager.Cookie.Name); err == nil {
 			actor.SessionID = cookie.Value
