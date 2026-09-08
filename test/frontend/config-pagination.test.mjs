@@ -43,8 +43,8 @@ test('网络和文本列表跨页编辑、添加、删除仅更新目标条目',
   const fieldSource = readFileSync(new URL('ConfigField/ConfigField.js', root), 'utf8')
   const useField = compileFunction(
     fieldSource.replace(/^import .*$/gm, '').replace(/^export \{.*$/gm, '').replace('export function', 'function') + '\nreturn useField',
-    ['computed', 'nextTick', 'fieldKey', 'usePagination']
-  )(computed, nextTick, field => field.path.join('.'), usePagination)
+    ['computed', 'nextTick', 'ref', 'watch', 'fieldKey', 'usePagination']
+  )(computed, nextTick, ref, watch, field => field.path.join('.'), usePagination)
   for (const type of ['list', 'network']) {
     const scope = effectScope()
     const value = ref(type === 'list' ? ['a.example', 'b.example', 'c.example'] : [

@@ -351,6 +351,8 @@ test('普通文本输入使用本地编辑值，父级配置刷新不会抢占�
   assert.match(script, /const textValue = ref\(/)
   assert.match(script, /const textEditing = ref\(false\)/)
   assert.match(script, /watch\(\(\) => props\.value/)
+  assert.match(script, /if \(!textEditing\.value\)\s*\{\s*textValue\.value = nextValue/)
+  assert.doesNotMatch(script, /!textEditing\.value \|\| nextValue !== textValue\.value/)
 })
 
 test('统一加密方式同步切换 SMTP、IMAP、POP3 与已配置中继', () => {

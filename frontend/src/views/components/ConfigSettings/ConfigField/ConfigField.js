@@ -46,7 +46,7 @@ export function useField(props, emit) {
 
   watch(() => props.value, value => {
     const nextValue = typeof value === 'string' ? value : ''
-    if (!textEditing.value || nextValue !== textValue.value) {
+    if (!textEditing.value) {
       textValue.value = nextValue
     }
   })
