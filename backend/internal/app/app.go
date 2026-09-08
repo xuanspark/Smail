@@ -14,7 +14,7 @@ import (
 )
 
 // Run 启动 Smail 主服务。
-func Run() error {
+func Run() (err error) {
 	if err := config.InitializeDeployment(config.ROOT_PATH); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("启动运行日志失败: %w", err)
 	}
-	defer runtimeLogs.Close()
+	defer finishRuntimeLogs(runtimeLogs, &err)
 	config.MaintainManagedSSLHistory()
 
 	build := buildinfo.Current()
@@ -54,6 +54,19 @@ func Run() error {
 
 	log.Warnf("Server Stoped \n")
 	return nil
+}
+
+// finishRuntimeLogs 在关闭日志文件前记录返回错误或异常，避免致命错误只留在控制台。
+func finishRuntimeLogs(writer *runtimelog.Writer, runErr *error) {
+	if recovered := recover(); recovered != nil {
+		*runErr = fmt.Errorf("服务启动异常: %v", recovered)
+	}
+	if *runErr != nil {
+		log.WithError(*runErr).Error("服务因致命错误停止")
+	}
+	if err := writer.Close(); err != nil {
+		log.WithError(err).Error("关闭运行日志失败")
+	}
 }
 
 // RunAndExit 执行主服务并在发生致命错误时退出。

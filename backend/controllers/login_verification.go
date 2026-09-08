@@ -265,6 +265,7 @@ func completeLoginSession(ctx *context.Context, w http.ResponseWriter, req *http
 	for key, value := range loginSecurityFields(user) {
 		result[key] = value
 	}
+	setLoginAuditActor(ctx, user)
 	response.NewSuccessResponse(result).FPrint(w)
 }
 

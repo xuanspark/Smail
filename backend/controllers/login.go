@@ -105,7 +105,7 @@ func loginSecurityFields(user *models.User) map[string]any {
 		"recoveryCodesConfigured": false,
 		"showRecoverySetupPrompt": false,
 		"showSecuritySetupPrompt": user != nil && user.SecuritySetupAcknowledged == 0,
-		"webAuthnEnabled": webAuthnRuntime() != nil,
+		"webAuthnEnabled":         webAuthnRuntime() != nil,
 	}
 	if user == nil || user.EffectiveRole() == access.RoleSuperAdmin {
 		return fields
@@ -270,7 +270,16 @@ func Login(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	for key, value := range loginSecurityFields(user) {
 		result[key] = value
 	}
+	setLoginAuditActor(ctx, user)
 	response.NewSuccessResponse(result).FPrint(w)
+}
+
+// setLoginAuditActor 只在完整登录成功后补充审计身份，不将待二次验证视为登录完成。
+func setLoginAuditActor(ctx *context.Context, user *models.User) {
+	ctx.UserID = user.ID
+	ctx.UserAccount = user.Account
+	ctx.UserName = user.Name
+	ctx.Role = user.EffectiveRole()
 }
 
 func Logout(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
