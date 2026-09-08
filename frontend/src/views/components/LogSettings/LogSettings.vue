@@ -2,51 +2,34 @@
   <section class="log-settings">
     <header class="log-heading">
       <h2>日志记录</h2>
-      <span class="log-retention">最近 30 天</span>
+      <span class="log-retention">保留 30 天</span>
     </header>
     <el-radio-group v-model="category" class="log-categories" aria-label="日志分类">
       <el-radio-button v-for="item in categories" :key="item.value" :value="item.value">
         {{ item.label }}
       </el-radio-button>
     </el-radio-group>
-    <div class="log-filters" :class="{ 'log-filters-runtime': isRuntime }">
-      <template v-if="isRuntime">
-        <el-select v-model="selectedFile" placeholder="选择日志文件" aria-label="日志文件" @change="search">
-          <el-option
-            v-for="file in files"
-            :key="file.name"
-            :value="file.name"
-            :label="`${file.name}${file.compressed ? '（已压缩）' : ''}`"
-          >
-            <div class="log-file-option">
-              <span>{{ file.name }}</span>
-              <small>{{ file.compressed ? '已压缩 · ' : '' }}{{ formatFileSize(file.bytes) }}</small>
-            </div>
-          </el-option>
-        </el-select>
-      </template>
-      <template v-else>
-        <el-date-picker
-          v-model="dateRange"
-          type="datetimerange"
-          start-placeholder="开始时间"
-          end-placeholder="结束时间"
-          format="YYYY-MM-DD HH:mm"
-          aria-label="日志时间范围"
-        />
-        <el-input v-model="actorId" clearable placeholder="操作者编号" aria-label="操作者编号" @keyup.enter="search" />
-      </template>
-      <el-button type="primary" :loading="loading" @click="search">{{ isRuntime ? '刷新' : '查询' }}</el-button>
+    <div class="log-filters">
+      <el-date-picker
+        v-model="dateRange"
+        type="datetimerange"
+        start-placeholder="开始时间"
+        end-placeholder="结束时间"
+        format="YYYY-MM-DD HH:mm"
+        aria-label="日志时间范围"
+      />
+      <el-input v-if="!isRuntime" v-model="actorId" clearable placeholder="操作者编号" aria-label="操作者编号" @keyup.enter="search" />
+      <div class="log-filter-actions">
+        <el-button :disabled="loading" @click="recent">最近 24 小时</el-button>
+        <el-button type="primary" :loading="loading" @click="search">查询</el-button>
+      </div>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <div v-loading="loading" class="log-content" :aria-busy="loading">
       <div class="log-table-heading">
         <div class="log-table-title">
           <strong>{{ currentCategory }}</strong>
-          <span v-if="isRuntime && currentFile" class="log-file-meta">
-            {{ formatFileSize(currentFile.bytes) }} · {{ currentFile.compressed ? '压缩归档' : '原始文件' }}
-          </span>
-          <span v-else class="log-file-meta">本页 {{ visibleCount }} 条</span>
+          <span class="log-file-meta">最新在前 · 每页 10 条</span>
         </div>
         <div v-if="isRuntime" class="log-summary" aria-label="本页日志统计">
           <span>本页 {{ runtimeSummary.total }} 条</span>
@@ -173,11 +156,11 @@
 import { useLogs } from './LogSettings.js'
 
 const {
-  category, categories, loading, error, items, files, selectedFile, lines, offset,
+  category, categories, loading, error, items, offset,
   hasMore, actorId, dateRange, detail, details, changes, isRuntime,
-  runtimeDetail, runtimeRows, runtimeSummary, currentFile, visibleCount, pageRange,
-  currentCategory, resultType, runtimeRowClass, timeParts, formatFileSize,
-  formatTime, resultLabel, actionLabel, displayActor, search, next, previous
+  runtimeDetail, runtimeRows, runtimeSummary, pageRange,
+  currentCategory, resultType, runtimeRowClass, timeParts,
+  formatTime, resultLabel, actionLabel, displayActor, search, recent, next, previous
 } = useLogs()
 </script>
 

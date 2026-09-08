@@ -24,6 +24,10 @@ type Page struct {
 func (w *Writer) Files() ([]File, error) {
 	w.archiveMu.Lock()
 	defer w.archiveMu.Unlock()
+	return w.files()
+}
+
+func (w *Writer) files() ([]File, error) {
 	if w.closed {
 		return nil, ErrInvalid
 	}
@@ -45,8 +49,13 @@ func (w *Writer) Files() ([]File, error) {
 		if err := w.regular(entry.Name(), false); err != nil {
 			return nil, err
 		}
-		info, err := entry.Info()
+		// Windows 目录枚举可能缓存仍打开文件的旧长度，必须通过文件句柄读取。
+		handle, err := w.root.Open(entry.Name())
 		if err != nil {
+			return nil, err
+		}
+		info, statErr := handle.Stat()
+		if err := errors.Join(statErr, handle.Close()); err != nil {
 			return nil, err
 		}
 		files = append(files, File{Name: entry.Name(), Bytes: info.Size(), Compressed: strings.HasSuffix(entry.Name(), ".gz")})

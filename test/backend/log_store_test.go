@@ -36,6 +36,44 @@ func testStore(t *testing.T) *Store {
 	return store
 }
 
+func TestLogStoreEmptyEntriesAreNotInserted(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, kind := range []string{"config", "operation", "mail"} {
+		for _, payload := range []string{`{}`, `null`, `[]`, `" "`, `{"message":"***"}`} {
+			if err := s.Write(ctx, Entry{Kind: kind, CreatedAt: time.Now(), Action: "---", Payload: []byte(payload)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var count int
+		table, _ := logTable(kind)
+		if err := s.db.QueryRow("SELECT COUNT(*) FROM "+table+" WHERE kind = ?", kind).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("空记录已落库：%s %d %v", kind, count, err)
+		}
+		for _, entry := range []Entry{
+			{Action: "登录验证", Result: "success", Payload: []byte(`{}`)},
+			{Action: "update", Result: "success", Payload: []byte(`{"changes":[]}`)},
+			{Result: "failure", Payload: []byte(`{}`)},
+			{Result: "unknown", Payload: []byte(`{}`)},
+			{Payload: []byte(`{"errorCode":0}`)},
+			{Payload: []byte(`{"message":"投递成功"}`)},
+			{Payload: []byte(`{"unknown":null}`)},
+		} {
+			entry.Kind, entry.CreatedAt = kind, time.Now()
+			if err := s.Write(ctx, entry); err != nil {
+				t.Fatal(err)
+			}
+		}
+		items, err := s.Query(ctx, Query{Kind: kind})
+		if err != nil || len(items) != 7 {
+			t.Fatalf("有效证据丢失：%s %d %v", kind, len(items), err)
+		}
+	}
+	if err := s.Write(ctx, Entry{Kind: "mail", CreatedAt: time.Now(), Payload: []byte(`invalid`)}); err != ErrInvalid {
+		t.Fatal("过滤不能掩盖非法载荷")
+	}
+}
+
 func TestLogRetentionBoundariesAndBusinessSafety(t *testing.T) {
 	s := testStore(t)
 	now := time.Date(2026, 9, 8, 9, 37, 0, 0, time.UTC)

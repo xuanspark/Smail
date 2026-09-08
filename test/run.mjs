@@ -60,6 +60,7 @@ if ((suite === 'all' || suite === 'backend') && result === 0) {
     'backend/db/migration/log_migration_test.go': 'test/backend/log_migration_test.go',
     'backend/config/audit_changes_test.go': 'test/backend/audit_changes_test.go',
     'backend/config/json_format_test.go': 'test/backend/json_format_test.go',
+    'backend/config/log_formatter_test.go': 'test/backend/log_formatter_test.go',
     'backend/config/deployment_state_test.go': 'test/backend/deployment_state_test.go',
     'backend/config/ssl_retention_test.go': 'test/backend/ssl_retention_test.go',
     'backend/utils/runtimepath/layout_test.go': 'test/backend/runtime_layout_test.go',

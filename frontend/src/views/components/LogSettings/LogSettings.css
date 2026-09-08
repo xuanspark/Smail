@@ -92,29 +92,15 @@
   max-width: 190px;
 }
 
-.log-filters .el-select {
-  flex: 1;
-  min-width: 0;
-}
-
-.log-filters-runtime {
-  flex-wrap: nowrap;
-}
-
-.log-filters :deep(.el-select__wrapper),
-.log-filters :deep(.el-button) {
-  border-radius: 8px;
-}
-
-.log-file-option {
+.log-filter-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
-.log-file-option small {
-  color: var(--el-text-color-secondary);
+.log-filters :deep(.el-button) {
+  border-radius: 8px;
 }
 
 .log-content {

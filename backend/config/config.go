@@ -156,6 +156,25 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 	}
 	b.WriteString(fmt.Sprintf("[%s:%d]", entry.Caller.File, entry.Caller.Line))
 	b.WriteString(entry.Message)
+	// 错误字段也是有效内容，不能在消息为空时被格式器丢弃。
+	if len(entry.Data) > 0 {
+		fields := make(map[string]any, len(entry.Data))
+		for key, value := range entry.Data {
+			if cause, ok := value.(error); ok {
+				fields[key] = cause.Error()
+			} else if _, err := json.Marshal(value); err != nil {
+				fields[key] = fmt.Sprintf("无法序列化的字段（%T）", value)
+			} else {
+				fields[key] = value
+			}
+		}
+		payload, err := json.Marshal(fields)
+		if err != nil {
+			return nil, err
+		}
+		b.WriteByte(' ')
+		b.Write(payload)
+	}
 
 	b.WriteString("\n")
 	return b.Bytes(), nil

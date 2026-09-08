@@ -86,15 +86,34 @@ func Start(root string) (*Writer, error) {
 func (w *Writer) Levels() []log.Level { return log.AllLevels }
 
 func (w *Writer) Fire(entry *log.Entry) error {
+	// 结构化字段和警告以上级别本身具有排错价值，不能只看消息是否为空。
+	if entry.Level >= log.InfoLevel && len(entry.Data) == 0 {
+		if logpolicy.EmptyMessage(entry.Message) || (entry.Level == log.InfoLevel && entry.Caller != nil && legacyStartupNoise(entry.Caller.File, entry.Message)) {
+			return nil
+		}
+	}
 	// 复用已有格式器保留请求标识、错误字段和源位置；转义换行保证一条记录一行。
 	data, err := entry.Logger.Formatter.Format(entry)
 	if err != nil {
 		return err
 	}
-	return w.WriteAt(entry.Time, strings.TrimRight(string(data), "\r\n"))
+	return w.writeAt(entry.Time, strings.TrimRight(string(data), "\r\n"))
 }
 
 func (w *Writer) WriteAt(at time.Time, message string) error {
+	if at.IsZero() {
+		return ErrInvalid
+	}
+	if logpolicy.EmptyMessage(message) {
+		return nil
+	}
+	if _, keep := presentLine("[" + at.UTC().Format(time.RFC3339Nano) + "] " + message); !keep {
+		return nil
+	}
+	return w.writeAt(at, message)
+}
+
+func (w *Writer) writeAt(at time.Time, message string) error {
 	if at.IsZero() {
 		return ErrInvalid
 	}

@@ -106,6 +106,9 @@ func (s *Store) Write(ctx context.Context, entry Entry) error {
 	if entry.CreatedAt.Before(logpolicy.Cutoff(s.now())) {
 		return nil
 	}
+	if emptyEntry(entry) {
+		return nil
+	}
 	if entry.ID == "" {
 		var token [16]byte
 		if _, err := rand.Read(token[:]); err != nil {

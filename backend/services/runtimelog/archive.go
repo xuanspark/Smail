@@ -43,6 +43,13 @@ func lineTime(line []byte) (time.Time, error) {
 
 // scan 严格解析每条记录及压缩校验和，损坏归档不得触发删除源文件。
 func (w *Writer) scan(ctx context.Context, name string, consume func([]byte, time.Time) error) error {
+	return w.scanSize(ctx, name, -1, consume)
+}
+
+func (w *Writer) scanSize(ctx context.Context, name string, size int64, consume func([]byte, time.Time) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := w.regular(name, false); err != nil {
 		return err
 	}
@@ -52,8 +59,11 @@ func (w *Writer) scan(ctx context.Context, name string, consume func([]byte, tim
 	}
 	defer file.Close()
 	var reader io.Reader = file
+	if size >= 0 {
+		reader = io.LimitReader(reader, size)
+	}
 	if strings.HasSuffix(name, ".gz") {
-		archive, err := gzip.NewReader(file)
+		archive, err := gzip.NewReader(reader)
 		if err != nil {
 			return err
 		}

@@ -33,7 +33,7 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	values := req.URL.Query()
-	limit, offset := 50, 0
+	limit, offset := 10, 0
 	var err error
 	if values.Has("limit") {
 		limit, err = strconv.Atoi(values.Get("limit"))
@@ -47,13 +47,37 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 	}
 	bounded, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 	defer cancel()
+	query := logstore.Query{Kind: values.Get("kind"), ActorID: values.Get("actorId"), Limit: limit + 1, Offset: offset}
+	for _, item := range []struct {
+		name   string
+		target *time.Time
+	}{{"from", &query.From}, {"to", &query.To}} {
+		if values.Has(item.name) {
+			*item.target, err = time.Parse(time.RFC3339Nano, values.Get(item.name))
+			if err != nil {
+				writeConfigError(w, config.ErrInvalidAuditQuery)
+				return
+			}
+		}
+	}
+	if query.To.IsZero() {
+		query.To = time.Now()
+	}
+	if query.From.IsZero() {
+		query.From = query.To.Add(-24 * time.Hour)
+	}
+	if query.From.After(query.To) {
+		writeConfigError(w, config.ErrInvalidAuditQuery)
+		return
+	}
 	if values.Get("kind") == "runtime" {
 		writer := runtimelog.Current()
 		if writer == nil {
 			logQueryError(w, logstore.ErrUnavailable)
 			return
 		}
-		if values.Get("file") == "" {
+		// 显式保留旧文件列表入口，新页面默认跨文件查询。
+		if values.Get("listFiles") == "true" {
 			files, err := writer.Files()
 			if err != nil {
 				logQueryError(w, err)
@@ -62,26 +86,13 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 			response.NewSuccessResponse(map[string]any{"files": files}).FPrint(w)
 			return
 		}
-		page, err := writer.Read(bounded, values.Get("file"), offset, limit)
+		page, err := writer.Query(bounded, runtimelog.Query{File: values.Get("file"), From: query.From, To: query.To, Offset: offset, Limit: limit})
 		if err != nil {
 			logQueryError(w, err)
 			return
 		}
 		response.NewSuccessResponse(page).FPrint(w)
 		return
-	}
-	query := logstore.Query{Kind: values.Get("kind"), ActorID: values.Get("actorId"), Limit: limit + 1, Offset: offset}
-	for _, item := range []struct {
-		name   string
-		target *time.Time
-	}{{"from", &query.From}, {"to", &query.To}} {
-		if values.Get(item.name) != "" {
-			*item.target, err = time.Parse(time.RFC3339Nano, values.Get(item.name))
-			if err != nil {
-				writeConfigError(w, config.ErrInvalidAuditQuery)
-				return
-			}
-		}
 	}
 	if query.Kind != "config" && query.Kind != "operation" && query.Kind != "mail" {
 		writeConfigError(w, config.ErrInvalidAuditQuery)

@@ -3,32 +3,41 @@ package runtimelog
 import (
 	"regexp"
 	"strings"
+
+	"git.pcux.cn/xuans/Smail/utils/logpolicy"
 )
 
-var legacyStartupLine = regexp.MustCompile(`^(\[[^\]\r\n]+\]\s+\[info\]\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\](?:\[[^\]\r\n]*\])?\[([^\]\r\n]+):\d+\])([^\r\n]*)$`)
+var contentLine = regexp.MustCompile(`^\[[^\]\r\n]+\]\s+\[(info|debug|trace)\]\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\](?:\[[^\]\r\n]*\])?\[([^\]\r\n]+):\d+\]([^\r\n]*)$`)
 
-// presentLine 只精简旧版主程序的启动横幅，不修改磁盘原文或隐藏其他来源和级别的记录。
+// presentLine 先过滤明确无内容的历史记录；警告、错误和未知格式均保留原文。
 func presentLine(line string) (string, bool) {
-	parts := legacyStartupLine.FindStringSubmatch(line)
+	parts := contentLine.FindStringSubmatch(line)
 	if parts == nil {
+		if end := strings.Index(line, "] "); end >= 0 && logpolicy.EmptyMessage(line[end+2:]) {
+			return "", false
+		}
 		return line, true
 	}
-	source := strings.ReplaceAll(parts[2], `\`, "/")
-	if source != "internal/app/app.go" && !strings.HasSuffix(source, "/internal/app/app.go") {
-		return line, true
-	}
-	message := strings.TrimSpace(parts[3])
-	if len(message) >= 3 && strings.Trim(message, "*") == "" {
+	if logpolicy.EmptyMessage(parts[3]) || (parts[1] == "info" && legacyStartupNoise(parts[2], parts[3])) {
 		return "", false
 	}
+	return line, true
+}
+
+func legacyStartupNoise(source, message string) bool {
+	source = strings.ReplaceAll(source, `\`, "/")
+	if source != "internal/app/app.go" && !strings.HasSuffix(source, "/internal/app/app.go") {
+		return false
+	}
+	message = strings.TrimSpace(message)
 	if !strings.HasPrefix(message, "***\t") && !strings.HasPrefix(message, "*** ") {
-		return line, true
+		return false
 	}
 	message = strings.TrimSpace(message[3:])
 	for _, prefix := range []string{"Server Version:", "Git Commit Hash:", "Build Date:", "Build GoLang Version:"} {
 		if strings.HasPrefix(message, prefix) {
-			return "", false
+			return true
 		}
 	}
-	return line, true
+	return false
 }

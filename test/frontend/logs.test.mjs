@@ -55,24 +55,58 @@ test('日志查询传递时间与操作者筛选，并将业务失败显示为�
   assert.equal(page.displayActor({ actorId: '0' }), '系统')
 })
 
-test('压缩日志短页正确返回上一页，文件过期后重置偏移', async () => {
-  let filename = 'runtime-2026-08-15.log.gz'
+test('跨文件运行日志短页正确返回上一页，翻页固定时间和筛选条件', async () => {
   const offsets = []
+  const ranges = []
   const { page } = fixture(async (_, { params }) => {
-    if (!params.file) return { errorNo: 0, data: { files: [{ name: filename, compressed: true }] } }
+    assert.equal(params.limit, 10)
+    assert.equal(params.file, undefined)
+    assert.equal(params.actorId, undefined)
     offsets.push(params.offset)
-    return { errorNo: 0, data: { lines: Array(params.offset === 0 ? 8 : 12).fill('日志'), hasMore: true } }
+    ranges.push([params.from, params.to])
+    return { errorNo: 0, data: { lines: Array(params.offset === 0 ? 8 : 10).fill('日志'), hasMore: true } }
   })
   page.category.value = 'runtime'
+  page.actorId.value = '42'
   await page.search()
+  page.dateRange.value = ['2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z']
   await page.next()
   await page.next()
   await page.previous()
-  assert.deepEqual(offsets, [0, 8, 20, 8])
-  filename = 'runtime-2026-08-16.log.gz'
-  await page.next()
+  assert.deepEqual(offsets, [0, 8, 18, 8])
+  for (const range of ranges) assert.deepEqual(range, ranges[0])
+  await page.search()
   assert.equal(page.offset.value, 0)
   assert.equal(offsets.at(-1), 0)
+  assert.equal(ranges.at(-1)[0], '2026-09-01T00:00:00.000Z')
+})
+
+test('默认最近二十四小时和十条分页，清空时恢复默认，非法范围不请求', async () => {
+  const requests = []
+  const { page } = fixture(async (_, { params }) => {
+    requests.push(params)
+    return { errorNo: 0, data: { items: Array(10).fill({ id: 'entry' }), hasMore: true } }
+  })
+  await page.search()
+  assert.equal(requests[0].limit, 10)
+  assert.equal(new Date(requests[0].to) - new Date(requests[0].from), 24 * 60 * 60 * 1000)
+  await page.next()
+  assert.equal(requests[1].offset, 10)
+  page.dateRange.value = null
+  await page.search()
+  assert.equal(requests[2].offset, 0)
+  assert.equal(page.dateRange.value.length, 2)
+  page.dateRange.value = ['invalid', 'invalid']
+  await page.search()
+  assert.equal(requests.length, 3)
+  assert.equal(page.error.value, '请选择有效的起止时间')
+  assert.equal(page.items.value.length, 0)
+  assert.equal(page.hasMore.value, false)
+  page.dateRange.value = ['2026-09-02', '2026-09-01']
+  await page.search()
+  assert.equal(requests.length, 3)
+  await page.recent()
+  assert.equal(requests.length, 4)
 })
 
 test('慢响应及卸载后的响应不得覆盖最新日志', async () => {
