@@ -56,6 +56,11 @@
   align-items: flex-start;
 }
 
+/* SSL 路径必须保持整行宽度，避免长路径被多列布局截断。 */
+.config-form[data-form-section="ssl"] .form-group[data-group="certificate"] .form-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .section-error {
   margin-left: 6px;
   color: var(--el-color-danger);

@@ -317,6 +317,42 @@ test('证书管理方式只展示三种业务模式并同步底层托管配置',
   assert.ok(getFieldGroups('ssl', updated).flatMap(group => group.fields).some(field => field.path.join('.') === 'tls.certificateRef'))
 })
 
+test('自定义证书配置使用单列三行并完整展示路径输入框', () => {
+  const tls = {
+    management: 'custom',
+    mode: 'managed_upload',
+    defaultDirectory: 'config/ssl',
+    customDirectory: 'config/ssl/imported',
+    certificateRef: 'config/ssl/imported/fullchain.pem',
+    privateKeyRef: 'config/ssl/imported/privkey.pem'
+  }
+  const fields = getFieldGroups('ssl', { tls }).flatMap(group => group.fields)
+  assert.deepEqual(fields.map(field => field.path.join('.')), [
+    'tls.management',
+    'tls.certificateRef',
+    'tls.privateKeyRef'
+  ])
+  assert.ok(fields.every(field => field.wide === true))
+
+  const css = readFileSync(new URL('ConfigForm/ConfigForm.css', root), 'utf8')
+  assert.match(
+    css,
+    /\.config-form\[data-form-section="ssl"\] \.form-group\[data-group="certificate"\] \.form-grid\s*\{\s*grid-template-columns: minmax\(0, 1fr\);/
+  )
+})
+
+test('普通文本输入使用本地编辑值，父级配置刷新不会抢占光标', () => {
+  const template = readFileSync(new URL('ConfigField/ConfigField.vue', root), 'utf8')
+  const script = readFileSync(new URL('ConfigField/ConfigField.js', root), 'utf8')
+  assert.match(template, /:model-value="textValue"/)
+  assert.match(template, /@focus="beginTextEditing"/)
+  assert.match(template, /@blur="endTextEditing"/)
+  assert.match(template, /@update:model-value="updateText"/)
+  assert.match(script, /const textValue = ref\(/)
+  assert.match(script, /const textEditing = ref\(false\)/)
+  assert.match(script, /watch\(\(\) => props\.value/)
+})
+
 test('统一加密方式同步切换 SMTP、IMAP、POP3 与已配置中继', () => {
   for (const [security, expected] of [
     ['both', { relay: 587, relaySecurity: 'starttls', smtpStartTLS: 587, smtpTLS: 465, imap: 993, pop3: 110, pop3TLS: 995 }],

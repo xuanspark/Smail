@@ -122,7 +122,7 @@
       v-else
       class="field-text-input"
       :id="id"
-      :model-value="value ?? ''"
+      :model-value="textValue"
       :disabled="disabled || field.locked"
       :placeholder="field.placeholder || '填写内容'"
       :aria-describedby="descriptionId"
@@ -130,7 +130,9 @@
       :type="field.type === 'password' ? 'password' : 'text'"
       :show-password="field.type === 'password'"
       :autocomplete="field.type === 'password' ? 'new-password' : 'off'"
-      @update:model-value="update"
+      @focus="beginTextEditing"
+      @blur="endTextEditing"
+      @update:model-value="updateText"
     />
     <ConfigPagination
       v-if="['list', 'network'].includes(field.type)"
@@ -171,8 +173,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['change'])
 const {
-  id, descriptionId, selectOptions, update, updateEntry, updateTarget, removeEntry,
-  addEntry, currentPage, pageCount, pageItems, total
+  id, descriptionId, selectOptions, textValue, update, updateText, beginTextEditing,
+  endTextEditing, updateEntry, updateTarget, removeEntry, addEntry, currentPage,
+  pageCount, pageItems, total
 } = useField(props, emit)
 </script>
 

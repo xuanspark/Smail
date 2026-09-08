@@ -160,6 +160,7 @@ const securityPolicyGroups = [
 const sslGroups = [
   group('certificate', '证书与存储', '', [
     field('tls.management', '证书管理方式', 'select', {
+      wide: true,
       fallback: 'custom',
       options: options([
         ['web_server', 'Web 服务器管理'],
@@ -168,15 +169,18 @@ const sslGroups = [
       ])
     }),
     field('tls.challenge', '证书验证方式', 'select', {
+      wide: true,
       show: projectManagedCertificate,
       fallback: 'http',
       options: options([['http', 'HTTP 验证'], ['dns', 'DNS 验证']])
     }),
     field('tls.certificateRef', '证书文件', 'text', {
+      wide: true,
       show: externalManagedCertificate,
       placeholder: 'config/ssl/example.com/fullchain.pem'
     }),
     field('tls.privateKeyRef', '私钥文件', 'text', {
+      wide: true,
       show: externalManagedCertificate,
       placeholder: 'config/ssl/example.com/privkey.pem'
     })
