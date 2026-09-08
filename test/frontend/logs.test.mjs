@@ -4,17 +4,18 @@ import { readFileSync } from 'node:fs'
 import { compileFunction } from 'node:vm'
 import { createRequire } from 'node:module'
 import { computed, ref } from './vue.mjs'
+import { formatFileSize, parseRuntimeLine, summarizeRuntime, timeParts } from '../../frontend/src/views/components/LogSettings/RuntimeLog.js'
 
 const root = new URL('../../frontend/src/views/components/LogSettings/', import.meta.url)
 const read = name => readFileSync(new URL(name, root), 'utf8')
 const create = compileFunction(
   read('LogSettings.js').replace(/^import .*$/gm, '').replace('export function', 'function') + '\nreturn useLogs()',
-  ['computed', 'onBeforeUnmount', 'onMounted', 'ref', 'watch', 'http']
+  ['computed', 'onBeforeUnmount', 'onMounted', 'ref', 'watch', 'http', 'formatFileSize', 'parseRuntimeLine', 'summarizeRuntime', 'timeParts']
 )
 
 function fixture(get) {
   let dispose
-  const page = create(computed, callback => { dispose = callback }, () => {}, ref, () => {}, { get })
+  const page = create(computed, callback => { dispose = callback }, () => {}, ref, () => {}, { get }, formatFileSize, parseRuntimeLine, summarizeRuntime, timeParts)
   return { page, dispose: () => dispose() }
 }
 
@@ -90,4 +91,60 @@ test('慢响应及卸载后的响应不得覆盖最新日志', async () => {
   dispose()
   await last
   assert.equal(page.items.value[0].id, 'new')
+})
+
+test('运行日志拆分时间级别来源及请求标识，同时保留完整原文', () => {
+  const raw = '[2026-09-08T14:55:23.2188949Z] [warning][2026-09-08 22:55:23][request-42][git.pcux.cn/xuans/Smail/res_init/init.go:423]开发模式：已停用恢复通道'
+  const row = parseRuntimeLine(raw, 8)
+  assert.equal(row.sequence, 8)
+  assert.equal(row.level, 'warning')
+  assert.equal(row.label, '警告')
+  assert.equal(row.type, 'warning')
+  assert.equal(row.requestId, 'request-42')
+  assert.equal(row.sourceShort, 'res_init/init.go:423')
+  assert.equal(row.message, '开发模式：已停用恢复通道')
+  assert.equal(row.raw, raw)
+  assert.equal(row.time, timeParts(row.createdAt).time)
+})
+
+test('无请求标识、Windows 代码路径与原文方括号均能安全展示', () => {
+  const row = parseRuntimeLine('[2026-09-08T14:55:23Z] [info][2026-09-08 22:55:23][D:\\source\\app.go:39][业务]启动成功\\n下一行', 1)
+  assert.equal(row.source, 'D:\\source\\app.go:39')
+  assert.equal(row.requestId, '')
+  assert.equal(row.message, '[业务]启动成功\\n下一行')
+  assert.equal(row.level, 'info')
+})
+
+test('未知格式和非法时间不丢失消息，分隔线只改摘要不改原文', () => {
+  for (const raw of ['[2026-99-99T00:00:00Z] 错误', '<img src=x onerror=alert(1)>', '[业务]消息', '']) {
+    const row = parseRuntimeLine(raw, 1)
+    assert.equal(row.raw, raw)
+    assert.equal(row.message, raw)
+    assert.equal(row.level, 'unknown')
+    assert.equal(row.time, '—')
+  }
+  const row = parseRuntimeLine('[2026-09-08T14:55:23Z] [info][2026-09-08 22:55:23][app.go:39]********', 1)
+  assert.equal(row.summary, '启动分隔线')
+  assert.equal(row.message, '********')
+  assert.equal(parseRuntimeLine('[2026-09-08T14:55:23Z] [业务]保留内容', 2).message, '[业务]保留内容')
+})
+
+test('本页级别统计准确，压缩文件大小和空页区间明确', () => {
+  const rows = ['info', 'warn', 'error', 'fatal', 'panic', 'debug'].map(level => (
+    parseRuntimeLine(`[2026-09-08T14:55:23Z] [${level}][2026-09-08 22:55:23][app.go:39]内容`, 1)
+  ))
+  assert.deepEqual(summarizeRuntime(rows), { total: 6, info: 1, warning: 1, error: 3 })
+  assert.equal(formatFileSize(2048), '2.0 KB')
+  assert.equal(formatFileSize(0), '0 B')
+  assert.equal(formatFileSize(undefined), '—')
+  const { page } = fixture(async () => ({ errorNo: 0, data: {} }))
+  assert.equal(page.pageRange.value, '暂无记录')
+  page.category.value = 'runtime'
+  page.lines.value = rows.map(row => row.raw)
+  page.offset.value = 8
+  assert.equal(page.runtimeRows.value[0].sequence, 9)
+  assert.equal(page.pageRange.value, '第 9–14 条')
+  assert.deepEqual(page.runtimeSummary.value, summarizeRuntime(rows))
+  assert.match(read('LogSettings.vue'), /本页日志统计/)
+  assert.doesNotMatch(read('LogSettings.vue'), /lines\.join/)
 })

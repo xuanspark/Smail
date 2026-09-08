@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { http } from '@/utils/axios'
+import { formatFileSize, parseRuntimeLine, summarizeRuntime, timeParts } from './RuntimeLog.js'
 
 export function useLogs() {
   const category = ref('config')
@@ -14,6 +15,7 @@ export function useLogs() {
   const actorId = ref('')
   const dateRange = ref([])
   const detail = ref(null)
+  const runtimeDetail = ref(null)
   const pageSize = 50
   let requestId = 0
   let aborter
@@ -32,6 +34,14 @@ export function useLogs() {
   const displayActor = item => item.payload?.actorName || (item.actorId && item.actorId !== '0' ? item.actorId : '系统')
   const details = computed(() => detail.value?.payload || {})
   const changes = computed(() => details.value.changes || [])
+  const runtimeRows = computed(() => lines.value.map((line, index) => parseRuntimeLine(line, offset.value + index + 1)))
+  const runtimeSummary = computed(() => summarizeRuntime(runtimeRows.value))
+  const currentFile = computed(() => files.value.find(file => file.name === selectedFile.value))
+  const visibleCount = computed(() => isRuntime.value ? lines.value.length : items.value.length)
+  const pageRange = computed(() => visibleCount.value ? `第 ${offset.value + 1}–${offset.value + visibleCount.value} 条` : '暂无记录')
+  const currentCategory = computed(() => categories.find(item => item.value === category.value)?.label)
+  const resultType = value => ({ success: 'success', accepted: 'success', failure: 'danger' }[value] || 'info')
+  const runtimeRowClass = ({ row }) => ['warning', 'danger'].includes(row.type) ? `log-row-${row.type}` : ''
 
   function requireData(result) {
     if (result?.errorNo !== 0 || !result.data) throw new Error(result?.errorMsg || '日志查询失败')
@@ -106,6 +116,7 @@ export function useLogs() {
   }
   watch(category, () => {
     detail.value = null
+    runtimeDetail.value = null
     search()
   })
   onMounted(load)
@@ -117,6 +128,8 @@ export function useLogs() {
   return {
     category, categories, loading, error, items, files, selectedFile, lines, offset,
     hasMore, actorId, dateRange, detail, details, changes, isRuntime,
+    runtimeDetail, runtimeRows, runtimeSummary, currentFile, visibleCount, pageRange,
+    currentCategory, resultType, runtimeRowClass, timeParts, formatFileSize,
     formatTime, resultLabel, actionLabel, displayActor, search, next, previous
   }
 }
