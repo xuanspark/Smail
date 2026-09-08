@@ -17,14 +17,20 @@ clean_codex_test_artifacts:
 build_fe:
 	cd frontend && yarn && yarn build
 
-build_server: build_fe
+build_server: build_fe plugin
 	mkdir -p out/backend
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_linux_amd64 ./cmd/smail
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_linux_arm64 ./cmd/smail
-	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_windows_amd64.exe ./cmd/smail
-	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_windows_arm64.exe ./cmd/smail
-	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_mac_amd64 ./cmd/smail
-	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_mac_arm64 ./cmd/smail
+	node deploy/bundle-plugins.mjs linux_amd64
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags bundled -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_linux_amd64 ./cmd/smail
+	node deploy/bundle-plugins.mjs linux_arm64
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags bundled -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_linux_arm64 ./cmd/smail
+	node deploy/bundle-plugins.mjs windows_amd64
+	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags bundled -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_windows_amd64.exe ./cmd/smail
+	node deploy/bundle-plugins.mjs windows_arm64
+	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -tags bundled -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_windows_arm64.exe ./cmd/smail
+	node deploy/bundle-plugins.mjs darwin_amd64
+	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags bundled -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_mac_amd64 ./cmd/smail
+	node deploy/bundle-plugins.mjs darwin_arm64
+	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags bundled -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail_mac_arm64 ./cmd/smail
 	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-admin_linux_amd64 ./cmd/smail-admin
 	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-admin_linux_arm64 ./cmd/smail-admin
 	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-admin_windows_amd64.exe ./cmd/smail-admin

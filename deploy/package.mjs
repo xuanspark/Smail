@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { buildPlan, root, targets } from './build-plugins.mjs'
 
 export function packagePlan(target) {
-  const pluginPlan = buildPlan({ target })
+  buildPlan({ target })
   const [goos, goarch] = target.split('_')
   const extension = goos === 'windows' ? '.exe' : ''
   const suffix = `${goos === 'darwin' ? 'mac' : goos}_${goarch}${extension}`
@@ -13,9 +13,7 @@ export function packagePlan(target) {
     ...['smail', 'smail-admin'].map(name => ({
       source: path.join(root, 'out', 'backend', `${name}_${suffix}`),
       target: path.join(directory, `${name}${extension}`)
-    })),
-    ...pluginPlan.map(item => ({ source: item.output, target: path.join(directory, 'plugins', path.basename(item.output)) })),
-    { source: path.join(root, 'README.md'), target: path.join(directory, 'README.md') }
+    }))
   ]
 }
 
@@ -28,7 +26,9 @@ export async function packageRelease(selectedTargets = targets) {
     await copyFile(item.source, item.target)
   }
   for (const target of selectedTargets) {
-    await writeFile(path.join(root, 'out', 'package', target, 'release.json'), JSON.stringify({
+    for (const name of ['config', 'ssl', 'data', 'log']) await mkdir(path.join(root, 'out', 'package', target, name), { recursive: true })
+    await mkdir(path.join(root, 'out', 'release-receipts'), { recursive: true })
+    await writeFile(path.join(root, 'out', 'release-receipts', `${target}.json`), JSON.stringify({
       version: process.env.SMAIL_VERSION || 'dev', gitHash: process.env.GIT_HASH || '',
       protocolVersion: 1, target, plugins: buildPlan({ target }).map(item => item.id), createdAt: new Date().toISOString()
     }, null, 2) + '\n')

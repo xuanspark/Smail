@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 var ErrSSLFileUnavailable = errors.New("SSL certificate file is missing or unreadable")
@@ -32,7 +34,8 @@ func prepareCustomSSLPaths(root string, candidate *RuntimeConfig) (*customSSLMat
 		return nil, ErrInvalidSSLReference
 	}
 	// 已保存的受管引用只复验，不重复导入；普通相对路径以项目运行根目录为基准。
-	if strings.HasPrefix(certificatePath, managedSSLRelativeRoot+"/") && strings.HasPrefix(privateKeyPath, managedSSLRelativeRoot+"/") {
+	managedRoot := runtimepath.SSLReference(root, managedSSLRelativeRoot)
+	if strings.HasPrefix(certificatePath, managedRoot+"/") && strings.HasPrefix(privateKeyPath, managedRoot+"/") {
 		return nil, validateCustomSSLReferences(root, *candidate)
 	}
 	var err error
@@ -57,11 +60,11 @@ func prepareCustomSSLPaths(root string, candidate *RuntimeConfig) (*customSSLMat
 		return nil, err
 	}
 	ssl.Mode = ManagedSSLModeUpload
-	ssl.DefaultDirectory = "data/ssl"
-	ssl.CustomDirectory = "data/ssl"
+	ssl.DefaultDirectory = runtimepath.SSLReference(root, "data/ssl")
+	ssl.CustomDirectory = runtimepath.SSLReference(root, "data/ssl")
 	// 仅在内存中使用合法占位引用完成跨分区校验，最终候选必须换成独立版本。
-	ssl.CertificateRef = managedSSLReference(ManagedSSLModeUpload, "public.crt")
-	ssl.PrivateKeyRef = managedSSLReference(ManagedSSLModeUpload, "private.key")
+	ssl.CertificateRef = managedSSLReferenceAtRoot(root, ManagedSSLModeUpload, "public.crt")
+	ssl.PrivateKeyRef = managedSSLReferenceAtRoot(root, ManagedSSLModeUpload, "private.key")
 	return material, nil
 }
 

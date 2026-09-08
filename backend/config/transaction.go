@@ -77,6 +77,9 @@ func (s *TransactionStore) Commit(current, candidate RuntimeConfig) error {
 	if s == nil || s.root == "" {
 		return ErrManagerStorage
 	}
+	if runtimepath.DeploymentLayout(s.root) {
+		return s.commitState(current, candidate)
+	}
 	if current.Generation == 0 || candidate.Generation != current.Generation+1 {
 		return ErrGenerationConflict
 	}
@@ -196,6 +199,9 @@ func (s *TransactionStore) Commit(current, candidate RuntimeConfig) error {
 func (s *TransactionStore) Recover() error {
 	if s == nil || s.root == "" {
 		return ErrManagerStorage
+	}
+	if runtimepath.DeploymentLayout(s.root) {
+		return s.recoverState()
 	}
 	directory, err := secureManagerConfigDirectory(s.root)
 	if err != nil {
@@ -600,6 +606,9 @@ func (s *TransactionStore) CreateBackupIfDue(runtime RuntimeConfig, now time.Tim
 		return "", false, err
 	}
 	if found && now.Before(latest.CreatedAt.Add(configBackupInterval)) {
+		if runtimepath.DeploymentLayout(s.root) {
+			return latest.ID, false, nil
+		}
 		return filepath.Join(s.root, "data", "backups-v2", latest.ID), false, nil
 	}
 	path, err := s.createBackupAt(runtime, now)
@@ -617,6 +626,9 @@ func (s *TransactionStore) createBackupAt(runtime RuntimeConfig, createdAt time.
 		createdAt = time.Now().UTC()
 	} else {
 		createdAt = createdAt.UTC()
+	}
+	if runtimepath.DeploymentLayout(s.root) {
+		return s.createStateBackup(runtime, createdAt)
 	}
 	files, err := marshalRuntimeFiles(runtime)
 	if err != nil {
@@ -681,6 +693,13 @@ func (s *TransactionStore) latestBackup() (ConfigBackupManifest, bool, error) {
 	if s == nil || s.root == "" {
 		return latest, false, ErrManagerStorage
 	}
+	if runtimepath.DeploymentLayout(s.root) {
+		items, err := s.stateBackups()
+		if err != nil || len(items) == 0 {
+			return latest, false, err
+		}
+		return *items[0].Backup, true, nil
+	}
 	configDirectory, err := secureManagerConfigDirectory(s.root)
 	if err != nil {
 		return latest, false, err
@@ -715,6 +734,18 @@ func (s *TransactionStore) latestBackup() (ConfigBackupManifest, bool, error) {
 
 func (s *TransactionStore) LoadBackup(generation uint64) (RuntimeConfig, error) {
 	if s == nil || s.root == "" || generation == 0 {
+		return RuntimeConfig{}, ErrNoBackup
+	}
+	if runtimepath.DeploymentLayout(s.root) {
+		items, err := s.stateBackups()
+		if err != nil {
+			return RuntimeConfig{}, err
+		}
+		for _, item := range items {
+			if item.Backup.Generation == generation {
+				return parseRuntimeFiles(item.Original, s.validation)
+			}
+		}
 		return RuntimeConfig{}, ErrNoBackup
 	}
 	configDirectory, err := secureManagerConfigDirectory(s.root)
@@ -864,6 +895,10 @@ func parseRuntimeFiles(files map[string][]byte, validation RuntimeValidationOpti
 		return RuntimeConfig{}, err
 	}
 	for _, section := range requiredPartitionSections {
+		name, _ := FixedSectionFile(section)
+		if SectionDigest(files[name]) != root.Sections[section].SHA256 {
+			return RuntimeConfig{}, ErrConfigDigestMismatch
+		}
 		if err := ValidateSectionMeta(section, sectionMeta(runtime, section), runtime.Generation); err != nil {
 			return RuntimeConfig{}, err
 		}

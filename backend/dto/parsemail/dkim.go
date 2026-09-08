@@ -10,11 +10,11 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	securefile "git.pcux.cn/xuans/Smail/utils/file"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	"github.com/emersion/go-msgauth/dkim"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -41,7 +41,7 @@ func Init() error {
 }
 
 func loadPrivateKey(path string) (crypto.Signer, error) {
-	basePath := filepath.Join(config.ROOT_PATH, "data", "dkim")
+	basePath := runtimepath.DKIMDirectory(config.ROOT_PATH)
 	privateName, err := securefile.ControlledRelativePath(basePath, path)
 	if err != nil {
 		return nil, err

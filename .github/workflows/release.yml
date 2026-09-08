@@ -58,36 +58,23 @@ jobs:
         run: cd frontend && yarn install --frozen-lockfile && yarn build
       - name: BE Build
         run: |
-          mkdir -p out/release/plugins
-          cd backend
-          BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-          go build -ldflags "$BUILD_FLAGS" -o ../out/release/${{ env.FILENAME }} ./cmd/smail
-          go build -ldflags "$BUILD_FLAGS" -o ../out/release/${{ env.ADMINFILENAME }} ./cmd/smail-admin
-          cd ../plugins/pmail_telegram_push
+          mkdir -p out/release/config out/release/ssl out/release/data out/release/log
+          cd plugins/pmail_telegram_push
           npm ci
           npm run type-check
           cd ../..
           node deploy/build-plugins.mjs --target=${{ matrix.goos }}_${{ matrix.goarch }}
-          for name in spam_block pmail_telegram_push wechat_push; do
-            extension=""
-            if [ "${{ matrix.goos }}" = "windows" ]; then extension=".exe"; fi
-            cp "out/plugins/${{ matrix.goos }}_${{ matrix.goarch }}/$name$extension" "out/release/plugins/$name$extension"
-          done
-          cd out/release
-          cat > release.json <<EOF
-          {
-            "version": "${{ env.VERSION }}",
-            "gitHash": "$(git show -s --format=%H)",
-            "protocolVersion": 1,
-            "createdAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
-          cp ../../README.md README.md
-          ls -alh
+          node deploy/bundle-plugins.mjs ${{ matrix.goos }}_${{ matrix.goarch }}
+          extension=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then extension=".exe"; fi
+          cd backend
+          BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+          go build -tags bundled -ldflags "$BUILD_FLAGS" -o ../out/release/smail$extension ./cmd/smail
+          go build -ldflags "$BUILD_FLAGS" -o ../out/release/smail-admin$extension ./cmd/smail-admin
       - name: Zip
         run: |
           cd ./out/release
-          zip -r ${{ env.ZIPNAME }}.zip ${{ env.FILENAME }} ${{ env.ADMINFILENAME }} plugins release.json README.md
+          zip -r ${{ env.ZIPNAME }}.zip smail* config ssl data log
           ls
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

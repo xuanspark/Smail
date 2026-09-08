@@ -42,15 +42,15 @@ test('前端入口按需加载 Element Plus，并延迟设置页和写信编辑�
 
 test('开发启动必须固定运行配置根目录并集中保存日志', async () => {
   const content = await read('deploy/start-dev.ps1')
-  assert.match(content, /\$env:SMAIL_ROOT = \$root\r?\n/)
+  assert.match(content, /\$env:SMAIL_ROOT = \$runtime\r?\n/)
   assert.match(content, /\$legacyConfig = Join-Path \$root 'backend\\config'/)
   assert.match(content, /Test-Path -LiteralPath \(Join-Path \$legacyConfig \$name\)/)
-  assert.match(content, /\$workingDirectory = Join-Path \$root 'out'/)
+  assert.match(content, /\$workingDirectory = \$runtime/)
   for (const name of ['spam_block.exe', 'pmail_telegram_push.exe', 'wechat_push.exe']) assert.ok(content.includes(name))
-  assert.match(content, /out\\backend\\smail-dev\.exe/)
-  assert.match(content, /test-log\\runtime/)
+  assert.match(content, /Join-Path \$runtime 'smail\.exe'/)
+  assert.match(content, /Join-Path \$runtime 'log'/)
   assert.match(content, /-WindowStyle Hidden/)
-  assert.match(content, /\[switch\]\$SkipBuild/)
+  assert.doesNotMatch(content, /SkipBuild/)
   assert.match(content, /--dev-disable-admin-reset/)
   assert.match(content, /SMAIL_HTTP_PORT_OVERRIDE = '5201'/)
   assert.match(content, /SMAIL_HTTP_TLS_MODE_OVERRIDE = 'proxy'/)
@@ -59,7 +59,7 @@ test('开发启动必须固定运行配置根目录并集中保存日志', async
   assert.match(await read('frontend/.env.development'), /VITE_DEV_BACKEND_URL=http:\/\/127\.0\.0\.1:5201/)
   assert.match(await read('frontend/vite.config.js'), /port: 443/)
   assert.match(await read('frontend/vite.config.js'), /smail-development-http-redirect/)
-  assert.match(content, /默认先编译当前工作区/)
+  assert.match(content, /deploy-runtime\.ps1/)
   assert.ok(content.charCodeAt(0) === 0xfeff, 'Windows PowerShell 5 脚本应有 UTF-8 BOM')
 })
 
@@ -74,8 +74,8 @@ test('六个平台默认包含三个插件，构建和发布名称与后端目�
       assert.ok(catalog.includes(`"${path.basename(item.output)}"`))
     }
     const files = packagePlan(target)
-    assert.equal(files.length, 6)
-    assert.equal(files.filter(file => path.basename(path.dirname(file.target)) === 'plugins').length, 3)
+    assert.equal(files.length, 2)
+    assert.equal(files.filter(file => path.basename(path.dirname(file.target)) === 'plugins').length, 0)
     assert.ok(files.every(file => file.target.startsWith(path.join(root, 'out', 'package', target))))
   }
   assert.ok(buildPlan({ development: true }).every(item => path.dirname(item.output) === path.join(root, 'out', 'plugins')))

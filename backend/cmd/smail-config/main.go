@@ -23,6 +23,7 @@ func run(args []string) error {
 	root := flags.String("root", "", "Smail 服务根目录，包含 config 子目录")
 	apply := flags.Bool("apply", false, "确认已停止后端，备份并执行迁移；默认只检查")
 	runtimeData := flags.Bool("runtime-data", false, "将运行数据迁到 data，保留当前五个配置文件")
+	historySource := flags.String("deployment-history", "", "停服复制完成后，从原部署导入配置历史并转换证书引用")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -34,6 +35,19 @@ func run(args []string) error {
 		return fmt.Errorf("服务根目录无效")
 	}
 	options := config.RuntimeValidationOptions{HasSuperAdmin: true, Production: true}
+	if *historySource != "" {
+		if !*apply || *runtimeData {
+			return fmt.Errorf("部署历史导入必须单独使用 --apply，且先停止源与目标后端")
+		}
+		if err := config.ImportDeploymentHistory(*historySource, absolute, options); err != nil {
+			return fmt.Errorf("配置历史导入失败：%w", err)
+		}
+		if err := config.NormalizeDeploymentReferences(absolute, options); err != nil {
+			return fmt.Errorf("部署引用转换失败：%w", err)
+		}
+		fmt.Println("配置历史已导入状态数据库，生效配置仍为 config 下的五个文件。")
+		return nil
+	}
 	if *runtimeData {
 		moves, err := runtimepath.Plan(absolute)
 		if err != nil {

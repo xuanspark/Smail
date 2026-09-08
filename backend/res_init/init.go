@@ -32,6 +32,7 @@ import (
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/signal"
 	"git.pcux.cn/xuans/Smail/utils/credential"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	log "github.com/sirupsen/logrus"
 	// 导入 HTTP 客户端，用于等待服务启动。
 	"net/http"
@@ -439,7 +440,7 @@ func stopAdminResetControl() {
 func dirInit() error {
 	// 初始化与配置读写使用同一个运行根目录，不依赖启动时的工作目录。
 	root := filepath.Join(config.ROOT_PATH, "data")
-	for _, directory := range []string{filepath.Join(config.ROOT_PATH, "config"), root, filepath.Join(root, "dkim"), filepath.Join(root, "ssl")} {
+	for _, directory := range []string{filepath.Join(config.ROOT_PATH, "config"), root, runtimepath.DKIMDirectory(config.ROOT_PATH), runtimepath.SSLDirectory(config.ROOT_PATH)} {
 		if err := os.MkdirAll(directory, 0700); err != nil {
 			return fmt.Errorf("创建运行配置目录失败: %w", err)
 		}

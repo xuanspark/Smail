@@ -5,12 +5,25 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 // ListBackups 枚举合法备份的代次和时间，不返回内部路径。
 func (s *TransactionStore) ListBackups() ([]ConfigBackupInfo, error) {
 	if s == nil || s.root == "" {
 		return nil, ErrBackupListingUnavailable
+	}
+	if runtimepath.DeploymentLayout(s.root) {
+		items, err := s.stateBackups()
+		if err != nil {
+			return nil, err
+		}
+		result := make([]ConfigBackupInfo, 0, len(items))
+		for _, item := range items {
+			result = append(result, ConfigBackupInfo{Generation: item.Backup.Generation, CreatedAt: item.Backup.CreatedAt})
+		}
+		return result, nil
 	}
 	configDirectory, err := secureManagerConfigDirectory(s.root)
 	if err != nil {

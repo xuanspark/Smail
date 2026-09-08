@@ -48,7 +48,7 @@ func NewVault(root string) (*Vault, error) {
 			return nil, ErrVaultUnavailable
 		}
 	}
-	configDir, err := runtimepath.Directory(root)
+	configDir, err := runtimepath.SecureDirectory(root, filepath.Base(runtimepath.KeyDirectory(root)))
 	if err != nil {
 		return nil, ErrVaultUnavailable
 	}

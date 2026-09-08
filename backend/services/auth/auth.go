@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	"git.pcux.cn/xuans/Smail/utils/validation"
 	log "github.com/sirupsen/logrus"
 )
@@ -117,7 +118,7 @@ func HasAuth(ctx *context.Context, email *models.Email) bool {
 }
 
 func DkimGen() (string, error) {
-	basePath := filepath.Join(config.ROOT_PATH, "data", "dkim")
+	basePath := runtimepath.DKIMDirectory(config.ROOT_PATH)
 	cfg := config.CurrentConfig()
 	if cfg == nil {
 		return "", fmt.Errorf("runtime configuration is unavailable")

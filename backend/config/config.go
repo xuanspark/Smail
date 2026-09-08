@@ -276,7 +276,7 @@ func legacyInitReady() bool {
 }
 
 func ReadPrivateKey() (*ecdsa.PrivateKey, bool, error) {
-	privateKey, created, err := loadOrCreateACMEPrivateKey(filepath.Join(ROOT_PATH, "data", "ssl"), "account_private.pem")
+	privateKey, created, err := loadOrCreateACMEPrivateKey(runtimepath.SSLDirectory(ROOT_PATH), "account_private.pem")
 	if err != nil {
 		return nil, false, err
 	}
@@ -332,9 +332,9 @@ func ReadConfig() (*Config, error) {
 
 func readConfig() (*Config, error) {
 	configData := Config{
-		DkimPrivateKeyPath:      ROOT_PATH + "data/dkim/dkim.priv",
-		SSLPrivateKeyPath:       ROOT_PATH + "data/ssl/private.key",
-		SSLPublicKeyPath:        ROOT_PATH + "data/ssl/public.crt",
+		DkimPrivateKeyPath:      filepath.Join(runtimepath.DKIMDirectory(ROOT_PATH), "dkim.priv"),
+		SSLPrivateKeyPath:       filepath.Join(runtimepath.SSLDirectory(ROOT_PATH), "private.key"),
+		SSLPublicKeyPath:        filepath.Join(runtimepath.SSLDirectory(ROOT_PATH), "public.crt"),
 		VerificationEnabled:     true,
 		ExternalRecoveryEnabled: true,
 		LoginPolicy:             "new_device",
@@ -446,7 +446,7 @@ func persistControlledSSLPath(value string) string {
 }
 
 func resolvePath(value string) string {
-	value = runtimepath.LegacyReference(strings.TrimSpace(value))
+	value = runtimepath.SSLReference(ROOT_PATH, strings.TrimSpace(value))
 	if value == "" {
 		return ""
 	}

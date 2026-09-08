@@ -150,6 +150,9 @@ func safeDirectory(path string) error {
 
 // CheckReady 防止遗漏迁移时创建空账号库或重新生成加密密钥。
 func CheckReady(root string) error {
+	if err := CheckKeyLayout(root); err != nil {
+		return err
+	}
 	if _, err := os.Lstat(filepath.Join(root, "data", migrationLock)); err == nil || !os.IsNotExist(err) {
 		return errors.New("运行目录迁移尚未结束，请保留现场并核对迁移锁")
 	}
@@ -189,14 +192,21 @@ func CheckReady(root string) error {
 		required = append(required, config.Database.LocalRef)
 	}
 	for _, name := range required {
+		base := filepath.Join(root, "data")
+		if strings.HasSuffix(name, ".key") {
+			base = KeyDirectory(root)
+		}
+		if err := safeDirectory(base); err != nil {
+			return err
+		}
 		parent := filepath.Dir(name)
 		for parent != "." {
-			if err := safeDirectory(filepath.Join(root, "data", parent)); err != nil {
+			if err := safeDirectory(filepath.Join(base, parent)); err != nil {
 				return err
 			}
 			parent = filepath.Dir(parent)
 		}
-		info, err := os.Lstat(filepath.Join(root, "data", name))
+		info, err := os.Lstat(filepath.Join(base, name))
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 			return fmt.Errorf("已初始化部署缺少必要运行文件，拒绝重新创建：%s", name)
 		}

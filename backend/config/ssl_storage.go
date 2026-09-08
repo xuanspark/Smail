@@ -195,8 +195,8 @@ func importManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificate
 	}
 	return ManagedSSLReference{
 		Mode:            mode,
-		CertificateRef:  managedSSLReference(mode, "public.crt"),
-		PrivateKeyRef:   managedSSLReference(mode, "private.key"),
+		CertificateRef:  managedSSLReferenceAtRoot(root, mode, "public.crt"),
+		PrivateKeyRef:   managedSSLReferenceAtRoot(root, mode, "private.key"),
 		CertificatePath: certificatePath,
 		PrivateKeyPath:  privateKeyPath,
 	}, nil
@@ -388,15 +388,19 @@ func managedSSLRootPathAtRoot(root string, mode string) (string, error) {
 	if mode == ManagedSSLModeUpload {
 		folder = "upload"
 	}
-	return filepath.Join(rootPath, managedSSLRelativeRoot, folder), nil
+	return filepath.Join(rootPath, runtimepath.SSLReference(root, managedSSLRelativeRoot), folder), nil
 }
 
 func managedSSLReference(mode, name string) string {
+	return managedSSLReferenceAtRoot(ROOT_PATH, mode, name)
+}
+
+func managedSSLReferenceAtRoot(root, mode, name string) string {
 	folder := "default"
 	if mode == ManagedSSLModeUpload {
 		folder = "upload"
 	}
-	return filepath.ToSlash(filepath.Join(managedSSLRelativeRoot, folder, "current", name))
+	return filepath.ToSlash(filepath.Join(runtimepath.SSLReference(root, managedSSLRelativeRoot), folder, "current", name))
 }
 
 func resolveManagedReference(rootPath, reference, expectedName string) (string, error) {
@@ -404,7 +408,7 @@ func resolveManagedReference(rootPath, reference, expectedName string) (string, 
 }
 
 func resolveManagedReferenceAtRoot(root, rootPath, reference, expectedName string) (string, error) {
-	rawReference := runtimepath.LegacyReference(strings.TrimSpace(reference))
+	rawReference := runtimepath.SSLReference(root, strings.TrimSpace(reference))
 	if rawReference == "" || strings.Contains(rawReference, `\`) || filepath.IsAbs(rawReference) || isWindowsAbsolute(rawReference) {
 		return "", ErrInvalidSSLReference
 	}

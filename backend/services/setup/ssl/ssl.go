@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/signal"
 	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/errors"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	log "github.com/sirupsen/logrus"
@@ -116,7 +117,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		cfg.SSL = config.SSLConfig{
 			Management:       config.SSLManagementProject,
 			Mode:             config.ManagedSSLModeDefault,
-			DefaultDirectory: "data/ssl",
+			DefaultDirectory: runtimepath.SSLReference(config.ROOT_PATH, "data/ssl"),
 		}
 		if cfg.SSLType == config.SSLTypeAutoDNS {
 			cfg.SSL.Challenge = config.SSLChallengeDNS
@@ -190,12 +191,12 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 	cfg.SSL = config.SSLConfig{
 		Management:       management,
 		Mode:             reference.Mode,
-		DefaultDirectory: "data/ssl",
+		DefaultDirectory: runtimepath.SSLReference(config.ROOT_PATH, "data/ssl"),
 		CertificateRef:   reference.CertificateRef,
 		PrivateKeyRef:    reference.PrivateKeyRef,
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
-		cfg.SSL.CustomDirectory = "data/ssl/managed/upload"
+		cfg.SSL.CustomDirectory = runtimepath.SSLReference(config.ROOT_PATH, "data/ssl/managed/upload")
 	} else if cfg.SSLType == config.SSLTypeAutoDNS {
 		cfg.SSL.Challenge = config.SSLChallengeDNS
 	} else {

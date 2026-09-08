@@ -10,6 +10,7 @@
 /config/
 /data/
 /ssl/
+/yunx-test/
 
 # 后端配置目录混放源码与运行数据：只放行代码、文档和脱敏示例
 /backend/config/*
@@ -37,6 +38,7 @@
 
 # Go 嵌入中间文件，以及旧命令仍可能生成的构建目录
 /backend/listen/http_server/dist/
+/backend/cmd/smail/bundled/
 /frontend/dist/
 /frontend/dist-ssr/
 /plugins/pmail_telegram_push/hook/dist/

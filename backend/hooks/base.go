@@ -275,7 +275,7 @@ func Init(serverVersion string) {
 		return
 	}
 
-	root, err := filepath.Abs("./plugins")
+	root, err := pluginRoot()
 	if err != nil {
 		log.Error("Plugin root resolve failed")
 		return
@@ -696,7 +696,10 @@ func PersistPluginConfig(pluginName, payload string) error {
 	if !ok {
 		return errors.New("plugin configuration persistence is unavailable")
 	}
-	root, err := filepath.Abs("./plugins")
+	if bundledPlugins != nil {
+		return errors.New("内置插件配置必须通过 plugins.json 配置服务保存")
+	}
+	root, err := pluginRoot()
 	if err != nil || !securePluginDirectory(root) || !securePluginDirectoryOwner(root) {
 		return errors.New("plugin directory is unsafe")
 	}

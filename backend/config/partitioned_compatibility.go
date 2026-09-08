@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"git.pcux.cn/xuans/Smail/utils/credential"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -58,7 +59,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		HttpPort: root.HTTP.Port, HttpsPort: root.HTTP.HTTPSPort,
 		HttpsEnabled: 2, TLSMode: root.HTTP.TLSMode,
 		TrustedProxyCIDRs:       append([]string(nil), root.HTTP.TrustedProxyCIDRs...),
-		DkimPrivateKeyPath:      filepath.Join(ROOT_PATH, "data", "dkim", "dkim.priv"),
+		DkimPrivateKeyPath:      filepath.Join(runtimepath.DKIMDirectory(ROOT_PATH), "dkim.priv"),
 		SSLType:                 SSLTypeUser,
 		SpamFilterLevel:         runtime.Email.Policy.SpamFilterLevel,
 		LoginPolicy:             runtime.SMTP.Relay.LoginPolicy,
@@ -86,7 +87,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		}
 	}
 	// 迁移器保留的旧证书引用仍走严格的只读文件校验；新托管引用沿用托管解析器。
-	if strings.HasPrefix(tls.CertificateRef, managedSSLRelativeRoot+"/") {
+	if strings.HasPrefix(tls.CertificateRef, managedSSLRelativeRoot+"/") || strings.HasPrefix(tls.CertificateRef, "ssl/managed/") {
 		cfg.SSL = tls
 	} else {
 		cfg.SSLPublicKeyPath = resolvePath(tls.CertificateRef)

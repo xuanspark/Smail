@@ -46,7 +46,11 @@ func NewFileAuditWriter(root string) (*FileAuditWriter, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, ErrAuditStorageUnavailable
 	}
-	directory, err := runtimepath.Directory(root)
+	name := "data"
+	if runtimepath.DeploymentLayout(root) {
+		name = "log"
+	}
+	directory, err := runtimepath.SecureDirectory(root, name)
 	if err != nil {
 		return nil, err
 	}

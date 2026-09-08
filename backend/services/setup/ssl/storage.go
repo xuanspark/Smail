@@ -10,6 +10,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 	securefile "git.pcux.cn/xuans/Smail/utils/file"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
 func writeCertificateBundle(cfg *config.Config, privateKey, certificate, issuer []byte) error {
@@ -31,7 +32,7 @@ func writeCertificateBundle(cfg *config.Config, privateKey, certificate, issuer 
 		return err
 	}
 	defer workspaceRoot.Close()
-	baseRelative := filepath.Join("data", "ssl")
+	baseRelative := filepath.FromSlash(runtimepath.SSLReference(rootPath, "data/ssl"))
 	if err := ensureSecureRootDirectory(workspaceRoot, baseRelative); err != nil {
 		return err
 	}
@@ -57,7 +58,7 @@ func writeCertificateBundle(cfg *config.Config, privateKey, certificate, issuer 
 		}
 		relativePath, err := securefile.ControlledRelativePath(basePath, item.path)
 		if err != nil {
-			return errors.New("SSL file path must stay inside data/ssl")
+			return errors.New("证书文件必须位于受保护的 SSL 目录中")
 		}
 		if _, exists := seen[relativePath]; exists {
 			return errors.New("SSL file paths must be unique")
