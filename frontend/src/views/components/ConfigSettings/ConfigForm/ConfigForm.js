@@ -72,6 +72,10 @@ const certificateManagement = config => {
 }
 const projectManagedCertificate = config => certificateManagement(config) === 'project'
 const externalManagedCertificate = config => !projectManagedCertificate(config)
+const absoluteCertificatePath = value => typeof value === 'string'
+  && value === value.trim()
+  && /^(?:[a-z]:[\\/]|\\\\|\/)/i.test(value)
+  && !/(^|[\\/])\.\.(?:[\\/]|$)/.test(value)
 const normalizedDomain = value => value.toLowerCase().replace(/\.$/, '')
 const validDomain = value => {
   if (typeof value !== 'string' || value !== value.trim()) return false
@@ -368,7 +372,10 @@ export function validateFormConfig(section, config) {
       if (!controlled(tls[name])) errors[`tls.${name}`] = '请填写受管存储中的相对目录，不允许绝对路径或上级目录'
     }
     for (const name of ['certificateRef', 'privateKeyRef']) {
-      if (tls[name] && (!controlled(tls[name]) || !tls[name].startsWith(`${directory}/`))) errors[`tls.${name}`] = '文件引用必须位于当前证书目录内'
+      if (!tls[name]) continue
+      const managedReference = controlled(tls[name]) && tls[name].startsWith(`${directory}/`)
+      const externalReference = management === 'custom' && absoluteCertificatePath(tls[name])
+      if (!managedReference && !externalReference) errors[`tls.${name}`] = '文件引用必须是受管存储引用或自定义服务器绝对路径'
     }
     if (!!tls.certificateRef !== !!tls.privateKeyRef) errors['tls.privateKeyRef'] = '证书与私钥引用必须成对填写'
   }
