@@ -41,6 +41,8 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/list", "/api/security/external-email/list", http.MethodGet, 0, controllers.ListExternalEmails)
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/bind", "/api/security/external-email/bind", http.MethodPost, 16<<10, controllers.BindExternalEmail)
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/verify", "/api/security/external-email/verify", http.MethodPost, 16<<10, controllers.VerifyExternalEmail)
+	registerV1MethodRoute(mux, "/api/v1/security/external-email/change", "/api/security/external-email/change", http.MethodPost, 16<<10, controllers.ChangeOwnExternalEmail)
+	registerV1MethodRoute(mux, "/api/v1/security/external-email/change/verify", "/api/security/external-email/change/verify", http.MethodPost, 16<<10, controllers.VerifyOwnExternalEmail)
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/disable", "/api/security/external-email/disable", http.MethodPost, 16<<10, controllers.DisableExternalEmail)
 	registerV1MethodRoute(mux, "/api/v1/logout", "/api/logout", http.MethodPost, 4<<10, controllers.Logout)
 	registerV1MethodRoute(mux, "/api/v1/system/restart", "/api/v1/system/restart", http.MethodPost, 4<<10, controllers.RestartSmail)

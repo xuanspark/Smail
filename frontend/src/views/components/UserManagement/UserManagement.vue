@@ -115,9 +115,17 @@
             <div class="security-edit-item">
               <div>
                 <strong>安全码</strong>
-                <span>{{ recoveryCodeMeta(selectedUser?.RecoveryCodeConfigured).label }}</span>
+                <span v-if="recoveryCodeWebManaged">
+                  {{ recoveryCodeMeta(selectedUser?.RecoveryCodeConfigured).label }}
+                </span>
+                <span v-else>部署端管理</span>
               </div>
-              <el-button @click="openRecoveryCodeDialog">管理安全码</el-button>
+              <el-button
+                :disabled="!recoveryCodeWebManaged"
+                @click="openRecoveryCodeDialog"
+              >
+                {{ recoveryCodeWebManaged ? '管理安全码' : '仅支持本机管理' }}
+              </el-button>
             </div>
             <div class="security-edit-item">
               <div>
@@ -164,6 +172,7 @@
     <UserExternalEmailDialog
       v-model="externalEmailDialogVisible"
       :user="selectedUser"
+      :self-managed="editingCurrentUser"
       @changed="handleSecurityChanged"
     />
   </div>
@@ -188,6 +197,8 @@ const {
   editModel,
   editUserInfo,
   selectedUser,
+  editingCurrentUser,
+  recoveryCodeWebManaged,
   recoveryCodeDialogVisible,
   externalEmailDialogVisible,
   openRecoveryCodeDialog,

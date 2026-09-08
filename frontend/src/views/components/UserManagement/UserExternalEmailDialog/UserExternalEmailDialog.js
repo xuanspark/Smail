@@ -15,6 +15,10 @@ export const userExternalEmailDialogProps = {
     type: Object,
     default: null,
   },
+  selfManaged: {
+    type: Boolean,
+    default: false,
+  },
 }
 
 const verificationCodeLength = 8
@@ -28,6 +32,21 @@ function assertSuccess(response, fallback) {
     throw error
   }
   return response
+}
+
+export function externalEmailEndpoints(selfManaged) {
+  if (selfManaged) {
+    return {
+      list: '/api/v1/security/external-email/list',
+      change: '/api/v1/security/external-email/change',
+      verify: '/api/v1/security/external-email/change/verify',
+    }
+  }
+  return {
+    list: '/api/v1/user/security/external-email/list',
+    change: '/api/v1/user/security/external-email/change',
+    verify: '/api/v1/user/security/external-email/verify',
+  }
 }
 
 export function useUserExternalEmailDialog(props, emit) {
@@ -47,6 +66,7 @@ export function useUserExternalEmailDialog(props, emit) {
     set: value => emit('update:modelValue', value),
   })
   const busy = computed(() => sending.value || verifying.value)
+  const endpoints = computed(() => externalEmailEndpoints(props.selfManaged))
   const hasChallenge = computed(() => Boolean(challenge.id && challenge.bindingId))
   const remainingSeconds = computed(() => {
     if (!challenge.expiresAt) return 0
@@ -93,12 +113,13 @@ export function useUserExternalEmailDialog(props, emit) {
     if (!props.user?.ID) return false
     try {
       const response = await requestWithRecentAuthentication(async () => {
-        const result = await http.get('/api/v1/user/security/external-email/list', {
-          params: { id: props.user.ID },
-        })
+        const config = props.selfManaged ? undefined : { params: { id: props.user.ID } }
+        const result = await http.get(endpoints.value.list, config)
         return assertSuccess(result, '读取外部邮箱失败')
       })
-      const items = Array.isArray(response.data?.items) ? response.data.items : []
+      const items = props.selfManaged
+        ? (Array.isArray(response.data) ? response.data : [])
+        : (Array.isArray(response.data?.items) ? response.data.items : [])
       const primary = items.find(item => item.type === 'primary') || items[0]
       currentEmail.value = primary?.email || ''
       if (primary?.type) form.type = primary.type
@@ -122,11 +143,12 @@ export function useUserExternalEmailDialog(props, emit) {
     clearMessages()
     try {
       const response = await requestWithRecentAuthentication(async () => {
-        const result = await http.post('/api/v1/user/security/external-email/change', {
-          user_id: props.user.ID,
+        const payload = {
           email,
           type: form.type,
-        })
+        }
+        if (!props.selfManaged) payload.user_id = props.user.ID
+        const result = await http.post(endpoints.value.change, payload)
         return assertSuccess(result, '验证码发送失败')
       })
       if (!response.data?.challenge_id || !response.data?.binding_id) {
@@ -169,13 +191,18 @@ export function useUserExternalEmailDialog(props, emit) {
     clearMessages()
     try {
       const response = await requestWithRecentAuthentication(async () => {
-        const result = await http.post('/api/v1/user/security/external-email/verify', {
-          user_id: props.user.ID,
-          challenge_id: challenge.id,
+        const payload = {
           binding_id: challenge.bindingId,
           email: form.email,
           code,
-        })
+        }
+        if (props.selfManaged) {
+          payload.id = challenge.id
+        } else {
+          payload.user_id = props.user.ID
+          payload.challenge_id = challenge.id
+        }
+        const result = await http.post(endpoints.value.verify, payload)
         return assertSuccess(result, '外部邮箱验证失败')
       })
       emit('changed')

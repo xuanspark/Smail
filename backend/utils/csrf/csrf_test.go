@@ -76,3 +76,73 @@ func TestClearInvalidatesExistingToken(t *testing.T) {
 		t.Fatalf("unexpected CSRF clear cookie: %+v", cookies)
 	}
 }
+
+func TestEnsureRestoresMissingCookieWithRotatedToken(t *testing.T) {
+	old := session.Instance
+	manager := scs.New()
+	session.Instance = manager
+	t.Cleanup(func() { session.Instance = old })
+
+	request := testRequestWithToken(t, manager, "old-token", "", "")
+	recorder := httptest.NewRecorder()
+	token, err := Ensure(recorder, request, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token == "" || token == "old-token" {
+		t.Fatal("missing cookie did not rotate the CSRF token")
+	}
+	if stored := manager.GetString(request.Context(), SessionKey); stored != token {
+		t.Fatalf("rotated token was not stored in session: %q", stored)
+	}
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("unexpected CSRF cookies: %+v", cookies)
+	}
+	cookie := cookies[0]
+	if cookie.Name != CookieName || cookie.Value != token || cookie.Path != "/" ||
+		cookie.MaxAge != 86400 || !cookie.Secure || cookie.HttpOnly ||
+		cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("unexpected restored CSRF cookie: %+v", cookie)
+	}
+}
+
+func TestEnsureKeepsMatchingTokenWithoutReissuingCookie(t *testing.T) {
+	old := session.Instance
+	manager := scs.New()
+	session.Instance = manager
+	t.Cleanup(func() { session.Instance = old })
+
+	request := testRequestWithToken(t, manager, "current-token", "", "current-token")
+	recorder := httptest.NewRecorder()
+	token, err := Ensure(recorder, request, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "current-token" {
+		t.Fatalf("matching token was unexpectedly rotated: %q", token)
+	}
+	if cookies := recorder.Result().Cookies(); len(cookies) != 0 {
+		t.Fatalf("matching token unexpectedly reissued cookies: %+v", cookies)
+	}
+}
+
+func TestEnsureRotatesMismatchedCookie(t *testing.T) {
+	old := session.Instance
+	manager := scs.New()
+	session.Instance = manager
+	t.Cleanup(func() { session.Instance = old })
+
+	request := testRequestWithToken(t, manager, "stored-token", "", "stale-token")
+	recorder := httptest.NewRecorder()
+	token, err := Ensure(recorder, request, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token == "" || token == "stored-token" || token == "stale-token" {
+		t.Fatalf("mismatched cookie did not rotate token: %q", token)
+	}
+	if cookies := recorder.Result().Cookies(); len(cookies) != 1 || cookies[0].Secure {
+		t.Fatalf("unexpected development CSRF cookie: %+v", cookies)
+	}
+}

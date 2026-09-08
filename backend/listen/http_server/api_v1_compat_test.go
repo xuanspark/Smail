@@ -192,6 +192,8 @@ func TestFrontendV1RoutesAreRegistered(t *testing.T) {
 		"/api/v1/security/credentials/protocols/generate",
 		"/api/v1/security/credentials/protocols/revoke",
 		"/api/v1/security/external-email/bind",
+		"/api/v1/security/external-email/change",
+		"/api/v1/security/external-email/change/verify",
 		"/api/v1/security/external-email/disable",
 		"/api/v1/security/external-email/list",
 		"/api/v1/security/external-email/verify",

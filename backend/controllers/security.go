@@ -728,6 +728,77 @@ func BindExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Re
 	response.NewSuccessResponse(map[string]any{"id": item.ID, "challenge_id": challenge.ID, "status": item.Status, "email": maskEmail(input.Email), "expires_at": challenge.ExpiresAt.UTC()}).FPrint(w)
 }
 
+// ChangeOwnExternalEmail 发送当前用户外部邮箱变更验证码，旧邮箱会保留到验证成功。
+func ChangeOwnExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil || runtime.verification == nil {
+		writeSecurityError(w, response.NeedLogin, "请先登录")
+		return
+	}
+	if !ctx.RecentAuth {
+		writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "此操作需要最近十分钟内完成登录，请确认当前密码", string(access.CodeRecentAuthRequired))
+		return
+	}
+	var input externalEmailRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil {
+		writeSecurityError(w, response.ParamsError, "请求无效")
+		return
+	}
+	normalizedEmail, err := externalemail.NormalizeEmail(input.Email)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "请输入有效的外部邮箱地址")
+		return
+	}
+	owned, err := currentUserPrimaryEmail(ctx.UserID, normalizedEmail)
+	if err != nil {
+		log.WithContext(ctx).WithError(err).Error("check current user primary email failed")
+		writeSecurityError(w, response.ServerError, "外部邮箱变更失败")
+		return
+	}
+	if owned {
+		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
+		return
+	}
+	emailType := strings.TrimSpace(input.Type)
+	if emailType == "" {
+		emailType = models.ExternalEmailTypePrimary
+	}
+	item, err := runtime.external.BeginReplacement(externalemail.BindRequest{
+		UserID: ctx.UserID,
+		Email:  normalizedEmail,
+		Type:   emailType,
+	})
+	if err != nil {
+		if errors.Is(err, externalemail.ErrBindingExists) {
+			writeSecurityError(w, response.ParamsError, "该外部邮箱已经绑定或正在被其他账号使用")
+			return
+		}
+		log.WithContext(ctx).WithError(err).Error("begin own external email replacement failed")
+		writeSecurityError(w, response.ParamsError, "外部邮箱变更失败")
+		return
+	}
+	if runtime.verification.Store != nil {
+		runtime.verification.Store.InvalidateResource(item.ID, verification.PurposeExternalEmailChange)
+		runtime.verification.Store.InvalidateResource(item.ID, verification.PurposeExternalEmailBind)
+	}
+	challenge, err := runtime.verification.Issue(verification.IssueRequest{
+		Purpose:    verification.PurposeExternalEmailChange,
+		UserID:     ctx.UserID,
+		Account:    ctx.UserAccount,
+		Email:      normalizedEmail,
+		ResourceID: item.ID,
+	}, remoteIP(req))
+	if err != nil {
+		log.WithContext(ctx).WithError(err).Warn("issue own external email verification failed")
+		writeSecurityError(w, response.ParamsError, externalEmailVerificationIssueMessage(err))
+		return
+	}
+	response.NewSuccessResponse(map[string]any{
+		"binding_id": item.ID, "challenge_id": challenge.ID,
+		"email": maskEmail(normalizedEmail), "expires_at": challenge.ExpiresAt.UTC(),
+	}).FPrint(w)
+}
+
 func currentUserPrimaryEmail(userID int, email string) (bool, error) {
 	if db.Instance == nil || userID <= 0 {
 		return false, errors.New("database is unavailable")
@@ -755,6 +826,44 @@ func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
+	response.NewSuccessResponse(map[string]any{"verified": true}).FPrint(w)
+}
+
+// VerifyOwnExternalEmail 验证成功后原子替换当前用户同用途的旧邮箱。
+func VerifyOwnExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil || runtime.verification == nil {
+		writeSecurityError(w, response.NeedLogin, "请先登录")
+		return
+	}
+	var input verificationCheckRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil || input.BindingID <= 0 {
+		writeSecurityError(w, response.ParamsError, "验证请求无效")
+		return
+	}
+	normalizedEmail, err := externalemail.NormalizeEmail(input.Email)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "验证失败")
+		return
+	}
+	if err := runtime.verification.VerifyBound(
+		input.ID,
+		ctx.UserAccount,
+		normalizedEmail,
+		input.Code,
+		verification.PurposeExternalEmailChange,
+		input.BindingID,
+		remoteIP(req),
+	); err != nil {
+		writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
+		return
+	}
+	if err := runtime.external.VerifyReplacement(ctx.UserID, input.BindingID); err != nil {
+		log.WithContext(ctx).WithError(err).Error("verify own external email replacement failed")
+		writeSecurityError(w, response.ParamsError, "外部邮箱替换失败")
+		return
+	}
+	InvalidateSecurityRuntimeUser(ctx.UserID, ctx.UserAccount)
 	response.NewSuccessResponse(map[string]any{"verified": true}).FPrint(w)
 }
 

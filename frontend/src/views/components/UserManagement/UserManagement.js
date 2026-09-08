@@ -1,4 +1,4 @@
-import {reactive, ref} from 'vue'
+import {computed, reactive, ref} from 'vue'
 
 import lang from '../../../i18n/i18n';
 
@@ -7,6 +7,8 @@ import {http} from "@/utils/axios";
 import {ElNotification} from "element-plus";
 
 import {Plus} from "@element-plus/icons-vue";
+
+import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 
 const roleOptions = {
   super_admin: { label: '超级管理员', type: 'danger' },
@@ -39,7 +41,23 @@ export function accountStatusMeta(disabled) {
     : { label: '正常', type: 'success' }
 }
 
+export function isSameUser(selectedUser, currentUser) {
+  const selectedID = Number(selectedUser?.ID || 0)
+  const currentID = Number(currentUser?.id || 0)
+  if (selectedID > 0 && currentID > 0) {
+    return selectedID === currentID
+  }
+  return Boolean(selectedUser?.Account && currentUser?.account)
+    && selectedUser.Account === currentUser.account
+}
+
+export function canManageRecoveryCode(user) {
+  return Boolean(user?.ID) && user.Role !== 'super_admin'
+}
+
 export function usePage() {
+  const globalStatus = useGlobalStatusStore()
+
   const userList = reactive([])
   
   const currentPage = ref(1)
@@ -55,6 +73,10 @@ export function usePage() {
   const recoveryCodeDialogVisible = ref(false)
 
   const externalEmailDialogVisible = ref(false)
+
+  const editingCurrentUser = computed(() => isSameUser(selectedUser.value, globalStatus.userInfos))
+
+  const recoveryCodeWebManaged = computed(() => canManageRecoveryCode(selectedUser.value))
   
   const editUserInfo = reactive({
     "account": "",
@@ -101,7 +123,7 @@ export function usePage() {
   }
 
   const openRecoveryCodeDialog = function () {
-    if (!selectedUser.value?.ID) return
+    if (!recoveryCodeWebManaged.value) return
     recoveryCodeDialogVisible.value = true
   }
 
@@ -174,6 +196,8 @@ export function usePage() {
     editModel,
     editUserInfo,
     selectedUser,
+    editingCurrentUser,
+    recoveryCodeWebManaged,
     recoveryCodeDialogVisible,
     externalEmailDialogVisible,
     openRecoveryCodeDialog,

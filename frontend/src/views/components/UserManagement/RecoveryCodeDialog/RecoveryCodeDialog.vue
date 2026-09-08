@@ -6,6 +6,8 @@
     :close-on-click-modal="false"
     :close-on-press-escape="!busy"
     :show-close="!busy"
+    append-to-body
+    destroy-on-close
     class="recovery-code-dialog"
     @update:model-value="value => { if (!value) close() }"
   >

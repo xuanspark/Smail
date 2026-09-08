@@ -74,6 +74,8 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/security/external-email/list", onlyMethod(http.MethodGet, contextIterceptor(controllers.ListExternalEmails)))
 	mux.HandleFunc("/api/security/external-email/bind", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.BindExternalEmail))))
 	mux.HandleFunc("/api/security/external-email/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.VerifyExternalEmail))))
+	mux.HandleFunc("/api/security/external-email/change", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.ChangeOwnExternalEmail))))
+	mux.HandleFunc("/api/security/external-email/change/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.VerifyOwnExternalEmail))))
 	mux.HandleFunc("/api/security/external-email/disable", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.DisableExternalEmail))))
 	mux.HandleFunc("/api/logout", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.Logout))))
 	mux.HandleFunc("/api/group", onlyMethod(http.MethodGet, contextIterceptor(controllers.GetUserGroup)))

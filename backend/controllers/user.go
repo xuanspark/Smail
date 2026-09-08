@@ -11,6 +11,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/csrf"
 	"git.pcux.cn/xuans/Smail/utils/password"
 	"git.pcux.cn/xuans/Smail/utils/validation"
 	log "github.com/sirupsen/logrus"
@@ -204,6 +205,11 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 }
 
 func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	if _, err := csrf.Ensure(w, req, !config.DevelopmentMode); err != nil {
+		log.WithContext(ctx).WithError(err).Error("restore csrf token failed")
+		response.NewErrorResponse(response.ServerError, "登录状态恢复失败", "").FPrint(w)
+		return
+	}
 	mailDomains := config.CurrentMailDomains()
 	if mailDomains.Primary == "" {
 		response.NewErrorResponse(response.ServerError, "服务配置不可用", "").FPrint(w)
@@ -212,6 +218,7 @@ func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	domains := array.Difference(mailDomains.Accepted, []string{mailDomains.Primary})
 	domains = append([]string{mailDomains.Primary}, domains...)
 	result := map[string]any{
+		"id":                      ctx.UserID,
 		"account":                 ctx.UserAccount,
 		"name":                    ctx.UserName,
 		"role":                    ctx.EffectiveRole(),

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"net/http"
 
 	"git.pcux.cn/xuans/Smail/session"
@@ -29,6 +30,20 @@ func Issue(w http.ResponseWriter, r *http.Request, secure bool) (string, error) 
 	return token, nil
 }
 
+// Ensure 为已认证会话恢复双提交 CSRF Cookie。
+// Cookie 缺失或与服务端会话不一致时轮换令牌，避免继续信任过期的浏览器状态。
+func Ensure(w http.ResponseWriter, r *http.Request, secure bool) (string, error) {
+	if session.Instance == nil {
+		return "", errors.New("session manager is unavailable")
+	}
+	stored := session.Instance.GetString(r.Context(), SessionKey)
+	cookie, err := r.Cookie(CookieName)
+	if err == nil && stored != "" && constantTimeEqual(stored, cookie.Value) {
+		return stored, nil
+	}
+	return Issue(w, r, secure)
+}
+
 func Clear(w http.ResponseWriter, r *http.Request, secure bool) {
 	if session.Instance != nil {
 		session.Instance.Remove(r.Context(), SessionKey)
@@ -49,9 +64,12 @@ func Valid(r *http.Request) bool {
 		return false
 	}
 	stored := session.Instance.GetString(r.Context(), SessionKey)
-	if stored == "" || len(stored) != len(header) || len(cookie.Value) != len(header) {
+	if stored == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(stored), []byte(header)) == 1 &&
-		subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) == 1
+	return constantTimeEqual(stored, header) && constantTimeEqual(cookie.Value, header)
+}
+
+func constantTimeEqual(left, right string) bool {
+	return len(left) == len(right) && subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
 }
