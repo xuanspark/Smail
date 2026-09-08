@@ -24,14 +24,15 @@ var ErrInvalid = errors.New("运行日志文件或查询参数无效")
 var active atomic.Pointer[Writer]
 
 type Writer struct {
-	mu     sync.Mutex
-	root   *os.Root
-	file   *os.File
-	day    string
-	now    func() time.Time
-	cancel context.CancelFunc
-	done   chan struct{}
-	closed bool
+	archiveMu sync.Mutex
+	mu        sync.Mutex
+	root      *os.Root
+	file      *os.File
+	day       string
+	now       func() time.Time
+	cancel    context.CancelFunc
+	done      chan struct{}
+	closed    bool
 }
 
 func Current() *Writer { return active.Load() }
@@ -95,11 +96,6 @@ func (w *Writer) Fire(entry *log.Entry) error {
 }
 
 func (w *Writer) WriteAt(at time.Time, message string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.closed {
-		return nil
-	}
 	if at.IsZero() {
 		return ErrInvalid
 	}
@@ -111,6 +107,18 @@ func (w *Writer) WriteAt(at time.Time, message string) error {
 		message = string([]rune(message)[:min(len([]rune(message)), (maxLineBytes-128)/4)]) + "…"
 	}
 	day := at.UTC().Format("2006-01-02")
+	w.mu.Lock()
+	// 当天句柄已打开时直接追加，不等待历史归档的读取或压缩。
+	if !w.closed && (w.file == nil || w.day != day) {
+		w.mu.Unlock()
+		w.archiveMu.Lock()
+		defer w.archiveMu.Unlock()
+		w.mu.Lock()
+	}
+	defer w.mu.Unlock()
+	if w.closed {
+		return nil
+	}
 	if w.file == nil || w.day != day {
 		if w.file != nil {
 			if err := errors.Join(w.file.Sync(), w.file.Close()); err != nil {
@@ -158,6 +166,8 @@ func (w *Writer) Close() error {
 		w.cancel()
 		<-w.done
 	}
+	w.archiveMu.Lock()
+	defer w.archiveMu.Unlock()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closed {

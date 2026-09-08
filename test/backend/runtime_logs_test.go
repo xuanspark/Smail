@@ -93,3 +93,29 @@ func TestRuntimeLogCorruptionAndUnknownFilesArePreserved(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeLogCurrentWritesDoNotWaitForArchiveRead(t *testing.T) {
+	w, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	now := time.Now()
+	if err := w.WriteAt(now, "first"); err != nil {
+		t.Fatal(err)
+	}
+	w.archiveMu.Lock()
+	done := make(chan error, 1)
+	go func() { done <- w.WriteAt(now, "second") }()
+	select {
+	case err := <-done:
+		w.archiveMu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		w.archiveMu.Unlock()
+		<-done
+		t.Fatal("current log write waited for archive lock")
+	}
+}

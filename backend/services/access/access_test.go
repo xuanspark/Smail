@@ -94,7 +94,7 @@ func TestAdminPluginRestartScope(t *testing.T) {
 
 func TestManagementEndpointCatalog(t *testing.T) {
 	endpoints := ManagementEndpoints()
-	if len(endpoints) != 34 {
+	if len(endpoints) != 35 {
 		t.Fatalf("unexpected endpoint count: %d", len(endpoints))
 	}
 	seen := map[string]struct{}{}
@@ -111,6 +111,10 @@ func TestManagementEndpointCatalog(t *testing.T) {
 	endpoint, ok := LookupEndpoint("POST", "/api/plugin/settings/example")
 	if !ok || endpoint.Capability != CapabilityPluginWriteOwn {
 		t.Fatal("plugin settings endpoint was not matched")
+	}
+	endpoint, ok = LookupEndpoint("GET", "/api/v1/logs")
+	if !ok || endpoint.Capability != CapabilityAuditRead {
+		t.Fatal("log endpoint was not matched")
 	}
 	endpoint, ok = LookupEndpoint("POST", "/api/v1/config/smtp/validate")
 	if !ok || endpoint.Capability != CapabilityConfigWriteGlobal {

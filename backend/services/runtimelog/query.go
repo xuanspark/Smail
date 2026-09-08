@@ -22,8 +22,8 @@ type Page struct {
 }
 
 func (w *Writer) Files() ([]File, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.archiveMu.Lock()
+	defer w.archiveMu.Unlock()
 	if w.closed {
 		return nil, ErrInvalid
 	}
@@ -57,8 +57,8 @@ func (w *Writer) Files() ([]File, error) {
 
 // Read 仅允许固定名称的受管日志，不接受任意路径；压缩内容在服务端流式读取。
 func (w *Writer) Read(ctx context.Context, name string, offset, limit int) (Page, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.archiveMu.Lock()
+	defer w.archiveMu.Unlock()
 	if _, ok := fileDay(name); !ok || offset < 0 || offset > 1000000 || limit < 1 || limit > 500 || w.closed {
 		return Page{}, ErrInvalid
 	}

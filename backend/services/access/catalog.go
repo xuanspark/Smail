@@ -27,6 +27,7 @@ var managementEndpoints = []Endpoint{
 	{Method: "GET", Path: "/api/v1/config/:section", Capability: CapabilityConfigRead},
 	{Method: "PUT", Path: "/api/v1/config/:section", Capability: CapabilityConfigWriteGlobal},
 	{Method: "GET", Path: "/api/v1/audits/config", Capability: CapabilityAuditRead},
+	{Method: "GET", Path: "/api/v1/logs", Capability: CapabilityAuditRead},
 	{Method: "GET", Path: "/api/v1/audits/config/:id", Capability: CapabilityAuditRead},
 	{Method: "POST", Path: "/api/v1/audits/config", Capability: CapabilityAuditExport},
 	{Method: "POST", Path: "/api/v1/audits/config/export", Capability: CapabilityAuditExport},

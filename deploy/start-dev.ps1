@@ -6,7 +6,8 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $runtime = Join-Path $root 'yunx-test'
-$logs = Join-Path $runtime 'log'
+$logs = Join-Path $root 'test-log\service-launch'
+# 控制台与热更新输出属于模拟部署测试记录，业务运行日志由程序按天管理。
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $previousRoot = $env:SMAIL_ROOT
@@ -78,7 +79,7 @@ try {
     Start-Sleep -Seconds 3
     $process.Refresh()
     if ($process.HasExited) { throw "服务启动失败；标准输出：$stdout；错误日志：$stderr" }
-    Write-Output "$Service 已启动，进程编号：$($process.Id)；日志目录：yunx-test/log"
+    Write-Output "$Service 已启动，进程编号：$($process.Id)；运行日志：yunx-test/log；启动诊断：test-log/service-launch"
     Write-Output "运行文件：$binary；标准输出：$stdout；错误日志：$stderr"
 } finally {
     $env:SMAIL_ROOT = $previousRoot

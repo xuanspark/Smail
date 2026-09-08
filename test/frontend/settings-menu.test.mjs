@@ -35,7 +35,7 @@ test('二级菜单只发送可见且尚未选中的选项，不提前修改父�
 test('一级菜单保留能力过滤和当前分类标题联动', () => {
   const source = read('HomeHeader/HomeHeader.js')
   const names = [
-    'EpMenu', 'Lock', 'Connection', 'Setting', 'FolderOpened', 'Filter', 'User', 'Grid',
+    'EpMenu', 'Lock', 'Connection', 'Setting', 'FolderOpened', 'Filter', 'User', 'Grid', 'Document',
     'SettingsPageStatus', 'BrandLogo'
   ]
   const createPage = compileFunction(
@@ -64,6 +64,13 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   assert.equal(page.settingsMenu.value.some(item => item.key === 'plugins'), false)
   capabilities.add('plugin.read')
   assert.equal(page.settingsMenu.value.some(item => item.key === 'plugins'), true)
+  capabilities.add('audit.read')
+  for (const role of ['user', 'admin']) {
+    store.role = role
+    assert.equal(page.settingsMenu.value.some(item => item.key === 'logs'), false)
+  }
+  store.role = 'super_admin'
+  assert.equal(page.settingsMenu.value.at(-1).key, 'logs')
 })
 
 test('三级菜单只发送当前分组的可见子项，选中状态仍由父页面确认', () => {

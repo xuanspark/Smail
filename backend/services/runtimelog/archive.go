@@ -81,19 +81,24 @@ func (w *Writer) Maintain(ctx context.Context, now time.Time) error {
 	if now.IsZero() {
 		return ErrInvalid
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.archiveMu.Lock()
+	defer w.archiveMu.Unlock()
 	if w.closed {
 		return nil
 	}
-	// 关闭当前文件后维护，避免 Windows 无法替换句柄；下一条日志会重新打开。
-	if w.file != nil {
+	cutoff := logpolicy.Cutoff(now)
+	w.mu.Lock()
+	openDay, _ := time.Parse("2006-01-02", w.day)
+	// 仅关闭本轮要处理的历史句柄，当天写入不与历史文件扫描共用长时间锁。
+	if w.file != nil && (!openDay.After(cutoff) || !openDay.Add(24*time.Hour).After(now.Add(-logpolicy.CompressionAge))) {
 		err := errors.Join(w.file.Sync(), w.file.Close())
 		w.file = nil
 		if err != nil {
+			w.mu.Unlock()
 			return err
 		}
 	}
+	w.mu.Unlock()
 	directory, err := w.root.Open(".")
 	if err != nil {
 		return err
@@ -103,7 +108,6 @@ func (w *Writer) Maintain(ctx context.Context, now time.Time) error {
 	if err != nil || closeErr != nil {
 		return errors.Join(err, closeErr)
 	}
-	cutoff := logpolicy.Cutoff(now)
 	var failures []error
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {

@@ -23,12 +23,14 @@ foreach ($name in @('SMAIL_ROOT', 'SMAIL_HTTP_PORT_OVERRIDE', 'SMAIL_HTTP_TLS_MO
 try {
     $env:SMAIL_ROOT = $runtime
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+    $logs = Join-Path $root 'test-log\service-launch'
+    New-Item -ItemType Directory -Path $logs -Force | Out-Null
     $process = Start-Process -FilePath $binary -WorkingDirectory $runtime -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $runtime "log\production-$stamp.stdout.log") `
-        -RedirectStandardError (Join-Path $runtime "log\production-$stamp.stderr.log")
+        -RedirectStandardOutput (Join-Path $logs "production-$stamp.stdout.log") `
+        -RedirectStandardError (Join-Path $logs "production-$stamp.stderr.log")
     Start-Sleep -Seconds 3
     $process.Refresh()
-    if ($process.HasExited) { throw '生产模拟启动失败，请检查 yunx-test/log；不会自动豁免管理员恢复通道保护' }
+    if ($process.HasExited) { throw '生产模拟启动失败，请检查 test-log/service-launch；不会自动豁免管理员恢复通道保护' }
     Write-Output "生产模拟已启动：$($process.Id)，使用嵌入前端和 yunx-test 配置，管理员恢复通道保持保护。"
 } finally {
     foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }

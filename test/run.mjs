@@ -49,6 +49,7 @@ if ((suite === 'all' || suite === 'backend') && result === 0) {
   const args = extra[0] === '--' ? extra.slice(1) : extra
   // 独立回归源码集中放在 test/backend，通过 overlay 保留同包测试语义。
   const replacements = {
+    'backend/controllers/logs_api_test.go': 'test/backend/logs_api_test.go',
     'backend/services/logstore/log_store_test.go': 'test/backend/log_store_test.go',
     'backend/services/runtimelog/runtime_logs_test.go': 'test/backend/runtime_logs_test.go',
     'backend/db/migration/log_migration_test.go': 'test/backend/log_migration_test.go',

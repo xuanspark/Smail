@@ -48,7 +48,7 @@ test('开发启动必须固定运行配置根目录并集中保存日志', async
   assert.match(content, /\$workingDirectory = \$runtime/)
   for (const name of ['spam_block.exe', 'pmail_telegram_push.exe', 'wechat_push.exe']) assert.ok(content.includes(name))
   assert.match(content, /Join-Path \$runtime 'smail\.exe'/)
-  assert.match(content, /Join-Path \$runtime 'log'/)
+  assert.match(content, /Join-Path \$root 'test-log\\service-launch'/)
   assert.match(content, /-WindowStyle Hidden/)
   assert.doesNotMatch(content, /SkipBuild/)
   assert.match(content, /--dev-disable-admin-reset/)

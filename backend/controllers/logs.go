@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,14 +13,21 @@ import (
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/services/runtimelog"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
+	log "github.com/sirupsen/logrus"
 )
 
 func logQueryError(w http.ResponseWriter, err error) {
+	if errors.Is(err, logstore.ErrInvalid) || errors.Is(err, runtimelog.ErrInvalid) {
+		writeConfigError(w, config.ErrInvalidAuditQuery)
+		return
+	}
+	log.WithError(err).Warn("日志查询失败")
 	response.NewErrorResponse(response.ServerError, "日志查询失败，请检查日志存储状态", "LOG_QUERY_FAILED").FPrint(w)
 }
 
 // GetLogs 只读日志入口，授权在服务端检查，不依赖导航隐藏。
 func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	if err := authorizeCapability(ctx, access.CapabilityAuditRead, "", false); err != nil {
 		writeConfigAccessError(w, err)
 		return
@@ -42,7 +50,7 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 	if values.Get("kind") == "runtime" {
 		writer := runtimelog.Current()
 		if writer == nil {
-			logQueryError(w, runtimelog.ErrInvalid)
+			logQueryError(w, logstore.ErrUnavailable)
 			return
 		}
 		if values.Get("file") == "" {

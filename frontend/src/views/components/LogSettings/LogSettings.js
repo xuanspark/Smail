@@ -17,6 +17,7 @@ export function useLogs() {
   const pageSize = 50
   let requestId = 0
   let aborter
+  const previousOffsets = []
 
   const categories = [
     { label: '配置审计', value: 'config' },
@@ -28,13 +29,13 @@ export function useLogs() {
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
   const resultLabel = value => ({ success: '成功', failure: '失败', unknown: '结果未知', accepted: '已接收' }[value] || value)
   const actionLabel = value => ({ update: '保存配置', rollback: '回滚配置', migration: '迁移配置' }[value] || value)
-  const displayActor = item => item.payload?.actorName || item.actorId || '系统'
+  const displayActor = item => item.payload?.actorName || (item.actorId && item.actorId !== '0' ? item.actorId : '系统')
   const details = computed(() => detail.value?.payload || {})
   const changes = computed(() => details.value.changes || [])
 
   function requireData(result) {
-    if (result?.errorNo) throw new Error(result.errorMsg || '日志查询失败')
-    return result?.data || {}
+    if (result?.errorNo !== 0 || !result.data) throw new Error(result?.errorMsg || '日志查询失败')
+    return result.data
   }
 
   async function load() {
@@ -53,6 +54,9 @@ export function useLogs() {
         files.value = listing.files || []
         if (!files.value.some(file => file.name === selectedFile.value)) {
           selectedFile.value = files.value[0]?.name || ''
+          offset.value = 0
+          params.offset = 0
+          previousOffsets.length = 0
         }
         if (!selectedFile.value) {
           lines.value = []
@@ -86,15 +90,19 @@ export function useLogs() {
 
   function search() {
     offset.value = 0
-    load()
+    previousOffsets.length = 0
+    return load()
   }
   function next() {
+    if (loading.value || !hasMore.value) return
+    previousOffsets.push(offset.value)
     offset.value += isRuntime.value ? lines.value.length : pageSize
-    load()
+    return load()
   }
   function previous() {
-    offset.value = Math.max(0, offset.value - pageSize)
-    load()
+    if (loading.value || offset.value === 0) return
+    offset.value = previousOffsets.pop() ?? 0
+    return load()
   }
   watch(category, () => {
     detail.value = null
