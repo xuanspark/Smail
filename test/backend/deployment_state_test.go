@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/utils/credential"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
@@ -169,5 +170,86 @@ func TestDeploymentManagedReferenceUsesArgumentRoot(t *testing.T) {
 	}
 	if ref.CertificateRef != "ssl/managed/upload/current/public.crt" {
 		t.Fatalf("引用错误：%s", ref.CertificateRef)
+	}
+}
+
+func TestDeploymentAutomaticallyCreatesBusinessDirectories(t *testing.T) {
+	root := t.TempDir()
+	if err := InitializeDeployment(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"config", "ssl", "data", "log"} {
+		if info, err := os.Lstat(filepath.Join(root, name)); err != nil || !info.IsDir() {
+			t.Fatalf("正式启动没有创建部署目录：%s", name)
+		}
+	}
+	for _, name := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim", "managed"} {
+		info, err := os.Lstat(filepath.Join(root, "ssl", name))
+		if err != nil || !info.IsDir() {
+			t.Fatalf("程序启动没有创建业务目录：%s", name)
+		}
+	}
+	if _, err := credential.Encrypt(root, "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := externalemail.NewVault(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range runtimepath.BusinessKeyNames() {
+		if filepath.Dir(runtimepath.KeyPath(root, name)) == filepath.Join(root, "ssl") {
+			t.Fatal("新密钥仍在 ssl 根目录生成")
+		}
+		if info, err := os.Stat(runtimepath.KeyPath(root, name)); err != nil || info.Size() != 32 {
+			t.Fatal("业务密钥未正确生成")
+		}
+	}
+}
+
+func TestDeploymentAutomaticallyMigratesOriginalKeyBytes(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "ssl"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for index, name := range runtimepath.BusinessKeyNames() {
+		if err := os.WriteFile(filepath.Join(root, "ssl", name), bytes.Repeat([]byte{byte(index + 1)}, 32), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	secret, err := credential.Encrypt(root, "preserved-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldVault, err := externalemail.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	email, _ := oldVault.Encrypt("user@example.com")
+	fingerprint, _ := oldVault.Fingerprint("user@example.com")
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := InitializeDeployment(root); err != nil {
+			t.Fatal(err)
+		}
+		for index, name := range runtimepath.BusinessKeyNames() {
+			actual, err := os.ReadFile(runtimepath.KeyPath(root, name))
+			if err != nil || !bytes.Equal(actual, bytes.Repeat([]byte{byte(index + 1)}, 32)) {
+				t.Fatal("迁移或重复启动改变了原密钥")
+			}
+			if _, err := os.Lstat(filepath.Join(root, "ssl", name)); !os.IsNotExist(err) {
+				t.Fatal("旧位置未迁移")
+			}
+		}
+	}
+	if value, err := credential.Decrypt(root, secret); err != nil || value != "preserved-secret" {
+		t.Fatal("旧凭据密文无法解密")
+	}
+	vault, err := externalemail.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, err := vault.Decrypt(email); err != nil || value != "user@example.com" {
+		t.Fatal("外部邮箱旧密文无法解密")
+	}
+	if value, err := vault.Fingerprint("user@example.com"); err != nil || value != fingerprint {
+		t.Fatal("邮箱索引指纹发生变化")
 	}
 }

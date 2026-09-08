@@ -55,6 +55,8 @@ func TestDataMigrationKeepsSecretsCertificatesAndBackupRestorable(t *testing.T) 
 		t.Fatal(err)
 	}
 	// 构造旧版磁盘布局；文件内容及密文均来自真实实现，而不是手写假密钥。
+	// 模拟停服时释放暂存租约，真实进程退出后操作系统也会释放文件锁。
+	releaseManagedSSL(root, SSLConfig{CertificateRef: reference.CertificateRef})
 	entries, _ := os.ReadDir(filepath.Join(root, "data"))
 	for _, entry := range entries {
 		if err := os.Rename(filepath.Join(root, "data", entry.Name()), filepath.Join(root, "config", entry.Name())); err != nil {

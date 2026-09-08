@@ -54,6 +54,7 @@ func WriteSSLConfig(expected, next *Config) error {
 			return err
 		}
 		*next = merged
+		maintainManagedSSL(ROOT_PATH, next.SSL, expected.SSL)
 		return nil
 	}
 	manager := CurrentManager()
@@ -134,6 +135,7 @@ func WriteSSLConfig(expected, next *Config) error {
 	// 兼容快照与本次已提交候选一致，不再静默忽略提交后的磁盘读取失败。
 	*next = *committed
 	PublishConfigSnapshot(committed)
+	maintainManagedSSL(ROOT_PATH, candidate.SSL.TLS, current.SSL.TLS)
 	return manager.writeAudit(context.Background(), ConfigAuditEvent{
 		Operation: ConfigOperationUpdate, Section: SectionSSL, ActorID: "system", ActorRole: "system",
 		FromGeneration: current.Generation, ToGeneration: candidate.Generation,

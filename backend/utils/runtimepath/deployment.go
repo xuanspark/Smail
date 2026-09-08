@@ -4,14 +4,23 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // CheckKeyLayout 拒绝同时存在新旧密钥，避免误用另一套加密材料。
 func CheckKeyLayout(root string) error {
 	legacy, modern := false, false
-	for _, name := range []string{"credential.key", "external-email-encryption.key", "external-email-fingerprint.key"} {
+	for _, name := range BusinessKeyNames() {
 		if _, err := os.Lstat(filepath.Join(root, "data", name)); err == nil {
 			legacy = true
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if _, err := os.Lstat(groupedKeyPath(root, name)); err == nil {
+			modern = true
+			if _, err := os.Lstat(filepath.Join(root, "ssl", name)); !os.IsNotExist(err) {
+				return errors.New("密钥同时存在于归档目录和旧目录，拒绝自动选择或覆盖")
+			}
 		} else if !os.IsNotExist(err) {
 			return err
 		}
@@ -32,7 +41,7 @@ func DeploymentLayout(root string) bool {
 	if _, err := os.Lstat(filepath.Join(root, "data", "credential.key")); err == nil {
 		return false
 	}
-	for _, name := range []string{"data/smail-state.db", "ssl/credential.key"} {
+	for _, name := range []string{"data/smail-state.db", "ssl/credential.key", "ssl/credentials/credential.key"} {
 		info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name)))
 		if err == nil && info.Mode().IsRegular() {
 			return true
@@ -42,6 +51,12 @@ func DeploymentLayout(root string) bool {
 }
 
 func SecureDirectory(root, name string) (string, error) {
+	if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) || name == "." {
+		return "", errors.New("受保护目录名称无效")
+	}
+	if err := safeDirectory(root); err != nil {
+		return "", err
+	}
 	directory := filepath.Join(root, name)
 	if err := os.Mkdir(directory, 0700); err != nil && !os.IsExist(err) {
 		return "", err
@@ -53,10 +68,7 @@ func SecureDirectory(root, name string) (string, error) {
 }
 
 func KeyDirectory(root string) string {
-	if DeploymentLayout(root) {
-		return filepath.Join(root, "ssl")
-	}
-	return filepath.Join(root, "data")
+	return filepath.Dir(KeyPath(root, "credential.key"))
 }
 
 func SSLReference(root, value string) string {

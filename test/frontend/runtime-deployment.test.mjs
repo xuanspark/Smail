@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { readDevelopmentRuntime, resolveRuntimeFile, runtimeRoot, sourceRoot } from '../../deploy/runtime-config.mjs'
+import { assertDeploymentLayout, readDevelopmentRuntime, resolveRuntimeFile, runtimeRoot, sourceRoot } from '../../deploy/runtime-config.mjs'
 import { fileDigest, sourceFingerprint } from '../../deploy/build-state.mjs'
 
 test('开发配置只从模拟部署目录读取且不返回凭据字段', async () => {
@@ -45,6 +45,15 @@ test('源码指纹检测编辑且忽略编译嵌入目录', async () => {
   await assert.rejects(fileDigest(path.join(root, 'empty.exe')))
 })
 
+test('运行文件拒绝通过父目录链接访问另一个业务目录', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'smail-runtime-link-'))
+  await mkdir(path.join(root, 'ssl'))
+  await mkdir(path.join(root, 'data'))
+  await writeFile(path.join(root, 'data/private.key'), 'fixture')
+  await symlink(path.join(root, 'data'), path.join(root, 'ssl/linked'), process.platform === 'win32' ? 'junction' : 'dir')
+  assert.throws(() => resolveRuntimeFile(root, 'ssl/linked/private.key'), /链接/)
+})
+
 test('部署和启动必须完整构建、验证产物且不覆盖运行配置', async () => {
   const read = name => readFile(path.join(sourceRoot, name), 'utf8')
   const deploy = await read('deploy/deploy-runtime.ps1')
@@ -58,4 +67,29 @@ test('部署和启动必须完整构建、验证产物且不覆盖运行配置',
   assert.match(start, /\$workingDirectory = \$runtime/)
   assert.match(start, /build-state\.mjs'\) verify --deployed/)
   assert.match(await read('.gitignore'), /^\/yunx-test\/$/m)
+})
+
+test('部署启动检查兼容自动归档前后的密钥且拒绝双份冲突', async () => {
+  for (const grouped of [false, true]) {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'smail-key-layout-'))
+    for (const name of ['config', 'ssl', 'data', 'log']) await mkdir(path.join(root, name))
+    await writeFile(path.join(root, 'config/config.json'), JSON.stringify({ setupState: 'ready', database: { type: 'mysql' } }))
+    for (const name of ['smtp', 'email', 'plugins']) await writeFile(path.join(root, `config/${name}.json`), '{}')
+    await writeFile(path.join(root, 'config/ssl.json'), JSON.stringify({ tls: { certificateRef: 'ssl/public.crt', privateKeyRef: 'ssl/private.key' } }))
+    await writeFile(path.join(root, 'ssl/public.crt'), 'certificate')
+    await writeFile(path.join(root, 'ssl/private.key'), 'key')
+    for (const [folder, name] of [
+      ['credentials', 'credential.key'],
+      ['external-email-encryption', 'external-email-encryption.key'],
+      ['external-email-fingerprint', 'external-email-fingerprint.key']
+    ]) {
+      if (grouped) await mkdir(path.join(root, 'ssl', folder))
+      await writeFile(path.join(root, 'ssl', ...(grouped ? [folder] : []), name), Buffer.alloc(32, 1))
+    }
+    assert.equal(assertDeploymentLayout(root).setupState, 'ready')
+    if (grouped) {
+      await writeFile(path.join(root, 'ssl/credential.key'), Buffer.alloc(32, 2))
+      assert.throws(() => assertDeploymentLayout(root), /冲突/)
+    }
+  }
 })

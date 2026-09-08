@@ -50,6 +50,7 @@ if ((suite === 'all' || suite === 'backend') && result === 0) {
   // 独立回归源码集中放在 test/backend，通过 overlay 保留同包测试语义。
   const replacements = {
     'backend/config/deployment_state_test.go': 'test/backend/deployment_state_test.go',
+    'backend/config/ssl_retention_test.go': 'test/backend/ssl_retention_test.go',
     'backend/utils/runtimepath/layout_test.go': 'test/backend/runtime_layout_test.go',
     'backend/config/data_paths_test.go': 'test/backend/data_paths_test.go',
     'backend/config/ssl_custom_regression_test.go': 'test/backend/ssl_custom_test.go',

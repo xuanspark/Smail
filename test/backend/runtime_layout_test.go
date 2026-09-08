@@ -154,3 +154,49 @@ func TestLegacyReferenceOnlyChangesKnownRelativeDirectories(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupedKeysRejectConflictMissingAndUnsafeTarget(t *testing.T) {
+	for _, failure := range []string{"conflict", "missing", "unsafe", "invalid"} {
+		t.Run(failure, func(t *testing.T) {
+			root := t.TempDir()
+			put(t, root, "data/smail-state.db", []byte("marker"))
+			put(t, root, "config/config.json", []byte(`{"setupState":"ready","database":{"type":"mysql"}}`))
+			for _, name := range BusinessKeyNames() {
+				if failure != "missing" || name != "external-email-fingerprint.key" {
+					put(t, root, "ssl/"+name, bytes.Repeat([]byte{1}, 32))
+				}
+			}
+			switch failure {
+			case "conflict":
+				put(t, root, "ssl/credentials/credential.key", bytes.Repeat([]byte{2}, 32))
+			case "unsafe":
+				put(t, root, "ssl/external-email-fingerprint", []byte("not-directory"))
+			case "invalid":
+				put(t, root, "ssl/external-email-encryption.key", []byte("invalid"))
+			}
+			if err := PrepareDeploymentKeys(root); err == nil {
+				t.Fatal("异常部署不应继续自动迁移")
+			}
+			if data, err := os.ReadFile(filepath.Join(root, "ssl", "credential.key")); err != nil || !bytes.Equal(data, bytes.Repeat([]byte{1}, 32)) {
+				t.Fatal("预检失败修改了原密钥")
+			}
+		})
+	}
+}
+
+func TestGroupedKeysResumePartiallyMovedDeployment(t *testing.T) {
+	root := t.TempDir()
+	put(t, root, "data/smail-state.db", []byte("marker"))
+	put(t, root, "config/config.json", []byte(`{"setupState":"ready","database":{"type":"mysql"}}`))
+	put(t, root, "ssl/credentials/credential.key", bytes.Repeat([]byte{1}, 32))
+	put(t, root, "ssl/external-email-encryption.key", bytes.Repeat([]byte{2}, 32))
+	put(t, root, "ssl/external-email-fingerprint.key", bytes.Repeat([]byte{3}, 32))
+	if err := PrepareDeploymentKeys(root); err != nil {
+		t.Fatal(err)
+	}
+	for index, name := range BusinessKeyNames() {
+		if data, err := os.ReadFile(groupedKeyPath(root, name)); err != nil || !bytes.Equal(data, bytes.Repeat([]byte{byte(index + 1)}, 32)) {
+			t.Fatal("中断恢复改变了原始密钥")
+		}
+	}
+}

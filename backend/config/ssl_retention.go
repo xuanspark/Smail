@@ -1,0 +1,240 @@
+package config
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
+	log "github.com/sirupsen/logrus"
+)
+
+// 清理与写入共用互斥锁；暂存材料从创建到提交或取消期间始终受到保护。
+var managedSSLStorage = struct {
+	sync.Mutex
+	staged map[string]func()
+}{staged: make(map[string]func())}
+
+type retainedSSLVersion struct {
+	directory string
+	modified  time.Time
+}
+
+func releaseManagedSSL(root string, ssl SSLConfig) {
+	managedSSLStorage.Lock()
+	defer managedSSLStorage.Unlock()
+	releaseManagedSSLLocked(root, ssl)
+}
+
+func releaseManagedSSLLocked(root string, ssl SSLConfig) {
+	if ssl.CertificateRef == "" {
+		return
+	}
+	path, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(runtimepath.SSLReference(root, ssl.CertificateRef))))
+	if err == nil {
+		directory := filepath.Dir(path)
+		if release := managedSSLStorage.staged[directory]; release != nil {
+			release()
+			delete(managedSSLStorage.staged, directory)
+		}
+	}
+}
+
+// ReleaseStagedSSL 仅解除暂存保护，不立即删除；失败操作的残留由下一轮维护处理。
+func ReleaseStagedSSL(reference ManagedSSLReference) {
+	releaseManagedSSL(ROOT_PATH, SSLConfig{CertificateRef: reference.CertificateRef})
+}
+
+// 管理器停止或被替换时解除遗留租约；不删除材料，已提交引用仍由磁盘配置保护。
+func (m *ConfigManager) releasePendingSSL() {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	m.mu.Lock()
+	pending := m.pending
+	m.pending = nil
+	m.mu.Unlock()
+	if pending != nil && m.loader != nil {
+		releaseManagedSSL(m.loader.root, pending.Candidate.SSL.TLS)
+	}
+}
+
+// maintainManagedSSL 必须在配置写锁内调用；失败只告警，不能把已保存配置误报为未保存。
+func maintainManagedSSL(root string, active SSLConfig, previous ...SSLConfig) {
+	managedSSLStorage.Lock()
+	defer managedSSLStorage.Unlock()
+	// 与其他进程的配置事务互斥；锁定后再读取生效引用及恢复状态。
+	if runtimepath.DeploymentLayout(root) {
+		unlock, err := NewTransactionStore(root, RuntimeValidationOptions{}).lockState()
+		if err != nil {
+			log.Warn("配置事务正在运行，证书历史清理将在下次维护时重试")
+			return
+		}
+		defer unlock()
+	}
+	releaseManagedSSLLocked(root, active)
+	if err := pruneManagedSSLLocked(root, append([]SSLConfig{active}, previous...)); err != nil {
+		log.Warn("证书历史自动清理未完成，已保留现场，将在下次维护时重试")
+	}
+}
+
+// MaintainManagedSSLHistory 用于启动完成后及定时维护；全新安装无证书时不做删除。
+func MaintainManagedSSLHistory() {
+	if manager := CurrentManager(); manager != nil {
+		manager.writeMu.Lock()
+		defer manager.writeMu.Unlock()
+		manager.mu.RLock()
+		active := manager.current.SSL.TLS
+		var pending []SSLConfig
+		if manager.pending != nil {
+			pending = append(pending, manager.pending.Candidate.SSL.TLS)
+		}
+		manager.mu.RUnlock()
+		maintainManagedSSL(manager.loader.root, active, pending...)
+		return
+	}
+	sslCommitMu.Lock()
+	defer sslCommitMu.Unlock()
+	if cfg := CurrentConfig(); cfg != nil {
+		maintainManagedSSL(ROOT_PATH, cfg.SSL)
+	}
+}
+
+func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
+	if len(protected) == 0 || protected[0].CertificateRef == "" {
+		return nil
+	}
+	// 恢复事务可能仍需要旧材料；恢复未完成时不能清理任何版本。
+	if runtimepath.DeploymentLayout(root) {
+		records, err := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true}).stateRecords("transaction")
+		if err != nil || len(records) != 0 {
+			return errors.Join(ErrConfigRecoveryRequired, err)
+		}
+	} else if entries, err := os.ReadDir(filepath.Join(root, "data", "transaction")); err != nil && !os.IsNotExist(err) || len(entries) > 0 {
+		return ErrConfigRecoveryRequired
+	}
+	keep := make(map[string]bool)
+	for _, ssl := range protected {
+		if ssl.CertificateRef == "" {
+			continue
+		}
+		reference, err := resolveManagedSSLPathsAtRoot(root, ssl)
+		if err != nil {
+			return err
+		}
+		keep[filepath.Dir(reference.CertificatePath)] = true
+	}
+	// 磁盘引用也必须保留，避免其他管理器实例或已提交未发布的候选被删除。
+	data, err := os.ReadFile(filepath.Join(root, "config", "ssl.json"))
+	if err == nil {
+		var section SSLSectionConfig
+		if err := ParseStrict(data, &section); err != nil {
+			return err
+		}
+		if section.TLS.CertificateRef != "" {
+			reference, err := resolveManagedSSLPathsAtRoot(root, section.TLS)
+			if err != nil {
+				return err
+			}
+			keep[filepath.Dir(reference.CertificatePath)] = true
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	var versions []retainedSSLVersion
+	// 持有租约直到整轮清理结束，避免检查解锁后与另一个进程的导入操作竞态。
+	var leases []func()
+	defer func() {
+		for _, release := range leases {
+			release()
+		}
+	}()
+	for _, mode := range []string{ManagedSSLModeDefault, ManagedSSLModeUpload} {
+		directory, err := managedSSLRootPathAtRoot(root, mode)
+		if err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(directory)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		resolved, err := filepath.EvalSymlinks(directory)
+		if err != nil || filepath.Clean(resolved) != filepath.Clean(directory) {
+			return ErrUnsafeSSLFile
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			// 只处理程序生成的完整版本；未知目录、候选和其他用户文件一律不删。
+			known := name == "current" || validSSLVersion(name) || strings.HasPrefix(name, ".previous-") && validSSLVersion("version-"+strings.TrimPrefix(name, ".previous-"))
+			if !known {
+				continue
+			}
+			path := filepath.Join(directory, name)
+			info, err := os.Lstat(path)
+			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				return ErrUnsafeSSLFile
+			}
+			if managedSSLStorage.staged[path] != nil {
+				keep[path] = true
+			}
+			if keep[path] {
+				versions = append(versions, retainedSSLVersion{directory: path, modified: info.ModTime()})
+				continue
+			}
+			// 其他进程正在导入的版本持有私钥文件的独占租约，不依赖本进程内存判断。
+			lease, err := openSSLLease(filepath.Join(path, "private.key"))
+			if err != nil {
+				keep[path] = true
+			} else {
+				unlock, err := lockStateFile(lease)
+				if err != nil {
+					keep[path] = true
+					lease.Close()
+				} else {
+					leases = append(leases, func() { unlock(); lease.Close() })
+				}
+			}
+			versions = append(versions, retainedSSLVersion{directory: path, modified: info.ModTime()})
+		}
+	}
+	sort.Slice(versions, func(i, j int) bool {
+		if versions[i].modified.Equal(versions[j].modified) {
+			return versions[i].directory > versions[j].directory
+		}
+		return versions[i].modified.After(versions[j].modified)
+	})
+	// 两个模式合计保留两份；正在生效和暂存的版本优先，操作结束后收敛到两份。
+	for _, version := range versions {
+		if len(keep) >= 2 {
+			break
+		}
+		keep[version.directory] = true
+	}
+	var result error
+	for _, version := range versions {
+		if !keep[version.directory] {
+			result = errors.Join(result, removeManagedSSLDirectory(version.directory))
+		}
+	}
+	return result
+}
+
+// 回滚前必须检查实际证书，不能提交已经被保留策略淘汰的历史引用。
+func validateRollbackSSL(root string, candidate RuntimeConfig) error {
+	ssl := candidate.SSL.TLS
+	if ssl.CertificateRef == "" && ssl.PrivateKeyRef == "" {
+		return nil
+	}
+	if _, err := resolveManagedSSLReferencesAtRoot(root, ssl); err != nil {
+		return ErrSSLHistoryUnavailable
+	}
+	return nil
+}
+
+var ErrSSLHistoryUnavailable = errors.New("历史证书已清理或不可用，无法回滚此配置，请重新导入有效证书")

@@ -9,8 +9,12 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
-// InitializeDeployment 仅对全新安装启用新布局，不触碰已有部署或生成替代密钥。
+// InitializeDeployment 为全新部署创建状态库，并自动归档已采用 ssl 布局的原有业务密钥。
+// 更旧的 config/data 布局仍需完整迁移，不能只搬密钥而切断证书或数据库引用。
 func InitializeDeployment(root string) error {
+	if runtimepath.DeploymentLayout(root) {
+		return initializeDeploymentKeys(root)
+	}
 	for _, name := range []string{"config/config.json", "data/credential.key", "config/credential.key"} {
 		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name))); err == nil {
 			return nil
@@ -22,7 +26,19 @@ func InitializeDeployment(root string) error {
 	if err != nil {
 		return err
 	}
-	return db.Close()
+	if err := db.Close(); err != nil {
+		return err
+	}
+	return initializeDeploymentKeys(root)
+}
+
+func initializeDeploymentKeys(root string) error {
+	unlock, err := NewTransactionStore(root, RuntimeValidationOptions{}).lockState()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return runtimepath.PrepareDeploymentKeys(root)
 }
 
 // ImportDeploymentHistory 在停服迁移期间导入旧历史原始字节，原目录保持不动。

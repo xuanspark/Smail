@@ -151,6 +151,7 @@ func SetSSL(sslType, priKey, crtKey string) error {
 			return normalizeUserCertificateImportError(err)
 		}
 		applyManagedSSLReference(cfg, reference)
+		defer config.ReleaseStagedSSL(reference)
 		// 导入邮件服务证书不能重新启用反代模式下的内置 HTTPS。
 		if cfg.UsesProxyHTTPS() {
 			cfg.HttpsEnabled = 2
@@ -303,6 +304,7 @@ func writeCertificateFiles(cfg *config.Config, privateKey, certificate, issuer [
 		return err
 	}
 	applyManagedSSLReference(&next, reference)
+	defer config.ReleaseStagedSSL(reference)
 	if err := config.WriteSSLConfig(cfg, &next); err != nil {
 		return errors.Wrap(err)
 	}

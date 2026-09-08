@@ -104,6 +104,15 @@ func ImportManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []by
 }
 
 func importManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
+	managedSSLStorage.Lock()
+	defer managedSSLStorage.Unlock()
+	if runtimepath.DeploymentLayout(root) {
+		unlock, err := NewTransactionStore(root, RuntimeValidationOptions{}).lockState()
+		if err != nil {
+			return ManagedSSLReference{}, err
+		}
+		defer unlock()
+	}
 	if !validManagedSSLMode(mode) {
 		return ManagedSSLReference{}, ErrInvalidSSLMode
 	}
@@ -208,6 +217,18 @@ func ResolveManagedSSLReferences(ssl SSLConfig) (ManagedSSLReference, error) {
 }
 
 func resolveManagedSSLReferencesAtRoot(root string, ssl SSLConfig) (ManagedSSLReference, error) {
+	reference, err := resolveManagedSSLPathsAtRoot(root, ssl)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	if err := validateManagedSSLFiles(reference.CertificatePath, reference.PrivateKeyPath); err != nil {
+		return ManagedSSLReference{}, err
+	}
+	return reference, nil
+}
+
+// 路径解析与材料校验分离：历史清理保护过期证书的引用，但运行和回滚仍须完整校验。
+func resolveManagedSSLPathsAtRoot(root string, ssl SSLConfig) (ManagedSSLReference, error) {
 	ssl = normalizeSSLDataReferences(ssl)
 	if !validManagedSSLMode(ssl.Mode) {
 		return ManagedSSLReference{}, ErrInvalidSSLMode
@@ -229,9 +250,6 @@ func resolveManagedSSLReferencesAtRoot(root string, ssl SSLConfig) (ManagedSSLRe
 	}
 	if filepath.Dir(certificatePath) != filepath.Dir(privateKeyPath) {
 		return ManagedSSLReference{}, ErrInvalidSSLReference
-	}
-	if err := validateManagedSSLFiles(certificatePath, privateKeyPath); err != nil {
-		return ManagedSSLReference{}, err
 	}
 	return ManagedSSLReference{
 		Mode:            ssl.Mode,
@@ -450,6 +468,15 @@ func StageManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byt
 }
 
 func stageManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
+	managedSSLStorage.Lock()
+	defer managedSSLStorage.Unlock()
+	if runtimepath.DeploymentLayout(root) {
+		unlock, err := NewTransactionStore(root, RuntimeValidationOptions{}).lockState()
+		if err != nil {
+			return ManagedSSLReference{}, err
+		}
+		defer unlock()
+	}
 	if err := validateSSLMaterial(privateKeyPEM, certificatePEM, issuerPEM, domains); err != nil {
 		return ManagedSSLReference{}, err
 	}
@@ -499,6 +526,16 @@ func stageManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificateP
 	if err != nil {
 		return ManagedSSLReference{}, err
 	}
+	lease, err := openSSLLease(privatePath)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	unlock, err := lockStateFile(lease)
+	if err != nil {
+		lease.Close()
+		return ManagedSSLReference{}, err
+	}
+	managedSSLStorage.staged[directory] = func() { unlock(); lease.Close() }
 	return ManagedSSLReference{Mode: mode, CertificateRef: filepath.ToSlash(publicRef), PrivateKeyRef: filepath.ToSlash(privateRef), CertificatePath: publicPath, PrivateKeyPath: privatePath}, nil
 }
 
@@ -589,6 +626,7 @@ func removeManagedSSLDirectory(directory string) error {
 	if err != nil {
 		return err
 	}
+	// 删除前完整预检，遇到未知文件不能先删掉半套证书。
 	for _, entry := range entries {
 		if entry.Name() != "private.key" && entry.Name() != "public.crt" && entry.Name() != "issuer.crt" {
 			return ErrUnsafeSSLFile
@@ -598,9 +636,19 @@ func removeManagedSSLDirectory(directory string) error {
 		if statErr != nil || entryInfo.Mode()&os.ModeSymlink != 0 || !entryInfo.Mode().IsRegular() {
 			return ErrUnsafeSSLFile
 		}
-		if err := os.Remove(entryPath); err != nil {
+	}
+	storage, err := os.OpenRoot(directory)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := storage.Remove(entry.Name()); err != nil {
+			storage.Close()
 			return err
 		}
+	}
+	if err := storage.Close(); err != nil {
+		return err
 	}
 	return os.Remove(directory)
 }

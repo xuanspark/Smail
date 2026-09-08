@@ -23,6 +23,7 @@ func Run() error {
 	if err := config.Init(); err != nil {
 		return err
 	}
+	config.MaintainManagedSSLHistory()
 
 	build := buildinfo.Current()
 	if build.Version == "dev" {

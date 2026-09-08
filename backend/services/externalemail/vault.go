@@ -48,15 +48,19 @@ func NewVault(root string) (*Vault, error) {
 			return nil, ErrVaultUnavailable
 		}
 	}
-	configDir, err := runtimepath.SecureDirectory(root, filepath.Base(runtimepath.KeyDirectory(root)))
+	encryptionDirectory, err := runtimepath.SecureKeyDirectory(root, "external-email-encryption.key")
 	if err != nil {
 		return nil, ErrVaultUnavailable
 	}
-	encryptionKey, err := loadKey(filepath.Join(configDir, "external-email-encryption.key"))
+	fingerprintDirectory, err := runtimepath.SecureKeyDirectory(root, "external-email-fingerprint.key")
 	if err != nil {
 		return nil, ErrVaultUnavailable
 	}
-	fingerprintKey, err := loadKey(filepath.Join(configDir, "external-email-fingerprint.key"))
+	encryptionKey, err := loadKey(filepath.Join(encryptionDirectory, "external-email-encryption.key"))
+	if err != nil {
+		return nil, ErrVaultUnavailable
+	}
+	fingerprintKey, err := loadKey(filepath.Join(fingerprintDirectory, "external-email-fingerprint.key"))
 	if err != nil {
 		return nil, ErrVaultUnavailable
 	}

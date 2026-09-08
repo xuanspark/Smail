@@ -184,7 +184,7 @@ func CheckReady(root string) error {
 	if config.SetupState != "ready" {
 		return nil
 	}
-	required := []string{"credential.key", "external-email-encryption.key", "external-email-fingerprint.key"}
+	required := BusinessKeyNames()
 	if config.Database.Type == "sqlite" {
 		if !filepath.IsLocal(config.Database.LocalRef) {
 			return errors.New("SQLite 本地引用无效")
@@ -194,7 +194,12 @@ func CheckReady(root string) error {
 	for _, name := range required {
 		base := filepath.Join(root, "data")
 		if strings.HasSuffix(name, ".key") {
-			base = KeyDirectory(root)
+			base = filepath.Dir(KeyPath(root, name))
+			if DeploymentLayout(root) {
+				if err := safeDirectory(filepath.Join(root, "ssl")); err != nil {
+					return err
+				}
+			}
 		}
 		if err := safeDirectory(base); err != nil {
 			return err

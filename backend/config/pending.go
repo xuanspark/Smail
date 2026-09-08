@@ -78,13 +78,18 @@ func (m *ConfigManager) ManagePending(ctx context.Context, generation uint64, id
 		return err
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	activeSSL := m.current.SSL.TLS
 	if cancel {
 		m.pending = nil
 		m.status.PendingRestart = append([]ServiceName(nil), pending.PreviousRestart...)
 	} else {
 		m.pending.Actor = actor
 		m.pending.Confirmation = confirmation
+	}
+	m.mu.Unlock()
+	if cancel {
+		releaseManagedSSL(m.loader.root, pending.Candidate.SSL.TLS)
+		maintainManagedSSL(m.loader.root, activeSSL)
 	}
 	return nil
 }

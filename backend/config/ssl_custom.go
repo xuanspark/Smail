@@ -189,6 +189,8 @@ func SSLCertificateDomains(primary, web string, accepted []string) []string {
 func SSLValidationIssue(err error) (PublicIssue, bool) {
 	issue := PublicIssue{Code: "SSL_INVALID"}
 	switch {
+	case errors.Is(err, ErrSSLHistoryUnavailable):
+		issue.Message = "历史证书已清理或不可用，请重新导入有效证书，不能回滚此配置"
 	case errors.Is(err, ErrSSLFileUnavailable):
 		issue.Message = "证书或私钥文件不存在或无法读取，请检查服务器路径和运行用户权限"
 	case errors.Is(err, ErrSSLCertificateMismatch):

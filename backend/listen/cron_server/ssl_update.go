@@ -52,6 +52,7 @@ func sslCheck() {
 
 // 每轮读取最新策略，切换反代模式后不再等待 HTTP 挑战或执行自动续期。
 func maintainSSL() {
+	config.MaintainManagedSSLHistory()
 	cfg := config.CurrentConfig()
 	if cfg == nil || !cfg.IsSetupReady() {
 		return

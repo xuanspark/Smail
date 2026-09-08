@@ -19,8 +19,21 @@ export function assertDeploymentLayout(root = runtimeRoot) {
     resolveRuntimeFile(root, `config/${name}.json`)
   }
   if (config.setupState === 'ready') {
-    for (const name of ['credential.key', 'external-email-encryption.key', 'external-email-fingerprint.key']) {
-      resolveRuntimeFile(root, `ssl/${name}`)
+    for (const [folder, name] of [
+      ['credentials', 'credential.key'],
+      ['external-email-encryption', 'external-email-encryption.key'],
+      ['external-email-fingerprint', 'external-email-fingerprint.key']
+    ]) {
+      const grouped = `ssl/${folder}/${name}`
+      const legacy = `ssl/${name}`
+      // 启动前兼容有效旧位置，迁移由新后端完成，检查器不生成或移动密钥。
+      const locations = [grouped, legacy, `data/${name}`, `config/${name}`]
+        .filter(reference => lstatSync(path.join(root, reference), { throwIfNoEntry: false }))
+      if (locations.length !== 1 || ![grouped, legacy].includes(locations[0])) {
+        throw new Error('业务密钥缺失或新旧位置冲突，拒绝自动选择')
+      }
+      const target = resolveRuntimeFile(root, locations[0])
+      if (lstatSync(target).size !== 32) throw new Error('业务密钥长度无效')
     }
     if (config.database?.type === 'sqlite') resolveRuntimeFile(root, `data/${config.database.localRef}`)
   }
@@ -38,6 +51,15 @@ export function resolveRuntimeFile(root, reference) {
   }
   const resolvedRoot = realpathSync(root)
   const absolute = path.resolve(root, reference)
+  const lexical = path.relative(path.resolve(root), absolute)
+  if (!lexical || lexical === '..' || lexical.startsWith(`..${path.sep}`) || path.isAbsolute(lexical)) {
+    throw new Error('运行文件不能越过部署目录')
+  }
+  let current = path.resolve(root)
+  for (const component of lexical.split(path.sep)) {
+    current = path.join(current, component)
+    if (lstatSync(current).isSymbolicLink()) throw new Error('运行文件路径不能包含链接')
+  }
   const info = lstatSync(absolute)
   if (!info.isFile() || info.isSymbolicLink()) throw new Error('运行文件必须是普通文件')
   const target = realpathSync(absolute)

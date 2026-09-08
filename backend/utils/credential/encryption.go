@@ -86,8 +86,8 @@ func loadOrCreateKey(root string) ([]byte, error) {
 	if !os.IsNotExist(err) {
 		return nil, err
 	}
-	directory := runtimepath.KeyDirectory(root)
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	directory, err := runtimepath.SecureKeyDirectory(root, "credential.key")
+	if err != nil {
 		return nil, err
 	}
 	if err := validateKeyDirectory(directory); err != nil {
@@ -169,6 +169,11 @@ func readKey(root string) ([]byte, error) {
 		return nil, err
 	}
 	directory := runtimepath.KeyDirectory(root)
+	if runtimepath.DeploymentLayout(root) {
+		if err := validateKeyDirectory(filepath.Join(root, "ssl")); err != nil {
+			return nil, err
+		}
+	}
 	if err := validateKeyDirectory(directory); err != nil {
 		return nil, err
 	}

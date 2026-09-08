@@ -224,10 +224,15 @@ func (m *ConfigManager) Load(ctx context.Context) error {
 	}
 	now := runtime.LoadedAt
 	m.mu.Lock()
+	previousPending := m.pending
 	m.current = runtime
 	m.pending = nil
 	m.status = ConfigStatus{SetupState: runtime.SetupState, ActiveGeneration: runtime.Generation, LastValidAt: &now}
 	m.mu.Unlock()
+	if previousPending != nil {
+		releaseManagedSSL(m.loader.root, previousPending.Candidate.SSL.TLS)
+	}
+	maintainManagedSSL(m.loader.root, runtime.SSL.TLS)
 	return nil
 }
 
@@ -458,6 +463,7 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	pendingRestart := append([]ServiceName(nil), m.status.PendingRestart...)
 	m.status = ConfigStatus{SetupState: candidate.SetupState, ActiveGeneration: candidate.Generation, LastValidAt: &now, PendingRestart: pendingRestart}
 	m.mu.Unlock()
+	maintainManagedSSL(m.loader.root, candidate.SSL.TLS, current.SSL.TLS)
 	if err := m.writeAudit(ctx, ConfigAuditEvent{
 		Operation:          ConfigOperationUpdate,
 		Section:            pending.Section,
@@ -514,6 +520,9 @@ func (m *ConfigManager) PreviewRollback(ctx context.Context, generation uint64, 
 	if err := ValidateRuntimeSecrets(m.vault, backup); err != nil {
 		return nil, err
 	}
+	if err := validateRollbackSSL(m.loader.root, backup); err != nil {
+		return nil, err
+	}
 	return &RollbackPreview{
 		CurrentGeneration:   currentGeneration,
 		TargetGeneration:    generation,
@@ -550,6 +559,9 @@ func (m *ConfigManager) IssueRollbackTicket(ctx context.Context, generation uint
 		return "", err
 	}
 	if err := ValidateRuntimeSecrets(m.vault, backup); err != nil {
+		return "", err
+	}
+	if err := validateRollbackSSL(m.loader.root, backup); err != nil {
 		return "", err
 	}
 	token, err := newRollbackTicketID()
@@ -671,6 +683,9 @@ func (m *ConfigManager) rollbackWithState(ctx context.Context, generation uint64
 	if err := ValidateRuntimeSecrets(m.vault, candidate); err != nil {
 		return nil, false, err
 	}
+	if err := validateRollbackSSL(m.loader.root, candidate); err != nil {
+		return nil, false, err
+	}
 	setCandidateGeneration(&candidate, current.Generation+1)
 	candidate.Root.UpdatedAt = time.Now().UTC()
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
@@ -705,6 +720,7 @@ func (m *ConfigManager) rollbackWithState(ctx context.Context, generation uint64
 		PendingRestart:   []ServiceName{ServiceDatabase, ServiceHTTP, ServiceSMTP, ServiceEmail, ServiceSSL, ServicePlugins},
 	}
 	m.mu.Unlock()
+	maintainManagedSSL(m.loader.root, candidate.SSL.TLS, current.SSL.TLS)
 	if err := m.writeAudit(ctx, ConfigAuditEvent{
 		Operation:          ConfigOperationRollback,
 		Section:            SectionRoot,
