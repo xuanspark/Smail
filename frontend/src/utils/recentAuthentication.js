@@ -8,19 +8,7 @@ export function isRecentAuthenticationCancelled(error) {
   return error?.code === cancelledCode
 }
 
-export async function requestWithRecentAuthentication(request) {
-  let initialResponse
-  let requiresRecentAuthentication = false
-  try {
-    initialResponse = await request()
-  } catch (error) {
-    if (error?.apiErrorCode !== recentAuthenticationRequired) throw error
-    requiresRecentAuthentication = true
-  }
-  if (!requiresRecentAuthentication && initialResponse?.data?.code !== recentAuthenticationRequired) {
-    return initialResponse
-  }
-
+export async function confirmRecentAuthentication() {
   let password = ''
   try {
     const result = await ElMessageBox.prompt(
@@ -50,6 +38,22 @@ export async function requestWithRecentAuthentication(request) {
   } finally {
     password = ''
   }
+}
+
+export async function requestWithRecentAuthentication(request) {
+  let initialResponse
+  let requiresRecentAuthentication = false
+  try {
+    initialResponse = await request()
+  } catch (error) {
+    if (error?.apiErrorCode !== recentAuthenticationRequired) throw error
+    requiresRecentAuthentication = true
+  }
+  if (!requiresRecentAuthentication && initialResponse?.data?.code !== recentAuthenticationRequired) {
+    return initialResponse
+  }
+
+  await confirmRecentAuthentication()
 
   return request()
 }

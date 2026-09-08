@@ -75,6 +75,19 @@ test('用户安全信息使用独立弹窗并调用固定管理接口', () => {
 	assert.doesNotMatch(externalSource, /\/api\/v1\/security\/external-email\/bind/)
 })
 
+test('打开安全码或外部邮箱编辑弹窗前必须确认当前登录密码', () => {
+  const source = read('UserManagement.js')
+  assert.match(source, /confirmRecentAuthentication/)
+  assert.match(source, /confirmSecurityDialogAccess\('recovery-code'\)/)
+  assert.match(source, /confirmSecurityDialogAccess\('external-email'\)/)
+  assert.match(source, /if \(!await confirmSecurityDialogAccess\('recovery-code'\)\) return/)
+  assert.match(source, /if \(!await confirmSecurityDialogAccess\('external-email'\)\) return/)
+
+  const template = read('UserManagement.vue')
+  assert.match(template, /securityDialogOpening === 'recovery-code'/)
+  assert.match(template, /securityDialogOpening === 'external-email'/)
+})
+
 test('当前用户判断优先使用用户 ID 并保留账号兼容回退', () => {
   const { isSameUser } = loadStatusHelpers()
   assert.equal(isSameUser({ ID: 7, Account: 'same' }, { id: 7, account: 'other' }), true)

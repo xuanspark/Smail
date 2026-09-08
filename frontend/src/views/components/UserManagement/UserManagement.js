@@ -9,6 +9,7 @@ import {ElNotification} from "element-plus";
 import {Plus} from "@element-plus/icons-vue";
 
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
+import {confirmRecentAuthentication, isRecentAuthenticationCancelled} from '@/utils/recentAuthentication'
 
 const roleOptions = {
   super_admin: { label: '超级管理员', type: 'danger' },
@@ -74,6 +75,8 @@ export function usePage() {
 
   const externalEmailDialogVisible = ref(false)
 
+  const securityDialogOpening = ref('')
+
   const editingCurrentUser = computed(() => isSameUser(selectedUser.value, globalStatus.userInfos))
 
   const recoveryCodeWebManaged = computed(() => canManageRecoveryCode(selectedUser.value))
@@ -122,13 +125,35 @@ export function usePage() {
     userInfoDialog.value = true
   }
 
-  const openRecoveryCodeDialog = function () {
+  const confirmSecurityDialogAccess = async function (dialogName) {
+    if (securityDialogOpening.value) return false
+    securityDialogOpening.value = dialogName
+    try {
+      await confirmRecentAuthentication()
+      return true
+    } catch (error) {
+      if (!isRecentAuthenticationCancelled(error)) {
+        ElNotification({
+          title: lang.fail,
+          message: error?.message || '身份确认失败',
+          type: 'error',
+        })
+      }
+      return false
+    } finally {
+      securityDialogOpening.value = ''
+    }
+  }
+
+  const openRecoveryCodeDialog = async function () {
     if (!recoveryCodeWebManaged.value) return
+    if (!await confirmSecurityDialogAccess('recovery-code')) return
     recoveryCodeDialogVisible.value = true
   }
 
-  const openExternalEmailDialog = function () {
+  const openExternalEmailDialog = async function () {
     if (!selectedUser.value?.ID) return
+    if (!await confirmSecurityDialogAccess('external-email')) return
     externalEmailDialogVisible.value = true
   }
 
@@ -200,6 +225,7 @@ export function usePage() {
     recoveryCodeWebManaged,
     recoveryCodeDialogVisible,
     externalEmailDialogVisible,
+    securityDialogOpening,
     openRecoveryCodeDialog,
     openExternalEmailDialog,
     handleSecurityChanged,

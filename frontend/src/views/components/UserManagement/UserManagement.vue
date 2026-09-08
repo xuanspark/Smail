@@ -122,6 +122,7 @@
               </div>
               <el-button
                 :disabled="!recoveryCodeWebManaged"
+                :loading="securityDialogOpening === 'recovery-code'"
                 @click="openRecoveryCodeDialog"
               >
                 {{ recoveryCodeWebManaged ? '管理安全码' : '仅支持本机管理' }}
@@ -137,7 +138,12 @@
                   ).label }}
                 </span>
               </div>
-              <el-button @click="openExternalEmailDialog">编辑外部邮箱</el-button>
+              <el-button
+                :loading="securityDialogOpening === 'external-email'"
+                @click="openExternalEmailDialog"
+              >
+                编辑外部邮箱
+              </el-button>
             </div>
           </div>
 
@@ -201,6 +207,7 @@ const {
   recoveryCodeWebManaged,
   recoveryCodeDialogVisible,
   externalEmailDialogVisible,
+  securityDialogOpening,
   openRecoveryCodeDialog,
   openExternalEmailDialog,
   handleSecurityChanged,
