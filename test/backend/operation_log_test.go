@@ -82,6 +82,8 @@ func TestOperationResponseDistinguishesPendingHTTPFailureAndUnknown(t *testing.T
 		t.Fatal(err)
 	}
 	defer database.Close()
+	// 与生产 SQLite 连接池一致，避免后台清理和写入争抢无等待的独立连接。
+	database.SetMaxOpenConns(1)
 	migrations := migration.DefaultMigrations()
 	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
 		if _, err := database.Exec(statement); err != nil {
@@ -113,7 +115,7 @@ func TestOperationResponseDistinguishesPendingHTTPFailureAndUnknown(t *testing.T
 		finish()
 		entries, err := store.Query(context.Background(), logstore.Query{Kind: "operation", Limit: 1})
 		if err != nil || len(entries) != 1 {
-			t.Fatal(err)
+			t.Fatalf("操作日志条数为 %d，查询错误：%v", len(entries), err)
 		}
 		entry := entries[0]
 		if entry.Result != item.want || strings.Contains(string(entry.Payload), "private-") || strings.Contains(string(entry.Payload), "not-a-business-response") {

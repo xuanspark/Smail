@@ -36,6 +36,10 @@ func releaseManagedSSLLocked(root string, ssl SSLConfig) {
 	}
 	path, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(runtimepath.SSLReference(root, ssl.CertificateRef))))
 	if err == nil {
+		if release := managedSSLStorage.staged[path]; release != nil {
+			release()
+			delete(managedSSLStorage.staged, path)
+		}
 		directory := filepath.Dir(path)
 		if release := managedSSLStorage.staged[directory]; release != nil {
 			release()
@@ -86,6 +90,10 @@ func MaintainManagedSSLHistory() {
 	if manager := CurrentManager(); manager != nil {
 		manager.writeMu.Lock()
 		defer manager.writeMu.Unlock()
+		if err := manager.clearExpiredPreviousSSL(); err != nil {
+			log.WithFields(log.Fields{"action": "清理过期证书引用", "result": "failure"}).Warn("配置维护未完成，下次自动重试")
+			return
+		}
 		manager.mu.RLock()
 		active := manager.current.SSL.TLS
 		var pending []SSLConfig
@@ -107,6 +115,11 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 	if len(protected) == 0 || protected[0].CertificateRef == "" {
 		return nil
 	}
+	if !legacyManagedSSLReference(protected[0].CertificateRef) {
+		if _, err := resolveManagedSSLReferencesAtRoot(root, protected[0]); err != nil {
+			return err
+		}
+	}
 	// 恢复事务可能仍需要旧材料；恢复未完成时不能清理任何版本。
 	if runtimepath.DeploymentLayout(root) {
 		records, err := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true}).stateRecords("transaction")
@@ -125,7 +138,9 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 		if err != nil {
 			return err
 		}
-		keep[filepath.Dir(reference.CertificatePath)] = true
+		if legacyManagedSSLReference(ssl.CertificateRef) {
+			keep[filepath.Dir(reference.CertificatePath)] = true
+		}
 	}
 	// 磁盘引用也必须保留，避免其他管理器实例或已提交未发布的候选被删除。
 	data, err := os.ReadFile(filepath.Join(root, "config", "ssl.json"))
@@ -135,11 +150,14 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 			return err
 		}
 		if section.TLS.CertificateRef != "" {
+			protected = append(protected, section.TLS)
 			reference, err := resolveManagedSSLPathsAtRoot(root, section.TLS)
 			if err != nil {
 				return err
 			}
-			keep[filepath.Dir(reference.CertificatePath)] = true
+			if legacyManagedSSLReference(section.TLS.CertificateRef) {
+				keep[filepath.Dir(reference.CertificatePath)] = true
+			}
 		}
 	} else if !os.IsNotExist(err) {
 		return err
@@ -209,12 +227,14 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 		}
 		return versions[i].modified.After(versions[j].modified)
 	})
-	// 两个模式合计保留两份；正在生效和暂存的版本优先，操作结束后收敛到两份。
-	for _, version := range versions {
-		if len(keep) >= 2 {
-			break
+	// 尚未迁移的旧配置暂时沿用旧规则；迁移完成后不再为 managed 额外保留副本。
+	if legacyManagedSSLReference(protected[0].CertificateRef) {
+		for _, version := range versions {
+			if len(keep) >= 2 {
+				break
+			}
+			keep[version.directory] = true
 		}
-		keep[version.directory] = true
 	}
 	var result error
 	for _, version := range versions {
@@ -222,7 +242,17 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 			result = errors.Join(result, removeManagedSSLDirectory(version.directory))
 		}
 	}
-	return result
+	if result == nil {
+		// 仅删除已空的旧目录；未知文件会使 Remove 失败并原样保留。
+		for _, mode := range []string{ManagedSSLModeDefault, ManagedSSLModeUpload} {
+			directory, err := managedSSLRootPathAtRoot(root, mode)
+			if err == nil {
+				_ = os.Remove(directory)
+				_ = os.Remove(filepath.Dir(directory))
+			}
+		}
+	}
+	return errors.Join(result, pruneFlatSSLLocked(root, protected))
 }
 
 // 回滚前必须检查实际证书，不能提交已经被保留策略淘汰的历史引用。

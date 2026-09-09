@@ -173,6 +173,16 @@ func smtpRelayConfigured(smtp SMTPConfig) bool {
 }
 
 func validateSSL(ssl SSLConfig) error {
+	if (ssl.PreviousCertificateRef == "") != (ssl.PreviousPrivateKeyRef == "") {
+		return ErrInvalidSSL
+	}
+	if ssl.PreviousCertificateRef != "" {
+		publicPath, err := resolveCustomSSLInput(".", ssl.PreviousCertificateRef)
+		privatePath, keyErr := resolveCustomSSLInput(".", ssl.PreviousPrivateKeyRef)
+		if err != nil || keyErr != nil || !isControlledRelativePath(ssl.PreviousCertificateRef) || !isControlledRelativePath(ssl.PreviousPrivateKeyRef) || !flatSSLPair(".", publicPath, privatePath) {
+			return ErrInvalidSSL
+		}
+	}
 	if !isControlledRelativePath(ssl.DefaultDirectory) {
 		return ErrInvalidSSL
 	}
@@ -195,6 +205,19 @@ func validateSSL(ssl SSLConfig) error {
 		activeDirectory = ssl.CustomDirectory
 	default:
 		return ErrInvalidSSL
+	}
+	if EffectiveSSLManagement(ssl) == SSLManagementCustom || EffectiveSSLManagement(ssl) == SSLManagementWebServer {
+		if (ssl.CertificateRef == "") != (ssl.PrivateKeyRef == "") {
+			return ErrInvalidSSL
+		}
+		for _, value := range []string{ssl.CertificateRef, ssl.PrivateKeyRef} {
+			if value != "" {
+				if _, err := resolveCustomSSLInput(".", value); err != nil {
+					return ErrInvalidSSL
+				}
+			}
+		}
+		return nil
 	}
 	if (ssl.CertificateRef != "" && !isControlledRelativePath(ssl.CertificateRef)) ||
 		(ssl.PrivateKeyRef != "" && !isControlledRelativePath(ssl.PrivateKeyRef)) {

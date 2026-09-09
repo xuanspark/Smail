@@ -93,7 +93,7 @@ def main():
                     if not (RUNTIME / folder).is_dir():
                         raise RuntimeError("正式启动没有创建部署目录")
                 directories = [str(p.relative_to(RUNTIME)) for p in sorted((RUNTIME / "ssl").iterdir()) if p.is_dir()]
-                for folder in (*BUSINESS.values(), "dkim", "managed"):
+                for folder in (*BUSINESS.values(), "dkim"):
                     if not (RUNTIME / "ssl" / folder).is_dir():
                         raise RuntimeError("主程序没有自动创建业务目录")
                 if first is not None and directories != first:

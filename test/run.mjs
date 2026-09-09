@@ -68,6 +68,7 @@ if ((suite === 'all' || suite === 'backend') && result === 0) {
     'backend/config/config_runtime_log_test.go': 'test/backend/config_runtime_log_test.go',
     'backend/config/deployment_state_test.go': 'test/backend/deployment_state_test.go',
     'backend/config/ssl_retention_test.go': 'test/backend/ssl_retention_test.go',
+    'backend/config/ssl_lifecycle_test.go': 'test/backend/ssl_lifecycle_test.go',
     'backend/utils/runtimepath/layout_test.go': 'test/backend/runtime_layout_test.go',
     'backend/config/data_paths_test.go': 'test/backend/data_paths_test.go',
     'backend/config/ssl_custom_regression_test.go': 'test/backend/ssl_custom_test.go',

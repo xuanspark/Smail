@@ -1,7 +1,6 @@
 package smtp_server
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"time"
@@ -43,12 +42,12 @@ func StartWithTLSNew() error {
 	// force TLS for auth
 	instanceTlsNew.AllowInsecureAuth = false
 	// Load the certificate and key
-	cer, err := config.LoadRuntimeTLSCertificate(cfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return fmt.Errorf("load SMTP STARTTLS certificate: %w", err)
 	}
 	// Configure the TLS support for STARTTLS
-	instanceTlsNew.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
+	instanceTlsNew.TLSConfig = tlsConfig
 
 	log.WithFields(log.Fields{"action": "启动 SMTP STARTTLS 监听", "object": instanceTlsNew.Addr, "result": "started"}).Info("开始绑定监听端口")
 	// 提交端口使用 STARTTLS（先连接，再升级 TLS），而非隐式 TLS。
@@ -80,12 +79,12 @@ func StartWithTLS() error {
 	// force TLS for auth
 	instanceTls.AllowInsecureAuth = true
 	// Load the certificate and key
-	cer, err := config.LoadRuntimeTLSCertificate(cfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return fmt.Errorf("load SMTP TLS certificate: %w", err)
 	}
 	// Configure the TLS support
-	instanceTls.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
+	instanceTls.TLSConfig = tlsConfig
 
 	log.WithFields(log.Fields{"action": "启动 SMTP TLS 监听", "object": instanceTls.Addr, "result": "started"}).Info("开始绑定监听端口")
 	if err := instanceTls.ListenAndServeTLS(); err != nil && !errors.Is(err, smtp.ErrServerClosed) {
@@ -116,12 +115,12 @@ func Start() error {
 	// force TLS for auth
 	instance.AllowInsecureAuth = false
 	// Load the certificate and key
-	cer, err := config.LoadRuntimeTLSCertificate(cfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return fmt.Errorf("load SMTP certificate: %w", err)
 	}
 	// Configure the TLS support
-	instance.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cer}, MinVersion: tls.VersionTLS12}
+	instance.TLSConfig = tlsConfig
 
 	log.WithFields(log.Fields{"action": "启动 SMTP 收信监听", "object": instance.Addr, "result": "started"}).Info("开始绑定监听端口")
 	if err := instance.ListenAndServe(); err != nil && !errors.Is(err, smtp.ErrServerClosed) {

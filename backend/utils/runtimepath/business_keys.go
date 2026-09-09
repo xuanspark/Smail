@@ -104,7 +104,7 @@ func PrepareDeploymentKeys(root string) error {
 		return err
 	}
 	// 先检查所有目标，不能移动第一把密钥后才发现另一业务目录不安全。
-	for _, folder := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim", "managed"} {
+	for _, folder := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim"} {
 		if err := safeDirectory(filepath.Join(ssl, folder)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -114,7 +114,7 @@ func PrepareDeploymentKeys(root string) error {
 			return err
 		}
 	}
-	for _, folder := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim", "managed"} {
+	for _, folder := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim"} {
 		if _, err := SecureDirectory(ssl, folder); err != nil {
 			return err
 		}

@@ -11,12 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 )
 
-func TestImportManagedSSLUsesInternalReferencesAndAtomicCurrent(t *testing.T) {
+func TestImportManagedSSLUsesImmutableRootFiles(t *testing.T) {
 	oldRoot := ROOT_PATH
 	ROOT_PATH = t.TempDir()
 	t.Cleanup(func() { ROOT_PATH = oldRoot })
@@ -26,10 +25,11 @@ func TestImportManagedSSLUsesInternalReferencesAndAtomicCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer ReleaseStagedSSL(first)
 	if filepath.IsAbs(first.CertificateRef) || filepath.IsAbs(first.PrivateKeyRef) {
 		t.Fatal("SSL 内部引用不应为绝对路径")
 	}
-	if first.CertificateRef != "data/ssl/managed/default/current/public.crt" || first.PrivateKeyRef != "data/ssl/managed/default/current/private.key" {
+	if !flatSSLPair(ROOT_PATH, first.CertificatePath, first.PrivateKeyPath) {
 		t.Fatalf("内部引用不符合预期: %+v", first)
 	}
 	resolved, err := ResolveManagedSSLReferences(SSLConfig{Mode: ManagedSSLModeDefault, DefaultDirectory: "config/ssl", CertificateRef: first.CertificateRef, PrivateKeyRef: first.PrivateKeyRef})
@@ -45,8 +45,9 @@ func TestImportManagedSSLUsesInternalReferencesAndAtomicCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CertificatePath != first.CertificatePath {
-		t.Fatal("current 引用路径应保持稳定")
+	defer ReleaseStagedSSL(second)
+	if second.CertificatePath == first.CertificatePath {
+		t.Fatal("新证书必须使用独立文件，不能覆盖正在使用的材料")
 	}
 	currentData, err := os.ReadFile(second.CertificatePath)
 	if err != nil {
@@ -55,22 +56,9 @@ func TestImportManagedSSLUsesInternalReferencesAndAtomicCurrent(t *testing.T) {
 	if string(currentData) == string(certificatePEM) {
 		t.Fatal("current 目录没有切换到新证书")
 	}
-	previousMatches := false
-	entries, err := os.ReadDir(filepath.Dir(filepath.Dir(second.CertificatePath)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), ".previous-") {
-			continue
-		}
-		previousData, readErr := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(second.CertificatePath)), entry.Name(), "public.crt"))
-		if readErr == nil && string(previousData) == string(certificatePEM) {
-			previousMatches = true
-		}
-	}
-	if !previousMatches {
-		t.Fatal("更新后未保留旧证书目录")
+	previousData, err := os.ReadFile(first.CertificatePath)
+	if err != nil || string(previousData) != string(certificatePEM) {
+		t.Fatal("暂存新证书改变了原证书")
 	}
 }
 
@@ -146,8 +134,8 @@ func TestResolveManagedSSLReferencesRejectsUnsafeReferences(t *testing.T) {
 		{Mode: ManagedSSLModeUpload, CertificateRef: `\\server\share\public.crt`, PrivateKeyRef: reference.PrivateKeyRef},
 	}
 	for index, candidate := range unsafe {
-		if _, err := ResolveManagedSSLReferences(candidate); !errors.Is(err, ErrInvalidSSLReference) {
-			t.Fatalf("用例 %d error = %v, want %v", index, err, ErrInvalidSSLReference)
+		if _, err := ResolveManagedSSLReferences(candidate); err == nil {
+			t.Fatalf("用例 %d 不应接受缺失、不配对或不安全的文件", index)
 		}
 	}
 }
@@ -203,7 +191,7 @@ func TestValidateSSLMaterialRejectsDomainExpiryAndWeakKeys(t *testing.T) {
 	}
 }
 
-func TestPrepareCustomSSLPathsImportsExternalFilesOnlyWhenSaving(t *testing.T) {
+func TestPrepareCustomSSLPathsKeepsDirectFilesWithoutCopying(t *testing.T) {
 	root := t.TempDir()
 	previousRoot := ROOT_PATH
 	ROOT_PATH = root
@@ -233,8 +221,8 @@ func TestPrepareCustomSSLPathsImportsExternalFilesOnlyWhenSaving(t *testing.T) {
 	if err != nil {
 		t.Fatalf("校验外部证书失败: %v", err)
 	}
-	if runtime.SSL.TLS.CertificateRef == certificatePath || runtime.SSL.TLS.PrivateKeyRef == privateKeyPath {
-		t.Fatal("仅校验阶段不应保留外部证书路径")
+	if runtime.SSL.TLS.CertificateRef != filepath.ToSlash(certificatePath) || runtime.SSL.TLS.PrivateKeyRef != filepath.ToSlash(privateKeyPath) {
+		t.Fatal("仅校验阶段应保留规范化的直接路径")
 	}
 	managedRoot := filepath.Join(root, "data", "ssl", "managed", "upload")
 	if _, err := os.Stat(managedRoot); !os.IsNotExist(err) {
@@ -244,11 +232,11 @@ func TestPrepareCustomSSLPathsImportsExternalFilesOnlyWhenSaving(t *testing.T) {
 	if err := material.stage(root, &runtime); err != nil {
 		t.Fatalf("保存外部证书失败: %v", err)
 	}
-	if runtime.SSL.TLS.CertificateRef == certificatePath || runtime.SSL.TLS.PrivateKeyRef == privateKeyPath {
-		t.Fatal("保存后不应继续使用外部证书路径")
+	if runtime.SSL.TLS.CertificateRef != filepath.ToSlash(certificatePath) || runtime.SSL.TLS.PrivateKeyRef != filepath.ToSlash(privateKeyPath) {
+		t.Fatal("保存后应继续引用原始文件")
 	}
-	if !strings.HasPrefix(runtime.SSL.TLS.CertificateRef, "data/ssl/managed/upload/version-") {
-		t.Fatalf("证书引用未切换到受管版本: %q", runtime.SSL.TLS.CertificateRef)
+	if _, err := os.Stat(managedRoot); !os.IsNotExist(err) {
+		t.Fatal("保存自定义证书不应创建副本")
 	}
 	if _, err := ResolveManagedSSLReferences(runtime.SSL.TLS); err != nil {
 		t.Fatalf("受管证书引用无法解析: %v", err)
@@ -263,7 +251,7 @@ func TestValidateSSLMaterialAcceptsBundledIssuerWithoutDuplicateChainEntry(t *te
 	}
 }
 
-func testManagedCertificate(t *testing.T, domain string, notBefore, notAfter time.Time, bits int) ([]byte, []byte) {
+func testManagedCertificate(t *testing.T, domain string, notBefore, notAfter time.Time, bits int, additionalDomains ...string) ([]byte, []byte) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
@@ -272,7 +260,7 @@ func testManagedCertificate(t *testing.T, domain string, notBefore, notAfter tim
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(time.Now().UnixNano()),
 		Subject:               pkix.Name{CommonName: domain},
-		DNSNames:              []string{domain},
+		DNSNames:              append([]string{domain}, additionalDomains...),
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		BasicConstraintsValid: true,

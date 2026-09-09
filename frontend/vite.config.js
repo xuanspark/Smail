@@ -1,5 +1,4 @@
 /* eslint-env node */
-import { readFileSync } from 'node:fs'
 import { createServer as createHTTPServer } from 'node:http'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
@@ -7,7 +6,7 @@ import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import vue from '@vitejs/plugin-vue'
-import { readDevelopmentRuntime } from '../deploy/runtime-config.mjs'
+import { readDevelopmentTLS, developmentTLSReload } from './dev-tls.js'
 
 const developmentHTTPRedirect = (frontendOrigin, host = '127.0.0.1', port = 80) => ({
   name: 'smail-development-http-redirect',
@@ -35,13 +34,15 @@ const developmentHTTPRedirect = (frontendOrigin, host = '127.0.0.1', port = 80) 
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = (env.VITE_DEV_BACKEND_URL || 'http://127.0.0.1:5201').replace(/\/$/, '')
-  const runtime = command === 'serve' ? readDevelopmentRuntime() : undefined
+  const developmentTLS = command === 'serve' ? readDevelopmentTLS() : undefined
+  const runtime = developmentTLS?.runtime
   const backendOrigin = runtime?.origin
   const frontendOrigin = runtime?.origin
 
   return {
     plugins: [
       developmentHTTPRedirect(frontendOrigin),
+      command === 'serve' && developmentTLSReload(developmentTLS),
       vue(),
       AutoImport({
         resolvers: [ElementPlusResolver()],
@@ -60,10 +61,7 @@ export default defineConfig(({ mode, command }) => {
       port: 443,
       strictPort: true,
       // 生产构建不依赖本机开发证书，只有开发服务器启动时才读取私钥。
-      https: command === 'serve' ? {
-        cert: readFileSync(runtime.certificatePath),
-        key: readFileSync(runtime.privateKeyPath)
-      } : undefined,
+      https: developmentTLS?.options,
       cors: true,
       proxy: {
         "/api": {

@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"git.pcux.cn/xuans/Smail/utils/credential"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
@@ -87,7 +86,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		}
 	}
 	// 迁移器保留的旧证书引用仍走严格的只读文件校验；新托管引用沿用托管解析器。
-	if strings.HasPrefix(tls.CertificateRef, managedSSLRelativeRoot+"/") || strings.HasPrefix(tls.CertificateRef, "ssl/managed/") {
+	if validManagedSSLMode(tls.Mode) {
 		cfg.SSL = tls
 	} else {
 		cfg.SSLPublicKeyPath = resolvePath(tls.CertificateRef)

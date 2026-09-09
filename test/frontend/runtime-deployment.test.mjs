@@ -14,10 +14,11 @@ test('开发配置只从模拟部署目录读取且不返回凭据字段', async
     generation: 9, domains: { web: 'mail.example.test' }, database: { password: 'not-exported' }
   }))
   await writeFile(path.join(root, 'config/ssl.json'), JSON.stringify({
+    meta: { generation: 9 },
     tls: { certificateRef: 'ssl/public.crt', privateKeyRef: 'ssl/private.key' }
   }))
   await writeFile(path.join(root, 'ssl/public.crt'), 'certificate')
-  await writeFile(path.join(root, 'ssl/private.key'), 'key')
+  await writeFile(path.join(root, 'ssl/private.key'), 'key', { mode: 0o600 })
   const runtime = readDevelopmentRuntime(root)
   assert.equal(runtime.origin, 'https://mail.example.test')
   assert.equal(runtime.generation, 9)
@@ -26,6 +27,8 @@ test('开发配置只从模拟部署目录读取且不返回凭据字段', async
   assert.equal(runtimeRoot, path.join(sourceRoot, 'yunx-test'))
   assert.throws(() => resolveRuntimeFile(root, '../outside.key'))
   assert.throws(() => resolveRuntimeFile(root, path.join(root, 'ssl/private.key')))
+  await writeFile(path.join(root, 'config/ssl.json'), JSON.stringify({ meta: { generation: 10 }, tls: {} }))
+  assert.throws(() => readDevelopmentRuntime(root), /事务尚未完成/)
 })
 
 test('源码指纹检测编辑且忽略编译嵌入目录', async () => {
@@ -77,7 +80,7 @@ test('部署启动检查兼容自动归档前后的密钥且拒绝双份冲突',
     for (const name of ['smtp', 'email', 'plugins']) await writeFile(path.join(root, `config/${name}.json`), '{}')
     await writeFile(path.join(root, 'config/ssl.json'), JSON.stringify({ tls: { certificateRef: 'ssl/public.crt', privateKeyRef: 'ssl/private.key' } }))
     await writeFile(path.join(root, 'ssl/public.crt'), 'certificate')
-    await writeFile(path.join(root, 'ssl/private.key'), 'key')
+    await writeFile(path.join(root, 'ssl/private.key'), 'key', { mode: 0o600 })
     for (const [folder, name] of [
       ['credentials', 'credential.key'],
       ['external-email-encryption', 'external-email-encryption.key'],

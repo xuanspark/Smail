@@ -6,12 +6,33 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func sslConfigForReference(ref ManagedSSLReference) SSLConfig {
 	return SSLConfig{Mode: ref.Mode, CertificateRef: ref.CertificateRef, PrivateKeyRef: ref.PrivateKeyRef}
+}
+
+func countFlatVersions(t *testing.T, root string) int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(root, "ssl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, entry := range entries {
+		publicPath := filepath.Join(root, "ssl", entry.Name())
+		privatePath := strings.TrimSuffix(publicPath, ".crt") + ".key"
+		if flatSSLPair(root, publicPath, privatePath) {
+			if _, err := os.Stat(privatePath); err != nil {
+				t.Fatal("证书没有对应私钥", err)
+			}
+			count++
+		}
+	}
+	return count
 }
 
 func countManagedVersions(t *testing.T, root string) int {
@@ -185,6 +206,25 @@ func TestSSLRetentionRunsOnApplyCancelAndReload(t *testing.T) {
 	root, manager, request, _ := customSSLFixture(t)
 	var first RuntimeConfig
 	for index := 0; index < 4; index++ {
+		// 自定义保存不再产生副本；这里显式模拟自动续期的新版本。
+		certificate, err := os.ReadFile(filepath.Join(root, "external", "public.crt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := os.ReadFile(filepath.Join(root, "external", "private.key"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref, err := stageFlatSSLAtRoot(root, ManagedSSLModeUpload, key, certificate, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var section SSLSectionConfig
+		if err := json.Unmarshal(request.Payload, &section); err != nil {
+			t.Fatal(err)
+		}
+		section.TLS.CertificateRef, section.TLS.PrivateKeyRef = ref.CertificateRef, ref.PrivateKeyRef
+		request.Payload, _ = json.Marshal(section)
 		request.ExpectedGeneration = manager.Snapshot().Generation
 		updated, err := manager.Update(context.Background(), request)
 		if err != nil {
@@ -199,7 +239,8 @@ func TestSSLRetentionRunsOnApplyCancelAndReload(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if index > 0 && countManagedVersions(t, root) != 2 {
+		maintainManagedSSL(root, manager.Snapshot().SSL.TLS)
+		if index > 0 && countFlatVersions(t, root) != 2 {
 			t.Fatal("配置应用完成后未自动保留两份")
 		}
 	}
@@ -217,13 +258,13 @@ func TestSSLRetentionRunsOnApplyCancelAndReload(t *testing.T) {
 	if err := manager.ManagePending(context.Background(), updated.Generation, updated.CandidateID, request.Actor, StepUpConfirmation{}, true); err != nil {
 		t.Fatal(err)
 	}
-	if countManagedVersions(t, root) != 2 {
+	if countFlatVersions(t, root) != 2 {
 		t.Fatal("取消候选未收敛到两份")
 	}
 	if err := manager.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if countManagedVersions(t, root) != 2 {
+	if countFlatVersions(t, root) != 2 {
 		t.Fatal("重新加载后保留数量错误")
 	}
 	// 确认五分区仍可完整读取，证书删除不能导致摘要被直接修改。
@@ -242,7 +283,7 @@ func TestSSLRetentionRunsOnApplyCancelAndReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	managedSSLStorage.Lock()
-	stillLeased := managedSSLStorage.staged[filepath.Dir(path.CertificatePath)] != nil
+	stillLeased := managedSSLStorage.staged[path.CertificatePath] != nil
 	managedSSLStorage.Unlock()
 	if stillLeased {
 		t.Fatal("管理器停止后仍持有暂存租约")

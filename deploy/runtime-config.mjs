@@ -38,9 +38,17 @@ export function assertDeploymentLayout(root = runtimeRoot) {
     if (config.database?.type === 'sqlite') resolveRuntimeFile(root, `data/${config.database.localRef}`)
   }
   const ssl = JSON.parse(readFileSync(resolveRuntimeFile(root, 'config/ssl.json'), 'utf8')).tls
-  for (const reference of [ssl?.certificateRef, ssl?.privateKeyRef]) {
-    if (!reference?.startsWith('ssl/')) throw new Error('证书引用尚未迁移到 ssl，拒绝使用旧目录启动')
-    resolveRuntimeFile(root, reference)
+  try {
+    resolveDevelopmentCertificate(root, ssl?.certificateRef)
+    resolveDevelopmentCertificate(root, ssl?.privateKeyRef, true)
+  } catch (error) {
+    // 启动预检与热加载使用相同边界；当前材料不可读时允许后端验证上一套。
+    try {
+      resolveDevelopmentCertificate(root, ssl?.previousCertificateRef)
+      resolveDevelopmentCertificate(root, ssl?.previousPrivateKeyRef, true)
+    } catch {
+      throw error
+    }
   }
   return config
 }
@@ -71,20 +79,42 @@ export function resolveRuntimeFile(root, reference) {
 }
 
 // 仅供 Node/Vite 服务端读取，不能把包含凭据的配置对象暴露给浏览器。
-export function readDevelopmentRuntime(root = runtimeRoot) {
+export function readDevelopmentRuntime(root = runtimeRoot, { previous = false } = {}) {
   const read = name => JSON.parse(readFileSync(resolveRuntimeFile(root, `config/${name}.json`), 'utf8'))
   const config = read('config')
   const ssl = read('ssl')
+  if (ssl.meta?.generation !== config.generation) {
+    throw new Error('配置事务尚未完成，暂不切换开发证书')
+  }
   const webDomain = config.domains?.web
   if (typeof webDomain !== 'string' || !/^[a-z0-9.-]+(?::\d+)?$/i.test(webDomain)) {
     throw new Error('请先在 yunx-test/config/config.json 配置有效的 Web 域名')
   }
-  const certificatePath = resolveRuntimeFile(root, ssl.tls?.certificateRef)
-  const privateKeyPath = resolveRuntimeFile(root, ssl.tls?.privateKeyRef)
+  const certificatePath = resolveDevelopmentCertificate(root, previous ? ssl.tls?.previousCertificateRef : ssl.tls?.certificateRef)
+  const privateKeyPath = resolveDevelopmentCertificate(root, previous ? ssl.tls?.previousPrivateKeyRef : ssl.tls?.privateKeyRef, true)
   return {
     origin: `https://${webDomain}`,
     certificatePath,
     privateKeyPath,
     generation: config.generation
   }
+}
+
+// 证书允许显式绝对路径；配置与数据库仍保持部署根目录边界。
+function resolveDevelopmentCertificate(root, reference, privateKey = false) {
+  if (typeof reference !== 'string' || !reference || reference.includes('\0') || reference.split(/[\\/]/).includes('..')) {
+    throw new Error('证书路径无效')
+  }
+  const target = path.isAbsolute(reference) ? path.resolve(reference) : resolveRuntimeFile(root, reference)
+  let current = target
+  while (true) {
+    if (lstatSync(current).isSymbolicLink()) throw new Error('证书路径不能包含链接')
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  const info = lstatSync(target)
+  if (!info.isFile() || info.nlink !== 1 || info.size <= 0 || info.size > 1024 * 1024) throw new Error('证书必须是安全的普通文件')
+  if (privateKey && process.platform !== 'win32' && (info.mode & 0o077)) throw new Error('私钥权限过于宽松')
+  return target
 }

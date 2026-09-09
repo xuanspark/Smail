@@ -1,7 +1,6 @@
 package imap_server
 
 import (
-	"crypto/tls"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
 	"github.com/emersion/go-imap/v2"
@@ -62,13 +61,9 @@ func newIMAPServer() (*imapserver.Server, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("runtime configuration is unavailable")
 	}
-	crt, err := config.LoadRuntimeTLSCertificate(cfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return nil, fmt.Errorf("load IMAP TLS certificate: %w", err)
-	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{crt},
-		MinVersion:   tls.VersionTLS12,
 	}
 
 	memServer := NewServer()

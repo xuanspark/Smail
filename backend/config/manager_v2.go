@@ -281,6 +281,7 @@ func (m *ConfigManager) Validate(ctx context.Context, req ValidateRequest) (*Val
 			}
 			return &ValidationResult{Valid: false, Generation: current.Generation, Issues: []PublicIssue{issue}}, nil
 		}
+		retainPreviousSSL(m.loader.root, &candidate.SSL.TLS, current.SSL.TLS)
 	}
 	setCandidateGeneration(&candidate, current.Generation+1)
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {
@@ -321,6 +322,7 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 		if err != nil {
 			return nil, err
 		}
+		retainPreviousSSL(m.loader.root, &candidate.SSL.TLS, current.SSL.TLS)
 	}
 	if err := contextError(ctx); err != nil {
 		return nil, err
@@ -348,7 +350,7 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 	setCandidateGeneration(&candidate, current.Generation+1)
 	m.mu.Lock()
 	m.pending = &pendingConfig{ID: id, Candidate: candidate, Section: req.Section, Actor: req.Actor, Confirmation: req.Confirmation, PreviousRestart: append([]ServiceName(nil), m.status.PendingRestart...)}
-	m.status.PendingRestart = mergeServices(m.status.PendingRestart, servicesForSection(req.Section))
+	m.status.PendingRestart = mergeServices(m.status.PendingRestart, servicesForChange(req.Section, current, candidate))
 	m.mu.Unlock()
 	return &UpdateResult{CandidateID: id, Generation: candidate.Generation, Candidate: cloneRuntimeConfig(candidate), Pending: true}, nil
 }
@@ -677,6 +679,7 @@ func (m *ConfigManager) rollbackWithState(ctx context.Context, generation uint64
 	if err := validateRollbackSSL(m.loader.root, candidate); err != nil {
 		return nil, false, err
 	}
+	retainPreviousSSL(m.loader.root, &candidate.SSL.TLS, current.SSL.TLS)
 	setCandidateGeneration(&candidate, current.Generation+1)
 	candidate.Root.UpdatedAt = time.Now().UTC()
 	if err := ValidateRuntimeConfig(candidate, m.options); err != nil {

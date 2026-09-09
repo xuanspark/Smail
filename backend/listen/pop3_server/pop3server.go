@@ -2,7 +2,6 @@ package pop3_server
 
 import (
 	"crypto/rand"
-	"crypto/tls"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/internal/gopop"
@@ -22,12 +21,10 @@ func StartWithTls() error {
 	if domains.Primary == "" {
 		return fmt.Errorf("mail domain is not configured")
 	}
-	crt, err := config.LoadRuntimeTLSCertificate(cfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return fmt.Errorf("load POP3 TLS certificate: %w", err)
 	}
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	tlsConfig.Certificates = []tls.Certificate{crt}
 	tlsConfig.Time = time.Now
 	tlsConfig.Rand = rand.Reader
 	port := config.CurrentMailPorts().POP3TLS
@@ -52,12 +49,10 @@ func Start() error {
 	if domains.Primary == "" {
 		return fmt.Errorf("mail domain is not configured")
 	}
-	crt, err := config.LoadRuntimeTLSCertificate(cfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return fmt.Errorf("load POP3 certificate: %w", err)
 	}
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	tlsConfig.Certificates = []tls.Certificate{crt}
 	tlsConfig.Time = time.Now
 	tlsConfig.Rand = rand.Reader
 	port := config.CurrentMailPorts().POP3

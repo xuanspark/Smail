@@ -19,6 +19,7 @@ func WriteSSLConfig(expected, next *Config) error {
 	}
 	sslCommitMu.Lock()
 	defer sslCommitMu.Unlock()
+	retainPreviousSSL(ROOT_PATH, &next.SSL, expected.SSL)
 	legacyConfigMu.Lock()
 	defer legacyConfigMu.Unlock()
 	data, err := readConfigFile("config.json")
@@ -87,6 +88,9 @@ func WriteSSLConfig(expected, next *Config) error {
 	candidate := cloneRuntimeConfig(current)
 	candidate.SSL.TLS = next.SSL
 	candidate.Root.HTTP.HTTPSEnabled = next.HttpsEnabled == 1
+	if err := validateCustomSSLReferences(ROOT_PATH, candidate); err != nil {
+		return err
+	}
 	setCandidateGeneration(&candidate, current.Generation+1)
 	if err := ValidateRuntimeConfig(candidate, manager.options); err != nil {
 		return err
@@ -118,7 +122,7 @@ func WriteSSLConfig(expected, next *Config) error {
 		Actor:           AuditActor{UserID: "system", Role: "system"},
 		PreviousRestart: append([]ServiceName(nil), manager.status.PendingRestart...),
 	}
-	manager.status.PendingRestart = mergeServices(manager.status.PendingRestart, servicesForSection(SectionSSL))
+	manager.status.PendingRestart = mergeServices(manager.status.PendingRestart, servicesForChange(SectionSSL, current, candidate))
 	manager.mu.Unlock()
 	if err := manager.publishSnapshot(candidate); err != nil {
 		return err
@@ -139,7 +143,7 @@ func WriteSSLConfig(expected, next *Config) error {
 	return manager.writeAudit(context.Background(), ConfigAuditEvent{
 		Operation: ConfigOperationUpdate, Section: SectionSSL, ActorID: "system", ActorRole: "system",
 		FromGeneration: current.Generation, ToGeneration: candidate.Generation,
-		Changes: AuditChanges(current, candidate),
+		Changes:       AuditChanges(current, candidate),
 		ChangedFields: []string{"tls"}, Result: "success", CreatedAt: now,
 	})
 }
@@ -150,6 +154,17 @@ func sameSSLPolicy(left, right *Config) bool {
 		left.Domain == right.Domain && left.WebDomain == right.WebDomain &&
 		reflect.DeepEqual(left.Domains, right.Domains) && left.HttpsEnabled == right.HttpsEnabled &&
 		left.TLSMode == right.TLSMode
+}
+
+// 材料和续期策略均可热更新；只有实际监听配置发生变化才提示重启。
+func servicesForChange(section Section, previous, next RuntimeConfig) []ServiceName {
+	if section == SectionSSL {
+		if !reflect.DeepEqual(previous.Root.HTTP, next.Root.HTTP) {
+			return []ServiceName{ServiceHTTP}
+		}
+		return nil
+	}
+	return servicesForSection(section)
 }
 
 func mergeServices(previous, next []ServiceName) []ServiceName {

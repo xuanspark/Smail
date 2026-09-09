@@ -318,7 +318,7 @@ test('证书管理方式只展示三种业务模式并同步底层托管配置',
     assert.ok(validateFormConfig('ssl', { tls: { ...tls, customDirectory } })['tls.customDirectory'])
   }
   assert.ok(validateFormConfig('ssl', { tls: { ...tls, privateKeyRef: '' } })['tls.privateKeyRef'])
-  assert.ok(validateFormConfig('ssl', { tls: { ...tls, certificateRef: 'config/ssl/outside.pem' } })['tls.certificateRef'])
+  assert.deepEqual(validateFormConfig('ssl', { tls: { ...tls, certificateRef: 'ssl/example.com.crt', privateKeyRef: 'ssl/example.com.key' } }), {})
   for (const certificateRef of ['C:\\certs\\site.crt', 'D:/certs/site.crt', '/etc/ssl/site.crt', '\\\\server\\share\\site.crt']) {
     assert.deepEqual(validateFormConfig('ssl', { tls: { ...tls, certificateRef, privateKeyRef: certificateRef.replace(/(?:crt|pem)$/, 'key') } }), {})
   }

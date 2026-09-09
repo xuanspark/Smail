@@ -91,16 +91,27 @@ func LoadRuntimeTLSCertificate(cfg *Config) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	certificate, err := tls.LoadX509KeyPair(certificatePath, privateKeyPath)
+	privateKey, err := readExternalSSLFile(privateKeyPath, true)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	publicKey, err := readExternalSSLFile(certificatePath, false)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	if err := validateSSLMaterial(privateKey, publicKey, nil, nil); err != nil {
+		return tls.Certificate{}, err
+	}
+	certificate, err := tls.X509KeyPair(publicKey, privateKey)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
 	return certificate, nil
 }
 
-// ImportManagedSSL 校验证书材料后写入候选目录，并原子切换 current 目录。
+// ImportManagedSSL 兼容旧调用名称；新材料只写入 ssl 根目录，不再创建 managed。
 func ImportManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
-	return importManagedSSLAtRoot(ROOT_PATH, mode, privateKeyPEM, certificatePEM, issuerPEM, domains)
+	return StageManagedSSL(mode, privateKeyPEM, certificatePEM, issuerPEM, domains)
 }
 
 func importManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
@@ -211,7 +222,7 @@ func importManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificate
 	}, nil
 }
 
-// ResolveManagedSSLReferences 将内部引用解析为受控文件路径，拒绝任意路径输入。
+// ResolveManagedSSLReferences 兼容旧名称；解析旧受管引用或自定义直接路径并复验证书。
 func ResolveManagedSSLReferences(ssl SSLConfig) (ManagedSSLReference, error) {
 	return resolveManagedSSLReferencesAtRoot(ROOT_PATH, ssl)
 }
@@ -235,6 +246,20 @@ func resolveManagedSSLPathsAtRoot(root string, ssl SSLConfig) (ManagedSSLReferen
 	}
 	if ssl.CertificateRef == "" || ssl.PrivateKeyRef == "" {
 		return ManagedSSLReference{}, ErrInvalidSSLReference
+	}
+	if !legacyManagedSSLReference(ssl.CertificateRef) && !legacyManagedSSLReference(ssl.PrivateKeyRef) {
+		certificatePath, err := resolveCustomSSLInput(root, ssl.CertificateRef)
+		if err != nil {
+			return ManagedSSLReference{}, err
+		}
+		privateKeyPath, err := resolveCustomSSLInput(root, ssl.PrivateKeyRef)
+		if err != nil {
+			return ManagedSSLReference{}, err
+		}
+		if ssl.Mode == ManagedSSLModeDefault && !flatSSLPair(root, certificatePath, privateKeyPath) {
+			return ManagedSSLReference{}, ErrInvalidSSLReference
+		}
+		return ManagedSSLReference{Mode: ssl.Mode, CertificateRef: ssl.CertificateRef, PrivateKeyRef: ssl.PrivateKeyRef, CertificatePath: certificatePath, PrivateKeyPath: privateKeyPath}, nil
 	}
 	rootPath, err := managedSSLRootPathAtRoot(root, ssl.Mode)
 	if err != nil {
@@ -464,7 +489,7 @@ func validSSLVersion(version string) bool {
 
 // StageManagedSSL 只写入独立版本，不替换现用文件；配置事务成功后引用才生效。
 func StageManagedSSL(mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
-	return stageManagedSSLAtRoot(ROOT_PATH, mode, privateKeyPEM, certificatePEM, issuerPEM, domains)
+	return stageFlatSSLAtRoot(ROOT_PATH, mode, privateKeyPEM, certificatePEM, issuerPEM, domains)
 }
 
 func stageManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificatePEM, issuerPEM []byte, domains []string) (ManagedSSLReference, error) {
@@ -540,25 +565,13 @@ func stageManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificateP
 }
 
 func validateManagedSSLFiles(certificatePath, privateKeyPath string) error {
-	for _, item := range []struct {
-		path      string
-		isPrivate bool
-	}{{certificatePath, false}, {privateKeyPath, true}} {
-		info, err := os.Lstat(item.path)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxManagedSSLFileSize || hasMultipleFileLinks(item.path) {
-			return ErrUnsafeSSLFile
-		}
-		if item.isPrivate && info.Mode().Perm()&0077 != 0 && runtimeSupportsPermissionCheck() {
-			return ErrSSLPrivateKeyPermission
-		}
-	}
-	privateKeyPEM, err := os.ReadFile(privateKeyPath)
+	privateKeyPEM, err := readExternalSSLFile(privateKeyPath, true)
 	if err != nil {
-		return ErrUnsafeSSLFile
+		return err
 	}
-	certificatePEM, err := os.ReadFile(certificatePath)
+	certificatePEM, err := readExternalSSLFile(certificatePath, false)
 	if err != nil {
-		return ErrUnsafeSSLFile
+		return err
 	}
 	return validateSSLMaterial(privateKeyPEM, certificatePEM, nil, nil)
 }

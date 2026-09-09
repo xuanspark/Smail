@@ -101,8 +101,8 @@ func TestCustomSSLManagerValidateSaveApplyReload(t *testing.T) {
 			if manager.Snapshot().Generation != request.ExpectedGeneration {
 				t.Fatal("暂存提前切换了当前配置")
 			}
-			if !strings.HasPrefix(updated.Candidate.SSL.TLS.CertificateRef, "data/ssl/managed/upload/version-") {
-				t.Fatal("候选未使用独立受管引用")
+			if updated.Candidate.SSL.TLS.CertificateRef != "external/public.crt" || updated.Candidate.SSL.TLS.PrivateKeyRef != "external/private.key" {
+				t.Fatal("候选未直接引用原始证书")
 			}
 			currentBytes, err := os.ReadFile(oldReference.CertificatePath)
 			if err != nil || string(currentBytes) != string(oldCertificate) {

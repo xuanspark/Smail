@@ -28,6 +28,7 @@ import (
 // 使用空白临时配置和临时证书，在非默认端口调用生产监听入口；不连接真实账号库。
 func TestConfiguredMailListenerPortsAcceptProtocolConnections(t *testing.T) {
 	root := t.TempDir()
+	certificate, key := writeCertificate(t, root)
 	ports := reservePorts(t, 6)
 	meta := config.SectionMeta{Schema: config.CurrentSectionSchema, Generation: 1}
 	smtp := config.SMTPSectionConfig{Meta: meta, Listener: config.SMTPListenerConfig{
@@ -42,7 +43,10 @@ func TestConfiguredMailListenerPortsAcceptProtocolConnections(t *testing.T) {
 		FromDomain: "example.com",
 	}
 	email := config.EmailSectionConfig{Meta: meta, IMAP: config.IMAPListenerConfig{TLSPort: ports[3]}, POP3: config.POP3ListenerConfig{Port: ports[4], TLSPort: ports[5]}}
-	ssl := config.SSLSectionConfig{Meta: meta, TLS: config.SSLConfig{Mode: "default", DefaultDirectory: "config/ssl"}}
+	ssl := config.SSLSectionConfig{Meta: meta, TLS: config.SSLConfig{
+		Management: config.SSLManagementCustom, Mode: config.ManagedSSLModeUpload,
+		DefaultDirectory: "ssl", CustomDirectory: "ssl", CertificateRef: certificate, PrivateKeyRef: key,
+	}}
 	rootConfig := config.RootConfig{
 		ConfigVersion: config.CurrentConfigVersion, SchemaVersion: config.CurrentSchemaVersion, Generation: 1, SetupState: config.SetupStateBootstrap,
 		Database: config.DatabaseConfig{Type: config.DatabaseTypeSQLite, LocalRef: "unused.db"},
@@ -87,7 +91,6 @@ func TestConfiguredMailListenerPortsAcceptProtocolConnections(t *testing.T) {
 	})
 	config.ROOT_PATH = root
 	config.SetRuntimeManager(manager)
-	certificate, key := writeCertificate(t, root)
 	config.PublishConfigSnapshot(&config.Config{SSLPublicKeyPath: certificate, SSLPrivateKeyPath: key})
 	cases := []struct {
 		name   string
@@ -185,7 +188,7 @@ func writeCertificate(t *testing.T, root string) (string, string) {
 		t.Fatal(err)
 	}
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "localhost"}, DNSNames: []string{"localhost"},
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "localhost"}, DNSNames: []string{"localhost", "mail.example.com", "*.mail.example.com"},
 		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}

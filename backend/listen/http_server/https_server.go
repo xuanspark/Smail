@@ -67,12 +67,13 @@ func HttpsStart() error {
 	if legacyCfg == nil {
 		return fmt.Errorf("legacy SSL configuration is unavailable")
 	}
-	certificatePath, privateKeyPath, err := config.ResolveRuntimeSSLPaths(legacyCfg)
+	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
 		return fmt.Errorf("resolve HTTPS certificate: %w", err)
 	}
 
 	httpsServer = &http.Server{
+		TLSConfig:         tlsConfig,
 		Addr:              fmt.Sprintf(":%d", httpsPort),
 		Handler:           securityHeaders(dbmigration.GuardHTTP(session.Instance.LoadAndSave(mux))),
 		ReadTimeout:       time.Second * 90,
@@ -83,7 +84,7 @@ func HttpsStart() error {
 		ErrorLog:          nullLog,
 	}
 	log.WithFields(log.Fields{"action": "启动 HTTPS 监听", "object": httpsServer.Addr, "result": "started"}).Info("开始绑定监听端口")
-	if err := httpsServer.ListenAndServeTLS(certificatePath, privateKeyPath); err != nil {
+	if err := httpsServer.ListenAndServeTLS("", ""); err != nil {
 		if errors.Is(err, http.ErrServerClosed) {
 			log.WithFields(log.Fields{"action": "停止 HTTPS 监听", "object": httpsServer.Addr, "result": "success"}).Info("监听已正常关闭")
 			return nil

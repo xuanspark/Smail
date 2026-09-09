@@ -21,6 +21,9 @@ func Run() (err error) {
 	if err := runtimepath.CheckReady(config.ROOT_PATH); err != nil {
 		return err
 	}
+	if err := config.MigrateLegacySSLStorage(config.ROOT_PATH); err != nil {
+		return fmt.Errorf("迁移证书存储失败，原文件已保留: %w", err)
+	}
 	if err := config.Init(); err != nil {
 		return err
 	}

@@ -9,7 +9,6 @@ import (
 	stderrors "errors"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/services/setup"
-	"git.pcux.cn/xuans/Smail/signal"
 	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
@@ -138,20 +137,11 @@ func SetSSL(sslType, priKey, crtKey string) error {
 		if err != nil {
 			return err
 		}
-		privatePEM, err := os.ReadFile(privatePath)
-		if err != nil {
-			return newUserCertificateError("SSL 私钥无法读取，请确认文件路径和 smail 用户权限")
-		}
-		publicPEM, err := os.ReadFile(publicPath)
-		if err != nil {
-			return newUserCertificateError("SSL 证书无法读取，请确认文件路径和 smail 用户权限")
-		}
-		reference, err := config.StageManagedSSL(config.ManagedSSLModeUpload, privatePEM, publicPEM, nil, sslDomains(cfg))
+		reference, err := config.ValidateDirectSSLPaths(publicPath, privatePath, sslDomains(cfg))
 		if err != nil {
 			return normalizeUserCertificateImportError(err)
 		}
 		applyManagedSSLReference(cfg, reference)
-		defer config.ReleaseStagedSSL(reference)
 		// 导入邮件服务证书不能重新启用反代模式下的内置 HTTPS。
 		if cfg.UsesProxyHTTPS() {
 			cfg.HttpsEnabled = 2
@@ -177,7 +167,7 @@ func clearLegacySSLPaths(cfg *config.Config) {
 	cfg.SSLPublicKeyPath = ""
 }
 
-// applyManagedSSLReference 将证书切换结果写入内部引用，不持久化服务器路径。
+// applyManagedSSLReference 保存已校验的证书路径，新签发文件直接位于 ssl 下。
 func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLReference) {
 	if cfg == nil {
 		return
@@ -192,12 +182,12 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 	cfg.SSL = config.SSLConfig{
 		Management:       management,
 		Mode:             reference.Mode,
-		DefaultDirectory: runtimepath.SSLReference(config.ROOT_PATH, "data/ssl"),
+		DefaultDirectory: "ssl",
 		CertificateRef:   reference.CertificateRef,
 		PrivateKeyRef:    reference.PrivateKeyRef,
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
-		cfg.SSL.CustomDirectory = runtimepath.SSLReference(config.ROOT_PATH, "data/ssl/managed/upload")
+		cfg.SSL.CustomDirectory = "ssl"
 	} else if cfg.SSLType == config.SSLTypeAutoDNS {
 		cfg.SSL.Challenge = config.SSLChallengeDNS
 	} else {
@@ -596,8 +586,8 @@ func CheckSSLCrtInfo() (int, time.Time, bool, error) {
 	return cast.ToInt(hours / 24), cert.NotAfter, nameMatchFail, nil
 }
 
-func Update(needRestart bool) {
-	cfg := config.CurrentConfig()
+func Update(_ bool) {
+	cfg := config.CurrentCertificateConfig()
 	if cfg.AutomaticSSLEnabled() && cfg.IsSetupReady() {
 		days, _, nameMatchFail, err := CheckSSLCrtInfo()
 
@@ -613,9 +603,8 @@ func Update(needRestart bool) {
 				return
 			}
 			log.WithFields(log.Fields{"action": "更新 TLS 证书", "result": "success"}).Info("证书已更新并保存")
-			if needRestart {
-				// 更新完证书，重启服务
-				signal.RestartChan <- true
+			if err := config.ReloadRuntimeTLSCertificate(); err != nil {
+				log.WithFields(log.Fields{"action": "热加载 TLS 证书", "result": "failure"}).Warn("续期配置已保存，运行证书切换失败，请检查证书文件")
 			}
 		} else {
 			log.Debugf("SSL Check.")

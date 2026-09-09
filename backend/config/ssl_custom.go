@@ -12,7 +12,7 @@ import (
 
 var ErrSSLFileUnavailable = errors.New("SSL certificate file is missing or unreadable")
 
-// customSSLMaterial 在只读准备阶段保留已校验的材料，确认后再暂存，避免重新读取外部文件。
+// customSSLMaterial 保留只读准备结果；自定义文件只验证和引用，不复制。
 type customSSLMaterial struct {
 	privateKey  []byte
 	certificate []byte
@@ -22,7 +22,7 @@ type customSSLMaterial struct {
 func prepareCustomSSLPaths(root string, candidate *RuntimeConfig) (*customSSLMaterial, error) {
 	candidate.SSL.TLS = normalizeSSLDataReferences(candidate.SSL.TLS)
 	ssl := &candidate.SSL.TLS
-	if EffectiveSSLManagement(*ssl) != SSLManagementCustom {
+	if EffectiveSSLManagement(*ssl) == SSLManagementProject {
 		return nil, nil
 	}
 	certificatePath := strings.TrimSpace(ssl.CertificateRef)
@@ -62,9 +62,8 @@ func prepareCustomSSLPaths(root string, candidate *RuntimeConfig) (*customSSLMat
 	ssl.Mode = ManagedSSLModeUpload
 	ssl.DefaultDirectory = runtimepath.SSLReference(root, "data/ssl")
 	ssl.CustomDirectory = runtimepath.SSLReference(root, "data/ssl")
-	// 仅在内存中使用合法占位引用完成跨分区校验，最终候选必须换成独立版本。
-	ssl.CertificateRef = managedSSLReferenceAtRoot(root, ManagedSSLModeUpload, "public.crt")
-	ssl.PrivateKeyRef = managedSSLReferenceAtRoot(root, ManagedSSLModeUpload, "private.key")
+	ssl.CertificateRef = directSSLReference(root, certificatePath)
+	ssl.PrivateKeyRef = directSSLReference(root, privateKeyPath)
 	return material, nil
 }
 
@@ -72,16 +71,48 @@ func (material *customSSLMaterial) stage(root string, candidate *RuntimeConfig) 
 	if material == nil {
 		return nil
 	}
-	reference, err := stageManagedSSLAtRoot(root, ManagedSSLModeUpload, material.privateKey, material.certificate, nil, material.domains)
-	if err != nil {
-		return err
+	return validateCustomSSLReferences(root, *candidate)
+}
+
+// 部署目录内使用清晰的相对路径，目录外保留完整绝对路径。
+func directSSLReference(root, path string) string {
+	absoluteRoot, err := filepath.Abs(root)
+	if err == nil && pathWithin(absoluteRoot, path) {
+		if relative, err := filepath.Rel(absoluteRoot, path); err == nil {
+			return filepath.ToSlash(relative)
+		}
 	}
-	candidate.SSL.TLS.CertificateRef = reference.CertificateRef
-	candidate.SSL.TLS.PrivateKeyRef = reference.PrivateKeyRef
-	return nil
+	return filepath.ToSlash(path)
+}
+
+// ValidateDirectSSLPaths 供初始化使用，与配置管理共用相同的文件安全校验。
+func ValidateDirectSSLPaths(certificatePath, privateKeyPath string, domains []string) (ManagedSSLReference, error) {
+	publicPath, err := resolveCustomSSLInput(ROOT_PATH, certificatePath)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	privatePath, err := resolveCustomSSLInput(ROOT_PATH, privateKeyPath)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	publicKey, err := readExternalSSLFile(publicPath, false)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	privateKey, err := readExternalSSLFile(privatePath, true)
+	if err != nil {
+		return ManagedSSLReference{}, err
+	}
+	if err := validateSSLMaterial(privateKey, publicKey, nil, domains); err != nil {
+		return ManagedSSLReference{}, err
+	}
+	return ManagedSSLReference{Mode: ManagedSSLModeUpload, CertificateRef: directSSLReference(ROOT_PATH, publicPath), PrivateKeyRef: directSSLReference(ROOT_PATH, privatePath), CertificatePath: publicPath, PrivateKeyPath: privatePath}, nil
 }
 
 func resolveCustomSSLInput(root, value string) (string, error) {
+	if strings.TrimSpace(value) == "" || strings.ContainsRune(value, 0) {
+		return "", ErrInvalidSSLReference
+	}
 	for _, part := range strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == '\\' }) {
 		if part == ".." {
 			return "", ErrInvalidSSLReference
@@ -137,7 +168,7 @@ func readExternalSSLFile(path string, privateKey bool) ([]byte, error) {
 
 func validateCustomSSLReferences(root string, candidate RuntimeConfig) error {
 	ssl := candidate.SSL.TLS
-	if EffectiveSSLManagement(ssl) != SSLManagementCustom || ssl.CertificateRef == "" && ssl.PrivateKeyRef == "" {
+	if ssl.CertificateRef == "" && ssl.PrivateKeyRef == "" {
 		return nil
 	}
 	reference, err := resolveManagedSSLReferencesAtRoot(root, ssl)
@@ -152,7 +183,21 @@ func validateCustomSSLReferences(root string, candidate RuntimeConfig) error {
 	if err != nil {
 		return err
 	}
-	return validateSSLMaterial(privateKey, certificate, nil, runtimeCertificateDomains(&candidate))
+	return validateSSLMaterial(privateKey, certificate, nil, validationCertificateDomains(&candidate))
+}
+
+func validationCertificateDomains(candidate *RuntimeConfig) []string {
+	if EffectiveSSLManagement(candidate.SSL.TLS) == SSLManagementProject && candidate.SSL.TLS.Challenge == SSLChallengeDNS {
+		domains := []string{"*." + strings.TrimPrefix(candidate.Root.Domains.Primary, "*.")}
+		if candidate.Root.Domains.Web != "" {
+			domains = append(domains, candidate.Root.Domains.Web)
+		}
+		for _, domain := range candidate.Root.Domains.Accepted {
+			domains = append(domains, "smtp."+domain, "imap."+domain, "pop."+domain)
+		}
+		return domains
+	}
+	return runtimeCertificateDomains(candidate)
 }
 
 func runtimeCertificateDomains(candidate *RuntimeConfig) []string {

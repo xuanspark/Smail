@@ -181,14 +181,14 @@ const sslGroups = [
     field('tls.certificateRef', '证书文件', 'text', {
       wide: true,
       show: externalManagedCertificate,
-      placeholder: 'data/ssl/example.com/fullchain.pem',
-      hint: '填写后端服务器上的 PEM 证书路径。自定义模式支持绝对路径或相对运行根目录的路径，保存后显示导入后的受管路径；Web 服务器管理模式填写已有受管证书的相对路径。'
+      placeholder: 'ssl/example.com.crt',
+      hint: '直接使用服务器上的证书文件，支持相对部署目录的路径或绝对路径，不生成副本。'
     }),
     field('tls.privateKeyRef', '私钥文件', 'text', {
       wide: true,
       show: externalManagedCertificate,
-      placeholder: 'data/ssl/example.com/privkey.pem',
-      hint: '填写与证书匹配的 PEM 私钥文件路径，不是私钥内容。文件必须可被后端运行用户读取；自定义模式保存后显示受管副本的路径。'
+      placeholder: 'ssl/example.com.key',
+      hint: '填写配套私钥的文件路径，不是私钥内容；须允许运行用户读取。'
     })
   ])
 ]
@@ -376,8 +376,8 @@ export function validateFormConfig(section, config) {
     for (const name of ['certificateRef', 'privateKeyRef']) {
       if (!tls[name]) continue
       const managedReference = controlled(tls[name]) && tls[name].startsWith(`${directory}/`)
-      const externalReference = management === 'custom' && absoluteCertificatePath(tls[name])
-      if (!managedReference && !externalReference) errors[`tls.${name}`] = '文件引用必须是受管存储引用或自定义服务器绝对路径'
+      const externalReference = management !== 'project' && (absoluteCertificatePath(tls[name]) || controlled(tls[name]))
+      if (!managedReference && !externalReference) errors[`tls.${name}`] = '请填写有效的证书文件路径，不允许上级目录跳转'
     }
     if (!!tls.certificateRef !== !!tls.privateKeyRef) errors['tls.privateKeyRef'] = '证书与私钥引用必须成对填写'
   }

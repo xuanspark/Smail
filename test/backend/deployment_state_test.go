@@ -183,7 +183,7 @@ func TestDeploymentAutomaticallyCreatesBusinessDirectories(t *testing.T) {
 			t.Fatalf("正式启动没有创建部署目录：%s", name)
 		}
 	}
-	for _, name := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim", "managed"} {
+	for _, name := range []string{"credentials", "external-email-encryption", "external-email-fingerprint", "dkim"} {
 		info, err := os.Lstat(filepath.Join(root, "ssl", name))
 		if err != nil || !info.IsDir() {
 			t.Fatalf("程序启动没有创建业务目录：%s", name)

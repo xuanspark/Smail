@@ -3,7 +3,6 @@ package cron_server
 import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/services/setup/ssl"
-	"git.pcux.cn/xuans/Smail/signal"
 	log "github.com/sirupsen/logrus"
 	"time"
 	// 新增：HTTP 就绪探测
@@ -13,8 +12,6 @@ import (
 	"net/url"
 	"strconv"
 )
-
-var expiredTime time.Time
 
 func Start() {
 
@@ -34,26 +31,14 @@ func Start() {
 
 // 只检查外部维护的本地邮件证书是否更新，不触发 ACME。
 func sslCheck() {
-	_, newExpTime, _, err := ssl.CheckSSLCrtInfo()
-	if err != nil {
-		log.Errorf("SSL Check Error! %+v", err)
-		return
-	}
-	if expiredTime.IsZero() {
-		expiredTime = newExpTime
-		return
-	}
-	if newExpTime != expiredTime {
-		expiredTime = newExpTime
-		log.Infoln("SSL certificate had update! restarting")
-		signal.RestartChan <- true
-	}
+	// 校验失败时保留尚未过期的内存证书；不发送服务重启信号。
+	_ = config.ReloadRuntimeTLSCertificate()
 }
 
 // 每轮读取最新策略，切换反代模式后不再等待 HTTP 挑战或执行自动续期。
 func maintainSSL() {
 	config.MaintainManagedSSLHistory()
-	cfg := config.CurrentConfig()
+	cfg := config.CurrentCertificateConfig()
 	if cfg == nil || !cfg.IsSetupReady() {
 		return
 	}
@@ -61,7 +46,6 @@ func maintainSSL() {
 		sslCheck()
 		return
 	}
-	expiredTime = time.Time{}
 	if cfg.SSLType == config.SSLTypeAutoHTTP && !waitHTTPReady() {
 		return
 	}
@@ -70,10 +54,17 @@ func maintainSSL() {
 
 // 每天检查证书，外部管理模式仅保留本地证书变更检查。
 func sslUpdateLoop() {
+	lastRenewal := time.Time{}
 	for {
-		maintainSSL()
-		// 每24小时检测一次证书有效期
-		time.Sleep(24 * time.Hour)
+		if time.Since(lastRenewal) >= 24*time.Hour {
+			maintainSSL()
+			lastRenewal = time.Now()
+		} else {
+			config.MaintainManagedSSLHistory()
+			sslCheck()
+		}
+		// 每分钟清理已到期的上一套证书；自动签发仍最多每天检查一次。
+		time.Sleep(time.Minute)
 	}
 }
 
@@ -93,7 +84,7 @@ func waitHTTPReady() bool {
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for i := 0; i < 90; i++ {
-		if !config.CurrentConfig().AutomaticSSLEnabled() {
+		if !config.CurrentCertificateConfig().AutomaticSSLEnabled() {
 			return false
 		}
 		requestContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)

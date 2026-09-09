@@ -8,5 +8,7 @@ func normalizeSSLDataReferences(ssl SSLConfig) SSLConfig {
 	ssl.CustomDirectory = runtimepath.LegacyReference(ssl.CustomDirectory)
 	ssl.CertificateRef = runtimepath.LegacyReference(ssl.CertificateRef)
 	ssl.PrivateKeyRef = runtimepath.LegacyReference(ssl.PrivateKeyRef)
+	ssl.PreviousCertificateRef = runtimepath.LegacyReference(ssl.PreviousCertificateRef)
+	ssl.PreviousPrivateKeyRef = runtimepath.LegacyReference(ssl.PreviousPrivateKeyRef)
 	return ssl
 }
