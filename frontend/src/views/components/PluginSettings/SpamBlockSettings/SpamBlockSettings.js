@@ -26,7 +26,7 @@ export function useSpamBlockSettings() {
   const settings = reactive({ ...defaultSettings })
   const hasChanges = computed(() => JSON.stringify(settings) !== savedInput)
 
-  const canWrite = () => globalStatus.hasCapability('config.write_global')
+  const canWrite = () => globalStatus.hasCapability('plugin.write_global')
 
   const notifyResponseError = (response, fallback) => {
     if (!response || response.errorNo !== 0) {

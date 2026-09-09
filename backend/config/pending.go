@@ -24,6 +24,9 @@ func (m *ConfigManager) Pending(actor AuditActor) *PendingView {
 	if m.pending == nil {
 		return nil
 	}
+	if actor.Role != "super_admin" && (actor.Role != "admin" || m.pending.Section != SectionPlugins || actor.UserID == "" || actor.UserID != m.pending.Actor.UserID) {
+		return nil
+	}
 	return &PendingView{
 		ID:         m.pending.ID,
 		Generation: m.pending.Candidate.Generation, Section: m.pending.Section,

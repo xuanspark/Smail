@@ -13,6 +13,7 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/i18n"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 
 	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -75,11 +76,12 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	log.WithContext(ctx).Infof("发送邮件")
 
-	if reqData.From.Email != "" && !validation.IsAuthorizedSender(reqData.From.Email, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
+	allowLocalAlias := ctx.EffectiveRole() == access.RoleSuperAdmin
+	if reqData.From.Email != "" && !validation.IsAuthorizedSender(reqData.From.Email, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "\u53d1\u4ef6\u4eba\u5730\u5740\u4e0d\u5141\u8bb8", "").FPrint(w)
 		return
 	}
-	if reqData.Sender.Email != "" && !validation.IsAuthorizedSender(reqData.Sender.Email, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
+	if reqData.Sender.Email != "" && !validation.IsAuthorizedSender(reqData.Sender.Email, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "\u53d1\u9001\u8005\u5730\u5740\u4e0d\u5141\u8bb8", "").FPrint(w)
 		return
 	}
@@ -194,7 +196,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	log.WithContext(ctx).Debugf("插件执行--SendBefore End")
 
-	if e.From == nil || e.Sender == nil || !validation.IsAuthorizedSender(e.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) || !validation.IsAuthorizedSender(e.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
+	if e.From == nil || e.Sender == nil || !validation.IsAuthorizedSender(e.From.EmailAddress, ctx.UserAccount, allowLocalAlias, domains.Accepted) || !validation.IsAuthorizedSender(e.Sender.EmailAddress, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "\u63d2\u4ef6\u4fee\u6539\u4e86\u672a\u6388\u6743\u7684\u53d1\u4ef6\u4eba", "").FPrint(w)
 		return
 	}

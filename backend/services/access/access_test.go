@@ -51,7 +51,7 @@ func TestRoleBoundaries(t *testing.T) {
 }
 
 func TestRecoveryAndRecentAuthentication(t *testing.T) {
-	admin := Request{ActorRole: RoleAdmin, Capability: CapabilityPluginRestart, RecentAuth: true, PluginInstanceAuthorized: true}
+	admin := Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteGlobal, RecentAuth: true}
 	if err := Authorize(admin); !IsDenied(err, CodeRecoveryCodeRequired) {
 		t.Fatalf("expected recovery code requirement, got %v", err)
 	}
@@ -83,18 +83,18 @@ func TestRoleChangeRequiresTargetRecovery(t *testing.T) {
 
 func TestAdminPluginRestartScope(t *testing.T) {
 	req := Request{ActorRole: RoleAdmin, Capability: CapabilityPluginRestart, RecentAuth: true, RecoveryCodeConfigured: true}
-	if err := Authorize(req); !IsDenied(err, CodePluginScopeDenied) {
+	if err := Authorize(req); !IsDenied(err, CodeAccessDenied) {
 		t.Fatalf("expected plugin scope denial, got %v", err)
 	}
 	req.PluginInstanceAuthorized = true
-	if err := Authorize(req); err != nil {
-		t.Fatalf("expected plugin restart to be allowed, got %v", err)
+	if err := Authorize(req); !IsDenied(err, CodeAccessDenied) {
+		t.Fatalf("expected plugin restart to remain denied, got %v", err)
 	}
 }
 
 func TestManagementEndpointCatalog(t *testing.T) {
 	endpoints := ManagementEndpoints()
-	if len(endpoints) != 35 {
+	if len(endpoints) != 37 {
 		t.Fatalf("unexpected endpoint count: %d", len(endpoints))
 	}
 	seen := map[string]struct{}{}

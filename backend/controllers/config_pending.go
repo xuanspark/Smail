@@ -6,7 +6,6 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/response"
-	"git.pcux.cn/xuans/Smail/services/access"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
 
@@ -16,7 +15,7 @@ func GetPendingConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.
 	if !ok {
 		return
 	}
-	if err := authorizeCapability(ctx, access.CapabilityConfigRead, "", false); err != nil {
+	if err := authorizeConfigOverview(ctx, false); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}
@@ -38,7 +37,7 @@ func ManagePendingConfig(ctx *appcontext.Context, w http.ResponseWriter, req *ht
 	if !ok {
 		return
 	}
-	if err := authorizeCapability(ctx, access.CapabilityConfigWriteGlobal, "", false); err != nil {
+	if err := authorizeConfigOverview(ctx, true); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}

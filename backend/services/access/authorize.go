@@ -63,7 +63,7 @@ func Authorize(request Request) error {
 
 func authorizeResource(request Request) error {
 	switch request.Capability {
-	case CapabilityPasswordChangeOwn, CapabilityPluginWriteOwn:
+	case CapabilityPasswordChangeOwn, CapabilityPluginWriteOwn, CapabilityProfileWriteOwn:
 		if !request.OwnResource {
 			return deny(CodeAccessDenied)
 		}
@@ -78,7 +78,7 @@ func authorizeResource(request Request) error {
 		if request.ActorRole == RoleAdmin && !request.OwnResource && !request.AuditScopeAuthorized {
 			return deny(CodeAccessDenied)
 		}
-	case CapabilityUserManage, CapabilityUserSecurityManage, CapabilityPasswordReset:
+	case CapabilityUserCreate, CapabilityUserManage, CapabilityUserSecurityManage, CapabilityPasswordReset:
 		if !canManageAccountTarget(request.ActorRole, request.TargetRole) {
 			return deny(CodeTargetRoleDenied)
 		}

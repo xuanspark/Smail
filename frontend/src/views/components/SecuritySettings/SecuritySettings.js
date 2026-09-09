@@ -15,6 +15,7 @@ export function usePage() {
   const canReadGlobalPolicy = computed(() => globalStatus.hasCapability('config.read'))
   const sectionOptions = computed(() => {
     const options = []
+    options.push({ value: 'profile', label: '个人资料' })
     if (canReadGlobalPolicy.value) {
       options.push({ value: 'security-policy', label: '安全策略' })
     }

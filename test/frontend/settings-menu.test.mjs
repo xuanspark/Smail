@@ -54,12 +54,14 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   assert.equal(page.settingsMenu.value.find(item => item.key === 'third-party').label, '邮件客户端')
   assert.equal(page.activeSettings.value.label, '安全')
   capabilities.add('config.read')
+  capabilities.add('plugin.read_global')
   store.settingsActiveTab = 'config'
   assert.equal(page.activeSettings.value.label, '配置管理')
   assert.equal(page.settingsMenu.value.length, 6)
   assert.equal(page.settingsMenu.value.find(item => item.key === 'plugins').label, '插件配置')
   assert.ok(page.settingsMenu.value.every(item => item.icon && item.hint))
   capabilities.delete('config.read')
+  capabilities.delete('plugin.read_global')
   assert.equal(page.activeSettings.value, undefined)
   assert.equal(page.settingsMenu.value.some(item => item.key === 'plugins'), false)
   capabilities.add('plugin.read')
@@ -67,7 +69,7 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   capabilities.add('audit.read')
   for (const role of ['user', 'admin']) {
     store.role = role
-    assert.equal(page.settingsMenu.value.some(item => item.key === 'logs'), false)
+    assert.equal(page.settingsMenu.value.some(item => item.key === 'logs'), true)
   }
   store.role = 'super_admin'
   assert.equal(page.settingsMenu.value.at(-1).key, 'logs')

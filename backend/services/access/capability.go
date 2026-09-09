@@ -8,6 +8,7 @@ const (
 	CapabilityConfigRollback     Capability = "config.rollback"
 	CapabilityDatabaseMigrate    Capability = "database.migrate"
 	CapabilityPluginRead         Capability = "plugin.read"
+	CapabilityPluginReadGlobal   Capability = "plugin.read_global"
 	CapabilityPluginControl      Capability = "plugin.control"
 	CapabilityPluginRestart      Capability = "plugin.restart"
 	CapabilityServiceRestart     Capability = "service.restart"
@@ -15,6 +16,8 @@ const (
 	CapabilityPluginWriteAnyUser Capability = "plugin.write_any_user"
 	CapabilityPluginWriteOwn     Capability = "plugin.write_own"
 	CapabilityUserRead           Capability = "user.read"
+	CapabilityUserCreate         Capability = "user.create"
+	CapabilityProfileWriteOwn    Capability = "profile.write_own"
 	CapabilityUserManage         Capability = "user.manage"
 	CapabilityUserSecurityManage Capability = "user.security_manage"
 	CapabilityRoleManage         Capability = "role.manage"
@@ -38,6 +41,7 @@ var policies = map[Capability]Policy{
 	CapabilityConfigRollback:     {Capability: CapabilityConfigRollback, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
 	CapabilityDatabaseMigrate:    {Capability: CapabilityDatabaseMigrate, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
 	CapabilityPluginRead:         {Capability: CapabilityPluginRead},
+	CapabilityPluginReadGlobal:   {Capability: CapabilityPluginReadGlobal},
 	CapabilityPluginControl:      {Capability: CapabilityPluginControl, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
 	CapabilityPluginRestart:      {Capability: CapabilityPluginRestart, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
 	CapabilityServiceRestart:     {Capability: CapabilityServiceRestart, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
@@ -45,6 +49,8 @@ var policies = map[Capability]Policy{
 	CapabilityPluginWriteAnyUser: {Capability: CapabilityPluginWriteAnyUser, RequiresTarget: true},
 	CapabilityPluginWriteOwn:     {Capability: CapabilityPluginWriteOwn},
 	CapabilityUserRead:           {Capability: CapabilityUserRead},
+	CapabilityUserCreate:         {Capability: CapabilityUserCreate, RequiresTarget: true},
+	CapabilityProfileWriteOwn:    {Capability: CapabilityProfileWriteOwn},
 	CapabilityUserManage:         {Capability: CapabilityUserManage, RequiresTarget: true},
 	CapabilityUserSecurityManage: {Capability: CapabilityUserSecurityManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityRoleManage:         {Capability: CapabilityRoleManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
@@ -56,6 +62,7 @@ var policies = map[Capability]Policy{
 
 var grants = map[Role]map[Capability]struct{}{
 	RoleSuperAdmin: grant(
+		CapabilityPluginReadGlobal, CapabilityUserCreate, CapabilityProfileWriteOwn,
 		CapabilityConfigRead, CapabilityConfigWriteGlobal, CapabilityConfigRollback,
 		CapabilityDatabaseMigrate, CapabilityPluginRead, CapabilityPluginControl,
 		CapabilityPluginRestart, CapabilityServiceRestart, CapabilityPluginWriteGlobal, CapabilityPluginWriteAnyUser,
@@ -64,12 +71,13 @@ var grants = map[Role]map[Capability]struct{}{
 		CapabilityAuditRead, CapabilityAuditExport,
 	),
 	RoleAdmin: grant(
-		CapabilityConfigRead, CapabilityPluginRead, CapabilityPluginRestart,
+		CapabilityPluginReadGlobal, CapabilityPluginRead, CapabilityPluginWriteGlobal, CapabilityProfileWriteOwn,
 		CapabilityPluginWriteAnyUser, CapabilityPluginWriteOwn, CapabilityUserRead,
 		CapabilityUserManage, CapabilityUserSecurityManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,
 		CapabilityAuditRead,
 	),
 	RoleUser: grant(
+		CapabilityProfileWriteOwn,
 		CapabilityPluginRead, CapabilityPluginWriteOwn, CapabilityUserRead,
 		CapabilityPasswordChangeOwn, CapabilityAuditRead,
 	),

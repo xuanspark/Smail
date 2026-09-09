@@ -60,7 +60,7 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 	if reqData.Role != "" {
 		targetRole = access.Role(reqData.Role)
 	}
-	if err := authorizeCapability(ctx, access.CapabilityUserManage, targetRole, false); err != nil {
+	if err := authorizeCapability(ctx, access.CapabilityUserCreate, targetRole, false); err != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "无权访问", "").FPrint(w)
 		return
 	}
@@ -170,7 +170,12 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	var users []models.User
-	totalNum, err := db.Instance.Table(&models.User{}).Limit(reqData.PageSize, offset).FindAndCount(&users)
+	query := db.Instance.Table(&models.User{})
+	defer query.Close()
+	if ctx.EffectiveRole() == access.RoleAdmin {
+		query.Where(models.OrdinaryUserPredicate)
+	}
+	totalNum, err := query.Asc("id").Limit(reqData.PageSize, offset).FindAndCount(&users)
 	if err != nil {
 		log.WithContext(ctx).Errorf("SQL Error: %+v", err)
 		response.NewErrorResponse(response.ServerError, "查询失败", "").FPrint(w)

@@ -62,11 +62,14 @@ func TestLogsAPIRejectsUnscopedAccessAndValidatesQueries(t *testing.T) {
 		}
 		return result
 	}
+	for _, kind := range []string{"operation", "mail", "runtime"} {
+		if got := call(access.RoleUser, "kind="+kind+"&actorId=42"); got.ErrorNo != 0 {
+			t.Fatalf("普通用户无法查询本人日志：%s => %d", kind, got.ErrorNo)
+		}
+	}
 	for _, role := range []access.Role{access.RoleUser, access.RoleAdmin} {
-		for _, kind := range []string{"operation", "config", "mail", "runtime"} {
-			if got := call(role, "kind="+kind+"&actorId=42"); got.ErrorNo != response.NoAccessPrivileges {
-				t.Fatalf("unscoped role %s accessed %s: %d", role, kind, got.ErrorNo)
-			}
+		if got := call(role, "kind=runtime&listFiles=true"); got.ErrorNo != response.NoAccessPrivileges {
+			t.Fatalf("低权限用户能读取全局文件列表：%s", role)
 		}
 	}
 	for _, query := range []string{"kind=config", "kind=unknown", "kind=mail&limit=501", "kind=mail&offset=-1", "kind=mail&from=invalid", "kind=mail&from=2026-09-08T00:00:00Z&to=2026-09-01T00:00:00Z"} {

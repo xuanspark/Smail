@@ -20,6 +20,7 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/listen/imap_server"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/services/rule"
 	"git.pcux.cn/xuans/Smail/utils/array"
@@ -41,6 +42,7 @@ const DropUnknownRecipientEmails = true
 
 func (s *Session) Data(r io.Reader) (resultErr error) {
 	messageBytes := 0
+	var recipientIDs []int
 	result := "unknown"
 	details := logstore.MailDetails{Trigger: "SMTP 收信", Stage: "读取邮件内容"}
 	defer func() {
@@ -59,7 +61,18 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 				details.Outcome += fmt.Sprintf("，SMTP 状态码 %d", protocol.Code)
 			}
 		}
-		logstore.MailResult(s.Ctx.UserID, direction, s.From, len(s.To), messageBytes, result, details)
+		if direction == "inbound" && len(recipientIDs) > 0 {
+			// 每个真实收件人只看到自己的投递记录，不暴露其他收件人数或地址。
+			seen := make(map[int]bool)
+			for _, id := range recipientIDs {
+				if id > 0 && !seen[id] {
+					seen[id] = true
+					logstore.MailResult(id, direction, s.From, 1, messageBytes, result, details)
+				}
+			}
+		} else {
+			logstore.MailResult(s.Ctx.UserID, direction, s.From, len(s.To), messageBytes, result, details)
+		}
 	}()
 
 	ctx := s.Ctx
@@ -188,6 +201,9 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 			result = "discarded"
 			return nil
 		}
+		for _, user := range users {
+			recipientIDs = append(recipientIDs, user.ID)
+		}
 		details.Stage = "执行收信规则与通知"
 
 		if email.MessageId > 0 {
@@ -200,20 +216,21 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 			ruleContext.Context = ruleExecutionContext
 			log.WithContext(ctx).Debugf("开始执行邮件规则！")
 			for _, user := range users {
+				ruleContext.UserID, ruleContext.Role = user.ID, user.EffectiveRole()
 				if ruleExecutionContext.Err() != nil {
-					log.WithContext(ctx).WithFields(log.Fields{"action": "执行收信规则", "result": "failure"}).Warn("规则处理超时，已停止后续规则")
+					log.WithContext(&ruleContext).WithFields(log.Fields{"action": "执行收信规则", "result": "failure"}).Warn("规则处理超时，已停止后续规则")
 					break
 				}
 				// 执行邮件规则
 				rs, ruleErr := rule.GetAllRules(&ruleContext, user.ID)
 				if ruleErr != nil {
-					log.WithContext(ctx).WithFields(log.Fields{"action": "读取收信规则", "result": "failure", "user_id": user.ID}).WithError(ruleErr).Error("读取收信规则失败")
+					log.WithContext(&ruleContext).WithFields(log.Fields{"action": "读取收信规则", "result": "failure", "user_id": user.ID}).WithError(ruleErr).Error("读取收信规则失败")
 					continue
 				}
 				for _, r := range rs {
 					if rule.MatchRule(&ruleContext, r, email) {
 						if err := rule.DoRule(&ruleContext, r, email, user, emailData); err != nil {
-							log.WithContext(ctx).WithFields(log.Fields{"action": "执行收信规则", "result": "failure", "user_id": user.ID}).WithError(err).Error("执行收信规则失败")
+							log.WithContext(&ruleContext).WithFields(log.Fields{"action": "执行收信规则", "result": "failure", "user_id": user.ID}).WithError(err).Error("执行收信规则失败")
 						}
 					}
 				}
@@ -241,8 +258,10 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 
 		// IDLE命令通知
 		for _, user := range users {
-			if err := imap_server.IdleNotice(ctx, user.ID, dbEmail); err != nil {
-				log.WithContext(ctx).WithFields(log.Fields{"action": "通知 IMAP 客户端新邮件", "result": "failure"}).WithError(err).Error("邮件已保存，但新邮件通知失败")
+			noticeContext := *ctx
+			noticeContext.UserID, noticeContext.Role = user.ID, user.EffectiveRole()
+			if err := imap_server.IdleNotice(&noticeContext, user.ID, dbEmail); err != nil {
+				log.WithContext(&noticeContext).WithFields(log.Fields{"action": "通知 IMAP 客户端新邮件", "result": "failure"}).WithError(err).Error("邮件已保存，但新邮件通知失败")
 			}
 		}
 
@@ -273,13 +292,14 @@ func authorizedSubmissionEmail(email *parsemail.Email, envelopeFrom string, ctx 
 	if email == nil || email.From == nil || email.Sender == nil || ctx == nil || len(domains.Accepted) == 0 {
 		return false
 	}
-	if !validation.IsAuthorizedSender(email.From.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
+	allowLocalAlias := ctx.EffectiveRole() == access.RoleSuperAdmin
+	if !validation.IsAuthorizedSender(email.From.EmailAddress, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
 		return false
 	}
-	if !validation.IsAuthorizedSender(email.Sender.EmailAddress, ctx.UserAccount, ctx.IsAdmin, domains.Accepted) {
+	if !validation.IsAuthorizedSender(email.Sender.EmailAddress, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
 		return false
 	}
-	return envelopeFrom == "" || validation.IsAuthorizedSender(envelopeFrom, ctx.UserAccount, ctx.IsAdmin, domains.Accepted)
+	return envelopeFrom == "" || validation.IsAuthorizedSender(envelopeFrom, ctx.UserAccount, allowLocalAlias, domains.Accepted)
 }
 
 func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserID int, emailType int, reallyTo []string, SPFStatus, dkimStatus bool) ([]*models.User, *models.Email, error) {

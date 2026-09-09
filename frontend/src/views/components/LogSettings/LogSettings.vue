@@ -18,7 +18,7 @@
         format="YYYY-MM-DD HH:mm"
         aria-label="日志时间范围"
       />
-      <el-input v-if="!isRuntime" v-model="actorId" clearable placeholder="操作者编号" aria-label="操作者编号" @keyup.enter="search" />
+      <el-input v-if="!isRuntime && canFilterActor" v-model="actorId" clearable placeholder="操作者编号" aria-label="操作者编号" @keyup.enter="search" />
       <div class="log-filter-actions">
         <el-button :disabled="loading" @click="recent">最近 24 小时</el-button>
         <el-button type="primary" :loading="loading" @click="search">查询</el-button>
@@ -171,6 +171,7 @@ import { useLogs } from './LogSettings.js'
 
 const {
   category, categories, loading, error, items, offset,
+  canFilterActor,
   hasMore, actorId, dateRange, detail, details, isRuntime,
   runtimeDetail, runtimeRows, runtimeSummary, pageRange,
   currentCategory, resultType, runtimeRowClass, timeParts,

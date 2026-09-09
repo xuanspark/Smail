@@ -11,7 +11,7 @@ const createPage = compileFunction(
   ['computed', 'nextTick', 'onMounted', 'onBeforeUnmount', 'ref', 'http', 'useGlobalStatusStore']
 )
 
-function fixture(capabilities = ['config.read', 'plugin.read', 'plugin.write_own'], get = async () => ({ errorNo: 0, data: [] })) {
+function fixture(capabilities = ['config.read', 'plugin.read_global', 'plugin.read', 'plugin.write_own'], get = async () => ({ errorNo: 0, data: [] })) {
   const allowed = reactive(new Set(capabilities))
   const requests = []
   let mount, dispose
@@ -46,8 +46,8 @@ test('普通账号只保留本人通知设置，不读取或进入全局配置�
   assert.equal(page.activePage.value, undefined)
 })
 
-test('只有配置读取权限的账号仍可进入插件配置，但不能读取无权限的插件列表', async () => {
-  const { page, mount, requests } = fixture(['config.read'])
+test('只有插件读取权限的账号仍可进入插件配置，但不能读取无权限的插件列表', async () => {
+  const { page, mount, requests } = fixture(['plugin.read_global'])
   await mount()
   assert.equal(requests.length, 0)
   assert.equal(page.sectionOptions.value.length, 3)
@@ -69,7 +69,7 @@ test('插件切换等待离开确认，取消、并发点击及权限收回不�
   resolve(true)
   await second
   assert.equal(page.selectedSection.value, 'wechat_push')
-  page.currentPage.value = { beforeLeave: async () => { allowed.delete('config.read'); return true } }
+  page.currentPage.value = { beforeLeave: async () => { allowed.delete('plugin.read_global'); return true } }
   await page.selectSection('telegram_push')
   assert.equal(page.selectedSection.value, 'wechat_push')
   assert.equal(page.activePage.value, undefined)

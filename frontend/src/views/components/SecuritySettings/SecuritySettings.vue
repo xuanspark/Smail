@@ -9,6 +9,7 @@
       />
 
       <div class="security-main">
+    <ProfileSettings v-if="selectedSection === 'profile'" />
     <GlobalSecurityPolicy
       v-if="selectedSection === 'security-policy'"
       ref="globalSecurityPolicyPage"
@@ -102,6 +103,7 @@
 
 <script setup>
 import { usePage } from './SecuritySettings.js'
+import ProfileSettings from './ProfileSettings/ProfileSettings.vue'
 import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
 import GlobalSecurityPolicy from './GlobalSecurityPolicy/GlobalSecurityPolicy.vue'
 import ExternalEmailBindingDialog from './ExternalEmailBindingDialog/ExternalEmailBindingDialog.vue'

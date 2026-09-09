@@ -1,8 +1,10 @@
 package config
 
 import (
+	"strconv"
 	"strings"
 
+	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -14,6 +16,13 @@ func runtimeEventFields(entry *log.Entry) map[string]any {
 		fields[key] = value
 	}
 	fields["logSchema"] = 1
+	// 归属只来自服务端认证上下文，调用点不能用任意字段冒充其他账号。
+	delete(fields, "actorId")
+	delete(fields, "actorRole")
+	if ctx, ok := entry.Context.(*appcontext.Context); ok && ctx != nil && ctx.UserID > 0 {
+		fields["actorId"] = strconv.Itoa(ctx.UserID)
+		fields["actorRole"] = string(ctx.EffectiveRole())
+	}
 	if action, ok := fields["action"].(string); !ok || strings.TrimSpace(action) == "" {
 		action = "运行事件"
 		if entry.Caller != nil && entry.Caller.Function != "" {

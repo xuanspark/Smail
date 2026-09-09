@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func IsAuthorizedSender(address, account string, isAdmin bool, domains []string) bool {
+func IsAuthorizedSender(address, account string, allowLocalAlias bool, domains []string) bool {
 	address = strings.TrimSpace(address)
 	parsed, err := mail.ParseAddress(address)
 	if err != nil || parsed.Address != address {
@@ -33,5 +33,5 @@ func IsAuthorizedSender(address, account string, isAdmin bool, domains []string)
 		return false
 	}
 
-	return isAdmin || strings.EqualFold(address[:at], strings.TrimSpace(account))
+	return allowLocalAlias || strings.EqualFold(address[:at], strings.TrimSpace(account))
 }

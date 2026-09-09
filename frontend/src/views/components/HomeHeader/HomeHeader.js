@@ -56,10 +56,9 @@ export function usePage() {
     { key: 'plugins', label: lang.plugin_settings, hint: '扩展功能管理', icon: Grid, component: PluginSettings, capability: 'plugin.read' },
     { key: 'logs', label: '日志', hint: '操作、收发信与运行记录', icon: Document, component: LogSettings, capability: 'audit.read' },
   ].filter(item => {
-    // 全局日志包含其他账号与运行信息，不能把本人审计能力当作全局权限。
-    if (item.key === 'logs' && globalStatus.role !== 'super_admin') return false
+    // 日志数据范围由服务端强制过滤；菜单只决定入口是否可见。
     return globalStatus.hasCapability(item.capability) ||
-      (item.key === 'plugins' && globalStatus.hasCapability('config.read'))
+      (item.key === 'plugins' && globalStatus.hasCapability('plugin.read_global'))
   }))
 
   const activeSettings = computed(() => settingsMenu.value.find(item => item.key === globalStatus.settingsActiveTab))

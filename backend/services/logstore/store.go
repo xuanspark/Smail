@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/db/migration"
+	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/logpolicy"
 )
 
@@ -31,15 +32,18 @@ type Entry struct {
 }
 
 type Query struct {
-	ID      string
-	Kind    string
-	ActorID string
-	Action  string
-	Section string
-	From    time.Time
-	To      time.Time
-	Limit   int
-	Offset  int
+	// ScopeActorID 不接受客户端直接赋值；非空时由服务端强制限制可见账号。
+	ScopeActorID         string
+	IncludeOrdinaryUsers bool
+	ID                   string
+	Kind                 string
+	ActorID              string
+	Action               string
+	Section              string
+	From                 time.Time
+	To                   time.Time
+	Limit                int
+	Offset               int
 }
 
 type Store struct {
@@ -147,6 +151,32 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 	}
 	statement := "SELECT id, created_at, kind, actor_id, action, section, result, payload FROM " + table + " WHERE created_at >= ? AND kind = ?"
 	args := []any{from.UnixNano(), query.Kind}
+	if query.ScopeActorID != "" {
+		statement += " AND (actor_id = ?"
+		args = append(args, query.ScopeActorID)
+		if query.IncludeOrdinaryUsers {
+			statement += " OR ("
+			userTable, idType := `"user"`, "TEXT"
+			if s.dialect == migration.DialectMySQL {
+				userTable, idType = "`user`", "CHAR"
+			}
+			statement += "actor_id IN (SELECT CAST(id AS " + idType + ") FROM " + userTable + " WHERE " + models.OrdinaryUserPredicate + ")"
+			// 代管视图还要核对操作发生时的角色，不能因账号降级暴露旧管理操作。
+			// 缺少历史角色的操作仅本人和超级管理员可见，收发信元数据不包含管理操作。
+			if query.Kind == "operation" {
+				switch s.dialect {
+				case migration.DialectMySQL:
+					statement += " AND CASE WHEN JSON_VALID(payload) THEN JSON_UNQUOTE(JSON_EXTRACT(payload, '$.actorRole')) ELSE NULL END = 'user'"
+				case migration.DialectPostgres:
+					statement += " AND (payload::jsonb ->> 'actorRole') = 'user'"
+				default:
+					statement += " AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.actorRole') ELSE NULL END = 'user'"
+				}
+			}
+			statement += ")"
+		}
+		statement += ")"
+	}
 	if !query.To.IsZero() {
 		statement += " AND created_at <= ?"
 		args = append(args, query.To.UnixNano())

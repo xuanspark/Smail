@@ -10,14 +10,28 @@ const root = new URL('../../frontend/src/views/components/LogSettings/', import.
 const read = name => readFileSync(new URL(name, root), 'utf8')
 const create = compileFunction(
   read('LogSettings.js').replace(/^import .*$/gm, '').replace('export function', 'function') + '\nreturn useLogs()',
-  ['computed', 'onBeforeUnmount', 'onMounted', 'ref', 'watch', 'http', 'formatFileSize', 'parseRuntimeLine', 'summarizeRuntime', 'timeParts']
+  ['computed', 'onBeforeUnmount', 'onMounted', 'ref', 'watch', 'http', 'formatFileSize', 'parseRuntimeLine', 'summarizeRuntime', 'timeParts', 'useGlobalStatusStore']
 )
 
-function fixture(get) {
+function fixture(get, role = 'super_admin') {
   let dispose
-  const page = create(computed, callback => { dispose = callback }, () => {}, ref, () => {}, { get }, formatFileSize, parseRuntimeLine, summarizeRuntime, timeParts)
+  const page = create(computed, callback => { dispose = callback }, () => {}, ref, () => {}, { get }, formatFileSize, parseRuntimeLine, summarizeRuntime, timeParts, () => ({ role }))
   return { page, dispose: () => dispose() }
 }
+
+test('普通用户不发送操作者筛选，管理员保留范围内筛选', async () => {
+  for (const role of ['user', 'admin']) {
+    const requests = []
+    const { page } = fixture(async (_, { params }) => {
+      requests.push(params)
+      return { errorNo: 0, data: { items: [] } }
+    }, role)
+    page.actorId.value = '1'
+    await page.search()
+    assert.equal(page.canFilterActor.value, role === 'admin')
+    assert.equal(requests[0].actorId, role === 'admin' ? '1' : undefined)
+  }
+})
 
 test('日志页面使用共享 HTTP 客户端的命名导出', () => {
   const transport = readFileSync(new URL('../../frontend/src/utils/axios.js', import.meta.url), 'utf8')

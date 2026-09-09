@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -152,6 +153,9 @@ func DefaultConfigAuthorization(_ context.Context, actor AuditActor, operation C
 		return ErrAuthorizationRequired
 	}
 	capability := access.CapabilityConfigWriteGlobal
+	if operation == ConfigOperationUpdate && section == SectionPlugins {
+		capability = access.CapabilityPluginWriteGlobal
+	}
 	if operation == ConfigOperationRollback {
 		capability = access.CapabilityConfigRollback
 	} else if operation == ConfigOperationMigration {
@@ -174,6 +178,23 @@ func DefaultConfigAuthorization(_ context.Context, actor AuditActor, operation C
 	}
 	if operation == ConfigOperationUpdate && section == SectionRoot && request.ActorRole != access.RoleSuperAdmin {
 		return ErrAuthorizationRequired
+	}
+	return nil
+}
+
+// AuthorizePluginChanges 限制管理员只能修改已有插件参数，不允许安装、替换程序或提升权限。
+func AuthorizePluginChanges(actor AuditActor, current, candidate RuntimeConfig) error {
+	if actor.Role == string(access.RoleSuperAdmin) {
+		return nil
+	}
+	if actor.Role != string(access.RoleAdmin) || len(current.Plugins.Plugins) != len(candidate.Plugins.Plugins) {
+		return ErrAuthorizationRequired
+	}
+	for id, next := range candidate.Plugins.Plugins {
+		previous, ok := current.Plugins.Plugins[id]
+		if !ok || next.Executable != previous.Executable || !reflect.DeepEqual(next.Permissions, previous.Permissions) {
+			return ErrAuthorizationRequired
+		}
 	}
 	return nil
 }

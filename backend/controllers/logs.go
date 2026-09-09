@@ -28,7 +28,7 @@ func logQueryError(w http.ResponseWriter, err error) {
 // GetLogs 只读日志入口，授权在服务端检查，不依赖导航隐藏。
 func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if err := authorizeCapability(ctx, access.CapabilityAuditRead, "", false); err != nil {
+	if err := authorizeLogs(ctx); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}
@@ -48,6 +48,10 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 	bounded, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 	defer cancel()
 	query := logstore.Query{Kind: values.Get("kind"), ActorID: values.Get("actorId"), Limit: limit + 1, Offset: offset}
+	if ctx.EffectiveRole() != access.RoleSuperAdmin {
+		query.ScopeActorID = strconv.Itoa(ctx.UserID)
+		query.IncludeOrdinaryUsers = ctx.EffectiveRole() == access.RoleAdmin
+	}
 	for _, item := range []struct {
 		name   string
 		target *time.Time
@@ -78,6 +82,10 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 		}
 		// 显式保留旧文件列表入口，新页面默认跨文件查询。
 		if values.Get("listFiles") == "true" {
+			if ctx.EffectiveRole() != access.RoleSuperAdmin {
+				writeConfigAccessError(w, &access.Denial{Code: access.CodeAccessDenied})
+				return
+			}
 			files, err := writer.Files()
 			if err != nil {
 				logQueryError(w, err)
@@ -86,7 +94,12 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 			response.NewSuccessResponse(map[string]any{"files": files}).FPrint(w)
 			return
 		}
-		page, err := writer.Query(bounded, runtimelog.Query{File: values.Get("file"), From: query.From, To: query.To, Offset: offset, Limit: limit})
+		actors, err := runtimeLogActors(bounded, ctx)
+		if err != nil {
+			logQueryError(w, err)
+			return
+		}
+		page, err := writer.Query(bounded, runtimelog.Query{File: values.Get("file"), From: query.From, To: query.To, Offset: offset, Limit: limit, AllowedActors: actors})
 		if err != nil {
 			logQueryError(w, err)
 			return

@@ -254,6 +254,21 @@ func (m *ConfigManager) Status() ConfigStatus {
 }
 
 func (m *ConfigManager) Validate(ctx context.Context, req ValidateRequest) (*ValidationResult, error) {
+	return m.validate(ctx, req, nil)
+}
+
+// ValidateAuthorized 对外部请求使用与保存一致的授权；内部校验不暴露为 HTTP 入口。
+func (m *ConfigManager) ValidateAuthorized(ctx context.Context, req ValidateRequest, actor AuditActor) (*ValidationResult, error) {
+	if m == nil {
+		return nil, ErrManagerStorage
+	}
+	if err := m.authorize(ctx, actor, ConfigOperationUpdate, req.Section); err != nil {
+		return nil, err
+	}
+	return m.validate(ctx, req, &actor)
+}
+
+func (m *ConfigManager) validate(ctx context.Context, req ValidateRequest, actor *AuditActor) (*ValidationResult, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -272,6 +287,11 @@ func (m *ConfigManager) Validate(ctx context.Context, req ValidateRequest) (*Val
 	candidate, err := applySectionPayload(current, req.Section, req.Payload, req.SecretChanges, m.vault)
 	if err != nil {
 		return nil, err
+	}
+	if actor != nil && req.Section == SectionPlugins {
+		if err := AuthorizePluginChanges(*actor, current, candidate); err != nil {
+			return nil, err
+		}
 	}
 	if req.Section == SectionSSL {
 		if _, err := prepareCustomSSLPaths(m.loader.root, &candidate); err != nil {
@@ -317,6 +337,11 @@ func (m *ConfigManager) Update(ctx context.Context, req UpdateRequest) (*UpdateR
 		return nil, err
 	}
 	var sslMaterial *customSSLMaterial
+	if req.Section == SectionPlugins {
+		if err := AuthorizePluginChanges(req.Actor, current, candidate); err != nil {
+			return nil, err
+		}
+	}
 	if req.Section == SectionSSL {
 		sslMaterial, err = prepareCustomSSLPaths(m.loader.root, &candidate)
 		if err != nil {
@@ -405,6 +430,12 @@ func (m *ConfigManager) apply(ctx context.Context, generation uint64, actor Audi
 	if actor.UserID != "" {
 		if err := m.authorize(ctx, actor, ConfigOperationUpdate, pending.Section); err != nil {
 			return nil, err
+		}
+		// 暂存后角色可能变化，应用时必须重新检查程序与权限边界。
+		if pending.Section == SectionPlugins {
+			if err := AuthorizePluginChanges(actor, current, candidate); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if generation != candidate.Generation || candidate.Generation != current.Generation+1 {

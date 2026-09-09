@@ -40,9 +40,9 @@ func TestConfigBackupReadDoesNotRequireRecentAuth(t *testing.T) {
 			ctx := &appcontext.Context{UserID: 1, Role: role, RecentAuth: false}
 			recorder := httptest.NewRecorder()
 			ListConfigBackups(ctx, recorder, httptest.NewRequest(http.MethodGet, "/api/v1/config/backups", nil))
-			if role == access.RoleUser {
+			if role != access.RoleSuperAdmin {
 				if recorder.Code != http.StatusForbidden {
-					t.Fatalf("普通用户不应读取配置备份：%d", recorder.Code)
+					t.Fatalf("非超级管理员不应读取配置备份：%d", recorder.Code)
 				}
 				return
 			}
@@ -53,7 +53,7 @@ func TestConfigBackupReadDoesNotRequireRecentAuth(t *testing.T) {
 				t.Fatal(err)
 			}
 			if recorder.Code != http.StatusOK || payload.ErrorNo != 0 {
-				t.Fatalf("管理员读取脱敏备份不应要求近期认证：%d", recorder.Code)
+				t.Fatalf("超级管理员读取脱敏备份不应要求近期认证：%d", recorder.Code)
 			}
 		})
 	}

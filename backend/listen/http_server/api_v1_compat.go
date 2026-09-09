@@ -65,6 +65,7 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/rule/del", "/api/rule/del", http.MethodPost, 64<<10, controllers.DelRule)
 	registerV1MethodRoute(mux, "/api/v1/user/create", "/api/user/create", http.MethodPost, 64<<10, controllers.CreateUser)
 	registerV1MethodRoute(mux, "/api/v1/user/edit", "/api/user/edit", http.MethodPost, 64<<10, controllers.EditUser)
+	registerV1MethodRoute(mux, "/api/v1/user/profile", "/api/user/profile", http.MethodPost, 64<<10, controllers.UpdateProfile)
 	registerV1MethodRoute(mux, "/api/v1/user/info", "/api/user/info", http.MethodPost, 64<<10, controllers.Info)
 	registerV1MethodRoute(mux, "/api/v1/user/list", "/api/user/list", http.MethodPost, 64<<10, controllers.UserList)
 	registerV1MethodRoute(mux, "/api/v1/user/security/recovery-codes", "/api/user/security/recovery-codes", http.MethodGet, 0, controllers.GetManagedRecoveryCodeStatus)

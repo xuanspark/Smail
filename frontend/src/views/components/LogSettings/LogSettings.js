@@ -1,8 +1,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { http } from '@/utils/axios'
+import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { parseRuntimeLine, summarizeRuntime, timeParts } from './RuntimeLog.js'
 
 export function useLogs() {
+  const store = useGlobalStatusStore()
+  const canFilterActor = computed(() => ['super_admin', 'admin'].includes(store.role))
   const category = ref('operation')
   const loading = ref(false)
   const error = ref('')
@@ -90,7 +93,7 @@ export function useLogs() {
       return
     }
     appliedFilters = { kind: category.value, from: from.toISOString(), to: to.toISOString() }
-    if (!isRuntime.value && actorId.value.trim()) appliedFilters.actorId = actorId.value.trim()
+    if (canFilterActor.value && !isRuntime.value && actorId.value.trim()) appliedFilters.actorId = actorId.value.trim()
     offset.value = 0
     previousOffsets.length = 0
     detail.value = null
@@ -125,6 +128,7 @@ export function useLogs() {
 
   return {
     category, categories, loading, error, items, lines, offset,
+    canFilterActor,
     hasMore, actorId, dateRange, detail, details, isRuntime,
     runtimeDetail, runtimeRows, runtimeSummary, visibleCount, pageRange,
     currentCategory, resultType, runtimeRowClass, timeParts,

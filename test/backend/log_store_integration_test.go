@@ -88,7 +88,7 @@ func TestLogStoreServerDatabaseIntegration(t *testing.T) {
 			now := time.Now().UTC()
 			cutoff := logpolicy.Cutoff(now)
 			store.now = func() time.Time { return now.Add(-logpolicy.Retention) }
-			for _, kind := range []string{"operation", "config", "mail"} {
+			for _, kind := range []string{"operation", "mail"} {
 				for index := 0; index < 1003; index++ {
 					at := cutoff.Add(-time.Nanosecond)
 					if index >= 1001 {
@@ -106,14 +106,14 @@ func TestLogStoreServerDatabaseIntegration(t *testing.T) {
 				}
 			}
 			store.now = func() time.Time { return now }
-			for _, kind := range []string{"operation", "config", "mail"} {
+			for _, kind := range []string{"operation", "mail"} {
 				items, err := store.Query(ctx, Query{Kind: kind, ActorID: "42"})
 				if err != nil || len(items) != 2 || items[0].Action != "兼容验证" {
 					t.Fatalf("query or retention failed: kind=%s count=%d err=%v", kind, len(items), err)
 				}
 			}
 			deleted, err := store.Cleanup(ctx, now)
-			if err != nil || deleted != 3003 {
+			if err != nil || deleted != 2002 {
 				t.Fatalf("batch cleanup failed: deleted=%d err=%v", deleted, err)
 			}
 			if deleted, err := store.Cleanup(ctx, now); err != nil || deleted != 0 {

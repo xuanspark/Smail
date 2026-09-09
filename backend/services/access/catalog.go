@@ -10,7 +10,8 @@ type Endpoint struct {
 
 var managementEndpoints = []Endpoint{
 	{Method: "POST", Path: "/api/settings/modify_password", Capability: CapabilityPasswordChangeOwn},
-	{Method: "POST", Path: "/api/user/create", Capability: CapabilityUserManage},
+	{Method: "POST", Path: "/api/user/create", Capability: CapabilityUserCreate},
+	{Method: "POST", Path: "/api/user/profile", Capability: CapabilityProfileWriteOwn},
 	{Method: "POST", Path: "/api/user/edit", Capability: CapabilityUserManage},
 	{Method: "*", Path: "/api/user/security/", Capability: CapabilityUserSecurityManage},
 	{Method: "POST", Path: "/api/user/info", Capability: CapabilityUserRead},
@@ -37,7 +38,8 @@ var managementEndpoints = []Endpoint{
 	{Method: "POST", Path: "/api/v1/database/migrations/preview", Capability: CapabilityDatabaseMigrate},
 	{Method: "POST", Path: "/api/v1/database/migrations", Capability: CapabilityDatabaseMigrate},
 	{Method: "GET", Path: "/api/v1/database/migrations/:id", Capability: CapabilityDatabaseMigrate},
-	{Method: "POST", Path: "/api/v1/user/create", Capability: CapabilityUserManage},
+	{Method: "POST", Path: "/api/v1/user/create", Capability: CapabilityUserCreate},
+	{Method: "POST", Path: "/api/v1/user/profile", Capability: CapabilityProfileWriteOwn},
 	{Method: "POST", Path: "/api/v1/user/edit", Capability: CapabilityUserManage},
 	{Method: "*", Path: "/api/v1/user/security/", Capability: CapabilityUserSecurityManage},
 	{Method: "POST", Path: "/api/v1/user/info", Capability: CapabilityUserRead},

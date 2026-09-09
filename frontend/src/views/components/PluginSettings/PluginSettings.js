@@ -4,7 +4,7 @@ import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 
 export function usePage() {
   const store = useGlobalStatusStore()
-  const selectedSection = ref(store.hasCapability('config.read') ? 'spam_block' : 'telegram-user')
+  const selectedSection = ref(store.hasCapability('plugin.read_global') ? 'spam_block' : 'telegram-user')
   const currentPage = ref(null)
   const pageHost = ref(null)
   const switching = ref(false)
@@ -14,7 +14,7 @@ export function usePage() {
   let disposed = false
 
   // 全局配置不依赖正在运行的插件列表，未启用的插件也必须可以配置。
-  const sectionOptions = computed(() => store.hasCapability('config.read') ? [
+  const sectionOptions = computed(() => store.hasCapability('plugin.read_global') ? [
     { value: 'spam_block', label: '垃圾邮件拦截', kind: 'config' },
     { value: 'telegram_push', label: 'Telegram 推送', kind: 'config' },
     { value: 'wechat_push', label: '微信推送', kind: 'config' }

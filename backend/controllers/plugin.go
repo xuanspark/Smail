@@ -3,6 +3,7 @@ package controllers
 import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/hooks"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 	"io"
@@ -18,7 +19,7 @@ const (
 )
 
 func GetPluginList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !ctx.IsAdmin {
+	if err := authorizeCapability(ctx, access.CapabilityConfigRead, "", false); err != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
 		return
 	}
@@ -31,7 +32,7 @@ func GetPluginList(ctx *context.Context, w http.ResponseWriter, req *http.Reques
 }
 
 func SettingsHtml(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !ctx.IsAdmin {
+	if err := authorizeCapability(ctx, access.CapabilityConfigRead, "", false); err != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
 		return
 	}

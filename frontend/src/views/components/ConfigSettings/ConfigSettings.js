@@ -148,7 +148,7 @@ export function usePage(pageKey = 'base') {
   const restartPreview = ref(null)
   const hasChanges = computed(() => editorText.value !== loadedText.value || !!secretValue.value || !!savedGeneration.value)
 
-  const canWrite = computed(() => globalStatus.hasCapability('config.write_global'))
+  const canWrite = computed(() => globalStatus.hasCapability(apiSection() === 'plugins' ? 'plugin.write_global' : 'config.write_global'))
   const canRollback = computed(() => globalStatus.hasCapability('config.rollback'))
   const canMigrate = computed(() => globalStatus.hasCapability('database.migrate'))
   const canRestart = computed(() => globalStatus.hasCapability('service.restart'))

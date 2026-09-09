@@ -11,11 +11,14 @@ import (
 )
 
 type Query struct {
-	File   string
-	From   time.Time
-	To     time.Time
-	Offset int
-	Limit  int
+	// nil 表示完整管理视图；非 nil 时先按可信归属过滤并脱敏，再进行分页。
+	// 映射值为 true 表示本人；false 表示代管普通用户，事件发生时也必须是普通用户。
+	AllowedActors map[string]bool
+	File          string
+	From          time.Time
+	To            time.Time
+	Offset        int
+	Limit         int
 }
 
 type lineRef struct {
@@ -110,7 +113,7 @@ func (w *Writer) Query(ctx context.Context, query Query) (Page, error) {
 			if at.Before(query.From) || at.After(query.To) {
 				return nil
 			}
-			visible, keep := presentLine(string(line))
+			visible, keep := presentScopedLine(string(line), query.AllowedActors)
 			if !keep {
 				return nil
 			}
@@ -161,10 +164,11 @@ func (w *Writer) Query(ctx context.Context, query Query) (Page, error) {
 			if !ok {
 				return nil
 			}
-			if !at.Equal(refs[index].at) || len(line) != refs[index].bytes {
+			visible, keep := presentScopedLine(string(line), query.AllowedActors)
+			if !keep || !at.Equal(refs[index].at) || len(visible) != refs[index].bytes {
 				return ErrInvalid
 			}
-			page.Lines[index] = string(line)
+			page.Lines[index] = visible
 			remaining--
 			if remaining == 0 {
 				return finished

@@ -97,6 +97,7 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/attachments/download/", onlyMethod(http.MethodGet, contextIterceptor(controllers.Download)))
 	mux.HandleFunc("/api/user/create", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.CreateUser))))
 	mux.HandleFunc("/api/user/edit", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.EditUser))))
+	mux.HandleFunc("/api/user/profile", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.UpdateProfile))))
 	mux.HandleFunc("/api/user/info", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.Info))))
 	mux.HandleFunc("/api/user/list", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.UserList))))
 	mux.HandleFunc("/api/user/security/recovery-codes", onlyMethod(http.MethodGet, contextIterceptor(controllers.GetManagedRecoveryCodeStatus)))

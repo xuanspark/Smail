@@ -15,7 +15,8 @@ import (
 
 // 仅记录明确的变更接口，不将 POST 列表查询误认为操作，也不复制请求或响应载荷。
 var loggedOperations = map[string]string{
-	"/api/login": "处理账号登录", "/api/logout": "退出登录",
+	"/api/user/profile": "修改个人资料",
+	"/api/login":        "处理账号登录", "/api/logout": "退出登录",
 	"/api/security/login/verify":          "完成登录二次验证",
 	"/api/security/webauthn/login/finish": "完成通行密钥登录验证",
 	"/api/user/create":                    "创建用户", "/api/user/edit": "编辑用户",

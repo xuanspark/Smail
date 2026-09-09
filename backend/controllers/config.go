@@ -17,7 +17,7 @@ import (
 
 // ConfigStatus 返回配置管理状态，不返回任何密文、路径或 DSN。
 func ConfigStatus(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
-	if err := authorizeCapability(ctx, access.CapabilityConfigRead, "", false); err != nil {
+	if err := authorizeConfigOverview(ctx, false); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}
@@ -30,6 +30,10 @@ func ConfigStatus(ctx *appcontext.Context, w http.ResponseWriter, req *http.Requ
 		return
 	}
 	status := manager.Status()
+	if ctx.EffectiveRole() != access.RoleSuperAdmin {
+		response.NewSuccessResponse(map[string]any{"available": true, "activeGeneration": status.ActiveGeneration}).FPrint(w)
+		return
+	}
 	response.NewSuccessResponse(map[string]any{
 		"available":        true,
 		"setupState":       status.SetupState,
@@ -52,7 +56,7 @@ func GetConfigSection(ctx *appcontext.Context, w http.ResponseWriter, req *http.
 	if !ok {
 		return
 	}
-	if err := authorizeCapability(ctx, access.CapabilityConfigRead, "", false); err != nil {
+	if err := authorizeConfigSection(ctx, section, false); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}
@@ -77,7 +81,7 @@ func ValidateConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Re
 	if !ok {
 		return
 	}
-	if err := authorizeCapability(ctx, access.CapabilityConfigWriteGlobal, "", false); err != nil {
+	if err := authorizeConfigSection(ctx, section, true); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}
@@ -86,10 +90,10 @@ func ValidateConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Re
 		writeConfigError(w, errors.New("invalid configuration request"))
 		return
 	}
-	result, err := manager.Validate(req.Context(), config.ValidateRequest{
+	result, err := manager.ValidateAuthorized(req.Context(), config.ValidateRequest{
 		Section: section, ExpectedGeneration: input.ExpectedGeneration,
 		Payload: input.Payload, SecretChanges: input.SecretChanges,
-	})
+	}, configActor(ctx, req))
 	if err != nil {
 		writeConfigError(w, err)
 		return
@@ -103,7 +107,7 @@ func UpdateConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Requ
 	if !ok {
 		return
 	}
-	if err := authorizeCapability(ctx, access.CapabilityConfigWriteGlobal, "", false); err != nil {
+	if err := authorizeConfigSection(ctx, section, true); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}
@@ -135,7 +139,7 @@ func ApplyConfig(ctx *appcontext.Context, w http.ResponseWriter, req *http.Reque
 	if !ok {
 		return
 	}
-	if err := authorizeCapability(ctx, access.CapabilityConfigWriteGlobal, "", false); err != nil {
+	if err := authorizeConfigSection(ctx, section, true); err != nil {
 		writeConfigAccessError(w, err)
 		return
 	}

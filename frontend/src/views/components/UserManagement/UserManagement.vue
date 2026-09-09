@@ -60,7 +60,7 @@
         </el-table-column>
         <el-table-column align="right" width="68">
           <template #header>
-            <el-button type="primary" size="small" @click="createUser" class="new-btn" plain>
+            <el-button v-if="canCreateUser" type="primary" size="small" @click="createUser" class="new-btn" plain>
               <el-icon><Plus /></el-icon> 新建
             </el-button>
           </template>
@@ -239,6 +239,7 @@ const {
   editModel,
   editUserInfo,
   availableRoles,
+  canCreateUser,
   canEditSelectedUser,
   canSelectRole,
   roleChanged,

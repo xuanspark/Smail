@@ -9,13 +9,16 @@ func TestCapabilityMatrix(t *testing.T) {
 		allowed bool
 	}{
 		{name: "super admin reads config", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityConfigRead}, allowed: true},
-		{name: "admin reads config", req: Request{ActorRole: RoleAdmin, Capability: CapabilityConfigRead}, allowed: true},
+		{name: "admin cannot read config", req: Request{ActorRole: RoleAdmin, Capability: CapabilityConfigRead}},
 		{name: "user cannot read config", req: Request{ActorRole: RoleUser, Capability: CapabilityConfigRead}},
 		{name: "super admin controls plugin", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginControl, RecentAuth: true, RecoveryCodeConfigured: true}, allowed: true},
 		{name: "super admin controls plugin without recovery code", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginControl, RecentAuth: true}, allowed: true},
 		{name: "admin cannot control plugin", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginControl, RecentAuth: true, RecoveryCodeConfigured: true}},
 		{name: "super admin writes global plugin settings", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginWriteGlobal, RecentAuth: true, RecoveryCodeConfigured: true}, allowed: true},
-		{name: "admin cannot write global plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteGlobal, RecentAuth: true, RecoveryCodeConfigured: true}},
+		{name: "admin writes global plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteGlobal, RecentAuth: true, RecoveryCodeConfigured: true}, allowed: true},
+		{name: "admin cannot create user", req: Request{ActorRole: RoleAdmin, Capability: CapabilityUserCreate, TargetRole: RoleUser}},
+		{name: "user edits own profile", req: Request{ActorRole: RoleUser, Capability: CapabilityProfileWriteOwn, OwnResource: true}, allowed: true},
+		{name: "user cannot edit another profile", req: Request{ActorRole: RoleUser, Capability: CapabilityProfileWriteOwn}},
 		{name: "admin writes user plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteAnyUser, TargetRole: RoleUser}, allowed: true},
 		{name: "admin cannot write admin plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteAnyUser, TargetRole: RoleAdmin}},
 		{name: "super admin writes all user plugin settings", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginWriteAnyUser, TargetRole: RoleSuperAdmin}, allowed: true},
