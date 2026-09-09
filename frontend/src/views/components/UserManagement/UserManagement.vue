@@ -91,24 +91,56 @@
       />
     </div>
 
-    <el-dialog v-model="userInfoDialog" :title="title" width="450px" class="premium-dialog">
+    <el-dialog
+      v-model="userInfoDialog"
+      :title="title"
+      width="450px"
+      class="premium-dialog"
+      :close-on-click-modal="!submitting"
+      :close-on-press-escape="!submitting"
+      :show-close="!submitting"
+    >
       <div class="dialog-content">
         <el-form label-position="top">
           <el-form-item :label="lang.account">
-            <el-input :disabled="editModel === 'edit'" v-model="editUserInfo.account" />
+            <el-input :disabled="editModel === 'edit' || submitting" v-model="editUserInfo.account" />
           </el-form-item>
 
           <el-form-item :label="lang.user_name">
-            <el-input v-model="editUserInfo.name" />
+            <el-input v-model="editUserInfo.name" :disabled="!canEditSelectedUser || submitting" />
           </el-form-item>
 
           <el-form-item :label="lang.password">
             <el-input
-              :placeholder="lang.resetPwd"
+              :placeholder="editModel === 'create' ? '请输入 8–12 字节密码' : '留空则不修改密码'"
               v-model="editUserInfo.password"
+              :disabled="!canEditSelectedUser || submitting"
               type="password"
               show-password
             />
+          </el-form-item>
+
+          <el-form-item label="权限级别">
+            <el-select
+              v-if="canSelectRole"
+              v-model="editUserInfo.role"
+              aria-label="权限级别"
+              class="role-select"
+              :disabled="submitting || availableRoles.length < 2"
+            >
+              <el-option
+                v-for="option in availableRoles"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-tag v-else :type="roleMeta(editUserInfo.role).type">
+              {{ roleMeta(editUserInfo.role).label }}
+            </el-tag>
+            <span v-if="roleChanged && !selectedUser?.RecoveryCodeConfigured" class="role-requirement">
+              更改级别前，请先在下方配置该用户的安全码。
+            </span>
           </el-form-item>
 
           <div v-if="editModel === 'edit'" class="security-edit-grid">
@@ -121,7 +153,7 @@
                 <span v-else>部署端管理</span>
               </div>
               <el-button
-                :disabled="!recoveryCodeWebManaged"
+                :disabled="!recoveryCodeWebManaged || submitting"
                 :loading="securityDialogOpening === 'recovery-code'"
                 @click="openRecoveryCodeDialog"
               >
@@ -139,6 +171,7 @@
                 </span>
               </div>
               <el-button
+                :disabled="submitting"
                 :loading="securityDialogOpening === 'external-email'"
                 @click="openExternalEmailDialog"
               >
@@ -152,6 +185,7 @@
               <span class="switch-label">{{ lang.status }}</span>
               <el-switch
                 v-model="editUserInfo.disabled"
+                :disabled="!canEditSelectedUser || submitting"
                 class="ml-2"
                 :active-text="lang.disabled"
                 :inactive-text="lang.enabled"
@@ -164,8 +198,10 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="userInfoDialog = false">{{ lang.cancel }}</el-button>
-          <el-button type="primary" @click="submit">{{ lang.confirm }}</el-button>
+          <el-button :disabled="submitting" @click="userInfoDialog = false">{{ lang.cancel }}</el-button>
+          <el-button type="primary" :disabled="!canEditSelectedUser" :loading="submitting" @click="submit">
+            {{ lang.confirm }}
+          </el-button>
         </span>
       </template>
     </el-dialog>
@@ -202,6 +238,11 @@ const {
   submit,
   editModel,
   editUserInfo,
+  availableRoles,
+  canEditSelectedUser,
+  canSelectRole,
+  roleChanged,
+  submitting,
   selectedUser,
   editingCurrentUser,
   recoveryCodeWebManaged,

@@ -9,17 +9,8 @@ import {ElNotification} from "element-plus";
 import {Plus} from "@element-plus/icons-vue";
 
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
-import {confirmRecentAuthentication, isRecentAuthenticationCancelled} from '@/utils/recentAuthentication'
-
-const roleOptions = {
-  super_admin: { label: '超级管理员', type: 'danger' },
-  admin: { label: '管理员', type: 'primary' },
-  user: { label: '普通用户', type: 'info' }
-}
-
-export function roleMeta(role) {
-  return roleOptions[role] || { label: '未知权限', type: 'warning' }
-}
+import {confirmRecentAuthentication, isRecentAuthenticationCancelled, requestWithRecentAuthentication} from '@/utils/recentAuthentication'
+import {roleMeta, assignableRoles, canManageUser} from '@/utils/userRoles.mjs'
 
 export function recoveryCodeMeta(configured) {
   return configured
@@ -77,6 +68,17 @@ export function usePage() {
 
   const securityDialogOpening = ref('')
 
+  const submitting = ref(false)
+
+  const availableRoles = computed(() => assignableRoles(globalStatus.role))
+
+  const canEditSelectedUser = computed(() => editModel.value === 'create'
+    ? availableRoles.value.length > 0
+    : canManageUser(globalStatus.role, selectedUser.value?.Role))
+
+  const canSelectRole = computed(() => canEditSelectedUser.value
+    && (editModel.value === 'create' || globalStatus.hasCapability('role.manage')))
+
   const editingCurrentUser = computed(() => isSameUser(selectedUser.value, globalStatus.userInfos))
 
   const recoveryCodeWebManaged = computed(() => canManageRecoveryCode(selectedUser.value))
@@ -85,8 +87,12 @@ export function usePage() {
     "account": "",
     "name": "",
     "password": "",
-    "disabled": false
+    "disabled": false,
+    "role": "user"
   })
+
+  const roleChanged = computed(() => editModel.value === 'edit'
+    && editUserInfo.role !== selectedUser.value?.Role)
   
   const title = ref(lang.editUser)
   
@@ -109,6 +115,7 @@ export function usePage() {
     editUserInfo.name = row.Name
     editUserInfo.disabled = row.Disabled === 1
     editUserInfo.password = ""
+    editUserInfo.role = row.Role
     editModel.value = "edit"
     title.value = lang.editUser
     userInfoDialog.value = true
@@ -120,6 +127,7 @@ export function usePage() {
     editUserInfo.name = ""
     editUserInfo.disabled = false
     editUserInfo.password = ""
+    editUserInfo.role = "user"
     editModel.value = "create"
     title.value = lang.newUser
     userInfoDialog.value = true
@@ -161,47 +169,38 @@ export function usePage() {
     reflushList()
   }
   
-  const submit = function () {
-    if (editModel.value === 'edit') {
-      let newData = {
+  const submit = async function () {
+    if (submitting.value || !canEditSelectedUser.value) return
+    submitting.value = true
+    try {
+      const creating = editModel.value === 'create'
+      const newData = {
         "account": editUserInfo.account,
         "username": editUserInfo.name,
         "disabled": editUserInfo.disabled ? 1 : 0
       }
-      if (editUserInfo.password !== "") {
-        newData["password"] = editUserInfo.password
+      if (creating || roleChanged.value) newData.role = editUserInfo.role
+      if (creating || editUserInfo.password !== '') newData.password = editUserInfo.password
+      const res = await requestWithRecentAuthentication(() => creating
+        ? http.post('/api/v1/user/create', newData)
+        : http.post('/api/v1/user/edit', newData))
+      if (!res || res.errorNo !== 0) {
+        throw new Error(res?.errorMsg || '保存用户失败')
       }
-  
-      http.post('/api/v1/user/edit', newData).then(res => {
+      ElNotification({ title: lang.succ, message: '用户信息已保存', type: 'success' })
+      editUserInfo.password = ''
+      reflushList()
+      userInfoDialog.value = false
+    } catch (error) {
+      if (!isRecentAuthenticationCancelled(error)) {
         ElNotification({
-          title: res.errorNo === 0 ? lang.succ : lang.fail,
-          message: res.errorNo === 0 ? "" : res.data,
-          type: res.errorNo === 0 ? 'success' : 'error',
+          title: lang.fail,
+          message: error?.message || '保存用户失败，请稍后重试',
+          type: 'error'
         })
-        if (res.errorNo === 0) {
-          reflushList()
-          userInfoDialog.value = false
-        }
-      })
-    } else {
-      let newData = {
-        "account": editUserInfo.account,
-        "username": editUserInfo.name,
-        "disabled": editUserInfo.disabled ? 1 : 0,
-        "password": editUserInfo.password
       }
-  
-      http.post('/api/v1/user/create', newData).then(res => {
-        ElNotification({
-          title: res.errorNo === 0 ? lang.succ : lang.fail,
-          message: res.errorNo === 0 ? "" : res.data,
-          type: res.errorNo === 0 ? 'success' : 'error',
-        })
-        if (res.errorNo === 0) {
-          reflushList()
-          userInfoDialog.value = false
-        }
-      })
+    } finally {
+      submitting.value = false
     }
   }
   
@@ -220,6 +219,11 @@ export function usePage() {
     userInfoDialog,
     editModel,
     editUserInfo,
+    availableRoles,
+    canEditSelectedUser,
+    canSelectRole,
+    roleChanged,
+    submitting,
     selectedUser,
     editingCurrentUser,
     recoveryCodeWebManaged,
@@ -242,5 +246,6 @@ export function usePage() {
 }
 
 export {
-  Plus
+  Plus,
+  roleMeta
 }

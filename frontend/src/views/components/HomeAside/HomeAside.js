@@ -13,6 +13,7 @@ import { Setting } from "@element-plus/icons-vue";
 import { useGlobalStatusStore } from "../../../stores/useGlobalStatusStore";
 
 import BrandLogo from '../BrandLogo/BrandLogo.vue';
+import { roleMeta } from '@/utils/userRoles.mjs';
 
 export function usePage() {
   const groupStore = useGroupStore();
@@ -20,6 +21,10 @@ export function usePage() {
   const globalStatus = useGlobalStatusStore();
   
   const isLogin = computed(() => globalStatus.isLogin);
+
+  const currentAccount = computed(() => globalStatus.userInfos.account || '账号未加载');
+
+  const currentRole = computed(() => roleMeta(globalStatus.role));
   
   const router = useRouter();
   
@@ -82,6 +87,8 @@ export function usePage() {
     groupStore,
     globalStatus,
     isLogin,
+    currentAccount,
+    currentRole,
     router,
     data,
     searchQuery,

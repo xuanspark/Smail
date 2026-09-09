@@ -3,6 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { compileFunction } from 'node:vm'
+import { roleMeta, assignableRoles, canManageUser } from '../../frontend/src/utils/userRoles.mjs'
 
 const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
 const { parse, compileScript, compileStyle } = require('@vue/compiler-sfc')
@@ -14,7 +15,7 @@ function loadStatusHelpers() {
     .replace(/^import .*$/gm, '')
     .replace(/export \{[\s\S]*?\}\s*$/, '')
     .replaceAll('export ', '')
-  return compileFunction(`${source}\nreturn { roleMeta, recoveryCodeMeta, externalEmailMeta, accountStatusMeta, isSameUser, canManageRecoveryCode }`)()
+  return compileFunction(`${source}\nreturn { roleMeta, recoveryCodeMeta, externalEmailMeta, accountStatusMeta, isSameUser, canManageRecoveryCode }`, ['roleMeta'])(roleMeta)
 }
 
 function loadExternalEmailHelpers() {
@@ -106,7 +107,7 @@ test('超级管理员安全码只能在部署端管理，普通用户仍使用�
   const source = read('UserManagement.vue')
   assert.match(source, /部署端管理/)
   assert.match(source, /仅支持本机管理/)
-  assert.match(source, /:disabled="!recoveryCodeWebManaged"/)
+  assert.match(source, /:disabled="!recoveryCodeWebManaged \|\| submitting"/)
   assert.match(source, /:self-managed="editingCurrentUser"/)
 })
 
@@ -132,11 +133,24 @@ test('编辑外部邮箱按本人和代管场景使用不同的验证码接口',
 
 test('普通用户编辑请求不直接携带安全码或外部邮箱', () => {
   const source = read('UserManagement.js')
-  const submitStart = source.indexOf('const submit = function')
-  const editRequestEnd = source.indexOf(".then(res =>", source.indexOf("http.post('/api/v1/user/edit', newData)", submitStart))
+  const submitStart = source.indexOf('const submit = async function')
+  const editRequestEnd = source.indexOf('if (!res || res.errorNo', submitStart)
   const submitSource = source.slice(submitStart, editRequestEnd)
   assert.match(submitSource, /\/api\/v1\/user\/edit/)
   assert.doesNotMatch(submitSource, /recovery_code|recoveryCode|external_email|externalEmail/)
+})
+
+test('用户级别选项遵守账户管理边界，不提供超级管理员授权入口', () => {
+  assert.deepEqual(assignableRoles('super_admin').map(item => item.value), ['user', 'admin'])
+  assert.deepEqual(assignableRoles('admin').map(item => item.value), ['user'])
+  assert.deepEqual(assignableRoles('user'), [])
+  assert.deepEqual(assignableRoles('unknown'), [])
+  assert.equal(canManageUser('super_admin', 'super_admin'), false)
+  assert.equal(canManageUser('super_admin', 'admin'), true)
+  assert.equal(canManageUser('admin', 'admin'), false)
+  assert.equal(canManageUser('admin', 'user'), true)
+  assert.match(read('UserManagement.vue'), /v-model="editUserInfo\.role"/)
+  assert.match(read('UserManagement.js'), /requestWithRecentAuthentication/)
 })
 
 test('用户管理样式可编译并保持紧凑表格布局', () => {

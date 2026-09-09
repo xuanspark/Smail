@@ -283,7 +283,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	if reqData.Password != "" {
 		if err := authorizeCapability(ctx, access.CapabilityPasswordReset, targetRole, false); err != nil {
-			response.NewErrorResponse(response.NoAccessPrivileges, "密码重置需要近期认证和有效离线恢复码", "").FPrint(w)
+			writeUserAuthorizationError(w, err, "密码重置需要为当前管理员配置有效安全码")
 			return
 		}
 	}
@@ -308,7 +308,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			ctx.TargetRecoveryConfigured = configured
 		}
 		if err := authorizeCapabilityWithNewRole(ctx, access.CapabilityRoleManage, targetRole, newRole, false); err != nil {
-			response.NewErrorResponse(response.NoAccessPrivileges, "角色变更需要近期认证和恢复凭据", "").FPrint(w)
+			writeUserAuthorizationError(w, err, "更改权限级别前，请先为该用户配置有效安全码")
 			return
 		}
 		user.ApplyRole(newRole)
@@ -403,4 +403,17 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		InvalidateSecurityRuntimeUser(user.ID, user.Account)
 	}
 	response.NewSuccessResponse(user).FPrint(w)
+}
+
+// writeUserAuthorizationError 保留授权限制，并让界面按错误类型继续身份确认。
+func writeUserAuthorizationError(w http.ResponseWriter, err error, recoveryMessage string) {
+	if access.IsDenied(err, access.CodeRecentAuthRequired) {
+		writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "请确认当前密码后继续操作", string(access.CodeRecentAuthRequired))
+		return
+	}
+	if access.IsDenied(err, access.CodeRecoveryCodeRequired) {
+		writeSecurityErrorWithCode(w, response.NoAccessPrivileges, recoveryMessage, string(access.CodeRecoveryCodeRequired))
+		return
+	}
+	writeSecurityError(w, response.NoAccessPrivileges, "无权执行该用户管理操作")
 }
