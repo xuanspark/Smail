@@ -8,6 +8,7 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/hooks/spam_block/tools"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/credential"
 	log "github.com/sirupsen/logrus"
@@ -73,10 +74,7 @@ func (s *SpamBlock) Configure(data json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	s.cfg = cfg
-	s.hc = newHTTPClientForEndpoint(cfg.ApiTimeout, cfg.ApiURL)
-	s.mu.Unlock()
+	s.applyConfig(cfg)
 	return nil
 }
 
@@ -99,13 +97,17 @@ var jquery string
 
 // SettingsHtml 插件页面
 func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData string) string {
+	parts := strings.Split(strings.Trim(url, "/"), "/")
+	if len(parts) > 0 && parts[len(parts)-1] == "save" {
+		return "旧版插件配置保存接口已停用，请使用新版插件配置接口"
+	}
 
 	if strings.Contains(url, "jquery.js") {
 		return jquery
 	}
 
 	if strings.Contains(url, "index.html") {
-		if !ctx.IsAdmin {
+		if !canManageSpamBlockSettings(ctx) {
 			return fmt.Sprintf(`
 <div>
 	请联系管理员进行配置。
@@ -117,9 +119,10 @@ func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData s
 		s.mu.RUnlock()
 		return fmt.Sprintf(index, template.HTMLEscapeString(cfg.ApiURL), cfg.ApiTimeout, cfg.Threshold)
 	}
-	if !ctx.IsAdmin {
+	if !canManageSpamBlockSettings(ctx) {
 		return "没有访问权限"
 	}
+	return "没有访问权限"
 
 	cfg, err := decodeSpamBlockConfig([]byte(requestData))
 	if err != nil {
@@ -130,6 +133,14 @@ func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData s
 
 	return "保存成功"
 
+}
+
+func canManageSpamBlockSettings(ctx *context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	role := ctx.EffectiveRole()
+	return role == access.RoleSuperAdmin || role == access.RoleAdmin
 }
 
 type ModelResponse struct {

@@ -136,7 +136,7 @@ func operationLog(ctx *appcontext.Context, req *http.Request, w http.ResponseWri
 		}{ctx.UserAccount, string(ctx.EffectiveRole()), observed.code,
 			operationObject(path), req.Method + " " + path, operationOutcome(observed.code, result), observed.status})
 		logstore.Record(context.Background(), logstore.Entry{
-			Kind: "operation", CreatedAt: time.Now(), ActorID: strconv.Itoa(ctx.UserID), Action: action, Result: result, Payload: payload,
+			Kind: "operation", CreatedAt: time.Now(), ActorID: strconv.Itoa(ctx.UserID), ActorRole: string(ctx.EffectiveRole()), Action: action, Result: result, Payload: payload,
 		})
 	}
 }

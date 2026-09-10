@@ -17,7 +17,7 @@ var managementEndpoints = []Endpoint{
 	{Method: "POST", Path: "/api/user/info", Capability: CapabilityUserRead},
 	{Method: "POST", Path: "/api/user/list", Capability: CapabilityUserRead},
 	{Method: "GET", Path: "/api/plugin/list", Capability: CapabilityPluginRead},
-	{Method: "*", Path: "/api/plugin/settings/", Capability: CapabilityPluginWriteOwn},
+	{Method: "*", Path: "/api/plugin/settings/", Capability: CapabilityPluginReadGlobal},
 	{Method: "GET", Path: "/api/v1/config/status", Capability: CapabilityConfigRead},
 	{Method: "GET", Path: "/api/v1/config/backups", Capability: CapabilityConfigRollback},
 	{Method: "POST", Path: "/api/v1/config/rollback/preview", Capability: CapabilityConfigRollback},
@@ -45,7 +45,7 @@ var managementEndpoints = []Endpoint{
 	{Method: "POST", Path: "/api/v1/user/info", Capability: CapabilityUserRead},
 	{Method: "POST", Path: "/api/v1/user/list", Capability: CapabilityUserRead},
 	{Method: "GET", Path: "/api/v1/plugin/list", Capability: CapabilityPluginRead},
-	{Method: "*", Path: "/api/v1/plugin/settings/", Capability: CapabilityPluginWriteOwn},
+	{Method: "*", Path: "/api/v1/plugin/settings/", Capability: CapabilityPluginReadGlobal},
 }
 
 func ManagementEndpoints() []Endpoint {

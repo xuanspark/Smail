@@ -24,7 +24,7 @@ type telegramSettingsRequest struct {
 }
 
 func GetTelegramUserSettings(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authenticatedPluginUser(ctx) {
+	if !authorizedPluginUser(ctx) {
 		response.NewErrorResponse(response.NeedLogin, "请先登录", "").FPrint(w)
 		return
 	}
@@ -42,7 +42,7 @@ func GetTelegramUserSettings(ctx *context.Context, w http.ResponseWriter, req *h
 }
 
 func UpdateTelegramUserSettings(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authenticatedPluginUser(ctx) {
+	if !authorizedPluginUser(ctx) {
 		response.NewErrorResponse(response.NeedLogin, "请先登录", "").FPrint(w)
 		return
 	}
@@ -71,7 +71,7 @@ func UpdateTelegramUserSettings(ctx *context.Context, w http.ResponseWriter, req
 }
 
 func GetTelegramBotInfo(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authenticatedPluginUser(ctx) {
+	if !authorizedPluginUser(ctx) {
 		response.NewErrorResponse(response.NeedLogin, "请先登录", "").FPrint(w)
 		return
 	}
@@ -136,6 +136,10 @@ func TestTelegramMessage(ctx *context.Context, w http.ResponseWriter, req *http.
 
 func authenticatedPluginUser(ctx *context.Context) bool {
 	return ctx != nil && ctx.UserID > 0
+}
+
+func authorizedPluginUser(ctx *context.Context) bool {
+	return authenticatedPluginUser(ctx) && authorizeCapability(ctx, access.CapabilityPluginRead, "", true) == nil
 }
 
 func decodePluginJSONBody(w http.ResponseWriter, req *http.Request, target any) bool {

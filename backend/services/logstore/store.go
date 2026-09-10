@@ -9,11 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/utils/logpolicy"
 )
 
@@ -25,6 +27,7 @@ type Entry struct {
 	CreatedAt time.Time       `json:"createdAt"`
 	Kind      string          `json:"kind"`
 	ActorID   string          `json:"actorId"`
+	ActorRole string          `json:"actorRole,omitempty"`
 	Action    string          `json:"action"`
 	Section   string          `json:"section"`
 	Result    string          `json:"result"`
@@ -116,6 +119,20 @@ func (s *Store) Write(ctx context.Context, entry Entry) error {
 	if emptyEntry(entry) {
 		return nil
 	}
+	if isOperationKind(entry.Kind) {
+		role, present := actorRoleFromPayload(entry.Payload)
+		if entry.ActorRole != "" {
+			role = strings.TrimSpace(entry.ActorRole)
+			present = true
+		}
+		if present && !access.Role(role).Valid() {
+			return ErrInvalid
+		}
+		if !present {
+			role = s.lookupActorRole(ctx, entry.ActorID)
+		}
+		entry.ActorRole = role
+	}
 	if entry.ID == "" {
 		var token [16]byte
 		if _, err := rand.Read(token[:]); err != nil {
@@ -123,14 +140,22 @@ func (s *Store) Write(ctx context.Context, entry Entry) error {
 		}
 		entry.ID = "log-" + hex.EncodeToString(token[:])
 	}
-	statement := "INSERT INTO " + table + " (id, created_at, kind, actor_id, action, section, result, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	columns := "id, created_at, kind, actor_id, action, section, result, payload"
+	values := "?, ?, ?, ?, ?, ?, ?, ?"
+	args := []any{entry.ID, entry.CreatedAt.UTC().UnixNano(), entry.Kind, entry.ActorID, entry.Action, entry.Section, entry.Result, string(entry.Payload)}
+	if isOperationKind(entry.Kind) {
+		columns = "id, created_at, kind, actor_id, actor_role, action, section, result, payload"
+		values = "?, ?, ?, ?, ?, ?, ?, ?, ?"
+		args = []any{entry.ID, entry.CreatedAt.UTC().UnixNano(), entry.Kind, entry.ActorID, nullableString(entry.ActorRole), entry.Action, entry.Section, entry.Result, string(entry.Payload)}
+	}
+	statement := "INSERT INTO " + table + " (" + columns + ") VALUES (" + values + ")"
 	// 仅忽略同一稳定标识的重放，不用 INSERT IGNORE 掩盖截断、缺字段等错误。
 	if s.dialect == migration.DialectMySQL {
 		statement += " ON DUPLICATE KEY UPDATE id = id"
 	} else {
 		statement += " ON CONFLICT (id) DO NOTHING"
 	}
-	_, err = s.db.ExecContext(ctx, s.bind(statement), entry.ID, entry.CreatedAt.UTC().UnixNano(), entry.Kind, entry.ActorID, entry.Action, entry.Section, entry.Result, string(entry.Payload))
+	_, err = s.db.ExecContext(ctx, s.bind(statement), args...)
 	if err != nil {
 		return ErrUnavailable
 	}
@@ -149,7 +174,11 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 	if query.From.After(from) {
 		from = query.From
 	}
-	statement := "SELECT id, created_at, kind, actor_id, action, section, result, payload FROM " + table + " WHERE created_at >= ? AND kind = ?"
+	columns := "id, created_at, kind, actor_id, action, section, result, payload"
+	if isOperationKind(query.Kind) {
+		columns = "id, created_at, kind, actor_id, actor_role, action, section, result, payload"
+	}
+	statement := "SELECT " + columns + " FROM " + table + " WHERE created_at >= ? AND kind = ?"
 	args := []any{from.UnixNano(), query.Kind}
 	if query.ScopeActorID != "" {
 		statement += " AND (actor_id = ?"
@@ -163,15 +192,8 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 			statement += "actor_id IN (SELECT CAST(id AS " + idType + ") FROM " + userTable + " WHERE " + models.OrdinaryUserPredicate + ")"
 			// 代管视图还要核对操作发生时的角色，不能因账号降级暴露旧管理操作。
 			// 缺少历史角色的操作仅本人和超级管理员可见，收发信元数据不包含管理操作。
-			if query.Kind == "operation" {
-				switch s.dialect {
-				case migration.DialectMySQL:
-					statement += " AND CASE WHEN JSON_VALID(payload) THEN JSON_UNQUOTE(JSON_EXTRACT(payload, '$.actorRole')) ELSE NULL END = 'user'"
-				case migration.DialectPostgres:
-					statement += " AND (payload::jsonb ->> 'actorRole') = 'user'"
-				default:
-					statement += " AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.actorRole') ELSE NULL END = 'user'"
-				}
+			if isOperationKind(query.Kind) {
+				statement += " AND actor_role = 'user'"
 			}
 			statement += ")"
 		}
@@ -205,10 +227,19 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 		var entry Entry
 		var timestamp int64
 		var payload string
-		if err := rows.Scan(&entry.ID, &timestamp, &entry.Kind, &entry.ActorID, &entry.Action, &entry.Section, &entry.Result, &payload); err != nil {
+		var actorRole sql.NullString
+		scanArgs := []any{&entry.ID, &timestamp, &entry.Kind, &entry.ActorID}
+		if isOperationKind(query.Kind) {
+			scanArgs = append(scanArgs, &actorRole)
+		}
+		scanArgs = append(scanArgs, &entry.Action, &entry.Section, &entry.Result, &payload)
+		if err := rows.Scan(scanArgs...); err != nil {
 			return nil, ErrUnavailable
 		}
 		entry.CreatedAt = time.Unix(0, timestamp).UTC()
+		if actorRole.Valid {
+			entry.ActorRole = actorRole.String
+		}
 		entry.Payload = json.RawMessage(payload)
 		items = append(items, entry)
 	}
@@ -216,6 +247,54 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 		return nil, ErrUnavailable
 	}
 	return items, nil
+}
+
+func isOperationKind(kind string) bool {
+	return kind == "operation" || kind == "config"
+}
+
+func actorRoleFromPayload(payload []byte) (string, bool) {
+	var event struct {
+		ActorRole *string `json:"actorRole"`
+	}
+	if json.Unmarshal(payload, &event) != nil || event.ActorRole == nil {
+		return "", false
+	}
+	return strings.TrimSpace(*event.ActorRole), true
+}
+
+func nullableString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func (s *Store) lookupActorRole(ctx context.Context, actorID string) string {
+	id, err := strconv.Atoi(strings.TrimSpace(actorID))
+	if err != nil || id <= 0 {
+		return ""
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	userTable := `"user"`
+	if s.dialect == migration.DialectMySQL {
+		userTable = "`user`"
+	}
+	var role sql.NullString
+	var isAdmin int
+	err = s.db.QueryRowContext(ctx, s.bind("SELECT role, is_admin FROM "+userTable+" WHERE id = ?"), id).Scan(&role, &isAdmin)
+	if err != nil {
+		return ""
+	}
+	if access.Role(strings.TrimSpace(role.String)).Valid() {
+		return strings.TrimSpace(role.String)
+	}
+	if isAdmin == 1 {
+		return string(access.RoleSuperAdmin)
+	}
+	return string(access.RoleUser)
 }
 
 // Cleanup 每批先按索引选取标识再删除，避免 MySQL 专属 DELETE LIMIT 和大事务锁表。
