@@ -43,10 +43,9 @@ func TestOperationLogUsesCompletedIdentityWithoutSensitivePayload(t *testing.T) 
 	defer database.Close()
 	database.SetMaxOpenConns(1)
 	migrations := migration.DefaultMigrations()
-	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := database.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: database, Dialect: migration.DialectSQLite, Migrations: migrations}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(database, migration.DialectSQLite)
 	if err != nil {
@@ -85,10 +84,9 @@ func TestOperationResponseDistinguishesPendingHTTPFailureAndUnknown(t *testing.T
 	// 与生产 SQLite 连接池一致，避免后台清理和写入争抢无等待的独立连接。
 	database.SetMaxOpenConns(1)
 	migrations := migration.DefaultMigrations()
-	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := database.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: database, Dialect: migration.DialectSQLite, Migrations: migrations}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(database, migration.DialectSQLite)
 	if err != nil {

@@ -97,16 +97,23 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 	}
 	for _, ctx := range []*appcontext.Context{admin, ordinary} {
 		ctx.IsAdmin = true
-		if got := call(ctx, GetPluginList, `{}`); got.ErrorNo != response.NoAccessPrivileges {
+		got := call(ctx, GetPluginList, `{}`)
+		if got.ErrorNo != 0 {
+			t.Fatal("已登录角色无法读取可用插件列表")
+		}
+		pageRecorder := httptest.NewRecorder()
+		SettingsHtml(ctx, pageRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/missing/index.html", nil))
+		if ctx == ordinary && !strings.Contains(pageRecorder.Body.String(), "无权访问") {
 			t.Fatal("旧管理员标志绕过插件页面授权")
 		}
-		ctx.IsAdmin = false
+		if ctx == admin && strings.Contains(pageRecorder.Body.String(), "无权访问") {
+			t.Fatal("管理员角色未获得插件页面授权")
+		}
 	}
 	migrations := migration.DefaultMigrations()
-	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := engine.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: engine.DB().DB, Dialect: migration.DialectSQLite, Migrations: migrations}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(engine.DB().DB, migration.DialectSQLite)
 	if err != nil {
@@ -115,7 +122,7 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 	runtime := logstore.Start(store)
 	defer runtime.Stop()
 	for _, user := range users {
-		if err := store.Write(context.Background(), logstore.Entry{Kind: "operation", ActorID: itoa(user.ID), CreatedAt: time.Now(), Action: "权限验证", Result: "success", Payload: []byte(`{}`)}); err != nil {
+		if err := store.Write(context.Background(), logstore.Entry{Kind: "operation", ActorID: itoa(user.ID), ActorRole: string(user.EffectiveRole()), CreatedAt: time.Now(), Action: "权限验证", Result: "success", Payload: []byte(`{}`)}); err != nil {
 			t.Fatal(err)
 		}
 	}

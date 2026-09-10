@@ -123,16 +123,6 @@ func (s *SpamBlock) SettingsHtml(ctx *context.Context, url string, requestData s
 		return "没有访问权限"
 	}
 	return "没有访问权限"
-
-	cfg, err := decodeSpamBlockConfig([]byte(requestData))
-	if err != nil {
-		return err.Error()
-	}
-
-	s.applyConfig(cfg)
-
-	return "保存成功"
-
 }
 
 func canManageSpamBlockSettings(ctx *context.Context) bool {

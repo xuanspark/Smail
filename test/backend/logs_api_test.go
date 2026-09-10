@@ -28,11 +28,9 @@ func TestLogsAPIRejectsUnscopedAccessAndValidatesQueries(t *testing.T) {
 	defer database.Close()
 	// 与正式 SQLite 连接池一致，避免测试自行引入多写连接锁冲突。
 	database.SetMaxOpenConns(1)
-	items := migration.DefaultMigrations()
-	for _, statement := range items[len(items)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := database.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: database, Dialect: migration.DialectSQLite, Migrations: migration.DefaultMigrations()}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(database, migration.DialectSQLite)
 	if err != nil {

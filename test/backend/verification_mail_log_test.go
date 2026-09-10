@@ -21,11 +21,9 @@ func TestRelayMailLogRecordsResultWithoutChallengeSecrets(t *testing.T) {
 	}
 	defer database.Close()
 	database.SetMaxOpenConns(1)
-	migrations := migration.DefaultMigrations()
-	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := database.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: database, Dialect: migration.DialectSQLite, Migrations: migration.DefaultMigrations()}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(database, migration.DialectSQLite)
 	if err != nil {

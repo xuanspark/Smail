@@ -5,6 +5,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/utils/context"
 )
 
@@ -50,17 +51,35 @@ func TestAuthorizedSubmissionEmailLimitsAdminToLocalDomains(t *testing.T) {
 	oldConfig := config.Instance
 	t.Cleanup(func() { config.Instance = oldConfig })
 	config.Instance = &config.Config{Domains: []string{"example.com"}}
-	ctx := &context.Context{UserID: 1, UserAccount: "admin", IsAdmin: true}
+	ctx := &context.Context{UserID: 1, UserAccount: "admin", Role: access.RoleAdmin}
 
 	local := &parsemail.Email{
-		From:   &parsemail.User{EmailAddress: "alias@example.com"},
-		Sender: &parsemail.User{EmailAddress: "alias@example.com"},
+		From:   &parsemail.User{EmailAddress: "admin@example.com"},
+		Sender: &parsemail.User{EmailAddress: "admin@example.com"},
 	}
-	if !authorizedSubmissionEmail(local, "alias@example.com", ctx) {
-		t.Fatal("admin local alias was rejected")
+	if !authorizedSubmissionEmail(local, "admin@example.com", ctx) {
+		t.Fatal("admin own sender was rejected")
+	}
+	local.From.EmailAddress = "alias@example.com"
+	local.Sender.EmailAddress = "alias@example.com"
+	if authorizedSubmissionEmail(local, "alias@example.com", ctx) {
+		t.Fatal("admin local alias was accepted")
 	}
 	local.From.EmailAddress = "alias@external.example"
-	if authorizedSubmissionEmail(local, "alias@example.com", ctx) {
+	local.Sender.EmailAddress = "alias@external.example"
+	if authorizedSubmissionEmail(local, "alias@external.example", ctx) {
 		t.Fatal("admin external sender domain was accepted")
+	}
+
+	superAdmin := &context.Context{UserID: 2, UserAccount: "root", Role: access.RoleSuperAdmin}
+	local.From.EmailAddress = "alias@example.com"
+	local.Sender.EmailAddress = "alias@example.com"
+	if !authorizedSubmissionEmail(local, "alias@example.com", superAdmin) {
+		t.Fatal("super admin local alias was rejected")
+	}
+	local.From.EmailAddress = "alias@external.example"
+	local.Sender.EmailAddress = "alias@external.example"
+	if authorizedSubmissionEmail(local, "alias@external.example", superAdmin) {
+		t.Fatal("super admin external sender domain was accepted")
 	}
 }

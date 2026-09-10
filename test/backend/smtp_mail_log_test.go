@@ -26,11 +26,9 @@ func TestInboundMailLogBelongsToEachActualRecipient(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	migrations := migration.DefaultMigrations()
-	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := engine.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: engine.DB().DB, Dialect: migration.DialectSQLite, Migrations: migration.DefaultMigrations()}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(engine.DB().DB, migration.DialectSQLite)
 	if err != nil {
@@ -67,11 +65,9 @@ func (failedMailReader) Read([]byte) (int, error) { return 0, errors.New("privat
 func TestSMTPDataLogDistinguishesDiscardedMailAndReadFailure(t *testing.T) {
 	engine, _ := newAuditTestEngine(t)
 	config.Instance.SpamFilterLevel = 3
-	migrations := migration.DefaultMigrations()
-	for _, statement := range migrations[len(migrations)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := engine.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: engine.DB().DB, Dialect: migration.DialectSQLite, Migrations: migration.DefaultMigrations()}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := logstore.New(engine.DB().DB, migration.DialectSQLite)
 	if err != nil {

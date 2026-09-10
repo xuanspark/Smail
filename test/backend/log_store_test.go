@@ -24,11 +24,9 @@ func testStore(t *testing.T) *Store {
 	}
 	database.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = database.Close() })
-	items := migration.DefaultMigrations()
-	for _, statement := range items[len(items)-1].StatementsFor(migration.DialectSQLite) {
-		if _, err := database.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	runner := migration.Runner{DB: database, Dialect: migration.DialectSQLite, Migrations: migration.DefaultMigrations()}
+	if _, err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	store, err := New(database, migration.DialectSQLite)
 	if err != nil {

@@ -73,13 +73,17 @@ func TestLogStoreServerDatabaseIntegration(t *testing.T) {
 				t.Fatal("dedicated test database is unavailable")
 			}
 			migrations := migration.DefaultMigrations()
-			for _, statement := range migrations[len(migrations)-1].StatementsFor(test.dialect) {
+			for _, statement := range migrations[len(migrations)-2].StatementsFor(test.dialect) {
 				if strings.HasPrefix(statement, "CREATE TABLE IF NOT EXISTS ") {
 					statement = strings.Replace(statement, "CREATE TABLE IF NOT EXISTS ", "CREATE TEMPORARY TABLE ", 1)
 				}
 				if _, err := database.ExecContext(ctx, statement); err != nil {
 					t.Fatal("temporary log schema creation failed")
 				}
+			}
+			actorRoleDefinition := "VARCHAR(20) NULL"
+			if _, err := database.ExecContext(ctx, "ALTER TABLE operation_log ADD COLUMN actor_role "+actorRoleDefinition); err != nil {
+				t.Fatal("temporary operation log role column creation failed")
 			}
 			store, err := New(database, test.dialect)
 			if err != nil {

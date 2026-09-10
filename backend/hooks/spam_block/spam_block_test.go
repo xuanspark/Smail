@@ -179,15 +179,15 @@ func TestDecodeSpamBlockConfigUsesUnifiedValidation(t *testing.T) {
 func TestSettingsHtmlAppliesValidatedConfiguration(t *testing.T) {
 	s := &SpamBlock{}
 	result := s.SettingsHtml(&context.Context{IsAdmin: true}, "SpamBlock/save", `{"url":"https://model.example.com","timeout":"3000","threshold":"25"}`)
-	if result != "保存成功" {
+	if result != "旧版插件配置保存接口已停用，请使用新版插件配置接口" {
 		t.Fatalf("save result = %q", result)
 	}
 	s.mu.RLock()
 	config := s.cfg
 	client := s.hc
 	s.mu.RUnlock()
-	if config.ApiURL != "https://model.example.com" || config.ApiTimeout != 3000 || config.Threshold != 25 || client == nil {
-		t.Fatalf("unexpected applied configuration: %+v", config)
+	if config != (SpamBlockConfig{}) || client != nil {
+		t.Fatalf("legacy save changed configuration: %+v", config)
 	}
 }
 
@@ -225,9 +225,9 @@ func TestBuildSpamBlockModelTextHandlesNilAndLimitsSource(t *testing.T) {
 
 func TestSettingsHtmlRejectsNonAdminSave(t *testing.T) {
 	s := &SpamBlock{}
-	result := s.SettingsHtml(&context.Context{}, "SpamBlock/save", `{"url":"https://model.example.com/predict"}`)
-	if result != "没有访问权限" {
-		t.Fatalf("non-admin save result = %q, want access denial", result)
+	result := s.SettingsHtml(&context.Context{}, "SpamBlock/index.html", "")
+	if !strings.Contains(result, "请联系管理员") {
+		t.Fatalf("non-admin page result = %q, want access denial", result)
 	}
 	if s.cfg.ApiURL != "" {
 		t.Fatal("non-admin save changed the configuration")

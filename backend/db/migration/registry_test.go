@@ -55,6 +55,13 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 			t.Fatalf("index %s was not created", index)
 		}
 	}
+	exists, err = columnExists(context.Background(), db, DialectSQLite, "operation_log", "actor_role")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("column operation_log.actor_role was not created")
+	}
 }
 
 func sqliteIndexExists(t *testing.T, db *sql.DB, index string) bool {
@@ -161,6 +168,60 @@ func TestUserEmailLoginAddressMigrationRejectsUnexpectedDialect(t *testing.T) {
 	}
 }
 
+func TestOperationLogActorRoleMigrationBackfillsValidatedRoles(t *testing.T) {
+	db := openSQLite(t)
+	for _, statement := range logStatements()[DialectSQLite] {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows := []struct {
+		id      string
+		payload string
+		want    any
+	}{
+		{id: "user", payload: `{"actorRole":"user"}`, want: "user"},
+		{id: "admin", payload: `{"actorRole":" admin "}`, want: "admin"},
+		{id: "super", payload: `{"actorRole":"super_admin"}`, want: "super_admin"},
+		{id: "missing", payload: `{}`, want: nil},
+		{id: "unknown", payload: `{"actorRole":"owner"}`, want: nil},
+		{id: "invalid", payload: `{`, want: nil},
+	}
+	for _, row := range rows {
+		if _, err := db.Exec(`INSERT INTO operation_log (id, created_at, kind, actor_id, action, section, result, payload) VALUES (?, 1, 'operation', '1', 'test', '', 'success', ?)`, row.id, row.payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := applyOperationLogActorRoleSchema(context.Background(), db, DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyOperationLogActorRoleSchema(context.Background(), db, DialectSQLite); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		var got sql.NullString
+		if err := db.QueryRow(`SELECT actor_role FROM operation_log WHERE id = ?`, row.id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if row.want == nil {
+			if got.Valid {
+				t.Fatalf("invalid historical role %s was backfilled as %q", row.id, got.String)
+			}
+			continue
+		}
+		if !got.Valid || got.String != row.want {
+			t.Fatalf("historical role %s = %q, want %q", row.id, got.String, row.want)
+		}
+	}
+}
+
+func TestOperationLogActorRoleMigrationRejectsUnexpectedDialect(t *testing.T) {
+	err := applyOperationLogActorRoleSchema(context.Background(), nil, Dialect("unsupported"))
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("unexpected dialect error = %v", err)
+	}
+}
+
 func TestSecurityEmailMySQLSchemaDoesNotCreateDuplicateIndex(t *testing.T) {
 	statements := securityEmailStatements()[DialectMySQL]
 	for _, statement := range statements {
@@ -221,6 +282,7 @@ func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
 		15: "59f0ff9acfed3619c17f078d21a1362ddd5f1feacb9a2d77626f69040d25de65",
 		16: "00cc275529e522d93b41e608692fb6e2271f1aa9300ebe020fcaed4d68d0ff76",
 		17: "1dad66acb5e7fecf6c39f4a78526b994748d90045220f446a2e80c1b5fd881e7",
+		18: "17622df3406657f199d78a3a1aa1f3a8693baf85aa7707910cc6d6cb44c13ee4",
 	}
 	migrations := DefaultMigrations()
 	if len(migrations) != len(expected) {

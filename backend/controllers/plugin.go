@@ -19,7 +19,7 @@ const (
 )
 
 func GetPluginList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if err := authorizeCapability(ctx, access.CapabilityPluginRead, "", false); err != nil {
+	if !authenticatedPluginUser(ctx) || authorizeCapability(ctx, access.CapabilityPluginRead, "", false) != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
 		return
 	}
@@ -32,7 +32,7 @@ func GetPluginList(ctx *context.Context, w http.ResponseWriter, req *http.Reques
 }
 
 func SettingsHtml(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if err := authorizeCapability(ctx, access.CapabilityPluginReadGlobal, "", false); err != nil {
+	if !authenticatedPluginUser(ctx) || authorizeCapability(ctx, access.CapabilityPluginReadGlobal, "", false) != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
 		return
 	}

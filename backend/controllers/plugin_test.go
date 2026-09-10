@@ -10,6 +10,7 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks"
 	hooksframework "git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/utils/context"
 )
 
@@ -43,7 +44,7 @@ func TestSettingsHtmlRejectsPathTraversal(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/plugin/settings/%2e%2e/index.html", nil)
-	SettingsHtml(&context.Context{IsAdmin: true}, recorder, request)
+	SettingsHtml(&context.Context{UserID: 1, Role: access.RoleSuperAdmin}, recorder, request)
 	if strings.Contains(recorder.Body.String(), "ok") {
 		t.Fatal("path traversal reached a plugin")
 	}
@@ -56,13 +57,13 @@ func TestSettingsHtmlSeparatesStaticAndSaveRequests(t *testing.T) {
 	hooks.HookList = map[string]hooksframework.EmailHook{"PluginTest": hook}
 
 	getRecorder := httptest.NewRecorder()
-	SettingsHtml(&context.Context{IsAdmin: true}, getRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
+	SettingsHtml(&context.Context{UserID: 1, Role: access.RoleSuperAdmin}, getRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
 	if hook.resource != "PluginTest/index.html" || !strings.HasPrefix(getRecorder.Header().Get("Content-Type"), "text/html") {
 		t.Fatalf("static plugin page was not served safely: resource=%s type=%s", hook.resource, getRecorder.Header().Get("Content-Type"))
 	}
 
 	postRecorder := httptest.NewRecorder()
-	SettingsHtml(&context.Context{IsAdmin: true}, postRecorder, httptest.NewRequest(http.MethodPost, "/api/plugin/settings/PluginTest/save", strings.NewReader(`{"url":"https://model.example.com"}`)))
+	SettingsHtml(&context.Context{UserID: 1, Role: access.RoleSuperAdmin}, postRecorder, httptest.NewRequest(http.MethodPost, "/api/plugin/settings/PluginTest/save", strings.NewReader(`{"url":"https://model.example.com"}`)))
 	if postRecorder.Code != http.StatusGone {
 		t.Fatalf("legacy plugin save status = %d, want %d", postRecorder.Code, http.StatusGone)
 	}
@@ -78,7 +79,7 @@ func TestSettingsHtmlRejectsOversizedPluginResponse(t *testing.T) {
 	hooks.HookList = map[string]hooksframework.EmailHook{"PluginTest": hook}
 
 	recorder := httptest.NewRecorder()
-	SettingsHtml(&context.Context{IsAdmin: true}, recorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
+	SettingsHtml(&context.Context{UserID: 1, Role: access.RoleSuperAdmin}, recorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
 	if strings.Contains(recorder.Body.String(), hook.response) {
 		t.Fatal("oversized plugin response was returned")
 	}
@@ -109,11 +110,17 @@ func TestPluginConfigurationRejectsNonAdminAccess(t *testing.T) {
 	listRecorder := httptest.NewRecorder()
 	GetPluginList(&context.Context{}, listRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/list", nil))
 	if !strings.Contains(listRecorder.Body.String(), "\u65e0\u6743\u8bbf\u95ee") {
-		t.Fatalf("non-admin plugin list was not rejected: body=%s", listRecorder.Body.String())
+		t.Fatalf("unauthenticated plugin list was not rejected: body=%s", listRecorder.Body.String())
+	}
+
+	userListRecorder := httptest.NewRecorder()
+	GetPluginList(&context.Context{UserID: 2, Role: access.RoleUser}, userListRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/list", nil))
+	if !strings.Contains(userListRecorder.Body.String(), "PluginTest") {
+		t.Fatalf("authenticated user cannot read plugin list: body=%s", userListRecorder.Body.String())
 	}
 
 	pageRecorder := httptest.NewRecorder()
-	SettingsHtml(&context.Context{}, pageRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
+	SettingsHtml(&context.Context{UserID: 2, Role: access.RoleUser}, pageRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
 	if !strings.Contains(pageRecorder.Body.String(), "\u65e0\u6743\u8bbf\u95ee") {
 		t.Fatalf("non-admin plugin page was not rejected: body=%s", pageRecorder.Body.String())
 	}

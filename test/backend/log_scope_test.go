@@ -9,10 +9,7 @@ import (
 
 func TestLogScopeFiltersBeforePagination(t *testing.T) {
 	s := testStore(t)
-	if _, err := s.db.Exec(`CREATE TABLE "user" (id INTEGER PRIMARY KEY, role TEXT, is_admin INTEGER)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.Exec(`INSERT INTO "user" VALUES (1,'super_admin',1),(2,'admin',1),(3,'admin',1),(4,'user',0),(5,NULL,0),(6,'legacy',1),(7,'user',1)`); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO "user" (id, account, name, password, role, is_admin) VALUES (1,'root','Root','hash','super_admin',1),(2,'manager','Manager','hash','admin',1),(3,'other-manager','Other','hash','admin',1),(4,'alice','Alice','hash','user',0),(5,'legacy','Legacy','hash','legacy',0),(6,'legacy-manager','Legacy admin','hash','legacy',1),(7,'user-admin-flag','User admin flag','hash','user',1)`); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
