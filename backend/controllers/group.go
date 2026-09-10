@@ -22,7 +22,7 @@ func GetUserGroupList(ctx *context.Context, w http.ResponseWriter, req *http.Req
 	infos, err := group.GetGroupList(ctx)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("query group list failed")
-		response.NewErrorResponse(response.ServerError, "\u83b7\u53d6\u5206\u7ec4\u5217\u8868\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "获取分组列表失败", "").FPrint(w)
 		return
 	}
 
@@ -57,7 +57,7 @@ func GetUserGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request
 	infos, err := group.GetGroupInfoList(ctx)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("query group tree failed")
-		response.NewErrorResponse(response.ServerError, "\u83b7\u53d6\u5206\u7ec4\u5217\u8868\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "获取分组列表失败", "").FPrint(w)
 		return
 	}
 	retData = array.Merge(retData, infos)
@@ -74,14 +74,14 @@ func AddGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var reqData addGroupRequest
 	if err := decodeJSONRequest(w, req, &reqData); err != nil {
 		log.WithContext(ctx).WithError(err).Info("invalid group create request")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
 	newGroup, err := group.CreateGroup(ctx, reqData.Name, reqData.ParentId)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("create group failed")
-		response.NewErrorResponse(response.ServerError, "\u521b\u5efa\u5206\u7ec4\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "创建分组失败", "").FPrint(w)
 		return
 	}
 
@@ -96,13 +96,13 @@ func DelGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var reqData delGroupRequest
 	if err := decodeJSONRequest(w, req, &reqData); err != nil {
 		log.WithContext(ctx).WithError(err).Info("invalid group delete request")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	succ, err := group.DelGroup(ctx, reqData.Id)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("delete group failed")
-		response.NewErrorResponse(response.ServerError, "\u5220\u9664\u5206\u7ec4\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "删除分组失败", "").FPrint(w)
 		return
 	}
 	response.NewSuccessResponse(succ).FPrint(w)

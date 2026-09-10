@@ -201,7 +201,7 @@ func TestSettingsHtmlEscapesConfiguredURL(t *testing.T) {
 
 func TestBuildSpamBlockModelTextLimitsInput(t *testing.T) {
 	email := &parsemail.Email{
-		Subject: strings.Repeat("\u754c", maxSpamBlockModelTextBytes),
+		Subject: strings.Repeat("界", maxSpamBlockModelTextBytes),
 		HTML:    []byte(strings.Repeat("<p>body</p>", maxSpamBlockSourceBytes)),
 	}
 	text := buildSpamBlockModelText(email)

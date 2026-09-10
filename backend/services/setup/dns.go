@@ -58,7 +58,7 @@ func buildDNSItems(configData *config.Config, domain, dkimPublicKey, ipv4, ipv6,
 func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, ipv4, ipv6, ipTips string, webIPv4 []string) []*DNSItem {
 	address := normalizeDNSAddress(ipv4)
 	if address == "" {
-		address = "[\u672a\u68c0\u6d4b\u5230\u516c\u7f51 IPv4]"
+		address = "[未检测到公网 IPv4]"
 	}
 
 	items := make([]*DNSItem, 0, 13)

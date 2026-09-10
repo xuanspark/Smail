@@ -56,19 +56,19 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var retData emailRequest
 	if err := decodeEmailJSONRequest(w, req, &retData, maxEmailJSONRequestBytes); err != nil {
 		log.WithContext(ctx).Info("email list request validation failed")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	offset, err := normalizeEmailListRequest(&retData)
 	if err != nil {
-		response.NewErrorResponse(response.ParamsError, "\u5206\u9875\u53c2\u6570\u8d85\u51fa\u9650\u5236", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "分页参数超出限制", "").FPrint(w)
 		return
 	}
 
 	tagInfo := dto.SearchTag{Type: -1, Status: -1, GroupId: -1}
 	if strings.TrimSpace(retData.Tag) != "" {
 		if err := json.Unmarshal([]byte(retData.Tag), &tagInfo); err != nil {
-			response.NewErrorResponse(response.ParamsError, "\u90ae\u4ef6\u7b5b\u9009\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, "邮件筛选参数错误", "").FPrint(w)
 			return
 		}
 	}
@@ -76,7 +76,7 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	emailList, total, err := list.GetEmailList(ctx, tagInfo, retData.Keyword, false, offset, retData.PageSize)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("query email list failed")
-		response.NewErrorResponse(response.ServerError, "\u8bfb\u53d6\u90ae\u4ef6\u5217\u8868\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "读取邮件列表失败", "").FPrint(w)
 		return
 	}
 	items := make([]*emilItem, 0, len(emailList))
@@ -84,7 +84,7 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		var sender User
 		if err := decodeStoredJSON(email.Sender, &sender); err != nil {
 			log.WithContext(ctx).WithField("email_id", email.Id).WithError(err).Error("decode stored sender failed")
-			response.NewErrorResponse(response.ServerError, "\u8bfb\u53d6\u90ae\u4ef6\u5217\u8868\u5931\u8d25", "").FPrint(w)
+			response.NewErrorResponse(response.ServerError, "读取邮件列表失败", "").FPrint(w)
 			return
 		}
 		if sender.EmailAddress == "" {
@@ -95,7 +95,7 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		var recipients []User
 		if err := decodeStoredJSON(email.To, &recipients); err != nil {
 			log.WithContext(ctx).WithField("email_id", email.Id).WithError(err).Error("decode stored recipients failed")
-			response.NewErrorResponse(response.ServerError, "\u8bfb\u53d6\u90ae\u4ef6\u5217\u8868\u5931\u8d25", "").FPrint(w)
+			response.NewErrorResponse(response.ServerError, "读取邮件列表失败", "").FPrint(w)
 			return
 		}
 		authentication := parsemail.NewEmailAuthentication(email.SPFCheck == 1, email.DKIMCheck == 1)

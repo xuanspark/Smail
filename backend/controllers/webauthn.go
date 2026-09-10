@@ -180,19 +180,19 @@ func RevokeWebAuthnCredential(ctx *context.Context, w http.ResponseWriter, req *
 func BeginWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	service := webAuthnRuntime()
 	if service == nil {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u4e0d\u53ef\u7528")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录不可用")
 		return
 	}
 	beginKey := webAuthnLoginBeginIPAttempts.ipKey(req)
 	failureKey := webAuthnLoginFailureIPAttempts.ipKey(req)
 	if webAuthnLoginBeginIPAttempts.blocked(beginKey) || webAuthnLoginFailureIPAttempts.blocked(failureKey) || loginIPAttempts.blocked(loginIPAttempts.ipKey(req)) {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录失败")
 		return
 	}
 	var input webAuthnLoginBeginRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.ChallengeID) == "" || strings.TrimSpace(input.Account) == "" {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u8bf7\u6c42\u65e0\u6548")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录请求无效")
 		return
 	}
 	item, ok := pendingLoginVerification(input.ChallengeID, input.Account)
@@ -204,7 +204,7 @@ func BeginWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.R
 	options, sessionID, err := service.BeginLogin(item.UserID)
 	if err != nil {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录失败")
 		return
 	}
 	response.NewSuccessResponse(map[string]any{
@@ -221,19 +221,19 @@ func FinishWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.
 	runtime := currentSecurityRuntime()
 	service := runtime.webauthn
 	if service == nil {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u4e0d\u53ef\u7528")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录不可用")
 		return
 	}
 	failureKey := webAuthnLoginFailureIPAttempts.ipKey(req)
 	if webAuthnLoginFailureIPAttempts.blocked(failureKey) || loginIPAttempts.blocked(loginIPAttempts.ipKey(req)) {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录失败")
 		return
 	}
 	var input webAuthnFinishRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.ChallengeID) == "" || strings.TrimSpace(input.SessionID) == "" || len(input.Credential) == 0 || !json.Valid(input.Credential) {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
 		loginIPAttempts.recordFailure(loginIPAttempts.ipKey(req))
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u8bf7\u6c42\u65e0\u6548")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录请求无效")
 		return
 	}
 	account := strings.TrimSpace(input.Account)
@@ -251,7 +251,7 @@ func FinishWebAuthnLogin(ctx *context.Context, w http.ResponseWriter, req *http.
 	if _, err := service.FinishLogin(item.UserID, input.SessionID, credentialRequest); err != nil {
 		webAuthnLoginFailureIPAttempts.recordFailure(failureKey)
 		loginIPAttempts.recordFailure(loginIPAttempts.ipKey(req))
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u767b\u5f55\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥登录失败")
 		return
 	}
 	var user models.User
@@ -273,28 +273,28 @@ func BeginWebAuthnRecovery(ctx *context.Context, w http.ResponseWriter, req *htt
 	}
 	service := currentSecurityRuntime().recovery
 	if service == nil {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u4e0d\u53ef\u7528")
+		writeSecurityError(w, response.ParamsError, "安全密钥恢复不可用")
 		return
 	}
 	beginKey := webAuthnRecoveryBeginIPAttempts.ipKey(req)
 	failureKey := webAuthnRecoveryFailureIPAttempts.ipKey(req)
 	if webAuthnRecoveryBeginIPAttempts.blocked(beginKey) || webAuthnRecoveryFailureIPAttempts.blocked(failureKey) {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥验证失败")
 		return
 	}
 	var input webAuthnRecoveryBeginRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.Identifier) == "" {
 		webAuthnRecoveryFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u8bf7\u6c42\u65e0\u6548")
+		writeSecurityError(w, response.ParamsError, "安全密钥恢复请求无效")
 		return
 	}
 	if _, ok := recoveryBrowserContext(req, w, true); !ok {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u8bf7\u6c42\u65e0\u6548")
+		writeSecurityError(w, response.ParamsError, "安全密钥恢复请求无效")
 		return
 	}
 	options, sessionID, err := service.BeginWebAuthn(input.Identifier)
 	if err != nil {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥验证失败")
 		return
 	}
 	webAuthnRecoveryBeginIPAttempts.recordFailure(beginKey)
@@ -307,31 +307,31 @@ func VerifyWebAuthnRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 	}
 	service := currentSecurityRuntime().recovery
 	if service == nil {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u4e0d\u53ef\u7528")
+		writeSecurityError(w, response.ParamsError, "安全密钥恢复不可用")
 		return
 	}
 	failureKey := webAuthnRecoveryFailureIPAttempts.ipKey(req)
 	if webAuthnRecoveryFailureIPAttempts.blocked(failureKey) {
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥验证失败")
 		return
 	}
 	var input webAuthnRecoveryVerifyRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.Identifier) == "" || strings.TrimSpace(input.SessionID) == "" || len(input.Credential) == 0 || !json.Valid(input.Credential) {
 		webAuthnRecoveryFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u6062\u590d\u8bf7\u6c42\u65e0\u6548")
+		writeSecurityError(w, response.ParamsError, "安全密钥恢复请求无效")
 		return
 	}
 	browserContext, ok := recoveryBrowserContext(req, w, false)
 	if !ok {
 		webAuthnRecoveryFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥验证失败")
 		return
 	}
 	credentialRequest := cloneWebAuthnRequest(req, input.Credential)
 	ticket, err := service.VerifyWebAuthnWithContext(input.Identifier, input.SessionID, credentialRequest, browserContext)
 	if err != nil {
 		webAuthnRecoveryFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u5b89\u5168\u5bc6\u94a5\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "安全密钥验证失败")
 		return
 	}
 	response.NewSuccessResponse(map[string]any{"ticket": ticket}).FPrint(w)

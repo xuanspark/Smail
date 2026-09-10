@@ -17,7 +17,7 @@ func EmailDelete(ctx *context.Context, w http.ResponseWriter, req *http.Request)
 	var reqData emailDeleteRequest
 	if err := decodeEmailJSONRequest(w, req, &reqData, maxEmailJSONRequestBytes); err != nil {
 		log.WithContext(ctx).WithError(err).Info("invalid email delete request")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
@@ -29,7 +29,7 @@ func EmailDelete(ctx *context.Context, w http.ResponseWriter, req *http.Request)
 	err := del_email.DelEmail(ctx, reqData.IDs, reqData.ForcedDel)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("delete email failed")
-		response.NewErrorResponse(response.ServerError, "\u5220\u9664\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "删除邮件失败", "").FPrint(w)
 		return
 	}
 	response.NewSuccessResponse("success").FPrint(w)

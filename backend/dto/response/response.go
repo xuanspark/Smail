@@ -25,7 +25,7 @@ func (p *Response) FPrint(w http.ResponseWriter) {
 	bytesData, err := json.Marshal(p)
 	if err != nil {
 		log.WithError(err).Error("serialize HTTP response failed")
-		http.Error(w, "\u54cd\u5e94\u5e8f\u5217\u5316\u5931\u8d25", http.StatusInternalServerError)
+		http.Error(w, "响应序列化失败", http.StatusInternalServerError)
 		return
 	}
 	if observer, ok := w.(interface{ ObserveResult(int) }); ok {

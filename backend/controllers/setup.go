@@ -84,7 +84,7 @@ func writeSetupError(ctx *context.Context, w http.ResponseWriter, err error) {
 		message = ssl.UserCertificateErrorMessage(err)
 	}
 	if message == "" {
-		message = "\u521d\u59cb\u5316\u64cd\u4f5c\u5931\u8d25"
+		message = "初始化操作失败"
 	}
 	response.NewErrorResponse(response.ServerError, message, "").FPrint(w)
 }
@@ -94,7 +94,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	reqBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Info("setup request body rejected")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
@@ -102,7 +102,7 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	err = json.Unmarshal(reqBytes, &reqData)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Info("setup request json rejected")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 

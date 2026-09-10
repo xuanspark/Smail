@@ -46,7 +46,7 @@ func readWindowsPassword(prompt string) (string, error) {
 		value[i] = 0
 	}
 	if password.ValidateUserPassword(normalized) != nil {
-		return "", errors.New("\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8 \u5230 12 \u4e2a\u5b57\u7b26")
+		return "", errors.New("密码长度必须为 8 到 12 个字符")
 	}
 	return normalized, nil
 }

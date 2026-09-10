@@ -65,29 +65,29 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	if reqData.Username == "" || reqData.Password == "" || reqData.Account == "" {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	if reqData.Disabled != 0 && reqData.Disabled != 1 {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
 	account, err := validation.NormalizeAccount(reqData.Account)
 	if err != nil {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	username, err := validation.NormalizeDisplayName(reqData.Username)
 	if err != nil {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	user := models.User{Name: username, Account: account, Disabled: reqData.Disabled, SessionVersion: 1, SecurityVersion: 1}
 	user.ApplyRole(targetRole)
 	if err := auth.SetPassword(&user, reqData.Password); err != nil {
 		if errors.Is(err, password.ErrInvalidLength) {
-			response.NewErrorResponse(response.ParamsError, "\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8-12 \u5b57\u8282", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, "密码长度必须为 8-12 字节", "").FPrint(w)
 			return
 		}
 		log.WithContext(ctx).WithError(err).Error("password hash failed")
@@ -96,7 +96,7 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 	}
 	if _, err := db.Instance.Insert(&user); err != nil {
 		log.WithContext(ctx).WithError(err).Error("create user failed")
-		response.NewErrorResponse(response.ServerError, "\u521b\u5efa\u7528\u6237\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "创建用户失败", "").FPrint(w)
 		return
 	}
 	response.NewSuccessResponse(user).FPrint(w)
@@ -153,12 +153,12 @@ func loadUserSecurityStatus(users []models.User) (map[int]bool, map[int]bool, er
 
 func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if err := authorizeCapability(ctx, access.CapabilityUserRead, "", false); err != nil {
-		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
+		response.NewErrorResponse(response.NoAccessPrivileges, "无权访问", "").FPrint(w)
 		return
 	}
 	var reqData userListRequest
 	if err := decodeUserRequest(w, req, &reqData); err != nil {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	if reqData.PageSize <= 0 || reqData.PageSize > 100 {
@@ -251,11 +251,11 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if reqData.Id == 0 && reqData.Account == "" {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	if reqData.Disabled != 0 && reqData.Disabled != 1 {
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
@@ -267,18 +267,18 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	} else {
 		account, validationErr := validation.NormalizeAccount(reqData.Account)
 		if validationErr != nil {
-			response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 			return
 		}
 		found, err = db.Instance.Where("account=?", account).Get(&user)
 	}
 	if err != nil {
 		log.WithContext(ctx).Errorf("SQL Error: %+v", err)
-		response.NewErrorResponse(response.ServerError, "\u67e5\u8be2\u7528\u6237\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "查询用户失败", "").FPrint(w)
 		return
 	}
 	if !found || user.ID == 0 {
-		response.NewErrorResponse(response.ParamsError, "\u7528\u6237\u4e0d\u5b58\u5728", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "用户不存在", "").FPrint(w)
 		return
 	}
 	targetRole := user.EffectiveRole()
@@ -319,17 +319,17 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		user.ApplyRole(newRole)
 	}
 	if user.IsAdmin == 1 && reqData.Disabled != 0 {
-		response.NewErrorResponse(response.ParamsError, "\u4e0d\u5141\u8bb8\u7981\u7528\u7ba1\u7406\u5458\u8d26\u6237", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "不允许禁用管理员账户", "").FPrint(w)
 		return
 	}
 	if user.ID == ctx.UserID && reqData.Password != "" {
-		response.NewErrorResponse(response.ParamsError, "\u8bf7\u901a\u8fc7\u5b89\u5168\u8bbe\u7f6e\u4fee\u6539\u5f53\u524d\u8d26\u6237\u5bc6\u7801", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "请通过安全设置修改当前账户密码", "").FPrint(w)
 		return
 	}
 	if reqData.Username != "" {
 		username, validationErr := validation.NormalizeDisplayName(reqData.Username)
 		if validationErr != nil {
-			response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 			return
 		}
 		user.Name = username
@@ -338,7 +338,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData.Password != "" {
 		if err := auth.SetPassword(&user, reqData.Password); err != nil {
 			if errors.Is(err, password.ErrInvalidLength) {
-				response.NewErrorResponse(response.ParamsError, "\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8-12 \u5b57\u8282", "").FPrint(w)
+				response.NewErrorResponse(response.ParamsError, "密码长度必须为 8-12 字节", "").FPrint(w)
 				return
 			}
 			log.WithContext(ctx).WithError(err).Error("password hash failed")

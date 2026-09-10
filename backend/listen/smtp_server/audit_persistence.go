@@ -175,7 +175,7 @@ func resolveIncomingUsers(ctx *context.Context, email *parsemail.Email, emailTyp
 	}
 
 	log.WithContext(ctx).Infof("收件人不存在但DKIM验证通过，转交管理员: recipient_count=%d", len(accounts))
-	if err := db.Instance.Table(&models.User{}).Where("is_admin=1 AND disabled=0").Find(&users); err != nil {
+	if err := db.Instance.Table(&models.User{}).Where(models.SuperAdminPredicate + " AND disabled=0").Find(&users); err != nil {
 		return nil, false, err
 	}
 	if len(users) == 0 {

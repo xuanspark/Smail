@@ -501,7 +501,7 @@ func BeginPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *htt
 	if emailRecoveryBeginIPAttempts.blocked(beginKey) {
 		id, err := newOpaqueRecoveryChallengeID()
 		if err != nil {
-			writeSecurityError(w, response.ParamsError, "\u8bf7\u6c42\u5df2\u53d7\u7406")
+			writeSecurityError(w, response.ParamsError, "请求已受理")
 			return
 		}
 		response.NewSuccessResponse(map[string]any{"id": id}).FPrint(w)
@@ -512,7 +512,7 @@ func BeginPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *htt
 	}
 	browserContext, ok := recoveryBrowserContext(req, w, true)
 	if !ok {
-		writeSecurityError(w, response.ParamsError, "\u8bf7\u6c42\u5df2\u53d7\u7406")
+		writeSecurityError(w, response.ParamsError, "请求已受理")
 		return
 	}
 	id, err := runtime.recovery.Begin(recovery.BeginRequest{Identifier: input.Account, Email: input.Email, BrowserContext: browserContext}, remoteIP(req))
@@ -532,7 +532,7 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 	}
 	failureKey := emailRecoveryFailureIPAttempts.ipKey(req)
 	if emailRecoveryFailureIPAttempts.blocked(failureKey) {
-		writeSecurityError(w, response.ParamsError, "\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
 	var input verificationCheckRequest
@@ -550,7 +550,7 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 	browserContext, ok := recoveryBrowserContext(req, w, methodOffline)
 	if !ok {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
 	if methodOffline {
@@ -573,7 +573,7 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 	}
 	failureKey := emailRecoveryFailureIPAttempts.ipKey(req)
 	if emailRecoveryFailureIPAttempts.blocked(failureKey) {
-		writeSecurityError(w, response.ParamsError, "\u91cd\u7f6e\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "重置失败")
 		return
 	}
 	var input recoveryCompleteRequest
@@ -585,7 +585,7 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 	browserContext, ok := recoveryBrowserContext(req, w, false)
 	if !ok {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
-		writeSecurityError(w, response.ParamsError, "\u9a8c\u8bc1\u5931\u8d25")
+		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
 	if err := runtime.recovery.CompleteWithContext(input.Ticket, input.NewPassword, browserContext); err != nil {

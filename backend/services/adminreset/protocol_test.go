@@ -82,7 +82,7 @@ func TestProtocolEnforcesUnifiedPasswordLength(t *testing.T) {
 	valid := []string{
 		`{"version":1,"nonce":"n","new_password":"12345678"}`,
 		`{"version":1,"nonce":"n","new_password":"123456789012"}`,
-		`{"version":1,"nonce":"n","new_password":"\u5bc6\u7801aa"}`,
+		`{"version":1,"nonce":"n","new_password":"密码aa"}`,
 	}
 	for _, input := range valid {
 		if _, err := DecodeRequest(strings.NewReader(input)); err != nil {
@@ -93,7 +93,7 @@ func TestProtocolEnforcesUnifiedPasswordLength(t *testing.T) {
 	invalid := []string{
 		`{"version":1,"nonce":"n","new_password":"1234567"}`,
 		`{"version":1,"nonce":"n","new_password":"1234567890123"}`,
-		`{"version":1,"nonce":"n","new_password":"\u5bc6\u7801\u5bc6\u7801a"}`,
+		`{"version":1,"nonce":"n","new_password":"密码密码a"}`,
 	}
 	for _, input := range invalid {
 		if _, err := DecodeRequest(strings.NewReader(input)); !errors.Is(err, ErrInvalidRequest) {

@@ -71,18 +71,18 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var reqData sendRequest
 	if err := decodeEmailJSONRequest(w, req, &reqData, maxSendRequestBytes); err != nil {
 		log.WithContext(ctx).Errorf("%+v", err)
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 	log.WithContext(ctx).Infof("发送邮件")
 
 	allowLocalAlias := ctx.EffectiveRole() == access.RoleSuperAdmin
 	if reqData.From.Email != "" && !validation.IsAuthorizedSender(reqData.From.Email, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
-		response.NewErrorResponse(response.ParamsError, "\u53d1\u4ef6\u4eba\u5730\u5740\u4e0d\u5141\u8bb8", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "发件人地址不允许", "").FPrint(w)
 		return
 	}
 	if reqData.Sender.Email != "" && !validation.IsAuthorizedSender(reqData.Sender.Email, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
-		response.NewErrorResponse(response.ParamsError, "\u53d1\u9001\u8005\u5730\u5740\u4e0d\u5141\u8bb8", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "发送者地址不允许", "").FPrint(w)
 		return
 	}
 
@@ -197,7 +197,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	log.WithContext(ctx).Debugf("插件执行--SendBefore End")
 
 	if e.From == nil || e.Sender == nil || !validation.IsAuthorizedSender(e.From.EmailAddress, ctx.UserAccount, allowLocalAlias, domains.Accepted) || !validation.IsAuthorizedSender(e.Sender.EmailAddress, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
-		response.NewErrorResponse(response.ParamsError, "\u63d2\u4ef6\u4fee\u6539\u4e86\u672a\u6388\u6743\u7684\u53d1\u4ef6\u4eba", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "插件修改了未授权的发件人", "").FPrint(w)
 		return
 	}
 	if err := validation.ValidateEmail(e, validation.EmailLimits{
@@ -208,7 +208,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		MaxBodyBytes:            maxSendBodyBytes,
 		MaxEstimatedBytes:       maxSendRequestBytes,
 	}); err != nil {
-		response.NewErrorResponse(response.ParamsError, "\u63d2\u4ef6\u4fee\u6539\u540e\u7684\u90ae\u4ef6\u8d85\u51fa\u5b89\u5168\u9650\u5236", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "插件修改后的邮件超出安全限制", "").FPrint(w)
 		return
 	}
 

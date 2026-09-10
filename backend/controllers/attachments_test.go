@@ -24,7 +24,7 @@ func TestSafeDownloadNameLength(t *testing.T) {
 	if got := safeDownloadName(input); len([]rune(got)) != 180 {
 		t.Fatalf("unexpected filename length: %d", len([]rune(got)))
 	}
-	if got := safeDownloadName("\u4e2d\u6587-report.txt"); got != "\u4e2d\u6587-report.txt" {
+	if got := safeDownloadName("中文-report.txt"); got != "中文-report.txt" {
 		t.Fatalf("unicode filename changed: %q", got)
 	}
 }

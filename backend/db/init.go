@@ -78,7 +78,7 @@ func Init(version string) error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
-	log.Infof("\u5f53\u524d\u6570\u636e\u5e93\u7ed3\u6784\u7248\u672c: %d", report.CurrentVersion)
+	log.Infof("当前数据库结构版本: %d", report.CurrentVersion)
 	// 更新历史数据
 	if err := fixHistoryData(); err != nil {
 		return errors.Wrap(err)
@@ -125,7 +125,7 @@ func legacySyncEnabled(version string) bool {
 		return false
 	}
 	if version != "test" && !config.DevelopmentMode {
-		log.Warn("\u751f\u4ea7\u73af\u5883\u5df2\u62d2\u7edd\u542f\u7528\u65e7 Sync2 \u517c\u5bb9\u6a21\u5f0f")
+		log.Warn("生产环境已拒绝启用旧 Sync2 兼容模式")
 		return false
 	}
 	return true

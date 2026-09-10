@@ -30,7 +30,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		return
 	}
 	if ctx.EffectiveRole() == access.RoleSuperAdmin {
-		response.NewErrorResponse(response.NoAccessPrivileges, "\u8d85\u7ea7\u7ba1\u7406\u5458\u5fc5\u987b\u901a\u8fc7\u90e8\u7f72\u7aef\u4e13\u7528\u901a\u9053\u91cd\u7f6e\u5bc6\u7801", "").FPrint(w)
+		response.NewErrorResponse(response.NoAccessPrivileges, "超级管理员必须通过部署端专用通道重置密码", "").FPrint(w)
 		return
 	}
 	var retData modifyPasswordRequest
@@ -76,7 +76,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 	}
 	if err := auth.SetPassword(&user, retData.Password); err != nil {
 		if errors.Is(err, password.ErrInvalidLength) {
-			response.NewErrorResponse(response.ParamsError, "\u5bc6\u7801\u957f\u5ea6\u5fc5\u987b\u4e3a 8-12 \u5b57\u8282", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, "密码长度必须为 8-12 字节", "").FPrint(w)
 			return
 		}
 		log.WithContext(ctx).WithError(err).Error("password hash failed")

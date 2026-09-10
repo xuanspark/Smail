@@ -115,7 +115,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 			r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
 
 			if normalizedAPIPath(r.URL.Path) == "/api/login" && !loginRequestAllowed(r) {
-				response.NewErrorResponse(response.ParamsError, "\u8bf7\u6c42\u6765\u6e90\u6821\u9a8c\u5931\u8d25", "").FPrint(w)
+				response.NewErrorResponse(response.ParamsError, "请求来源校验失败", "").FPrint(w)
 				return
 			}
 
@@ -146,7 +146,7 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 					found, err := db.Instance.ID(identity.ID).Get(&currentUser)
 					if err != nil {
 						log.WithContext(ctx).WithError(err).Error("validate session user failed")
-						response.NewErrorResponse(response.ServerError, "\u4f1a\u8bdd\u6821\u9a8c\u5931\u8d25", "").FPrint(w)
+						response.NewErrorResponse(response.ServerError, "会话校验失败", "").FPrint(w)
 						return
 					}
 					if !found || currentUser.Disabled != 0 || currentUser.Account != identity.Account || currentUser.SessionVersion != identity.SessionVersion || (identity.SecurityVersion > 0 && currentUser.SecurityVersion != identity.SecurityVersion) {

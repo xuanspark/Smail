@@ -16,7 +16,7 @@ func MarkRead(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var reqData markReadRequest
 	if err := decodeEmailJSONRequest(w, req, &reqData, maxEmailJSONRequestBytes); err != nil {
 		log.WithContext(ctx).WithError(err).Info("invalid email read request")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
@@ -28,7 +28,7 @@ func MarkRead(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	for _, id := range reqData.IDs {
 		if _, err := detail.GetEmailDetail(ctx, id, true); err != nil {
 			log.WithContext(ctx).WithError(err).Error("mark email read failed")
-			response.NewErrorResponse(response.ServerError, "\u66f4\u65b0\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
+			response.NewErrorResponse(response.ServerError, "更新邮件失败", "").FPrint(w)
 			return
 		}
 	}

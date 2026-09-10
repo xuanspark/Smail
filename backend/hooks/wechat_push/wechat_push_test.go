@@ -115,7 +115,7 @@ func TestWeChatRuntimeConfigRejectsTrailingJSON(t *testing.T) {
 
 func TestBuildWeChatMessageLimitsContent(t *testing.T) {
 	message := buildWeChatMessage(&parsemail.Email{
-		Subject: strings.Repeat("\u754c", maxWeChatMessageBytes),
+		Subject: strings.Repeat("界", maxWeChatMessageBytes),
 		Text:    []byte(strings.Repeat("body", maxWeChatMessageBytes)),
 	})
 	if len(message) > maxWeChatMessageBytes {

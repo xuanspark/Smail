@@ -19,7 +19,7 @@ func Move(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var reqData moveRequest
 	if err := decodeEmailJSONRequest(w, req, &reqData, maxEmailJSONRequestBytes); err != nil {
 		log.WithContext(ctx).WithError(err).Info("invalid email move request")
-		response.NewErrorResponse(response.ParamsError, "\u53c2\u6570\u9519\u8bef", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
 	}
 
@@ -32,12 +32,12 @@ func Move(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		err := group.Move2DefaultBox(ctx, reqData.IDs, name)
 		if err != nil {
 			log.WithContext(ctx).WithError(err).Error("move email failed")
-			response.NewErrorResponse(response.ServerError, "\u79fb\u52a8\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
+			response.NewErrorResponse(response.ServerError, "移动邮件失败", "").FPrint(w)
 			return
 		}
 	} else if err := group.MoveMailToGroup(ctx, reqData.IDs, reqData.GroupId); err != nil {
 		log.WithContext(ctx).WithError(err).Error("move email to user mailbox failed")
-		response.NewErrorResponse(response.ServerError, "\u79fb\u52a8\u90ae\u4ef6\u5931\u8d25", "").FPrint(w)
+		response.NewErrorResponse(response.ServerError, "移动邮件失败", "").FPrint(w)
 		return
 	}
 	response.NewSuccessResponse("success").FPrint(w)

@@ -93,7 +93,7 @@ func TestSettingsHtmlRejectsNonAdminSave(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	SettingsHtml(&context.Context{}, recorder, httptest.NewRequest(http.MethodPost, "/api/plugin/settings/PluginTest/save", strings.NewReader(`{"url":"https://model.example.com"}`)))
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "\u65e0\u6743\u8bbf\u95ee") {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "无权访问") {
 		t.Fatalf("non-admin plugin save was not rejected: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	if hook.resource != "" || hook.body != "" {
@@ -109,7 +109,7 @@ func TestPluginConfigurationRejectsNonAdminAccess(t *testing.T) {
 
 	listRecorder := httptest.NewRecorder()
 	GetPluginList(&context.Context{}, listRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/list", nil))
-	if !strings.Contains(listRecorder.Body.String(), "\u65e0\u6743\u8bbf\u95ee") {
+	if !strings.Contains(listRecorder.Body.String(), "无权访问") {
 		t.Fatalf("unauthenticated plugin list was not rejected: body=%s", listRecorder.Body.String())
 	}
 
@@ -121,7 +121,7 @@ func TestPluginConfigurationRejectsNonAdminAccess(t *testing.T) {
 
 	pageRecorder := httptest.NewRecorder()
 	SettingsHtml(&context.Context{UserID: 2, Role: access.RoleUser}, pageRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/PluginTest/index.html", nil))
-	if !strings.Contains(pageRecorder.Body.String(), "\u65e0\u6743\u8bbf\u95ee") {
+	if !strings.Contains(pageRecorder.Body.String(), "无权访问") {
 		t.Fatalf("non-admin plugin page was not rejected: body=%s", pageRecorder.Body.String())
 	}
 	if hook.resource != "" || hook.body != "" {

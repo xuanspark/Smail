@@ -144,7 +144,7 @@ func GetDatabaseSettingsDetail(ctx *context.Context) (map[string]string, error) 
 
 func GetAdminPassword(ctx *context.Context) (string, error) {
 	if db.Instance == nil {
-		return "", databaseError("\u6570\u636e\u5e93\u5c1a\u672a\u521d\u59cb\u5316\uff0c\u8bf7\u5148\u5b8c\u6210\u6570\u636e\u5e93\u8bbe\u7f6e", nil)
+		return "", databaseError("数据库尚未初始化，请先完成数据库设置", nil)
 	}
 	users := []*models.User{}
 	if err := db.Instance.Find(&users); err != nil {
@@ -162,7 +162,7 @@ func SetAdminPassword(ctx *context.Context, account, pwd string) error {
 	adminSetupMutex.Lock()
 	defer adminSetupMutex.Unlock()
 	if db.Instance == nil {
-		return databaseError("\u6570\u636e\u5e93\u5c1a\u672a\u521d\u59cb\u5316\uff0c\u8bf7\u5148\u5b8c\u6210\u6570\u636e\u5e93\u8bbe\u7f6e", nil)
+		return databaseError("数据库尚未初始化，请先完成数据库设置", nil)
 	}
 
 	if err := validateAdminPassword(pwd); err != nil {

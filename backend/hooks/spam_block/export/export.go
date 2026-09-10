@@ -50,7 +50,7 @@ func main() {
 	fmt.Println("文件第一列是分类，0表示正常邮件，1表示垃圾邮件，2表示诈骗邮件")
 
 	if err := exportEmails(id); err != nil {
-		fmt.Fprintf(os.Stderr, "\u5bfc\u51fa\u5931\u8d25: %v\n", err)
+		fmt.Fprintf(os.Stderr, "导出失败: %v\n", err)
 		os.Exit(1)
 	}
 }

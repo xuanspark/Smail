@@ -60,10 +60,10 @@ func Download(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 func writeAttachmentError(ctx *context.Context, w http.ResponseWriter, err error) {
 	log.WithContext(ctx).WithError(err).Error("load attachment failed")
 	if errors.Is(err, attachments.ErrAttachmentUnavailable) {
-		response.NewErrorResponse(response.ParamsError, "\u9644\u4ef6\u4e0d\u53ef\u7528", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "附件不可用", "").FPrint(w)
 		return
 	}
-	response.NewErrorResponse(response.ServerError, "\u8bfb\u53d6\u9644\u4ef6\u5931\u8d25", "").FPrint(w)
+	response.NewErrorResponse(response.ServerError, "读取附件失败", "").FPrint(w)
 }
 
 func safeDownloadName(name string) string {
