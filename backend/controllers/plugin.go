@@ -19,7 +19,7 @@ const (
 )
 
 func GetPluginList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authenticatedPluginUser(ctx) || authorizeCapability(ctx, access.CapabilityPluginRead, "", false) != nil {
+	if !authenticatedPluginUser(ctx) || authorizeCapability(ctx, access.CapabilityPluginReadGlobal, "", false) != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "\u65e0\u6743\u8bbf\u95ee", "").FPrint(w)
 		return
 	}

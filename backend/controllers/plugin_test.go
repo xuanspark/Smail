@@ -115,8 +115,8 @@ func TestPluginConfigurationRejectsNonAdminAccess(t *testing.T) {
 
 	userListRecorder := httptest.NewRecorder()
 	GetPluginList(&context.Context{UserID: 2, Role: access.RoleUser}, userListRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/list", nil))
-	if !strings.Contains(userListRecorder.Body.String(), "PluginTest") {
-		t.Fatalf("authenticated user cannot read plugin list: body=%s", userListRecorder.Body.String())
+	if !strings.Contains(userListRecorder.Body.String(), "无权访问") {
+		t.Fatalf("ordinary user can read global plugin list: body=%s", userListRecorder.Body.String())
 	}
 
 	pageRecorder := httptest.NewRecorder()

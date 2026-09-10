@@ -25,6 +25,8 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	engine.SetMaxOpenConns(1)
+	engine.SetMaxIdleConns(1)
 	previous := db.Instance
 	db.Instance = engine
 	t.Cleanup(func() { db.Instance = previous; _ = engine.Close() })
@@ -98,8 +100,11 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 	for _, ctx := range []*appcontext.Context{admin, ordinary} {
 		ctx.IsAdmin = true
 		got := call(ctx, GetPluginList, `{}`)
-		if got.ErrorNo != 0 {
-			t.Fatal("已登录角色无法读取可用插件列表")
+		if ctx == ordinary && got.ErrorNo != response.NoAccessPrivileges {
+			t.Fatal("旧管理员标志绕过插件列表授权")
+		}
+		if ctx == admin && got.ErrorNo != 0 {
+			t.Fatal("管理员角色无法读取插件列表")
 		}
 		pageRecorder := httptest.NewRecorder()
 		SettingsHtml(ctx, pageRecorder, httptest.NewRequest(http.MethodGet, "/api/plugin/settings/missing/index.html", nil))
@@ -119,13 +124,13 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := logstore.Start(store)
-	defer runtime.Stop()
 	for _, user := range users {
 		if err := store.Write(context.Background(), logstore.Entry{Kind: "operation", ActorID: itoa(user.ID), ActorRole: string(user.EffectiveRole()), CreatedAt: time.Now(), Action: "权限验证", Result: "success", Payload: []byte(`{}`)}); err != nil {
 			t.Fatal(err)
 		}
 	}
+	runtime := logstore.Start(store)
+	defer runtime.Stop()
 	for _, item := range []struct {
 		ctx   *appcontext.Context
 		query string

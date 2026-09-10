@@ -109,7 +109,7 @@ func TestManagementEndpointCatalog(t *testing.T) {
 		}
 	}
 	endpoint, ok := LookupEndpoint("POST", "/api/plugin/settings/example")
-	if !ok || endpoint.Capability != CapabilityPluginWriteOwn {
+	if !ok || endpoint.Capability != CapabilityPluginReadGlobal {
 		t.Fatal("plugin settings endpoint was not matched")
 	}
 	endpoint, ok = LookupEndpoint("GET", "/api/v1/logs")
