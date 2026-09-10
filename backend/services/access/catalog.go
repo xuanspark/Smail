@@ -16,7 +16,7 @@ var managementEndpoints = []Endpoint{
 	{Method: "*", Path: "/api/user/security/", Capability: CapabilityUserSecurityManage},
 	{Method: "POST", Path: "/api/user/info", Capability: CapabilityUserRead},
 	{Method: "POST", Path: "/api/user/list", Capability: CapabilityUserRead},
-	{Method: "GET", Path: "/api/plugin/list", Capability: CapabilityPluginRead},
+	{Method: "GET", Path: "/api/plugin/list", Capability: CapabilityPluginReadGlobal},
 	{Method: "*", Path: "/api/plugin/settings/", Capability: CapabilityPluginReadGlobal},
 	{Method: "GET", Path: "/api/v1/config/status", Capability: CapabilityConfigRead},
 	{Method: "GET", Path: "/api/v1/config/backups", Capability: CapabilityConfigRollback},
@@ -44,7 +44,7 @@ var managementEndpoints = []Endpoint{
 	{Method: "*", Path: "/api/v1/user/security/", Capability: CapabilityUserSecurityManage},
 	{Method: "POST", Path: "/api/v1/user/info", Capability: CapabilityUserRead},
 	{Method: "POST", Path: "/api/v1/user/list", Capability: CapabilityUserRead},
-	{Method: "GET", Path: "/api/v1/plugin/list", Capability: CapabilityPluginRead},
+	{Method: "GET", Path: "/api/v1/plugin/list", Capability: CapabilityPluginReadGlobal},
 	{Method: "*", Path: "/api/v1/plugin/settings/", Capability: CapabilityPluginReadGlobal},
 }
 
