@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/array"
@@ -91,6 +92,9 @@ func beginLoginVerification(user *models.User, remoteIP string) (map[string]any,
 	}
 	binding, err := runtime.external.FindVerifiedPrimaryByUser(user.ID)
 	if err != nil {
+		if errors.Is(err, externalemail.ErrBindingNotFound) {
+			return nil, nil
+		}
 		return nil, errLoginVerificationUnavailable
 	}
 	email, err := runtime.external.Decrypt(*binding)

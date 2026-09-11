@@ -1,6 +1,10 @@
 package controllers
 
-import "testing"
+import (
+	"testing"
+
+	"git.pcux.cn/xuans/Smail/models"
+)
 
 func TestLoginVerificationPolicyEnabled(t *testing.T) {
 	tests := []struct {
@@ -22,5 +26,19 @@ func TestLoginVerificationPolicyEnabled(t *testing.T) {
 				t.Fatalf("login verification policy result = %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestBeginLoginVerification_NoExternalEmail(t *testing.T) {
+	user := &models.User{
+		ID: 99999,
+		Account: "test_no_email",
+	}
+	res, err := beginLoginVerification(user, "127.0.0.1")
+	if err != nil {
+		t.Fatalf("expected nil error for user without external email, got: %v", err)
+	}
+	if res != nil {
+		t.Fatalf("expected nil challenge result for user without external email, got: %v", res)
 	}
 }
