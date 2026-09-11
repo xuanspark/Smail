@@ -277,7 +277,11 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				recordFailure(err)
 				return
 			}
-			log.WithContext(ctx).Infof("SMTP STARTTLS on 25 Send Error. %s", err.Error())
+			log.WithContext(ctx).WithFields(log.Fields{
+				"action": "SMTP 邮件投递",
+				"result": "failure",
+				"object": domain.mxHost + ":25",
+			}).Infof("SMTP 25 端口 STARTTLS 投递失败: %s", err.Error())
 
 			// 再试用587投递
 			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":587", nil, from, fromDomain, buildAddress(tos), data)
@@ -293,7 +297,11 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				recordFailure(err)
 				return
 			}
-			log.WithContext(ctx).Infof("SMTPS on 587 Send Error. %s", err.Error())
+			log.WithContext(ctx).WithFields(log.Fields{
+				"action": "SMTP 邮件投递",
+				"result": "failure",
+				"object": domain.mxHost + ":587",
+			}).Infof("SMTP 587 端口投递失败: %s", err.Error())
 
 			// 再次尝试465投递
 			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":465", nil, from, fromDomain, buildAddress(tos), data)
@@ -309,7 +317,11 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				recordFailure(err)
 				return
 			}
-			log.WithContext(ctx).Infof("SMTPS on 465 Send Error. %s", err.Error())
+			log.WithContext(ctx).WithFields(log.Fields{
+				"action": "SMTP 邮件投递",
+				"result": "failure",
+				"object": domain.mxHost + ":465",
+			}).Infof("SMTP 465 端口投递失败: %s", err.Error())
 
 			// 所有安全投递方式均失败后记录错误，不允许回退到明文连接。
 			recordFailure(err)

@@ -64,7 +64,11 @@ func (s *Session) Auth(mech string) (sasl.Server, error) {
 func (s *Session) AuthPlain(username, pwd string) error {
 	user, err := auth.AuthenticateProtocol("smtp", s.RemoteAddress.String(), username, pwd)
 	if err != nil {
-		log.WithContext(s.Ctx).Info("SMTP authentication failed")
+		log.WithContext(s.Ctx).WithFields(log.Fields{
+			"action": "SMTP 客户端认证",
+			"result": "failure",
+			"object": s.RemoteAddress.String(),
+		}).Info("SMTP 客户端认证失败")
 		return errors.New("password error")
 	}
 

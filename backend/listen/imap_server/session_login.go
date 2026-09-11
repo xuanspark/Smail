@@ -10,7 +10,11 @@ import (
 func (s *serverSession) Login(username, pwd string) error {
 	user, err := auth.AuthenticateProtocol("imap", s.remoteAddress, username, pwd)
 	if err != nil {
-		log.WithContext(s.ctx).Info("IMAP authentication failed")
+		log.WithContext(s.ctx).WithFields(log.Fields{
+			"action": "IMAP 客户端登录",
+			"result": "failure",
+			"object": s.remoteAddress,
+		}).Info("IMAP 客户端认证失败")
 		return &imap.Error{
 			Type: imap.StatusResponseTypeNo,
 			Code: imap.ResponseCodeAuthenticationFailed,
@@ -24,6 +28,10 @@ func (s *serverSession) Login(username, pwd string) error {
 	s.ctx.UserAccount = user.Account
 	s.ctx.Role = user.EffectiveRole()
 	s.ctx.IsAdmin = s.ctx.Role == access.RoleSuperAdmin || s.ctx.Role == access.RoleAdmin
-	log.WithContext(s.ctx).Debug("IMAP authentication succeeded")
+	log.WithContext(s.ctx).WithFields(log.Fields{
+		"action": "IMAP 客户端登录",
+		"result": "success",
+		"object": s.remoteAddress,
+	}).Debug("IMAP 客户端认证成功")
 	return nil
 }

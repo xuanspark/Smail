@@ -105,7 +105,11 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 	}
 	user, err := auth.AuthenticateProtocol("pop3", remoteAddress, session.User, pwd)
 	if err != nil {
-		log.WithContext(session.Ctx).Info("POP3 authentication failed")
+		log.WithContext(session.Ctx).WithFields(log.Fields{
+			"action": "POP3 客户端登录",
+			"result": "failure",
+			"object": remoteAddress,
+		}).Info("POP3 客户端认证失败")
 		return errors2.New("password error")
 	}
 

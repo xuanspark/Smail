@@ -22,6 +22,86 @@ export function timeParts(value) {
   return { date: localDate.format(date), time: localTime.format(date) }
 }
 
+export function cleanRuntimeMessage(text) {
+  if (!text) return ''
+  const boundary = text.lastIndexOf(' @event ')
+  if (boundary >= 0) {
+    return text.slice(0, boundary).trim()
+  }
+  return text
+}
+
+export function friendlyOutcomeText(text) {
+  if (!text) return '（无详细说明）'
+  const trimmed = text.trim()
+  const dictionary = {
+    'IMAP authentication failed': 'IMAP 客户端登录认证失败',
+    'IMAP authentication succeeded': 'IMAP 客户端登录认证成功',
+    'POP3 authentication failed': 'POP3 客户端登录认证失败',
+    'POP3 authentication succeeded': 'POP3 客户端登录认证成功',
+    'SMTP authentication failed': 'SMTP 客户端登录认证失败',
+    'SMTP authentication succeeded': 'SMTP 客户端登录认证成功',
+    'SMTP MAIL accepted': 'SMTP 接收发件人地址',
+    'SMTP RCPT accepted': 'SMTP 接收收件人地址',
+    'Plugin Stop': '停止插件执行',
+    'Server Start Success': '服务启动成功',
+    '开始绑定监听端口': '开始绑定并监听网络端口'
+  }
+  if (dictionary[trimmed]) return dictionary[trimmed]
+
+  if (/^SMTP STARTTLS on 25 Send Error\.\s*(.*)$/i.test(trimmed)) {
+    const detail = trimmed.replace(/^SMTP STARTTLS on 25 Send Error\.\s*/i, '')
+    return `SMTP 25 端口 STARTTLS 投递失败：${detail}`
+  }
+  if (/^SMTPS on 587 Send Error\.\s*(.*)$/i.test(trimmed)) {
+    const detail = trimmed.replace(/^SMTPS on 587 Send Error\.\s*/i, '')
+    return `SMTP 587 端口投递失败：${detail}`
+  }
+  if (/^SMTPS on 465 Send Error\.\s*(.*)$/i.test(trimmed)) {
+    const detail = trimmed.replace(/^SMTPS on 465 Send Error\.\s*/i, '')
+    return `SMTP 465 端口投递失败：${detail}`
+  }
+  return trimmed
+}
+
+export function friendlyActionText(action) {
+  if (!action) return '历史运行事件'
+  const known = {
+    '运行事件 · imap_server.(*serverSession).Login': 'IMAP 客户端登录',
+    '运行事件 · imap_server.(*serverSession).Close': 'IMAP 断开连接',
+    '运行事件 · imap_server.(*serverSession).Select': 'IMAP 选择邮箱',
+    '运行事件 · imap_server.(*serverSession).Fetch': 'IMAP 获取邮件',
+    '运行事件 · imap_server.(*serverSession).Append': 'IMAP 追加邮件',
+    '运行事件 · imap_server.(*serverSession).Delete': 'IMAP 删除邮箱',
+    '运行事件 · pop3_server.action.Pass': 'POP3 客户端登录',
+    '运行事件 · pop3_server.action.Retr': 'POP3 获取邮件',
+    '运行事件 · smtp_server.(*Session).AuthPlain': 'SMTP 客户端认证',
+    '运行事件 · send.doSend': 'SMTP 邮件投递',
+    '运行事件 · send.doSend.func2': 'SMTP 邮件投递',
+    '运行事件 · send.Send': '发送邮件'
+  }
+  if (known[action]) return known[action]
+
+  const m = action.match(/^运行事件\s*·\s*([a-zA-Z0-9_]+)\.(?:\(\*?[a-zA-Z0-9_]+\)\.)?([a-zA-Z0-9_]+)(?:\.func\d+)?$/)
+  if (m) {
+    const pkg = m[1]
+    const fn = m[2]
+    const pkgLabel = {
+      imap_server: 'IMAP 服务',
+      pop3_server: 'POP3 服务',
+      smtp_server: 'SMTP 服务',
+      send: '邮件投递',
+      controllers: '接口处理',
+      services: '系统服务',
+      res_init: '系统初始化',
+      hooks: '插件钩子',
+      adminreset: '超级管理'
+    }[pkg] || pkg
+    return `${pkgLabel} · ${fn}`
+  }
+  return action
+}
+
 // 只识别已知的日志头；未知格式原样展示，不丢弃记录或猜测级别。
 export function parseRuntimeLine(line, sequence) {
   const raw = String(line ?? '')
@@ -67,10 +147,17 @@ export function parseRuntimeLine(line, sequence) {
       // 旧日志或截断记录保留原文，不能猜测结果。
     }
   }
+  const displayMessage = cleanRuntimeMessage(message)
+  const rawAction = event.action || '历史运行事件'
+  const action = friendlyActionText(rawAction)
+  const rawOutcome = event.outcome || content
+  const outcome = friendlyOutcomeText(rawOutcome)
+
   return {
-    sequence, raw, createdAt, level, source, sourceShort, requestId, message, summary,
-    action: event.action || '历史运行事件', result: event.result || 'unknown',
-    object: event.object || event.section || '', outcome: event.outcome || content,
+    sequence, raw, createdAt, level, source, sourceShort, requestId,
+    message: displayMessage, summary,
+    action, result: event.result || 'unknown',
+    object: event.object || event.section || '', outcome,
     ...timeParts(createdAt), ...levels[level]
   }
 }
