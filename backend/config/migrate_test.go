@@ -724,3 +724,58 @@ func TestMigrateLegacyConfigDerivesSetupStateFromFullPreflight(t *testing.T) {
 		t.Fatalf("setup state = %q / %q", runtime.SetupState, runtime.Root.SetupState)
 	}
 }
+
+func TestMigrateLegacyConfigAcceptsStructuredSSLObject(t *testing.T) {
+	root := t.TempDir()
+	legacy := map[string]any{
+		"domain":    "mail.example.com",
+		"domains":   []string{"mail.example.com"},
+		"webDomain": "mail.example.com",
+		"dbDSN":     "./config/smail.db",
+		"dbType":    "sqlite",
+		"isInit":    true,
+		"ssl": map[string]any{
+			"management":       "project",
+			"mode":             "managed_default",
+			"defaultDirectory": "ssl",
+			"challenge":        "dns",
+			"certificateRef":   "ssl/custom.crt",
+			"privateKeyRef":    "ssl/custom.key",
+		},
+	}
+	writeLegacyMigrationFixture(t, root, legacy)
+
+	result, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true})
+	if err != nil {
+		t.Fatalf("MigrateLegacyConfig failed: %v", err)
+	}
+	if result.Generation != 1 {
+		t.Fatalf("unexpected generation: %d", result.Generation)
+	}
+
+	runtime, err := NewConfigLoader(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}).Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if runtime.SSL.TLS.CertificateRef != "ssl/custom.crt" || runtime.SSL.TLS.PrivateKeyRef != "ssl/custom.key" {
+		t.Fatalf("unexpected SSL refs: %+v", runtime.SSL.TLS)
+	}
+	if runtime.SSL.TLS.Mode != "managed_default" || runtime.SSL.TLS.Management != "project" {
+		t.Fatalf("unexpected SSL mode/mgmt: %+v", runtime.SSL.TLS)
+	}
+}
+
+func TestMigrateLegacyConfigAcceptsDeploymentAbsoluteSQLiteDSN(t *testing.T) {
+	root := "/opt/smail"
+	ref, ok := legacySQLiteLocalRef(root, "/opt/smail/data/smail.db")
+	if !ok || ref != "smail.db" {
+		t.Fatalf("unexpected sqlite local ref: %q, ok: %v", ref, ok)
+	}
+	dbCfg, _, manual := legacyDatabasePlan(root, legacyMigrationConfig{
+		DbType: "sqlite",
+		DbDSN:  "/opt/smail/data/smail.db",
+	})
+	if len(manual) > 0 || dbCfg.LocalRef != "smail.db" {
+		t.Fatalf("unexpected db plan: %+v, manual: %v", dbCfg, manual)
+	}
+}

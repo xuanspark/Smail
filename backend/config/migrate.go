@@ -84,6 +84,7 @@ type legacyMigrationConfig struct {
 	LoginPolicy             string     `json:"loginPolicy"`
 	VerificationLoginPolicy string     `json:"verificationLoginPolicy"`
 	PluginAllowList         []string   `json:"pluginAllowList"`
+	SSL                     SSLConfig  `json:"ssl"`
 }
 
 var legacyMigrationKnownFields = map[string]struct{}{
@@ -94,7 +95,7 @@ var legacyMigrationKnownFields = map[string]struct{}{
 	"tgBotToken": {}, "tgChatId": {}, "isInit": {}, "setupState": {}, "webPushUrl": {}, "webPushToken": {},
 	"smtpHost": {}, "smtpPort": {}, "smtpUsername": {}, "smtpPassword": {}, "smtpSecurity": {}, "smtpFrom": {},
 	"smtpFromDomain": {}, "verificationEnabled": {}, "externalRecoveryEnabled": {}, "loginPolicy": {},
-	"verificationLoginPolicy": {}, "pluginAllowList": {},
+	"verificationLoginPolicy": {}, "pluginAllowList": {}, "ssl": {},
 }
 
 var legacyPluginExecutableMap = map[string]string{
@@ -140,7 +141,7 @@ func PlanLegacyMigration(root string, _ RuntimeValidationOptions) (LegacyMigrati
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return LegacyMigrationPlan{}, err
 	}
-	plan.ManualFields = legacyManualFields(legacy)
+	plan.ManualFields = legacyManualFields(root, legacy)
 	if len(plan.ManualFields) > 0 {
 		return plan, ErrMigrationUnsafeValue
 	}
@@ -371,15 +372,21 @@ func equivalentStoredSecret(expected, existing StoredSecret, vault *credential.V
 	return expectedErr == nil && existingErr == nil && expectedPlaintext == existingPlaintext
 }
 
-func legacyManualFields(legacy legacyMigrationConfig) []string {
+func legacyManualFields(root string, legacy legacyMigrationConfig) []string {
 	fields := make([]string, 0)
-	_, _, databaseManualFields := legacyDatabasePlan(legacy)
+	_, _, databaseManualFields := legacyDatabasePlan(root, legacy)
 	fields = append(fields, databaseManualFields...)
 	if _, ok := legacyControlledReference(legacy.SSLPublicKeyPath); legacy.SSLPublicKeyPath != "" && !ok {
 		fields = append(fields, "SSLPublicKeyPath")
 	}
 	if _, ok := legacyControlledReference(legacy.SSLPrivateKeyPath); legacy.SSLPrivateKeyPath != "" && !ok {
 		fields = append(fields, "SSLPrivateKeyPath")
+	}
+	if _, ok := legacyControlledReference(legacy.SSL.CertificateRef); legacy.SSL.CertificateRef != "" && !ok {
+		fields = append(fields, "ssl.certificateRef")
+	}
+	if _, ok := legacyControlledReference(legacy.SSL.PrivateKeyRef); legacy.SSL.PrivateKeyRef != "" && !ok {
+		fields = append(fields, "ssl.privateKeyRef")
 	}
 	if legacy.SMTPUsername == "" && legacy.SMTPPassword != "" {
 		fields = append(fields, "smtpPassword")
@@ -568,7 +575,7 @@ func prepareLegacyRuntime(runtime RuntimeConfig) (RuntimeConfig, error) {
 }
 
 func legacyDatabaseConfig(root string, vault *credential.Vault, legacy legacyMigrationConfig) (DatabaseConfig, []string, error) {
-	database, password, manualFields := legacyDatabasePlan(legacy)
+	database, password, manualFields := legacyDatabasePlan(root, legacy)
 	if len(manualFields) > 0 {
 		return DatabaseConfig{}, manualFields, nil
 	}
@@ -583,10 +590,10 @@ func legacyDatabaseConfig(root string, vault *credential.Vault, legacy legacyMig
 	return database, nil, nil
 }
 
-func legacyDatabasePlan(legacy legacyMigrationConfig) (DatabaseConfig, string, []string) {
+func legacyDatabasePlan(root string, legacy legacyMigrationConfig) (DatabaseConfig, string, []string) {
 	switch legacy.DbType {
 	case "", DBTypeSQLite:
-		name, ok := legacySQLiteLocalRef(legacy.DbDSN)
+		name, ok := legacySQLiteLocalRef(root, legacy.DbDSN)
 		if !ok {
 			return DatabaseConfig{}, "", []string{"dbDSN"}
 		}
@@ -608,15 +615,28 @@ func legacyDatabasePlan(legacy legacyMigrationConfig) (DatabaseConfig, string, [
 	}
 }
 
-func legacySQLiteLocalRef(value string) (string, bool) {
+func legacySQLiteLocalRef(root, value string) (string, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		value = "smail.db"
 	}
+	value = filepath.ToSlash(value)
+	if root != "" {
+		rootSlash := strings.TrimRight(filepath.ToSlash(root), "/")
+		if strings.HasPrefix(value, rootSlash+"/") {
+			value = strings.TrimPrefix(value, rootSlash+"/")
+		} else if filepath.IsAbs(value) || isWindowsAbsolute(value) {
+			if rel, err := filepath.Rel(root, value); err == nil {
+				rel = filepath.ToSlash(rel)
+				if !strings.HasPrefix(rel, "../") && rel != ".." {
+					value = rel
+				}
+			}
+		}
+	}
 	if filepath.IsAbs(value) || isWindowsAbsolute(value) {
 		return "", false
 	}
-	value = filepath.ToSlash(value)
 	value = strings.TrimPrefix(value, "./")
 	value = strings.TrimPrefix(value, "config/")
 	value = strings.TrimPrefix(value, "data/")
@@ -740,6 +760,28 @@ func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrati
 }
 
 func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
+	if legacy.SSL.CertificateRef != "" || legacy.SSL.PrivateKeyRef != "" || legacy.SSL.Mode != "" || legacy.SSL.Management != "" {
+		ssl := legacy.SSL
+		if ssl.DefaultDirectory == "" {
+			ssl.DefaultDirectory = "ssl"
+		}
+		var manual []string
+		if ssl.CertificateRef != "" {
+			if ref, ok := legacyControlledReference(ssl.CertificateRef); ok {
+				ssl.CertificateRef = ref
+			} else {
+				manual = append(manual, "ssl.certificateRef")
+			}
+		}
+		if ssl.PrivateKeyRef != "" {
+			if ref, ok := legacyControlledReference(ssl.PrivateKeyRef); ok {
+				ssl.PrivateKeyRef = ref
+			} else {
+				manual = append(manual, "ssl.privateKeyRef")
+			}
+		}
+		return ssl, manual
+	}
 	certificateRef, certificateOK := legacyControlledReference(legacy.SSLPublicKeyPath)
 	privateKeyRef, privateKeyOK := legacyControlledReference(legacy.SSLPrivateKeyPath)
 	certificateRef = runtimepath.LegacyReference(certificateRef)
