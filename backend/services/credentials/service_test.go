@@ -32,6 +32,36 @@ func newFixture(t *testing.T) *Service {
 	return service
 }
 
+func TestSecurityQuestionSupportsSingleCharacterAndUnlimited(t *testing.T) {
+	service := newFixture(t)
+	if err := service.SetSecurityQuestion(1, "Q", "A"); err != nil {
+		t.Fatalf("setting 1 char question and answer failed: %v", err)
+	}
+	question, ok, err := service.GetSecurityQuestion(1)
+	if err != nil || !ok || question != "Q" {
+		t.Fatalf("question = %q, ok=%v, err=%v", question, ok, err)
+	}
+	if verified, err := service.VerifySecurityQuestion(1, "A"); err != nil || !verified {
+		t.Fatalf("verification failed: %v, %v", verified, err)
+	}
+	if err := service.SetSecurityQuestion(1, " ", "A"); !errors.Is(err, ErrInvalidQuestion) {
+		t.Fatalf("want ErrInvalidQuestion, got: %v", err)
+	}
+	if err := service.SetSecurityQuestion(1, "Q", " "); !errors.Is(err, ErrInvalidAnswer) {
+		t.Fatalf("want ErrInvalidAnswer, got: %v", err)
+	}
+	if err := service.SetSecurityQuestion(1, "UpdatedQ", "UpdatedA"); err != nil {
+		t.Fatalf("update security question failed: %v", err)
+	}
+	updatedQuestion, ok, err := service.GetSecurityQuestion(1)
+	if err != nil || !ok || updatedQuestion != "UpdatedQ" {
+		t.Fatalf("updated question = %q, ok=%v, err=%v", updatedQuestion, ok, err)
+	}
+	if verified, err := service.VerifySecurityQuestion(1, "UpdatedA"); err != nil || !verified {
+		t.Fatalf("verification of updated answer failed: %v, %v", verified, err)
+	}
+}
+
 func TestSecurityQuestionIsCaseInsensitiveAndNeverReturnsHash(t *testing.T) {
 	service := newFixture(t)
 	if err := service.SetSecurityQuestion(1, "第一只宠物叫什么？", "BlueBird123"); err != nil {

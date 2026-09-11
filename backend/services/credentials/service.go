@@ -55,10 +55,10 @@ func (s *Service) SetSecurityQuestion(userID int, question, answer string) error
 	}
 	question = strings.TrimSpace(norm.NFKC.String(question))
 	answer = normalizeAnswer(answer)
-	if len([]byte(question)) < 2 || len([]byte(question)) > 255 {
+	if len([]rune(question)) < 1 {
 		return ErrInvalidQuestion
 	}
-	if len([]byte(answer)) < 8 || len([]byte(answer)) > 256 {
+	if len([]rune(answer)) < 1 {
 		return ErrInvalidAnswer
 	}
 	hash, err := password.Hash(answer)
@@ -71,12 +71,8 @@ func (s *Service) SetSecurityQuestion(userID int, question, answer string) error
 		return fmt.Errorf("load security question: %w", err)
 	}
 	if has {
-		version := item.Version + 1
-		if version <= 0 {
-			version = 1
-		}
-		item.Question, item.AnswerHash, item.Version = question, hash, version
-		if _, err := s.engine.ID(item.ID).Cols("question", "answer_hash", "version", "updated_at").Update(item); err != nil {
+		item.Question, item.AnswerHash = question, hash
+		if _, err := s.engine.ID(item.ID).Cols("question", "answer_hash", "updated_at").Update(item); err != nil {
 			return fmt.Errorf("update security question: %w", err)
 		}
 		return nil

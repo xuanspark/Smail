@@ -22,8 +22,7 @@ const (
 	saltLength      = 16
 	keyLength       = 32
 	maxHashSize     = 255
-	minSecretSize   = 8
-	maxSecretSize   = 256
+	minSecretSize   = 1
 	minPasswordSize = 8
 	maxPasswordSize = 12
 )
@@ -41,7 +40,7 @@ func ValidateUserPassword(plain string) error {
 // Hash 生成 Argon2id 密码哈希。
 func Hash(plain string) (string, error) {
 	plainSize := len([]byte(plain))
-	if plainSize < minSecretSize || plainSize > maxSecretSize {
+	if plainSize < minSecretSize {
 		return "", ErrInvalidLength
 	}
 	salt := make([]byte, saltLength)
@@ -83,7 +82,7 @@ func HashUserPassword(plain string) (string, error) {
 
 // Verify 校验 Argon2id 密码哈希，不接受旧算法格式。
 func Verify(encoded, plain string) bool {
-	if len([]byte(plain)) > maxSecretSize {
+	if len([]byte(plain)) < minSecretSize {
 		return false
 	}
 	parts := strings.Split(encoded, "$")

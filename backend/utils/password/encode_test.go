@@ -16,14 +16,21 @@ func TestHashAndVerify(t *testing.T) {
 	}
 }
 
-func TestHashRejectsInvalidLengths(t *testing.T) {
-	for _, plain := range []string{"short", strings.Repeat("a", maxSecretSize+1)} {
-		if _, err := Hash(plain); err == nil {
-			t.Fatalf("invalid secret length was accepted: %d", len([]byte(plain)))
+func TestHashSupportsSingleCharacterAndLongInputs(t *testing.T) {
+	for _, plain := range []string{"a", "中", strings.Repeat("long-secret-key-123", 50)} {
+		encoded, err := Hash(plain)
+		if err != nil {
+			t.Fatalf("valid secret %q failed: %v", plain, err)
+		}
+		if !Verify(encoded, plain) {
+			t.Fatalf("verification failed for %q", plain)
 		}
 	}
-	if Verify(mustHash(t, "StrongPass123"), strings.Repeat("a", maxSecretSize+1)) {
-		t.Fatal("oversized verification input was accepted")
+	if _, err := Hash(""); !errors.Is(err, ErrInvalidLength) {
+		t.Fatalf("empty secret should be rejected, got: %v", err)
+	}
+	if Verify(mustHash(t, "StrongPass123"), "") {
+		t.Fatal("empty verification input was accepted")
 	}
 }
 

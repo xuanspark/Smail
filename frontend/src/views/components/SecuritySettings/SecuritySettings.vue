@@ -40,8 +40,8 @@
         <p v-else class="settings-desc">密保问题不能单独重置密码，必须与离线恢复码组合使用。</p>
       </div>
       <el-form :model="questionForm" label-position="top" class="settings-form">
-        <el-form-item label="密保问题"><el-input v-model="questionForm.question" maxlength="128" placeholder="例如：我最喜欢的颜色是什么？" /></el-form-item>
-        <el-form-item label="密保答案"><el-input v-model="questionForm.answer" type="password" show-password maxlength="256" placeholder="请输入答案，保存后不会回显" /></el-form-item>
+        <el-form-item label="密保问题"><el-input v-model="questionForm.question" placeholder="例如：我最喜欢的颜色是什么？" /></el-form-item>
+        <el-form-item label="密保答案"><el-input v-model="questionForm.answer" type="password" show-password placeholder="请输入答案，保存后不会回显" /></el-form-item>
         <div class="form-actions"><el-button type="primary" @click="saveSecurityQuestion">{{ securityQuestion.configured ? '更新密保问题' : '设置密保问题' }}</el-button></div>
       </el-form>
     </section>
