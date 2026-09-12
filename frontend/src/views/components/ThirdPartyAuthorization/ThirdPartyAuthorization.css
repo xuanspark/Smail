@@ -18,8 +18,8 @@
 .authorization-header h3 {
   margin: 0 0 8px;
   color: var(--pm-text-primary);
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .authorization-desc {
@@ -40,18 +40,19 @@
 }
 
 .protocol-list {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .protocol-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 16px;
+  gap: 20px;
+  padding: 16px 20px;
+  border-radius: var(--pm-radius-md);
   border: 1px solid var(--pm-border-color);
-  border-radius: var(--pm-radius-sm);
   background: var(--pm-bg-secondary);
 }
 
@@ -63,8 +64,7 @@
 .protocol-title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .protocol-title strong {
@@ -154,6 +154,7 @@
   .protocol-item {
     align-items: stretch;
     flex-direction: column;
+    gap: 14px;
   }
 
   .protocol-actions {
