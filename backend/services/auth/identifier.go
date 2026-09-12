@@ -72,24 +72,44 @@ func ResolveIdentifier(identifier string) (ResolvedIdentity, error) {
 		Find(&bindings); err != nil {
 		return ResolvedIdentity{}, fmt.Errorf("load login email binding: %w", err)
 	}
-	if len(bindings) != 1 || bindings[0].UserID <= 0 {
-		return ResolvedIdentity{}, errors.New("invalid identifier")
+	if len(bindings) == 1 && bindings[0].UserID > 0 {
+		var user models.User
+		has, err := db.Instance.ID(bindings[0].UserID).Get(&user)
+		if err != nil {
+			return ResolvedIdentity{}, fmt.Errorf("load login user: %w", err)
+		}
+		if has && user.ID > 0 && user.Account != "" && user.Disabled == 0 {
+			return ResolvedIdentity{
+				UserID:       user.ID,
+				Account:      user.Account,
+				LoginAddress: normalized,
+				Kind:         IdentifierEmail,
+			}, nil
+		}
 	}
 
-	var user models.User
-	has, err := db.Instance.ID(bindings[0].UserID).Get(&user)
-	if err != nil {
-		return ResolvedIdentity{}, fmt.Errorf("load login user: %w", err)
+	// 回退机制：若未绑定独立外部邮箱，但属于系统配置的域名，则按账号匹配有效系统用户
+	parts := strings.SplitN(normalized, "@", 2)
+	if len(parts) == 2 && isConfiguredLoginDomain(parts[1]) {
+		account, err := validation.NormalizeAccount(parts[0])
+		if err == nil {
+			var user models.User
+			has, err := db.Instance.Where("account = ? AND disabled = 0", account).Get(&user)
+			if err != nil {
+				return ResolvedIdentity{}, fmt.Errorf("load domain user: %w", err)
+			}
+			if has && user.ID > 0 && user.Account != "" {
+				return ResolvedIdentity{
+					UserID:       user.ID,
+					Account:      user.Account,
+					LoginAddress: normalized,
+					Kind:         IdentifierEmail,
+				}, nil
+			}
+		}
 	}
-	if !has || user.ID <= 0 || user.Account == "" {
-		return ResolvedIdentity{}, errors.New("invalid identifier")
-	}
-	return ResolvedIdentity{
-		UserID:       user.ID,
-		Account:      user.Account,
-		LoginAddress: normalized,
-		Kind:         IdentifierEmail,
-	}, nil
+
+	return ResolvedIdentity{}, errors.New("invalid identifier")
 }
 
 func parseLoginIdentifier(identifier string) (string, IdentifierKind, error) {

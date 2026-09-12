@@ -92,3 +92,53 @@ func TestNormalizeIdentifierKeepsLegacyAccountCompatibility(t *testing.T) {
 		t.Fatalf("normalized email key = %q, err = %v", got, err)
 	}
 }
+
+
+func TestResolveIdentifierFallbackToConfiguredDomainUser(t *testing.T) {
+	oldConfig := config.Instance
+	oldDB := db.Instance
+	config.Instance = &config.Config{
+		DbType:  config.DBTypeSQLite,
+		DbDSN:   filepath.Join(t.TempDir(), "domain_fallback.db"),
+		Domain:  "solit.cn",
+		Domains: []string{"solit.cn"},
+	}
+	if err := db.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if db.Instance != nil && db.Instance != oldDB {
+			_ = db.Instance.Close()
+		}
+		db.Instance = oldDB
+		config.Instance = oldConfig
+	})
+
+	user := models.User{Account: "bob", Name: "Bob", Disabled: 0}
+	if err := SetPassword(&user, "CorrectP12"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Instance.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+
+	identity, err := ResolveIdentifier(" Bob@Solit.cn ")
+	if err != nil {
+		t.Fatalf("resolve configured domain user failed: %v", err)
+	}
+	if identity.Kind != IdentifierEmail || identity.UserID != user.ID || identity.Account != "bob" || identity.LoginAddress != "bob@solit.cn" {
+		t.Fatalf("unexpected resolved identity: %+v", identity)
+	}
+
+	disabledUser := models.User{Account: "charlie", Name: "Charlie", Disabled: 1}
+	if _, err := db.Instance.Insert(&disabledUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveIdentifier("charlie@solit.cn"); err == nil {
+		t.Fatal("disabled domain user must not be resolved")
+	}
+
+	if _, err := ResolveIdentifier("bob@other.com"); err == nil {
+		t.Fatal("unconfigured domain must not be resolved")
+	}
+}
