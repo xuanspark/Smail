@@ -24,8 +24,8 @@ for (const succeeded of [false, true]) {
         return { errorNo: 0 }
       }
     }
-    const usePage = compileFunction(source + '\nreturn usePage', ['onMounted', 'ref', 'ElMessageBox', 'ElNotification', 'http'])(
-      Vue.onMounted, Vue.ref, {}, value => notices.push(value), transport
+    const usePage = compileFunction(source + '\nreturn usePage', ['onMounted', 'reactive', 'ref', 'ElMessageBox', 'ElNotification', 'http'])(
+      Vue.onMounted, Vue.reactive, Vue.ref, {}, value => notices.push(value), transport
     )
     const { descriptor, errors } = parse(read('vue'))
     assert.deepEqual(errors, [])

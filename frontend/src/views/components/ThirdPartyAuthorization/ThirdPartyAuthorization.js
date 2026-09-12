@@ -53,18 +53,29 @@ export function usePage() {
   }
 
   const setProtocolEnabled = async (item, enabled) => {
+    if (protocolLoading.value || item.enabled === enabled) return
+    const previous = item.enabled
+    item.enabled = enabled
     protocolLoading.value = true
     try {
-      const response = await http.post('/api/v1/security/credentials/protocols/status', {
+      const response = await http.put('/api/v1/security/credentials/protocols/enabled', {
         protocol: item.protocol,
         enabled,
       })
       if (response.errorNo !== 0) {
         throw new Error(response.errorMsg || '更新协议开启状态失败')
       }
-      notify(`${protocolLabel(item.protocol)} ${enabled ? '已开启' : '已关闭'}`, 'success')
+      if (!enabled) {
+        if (generatedProtocol.value === item.protocol) {
+          generatedProtocol.value = ''
+          generatedProtocolCode.value = ''
+        }
+        delete revealedCodes[item.protocol]
+      }
+      notify(`${protocolLabel(item.protocol)} 当前账号客户端访问已${enabled ? '开启' : '关闭'}`, 'success')
       await loadProtocolCredentials()
     } catch (error) {
+      item.enabled = previous
       notify(error?.message || '更新协议开启状态失败')
     } finally {
       protocolLoading.value = false
@@ -205,7 +216,7 @@ export function usePage() {
         throw new Error(response.errorMsg || '密码验证失败，无法查看授权码')
       }
 
-      const codes = response.data?.codes || {}
+      const codes = response.data?.codes || response.data || {}
       Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
       Object.assign(revealedCodes, codes)
       codesRevealed.value = true
