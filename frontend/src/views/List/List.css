@@ -233,3 +233,30 @@
     padding-top: 2px;
   }
 }
+
+.mail-status-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.clickable-tag {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.clickable-tag:hover {
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+
+.error-dialog-body {
+  padding: 10px 0;
+}
+
+.error-label {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--pm-text-primary);
+}

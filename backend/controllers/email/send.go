@@ -282,6 +282,18 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// ??????????????????
+	var contactList []models.UserContact
+	for _, recipient := range append(append(e.To, e.Cc...), e.Bcc...) {
+		if recipient != nil && recipient.EmailAddress != "" {
+			contactList = append(contactList, models.UserContact{
+				Email: recipient.EmailAddress,
+				Name:  recipient.Name,
+			})
+		}
+	}
+	RecordUserContacts(ctx.UserID, contactList)
+
 	e.MessageId = cast.ToInt64(modelEmail.Id)
 	e.MsgID = modelEmail.MsgID
 

@@ -6,7 +6,7 @@ import {ElMessage} from 'element-plus'
 
 import {onBeforeUnmount, reactive, ref, shallowRef} from 'vue'
 
-import {Close, Paperclip, Position, ArrowDown, Document} from '@element-plus/icons-vue';
+import {Close, Paperclip, Position, ArrowDown, Document, Delete} from '@element-plus/icons-vue';
 
 import lang from '../../i18n/i18n';
 
@@ -68,8 +68,32 @@ export function usePage() {
   })
   
   const fileList = reactive([]);
+  const contactOptions = ref([]);
+
+  const loadContacts = function () {
+    http.get("/api/v1/email/contacts").then(res => {
+      if (res.errorNo === 0 && Array.isArray(res.data)) {
+        contactOptions.value = res.data
+      }
+    }).catch(() => {})
+  }
+
+  const deleteContact = function (email) {
+    if (!email) return
+    http.post("/api/v1/email/contacts/delete", {email: email}).then(res => {
+      if (res.errorNo === 0) {
+        ElMessage.success("已从历史联系人中删除")
+        contactOptions.value = contactOptions.value.filter(c => c.email !== email)
+      } else {
+        ElMessage.error(res.errorMsg || "删除失败")
+      }
+    }).catch(() => {
+      ElMessage.error("删除联系人失败")
+    })
+  }
   
   const init = function () {
+      loadContacts()
       if ( Object.keys(globalStatus.userInfos)==0 || globalStatus.userInfos === null || globalStatus.userInfos == undefined ){
         globalStatus.init(()=>{
           ruleForm.sender = globalStatus.userInfos.account
@@ -228,10 +252,10 @@ export function usePage() {
     Position,
     ArrowDown,
     Document,
+    Delete,
     lang,
     Editor,
     Toolbar,
-    i18nChangeLanguage,
     useRouter,
     http,
     useGroupStore,
@@ -260,7 +284,10 @@ export function usePage() {
     send,
     upload,
     fileChange,
-    delFile
+    delFile,
+    contactOptions,
+    loadContacts,
+    deleteContact
   }
 }
 
@@ -271,5 +298,6 @@ export {
   Toolbar,
   Editor,
   Document,
-  Close
+  Close,
+  Delete
 }

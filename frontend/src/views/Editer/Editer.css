@@ -306,3 +306,39 @@
     padding: 12px 16px;
   }
 }
+
+.contact-option-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.contact-option-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-option-name {
+  font-weight: 600;
+  color: var(--pm-text-primary);
+}
+
+.contact-option-email {
+  color: var(--pm-text-secondary);
+  font-size: 13px;
+}
+
+.contact-del-icon {
+  font-size: 14px;
+  color: var(--pm-text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.contact-del-icon:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}

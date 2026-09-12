@@ -20,7 +20,7 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 		t.Fatalf("report = %+v", report)
 	}
 
-	for _, table := range []string{"user", "email", "group", "rule", "sessions", "user_email", "version", "external_email", "verification_event", "security_question", "recovery_code", "verification_rate_limit", "verification_cleanup_state", "webauthn_credential", "totp_authenticator", "plugin_secret", "plugin_user_setting", "schema_migration"} {
+	for _, table := range []string{"user", "email", "group", "rule", "sessions", "user_email", "version", "external_email", "verification_event", "security_question", "recovery_code", "verification_rate_limit", "verification_cleanup_state", "webauthn_credential", "totp_authenticator", "plugin_secret", "plugin_user_setting", "schema_migration", "user_contact", "user_trusted_sender"} {
 		if !sqliteTableExists(t, db, table) {
 			t.Fatalf("table %s was not created", table)
 		}
@@ -283,6 +283,7 @@ func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
 		16: "00cc275529e522d93b41e608692fb6e2271f1aa9300ebe020fcaed4d68d0ff76",
 		17: "1dad66acb5e7fecf6c39f4a78526b994748d90045220f446a2e80c1b5fd881e7",
 		18: "17622df3406657f199d78a3a1aa1f3a8693baf85aa7707910cc6d6cb44c13ee4",
+		19: "f24b94ca9e4c25b7973f6c15fcaddccc7f02bcf7886c0a4995d2f7b79f4a3a16",
 	}
 	migrations := DefaultMigrations()
 	if len(migrations) != len(expected) {

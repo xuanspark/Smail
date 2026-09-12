@@ -54,12 +54,6 @@
           <template #default="scope">
             <div class="status-indicator">
               <el-badge is-dot class="unread-dot" type="primary" v-if="!scope.row.is_read"></el-badge>
-              <el-tooltip effect="dark" :content="lang.dangerous" placement="top-start" v-if="scope.row.dangerous">
-                <el-icon color="#ef4444"><Warning /></el-icon>
-              </el-tooltip>
-              <el-tooltip effect="dark" :content="scope.row.error" placement="top-start" v-if="scope.row.error !== ''">
-                <el-icon color="#ef4444"><Warning /></el-icon>
-              </el-tooltip>
             </div>
           </template>
         </el-table-column>
@@ -71,6 +65,27 @@
                 <div class="mail-sender">
                   {{ scope.row.sender.Name !== '' ? scope.row.sender.Name : scope.row.sender.EmailAddress }}
                 </div>
+                
+                <!-- 高辨识度安全与发送状态标签 -->
+                <div class="mail-status-tags" v-if="scope.row.dangerous || isOutbox">
+                  <el-tooltip content="点击将该发件人添加至信任白名单，后续免除风险提示" placement="top" v-if="scope.row.dangerous">
+                    <el-tag type="danger" effect="dark" size="small" class="clickable-tag" @click.stop="trustSender(scope.row.sender.EmailAddress)">
+                      <el-icon><Warning /></el-icon> 疑似不安全 (点击信任)
+                    </el-tag>
+                  </el-tooltip>
+                  
+                  <template v-if="isOutbox">
+                    <el-tag type="success" effect="light" size="small" v-if="!scope.row.error || scope.row.error === ''">
+                      <el-icon><Check /></el-icon> 发送成功
+                    </el-tag>
+                    <el-tooltip :content="scope.row.error" placement="top" v-else>
+                      <el-tag type="danger" effect="light" size="small" class="clickable-tag" @click.stop="showError(scope.row)">
+                        <el-icon><Warning /></el-icon> 发送失败 (查看详情)
+                      </el-tag>
+                    </el-tooltip>
+                  </template>
+                </div>
+
                 <div class="mail-subject">{{ scope.row.title }}</div>
                 <div class="mail-snippet">{{ scope.row.desc }}</div>
               </div>
@@ -91,11 +106,22 @@
           @current-change="pageChange"
       />
     </div>
+
+    <!-- 错误详情对话框 -->
+    <el-dialog v-model="errorDialogVisible" title="邮件发送失败详情" width="500px">
+      <div class="error-dialog-body">
+        <p class="error-label">错误原因：</p>
+        <el-alert :title="currentErrorMsg" type="error" :closable="false" show-icon />
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="errorDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { usePage, CircleCheck, Switch, Delete, View, Folder, EpArrowDownBold, EditPen, Warning } from './List.js'
+import { usePage, CircleCheck, Switch, Delete, View, Folder, EpArrowDownBold, EditPen, Warning, Check } from './List.js'
 
 const {
   taskTableDataRef,
@@ -114,7 +140,12 @@ const {
   rowStyle,
   formatShortDate,
   totalPage,
-  pageChange
+  pageChange,
+  isOutbox,
+  trustSender,
+  showError,
+  errorDialogVisible,
+  currentErrorMsg
 } = usePage()
 </script>
 

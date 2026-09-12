@@ -2,11 +2,11 @@ import './List.js'
 
 import {EpArrowDownBold} from "vue-icons-plus/ep";
 
-import {Delete, View, Folder, EditPen, Warning, CircleCheck, Switch} from "@element-plus/icons-vue";
+import {Delete, View, Folder, EditPen, Warning, CircleCheck, Switch, Check} from "@element-plus/icons-vue";
 
 import {useRouter} from 'vue-router'
 
-import {ref, watch} from 'vue'
+import {ref, watch, computed} from 'vue'
 
 import useGroupStore from '../../stores/group'
 
@@ -27,11 +27,23 @@ export function usePage() {
   
   const selectedRows = ref([])
   
+  const errorDialogVisible = ref(false)
+  const currentErrorMsg = ref('')
+
   let tag = groupStore.tag;
   
   if (tag === "") {
     tag = '{"type":0,"status":-1}'
   }
+
+  const isOutbox = computed(() => {
+    try {
+      const parsed = JSON.parse(groupStore.tag || tag || '{}')
+      return parsed.type === 1 || groupStore.name === lang.outbox || groupStore.name === '已发送'
+    } catch {
+      return false
+    }
+  })
   
   watch(groupStore, async (newV) => {
     tag = newV.tag;
@@ -110,7 +122,7 @@ export function usePage() {
     http.post("/api/v1/email/read", {"ids": ids}).then(res => {
       if (res.errorNo === 0) {
         updateList()
-        ElMessage.success('Marked as read');
+        ElMessage.success('已标记为已读');
       } else {
         ElMessage.error(res.errorMsg)
       }
@@ -172,6 +184,38 @@ export function usePage() {
     })
   }
 
+  const trustSender = function (senderEmail) {
+    if (!senderEmail) return
+    ElMessageBox.confirm(
+      `确定将发件人 "${senderEmail}" 加入信任白名单吗？后续来自该地址的新邮件将不再提示风险。`,
+      '信任发件人',
+      {
+        confirmButtonText: '信任并加入白名单',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    ).then(() => {
+      http.post("/api/v1/email/trust-sender", {email: senderEmail, trusted: true}).then(res => {
+        if (res.errorNo === 0) {
+          ElMessage.success('已加入信任白名单，风险提示已免除')
+          // 局部更新视图，避免整页重新刷新
+          data.value.forEach(item => {
+            if (item.sender?.EmailAddress === senderEmail) {
+              item.dangerous = false
+            }
+          })
+        } else {
+          ElMessage.error(res.errorMsg || '操作失败')
+        }
+      })
+    }).catch(() => {})
+  }
+
+  const showError = function (row) {
+    currentErrorMsg.value = row.error || '未知投递错误'
+    errorDialogVisible.value = true
+  }
+
   return {
     EpArrowDownBold,
     Delete,
@@ -179,11 +223,13 @@ export function usePage() {
     Folder,
     EditPen,
     Warning,
+    Check,
     CircleCheck,
     Switch,
     useRouter,
     ref,
     watch,
+    computed,
     useGroupStore,
     lang,
     http,
@@ -208,7 +254,12 @@ export function usePage() {
     move,
     del,
     rowStyle,
-    pageChange
+    pageChange,
+    isOutbox,
+    trustSender,
+    showError,
+    errorDialogVisible,
+    currentErrorMsg
   }
 }
 
@@ -220,5 +271,6 @@ export {
   Folder,
   EpArrowDownBold,
   EditPen,
-  Warning
+  Warning,
+  Check
 }

@@ -146,6 +146,8 @@ func syncTables() error {
 		&models.WebAuthnCredential{},
 		&models.ProtocolCredential{},
 		&models.Version{},
+		&models.UserContact{},
+		&models.UserTrustedSender{},
 	}
 	for _, table := range tables {
 		if err := Instance.Sync2(table); err != nil {

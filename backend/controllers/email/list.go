@@ -10,6 +10,8 @@ import (
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/dto/response"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/list"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
@@ -79,6 +81,14 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		response.NewErrorResponse(response.ServerError, "读取邮件列表失败", "").FPrint(w)
 		return
 	}
+	trustedMap := make(map[string]bool)
+	var trustedSenders []models.UserTrustedSender
+	if err := db.Instance.Table(&models.UserTrustedSender{}).Where("user_id = ?", ctx.UserID).Find(&trustedSenders); err == nil {
+		for _, item := range trustedSenders {
+			trustedMap[strings.ToLower(strings.TrimSpace(item.Email))] = true
+		}
+	}
+
 	items := make([]*emilItem, 0, len(emailList))
 	for _, email := range emailList {
 		var sender User
@@ -99,6 +109,10 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		authentication := parsemail.NewEmailAuthentication(email.SPFCheck == 1, email.DKIMCheck == 1)
+		dangerous := authentication.Dangerous
+		if trustedMap[strings.ToLower(strings.TrimSpace(sender.EmailAddress))] {
+			dangerous = false
+		}
 		items = append(items, &emilItem{
 			ID:        email.Id,
 			Title:     email.Subject,
@@ -107,7 +121,7 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			IsRead:    email.IsRead == 1,
 			Sender:    sender,
 			To:        recipients,
-			Dangerous: authentication.Dangerous,
+			Dangerous: dangerous,
 			Error:     email.Error.String,
 		})
 	}

@@ -59,8 +59,25 @@
             <el-select 
               v-model="ruleForm.receivers" 
               multiple filterable allow-create :reserve-keyword="false" 
-              placeholder="请输入收件人地址"
-            ></el-select>
+              placeholder="请输入收件人地址（输入后按回车，或从下方历史联系人选择）"
+            >
+              <el-option 
+                v-for="contact in contactOptions" 
+                :key="contact.email" 
+                :label="contact.name ? `${contact.name} <${contact.email}>` : contact.email" 
+                :value="contact.email"
+              >
+                <div class="contact-option-item">
+                  <div class="contact-option-info">
+                    <span class="contact-option-name" v-if="contact.name">{{ contact.name }}</span>
+                    <span class="contact-option-email">{{ contact.email }}</span>
+                  </div>
+                  <el-tooltip content="从历史记录删除" placement="top">
+                    <el-icon class="contact-del-icon" @click.stop="deleteContact(contact.email)"><Delete /></el-icon>
+                  </el-tooltip>
+                </div>
+              </el-option>
+            </el-select>
           </el-form-item>
         </div>
 
@@ -71,7 +88,18 @@
               v-model="ruleForm.cc" 
               multiple filterable allow-create :reserve-keyword="false" 
               placeholder="请输入抄送人地址"
-            ></el-select>
+            >
+              <el-option 
+                v-for="contact in contactOptions" 
+                :key="'cc-' + contact.email" 
+                :label="contact.name ? `${contact.name} <${contact.email}>` : contact.email" 
+                :value="contact.email"
+              >
+                <div class="contact-option-item">
+                  <span class="contact-option-email">{{ contact.email }}</span>
+                </div>
+              </el-option>
+            </el-select>
           </el-form-item>
         </div>
 
@@ -82,7 +110,18 @@
               v-model="ruleForm.bcc" 
               multiple filterable allow-create :reserve-keyword="false" 
               placeholder="请输入密送人地址"
-            ></el-select>
+            >
+              <el-option 
+                v-for="contact in contactOptions" 
+                :key="'bcc-' + contact.email" 
+                :label="contact.name ? `${contact.name} <${contact.email}>` : contact.email" 
+                :value="contact.email"
+              >
+                <div class="contact-option-item">
+                  <span class="contact-option-email">{{ contact.email }}</span>
+                </div>
+              </el-option>
+            </el-select>
           </el-form-item>
         </div>
 
@@ -111,7 +150,7 @@
 </template>
 
 <script setup>
-import { usePage, Paperclip, Position, ArrowDown, Toolbar, Editor, Document, Close } from './Editer.js'
+import { usePage, Paperclip, Position, ArrowDown, Toolbar, Editor, Document, Close, Delete } from './Editer.js'
 
 const {
   lang,
@@ -131,7 +170,9 @@ const {
   editorConfig,
   handleCreated,
   fileList,
-  delFile
+  delFile,
+  contactOptions,
+  deleteContact
 } = usePage()
 </script>
 
