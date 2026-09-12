@@ -71,6 +71,7 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/security/credentials/protocols/enabled", onlyMethod(http.MethodPut, limitBody(16<<10, contextIterceptor(controllers.SetProtocolCredentialEnabled))))
 	mux.HandleFunc("/api/security/credentials/protocols/generate", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.GenerateProtocolCredential))))
 	mux.HandleFunc("/api/security/credentials/protocols/revoke", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.RevokeProtocolCredential))))
+	mux.HandleFunc("/api/security/credentials/protocols/reveal", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.RevealProtocolCredentials))))
 	mux.HandleFunc("/api/security/external-email/list", onlyMethod(http.MethodGet, contextIterceptor(controllers.ListExternalEmails)))
 	mux.HandleFunc("/api/security/external-email/bind", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.BindExternalEmail))))
 	mux.HandleFunc("/api/security/external-email/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.VerifyExternalEmail))))
