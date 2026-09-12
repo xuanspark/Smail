@@ -1,16 +1,26 @@
-.log-settings {
+.log-settings-container {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.log-settings {
+  min-height: 480px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 8px 10px 4px 2px;
   box-sizing: border-box;
+  flex: 1;
 }
 
-/* 只为日志页建立确定高度，滚动限制在表格内，不改变其他设置页。 */
-:global(.settings-tabs .el-tab-pane:has(> .log-settings)) {
+/* 只为日志页建立确定高度，滚动限制在容器内，不改变其他设置页。 */
+:global(.settings-tabs .el-tab-pane:has(> .log-settings-container)) {
   height: 100%;
 }
 
@@ -105,7 +115,7 @@
 
 .log-content {
   flex: 1;
-  min-height: 120px;
+  min-height: 260px;
   min-width: 0;
   display: flex;
   flex-direction: column;

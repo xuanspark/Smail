@@ -1,0 +1,102 @@
+.sender-filter-management {
+  background: var(--el-bg-color-overlay, #ffffff);
+  border: 1px solid var(--el-border-color-light, #e4e7ed);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.sf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.sf-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sf-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary, #303133);
+}
+
+.sf-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.sf-badge {
+  font-size: 12px;
+}
+
+.sf-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sf-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.sf-tabs {
+  margin-bottom: 0;
+}
+
+.sf-search-input {
+  width: 260px;
+}
+
+.sf-table-wrapper {
+  margin-bottom: 12px;
+}
+
+.sf-table {
+  width: 100%;
+}
+
+.sf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sf-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+@media (max-width: 768px) {
+  .sf-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .sf-quick-add {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .sf-quick-add .el-input {
+    width: 100% !important;
+  }
+  .sf-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .sf-search-input {
+    width: 100%;
+  }
+}
