@@ -174,3 +174,44 @@ func TestProtocolCredentialLifecycle(t *testing.T) {
 		t.Fatal("revoked protocol code was accepted")
 	}
 }
+
+
+func TestProtocolCredentialRevealAndRevoke(t *testing.T) {
+	service := newFixture(t)
+	root := t.TempDir()
+	service.SetVaultRoot(root)
+	if err := service.SetProtocolEnabled(1, ProtocolIMAP, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetProtocolEnabled(1, ProtocolSMTP, true); err != nil {
+		t.Fatal(err)
+	}
+	imapCode, err := service.GenerateProtocolCode(1, ProtocolIMAP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	smtpCode, err := service.GenerateProtocolCode(1, ProtocolSMTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revealed, err := service.RevealProtocolCodes(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revealed[ProtocolIMAP] != imapCode || revealed[ProtocolSMTP] != smtpCode {
+		t.Fatalf("expected revealed codes to match, got %+v", revealed)
+	}
+	if err := service.RevokeProtocolCode(1, ProtocolIMAP); err != nil {
+		t.Fatal(err)
+	}
+	revealedAfter, err := service.RevealProtocolCodes(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, has := revealedAfter[ProtocolIMAP]; has {
+		t.Fatal("imap code should be revoked and not revealed")
+	}
+	if revealedAfter[ProtocolSMTP] != smtpCode {
+		t.Fatal("smtp code should still be revealed")
+	}
+}

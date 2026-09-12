@@ -38,6 +38,7 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/security/credentials/protocols/enabled", "/api/security/credentials/protocols/enabled", http.MethodPut, 16<<10, controllers.SetProtocolCredentialEnabled)
 	registerV1MethodRoute(mux, "/api/v1/security/credentials/protocols/generate", "/api/security/credentials/protocols/generate", http.MethodPost, 16<<10, controllers.GenerateProtocolCredential)
 	registerV1MethodRoute(mux, "/api/v1/security/credentials/protocols/revoke", "/api/security/credentials/protocols/revoke", http.MethodPost, 16<<10, controllers.RevokeProtocolCredential)
+	registerV1MethodRoute(mux, "/api/v1/security/credentials/protocols/reveal", "/api/security/credentials/protocols/reveal", http.MethodPost, 16<<10, controllers.RevealProtocolCredentials)
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/list", "/api/security/external-email/list", http.MethodGet, 0, controllers.ListExternalEmails)
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/bind", "/api/security/external-email/bind", http.MethodPost, 16<<10, controllers.BindExternalEmail)
 	registerV1MethodRoute(mux, "/api/v1/security/external-email/verify", "/api/security/external-email/verify", http.MethodPost, 16<<10, controllers.VerifyExternalEmail)

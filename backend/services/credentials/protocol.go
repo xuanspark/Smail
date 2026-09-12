@@ -10,6 +10,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/password"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 )
 
 const (
@@ -132,6 +133,13 @@ func (s *Service) GenerateProtocolCode(userID int, protocol string) (string, err
 	if err != nil {
 		return "", err
 	}
+	ciphertext := ""
+	if s.vaultRoot != "" {
+		ciphertext, err = credential.Encrypt(s.vaultRoot, plain)
+		if err != nil {
+			return "", fmt.Errorf("protect protocol authorization code: %w", err)
+		}
+	}
 	hash, err := password.Hash(plain)
 	if err != nil {
 		return "", fmt.Errorf("hash protocol authorization code: %w", err)
@@ -151,10 +159,11 @@ func (s *Service) GenerateProtocolCode(userID int, protocol string) (string, err
 		version = 1
 	}
 	item.CodeHash = hash
+	item.CodeCiphertext = ciphertext
 	item.CodeVersion = version
 	item.RevokedAt = nil
 	item.LastUsedAt = nil
-	if _, err := s.engine.ID(item.ID).Cols("code_hash", "code_version", "revoked_at", "last_used_at", "updated_at").Update(&item); err != nil {
+	if _, err := s.engine.ID(item.ID).Cols("code_hash", "code_ciphertext", "code_version", "revoked_at", "last_used_at", "updated_at").Update(&item); err != nil {
 		return "", fmt.Errorf("update protocol authorization code: %w", err)
 	}
 	return plain, nil
@@ -176,9 +185,9 @@ func (s *Service) RevokeProtocolCode(userID int, protocol string) error {
 	defer s.mu.Unlock()
 	now := s.now()
 	if _, err := s.engine.Where("user_id = ? AND protocol = ? AND revoked_at IS NULL", userID, protocol).
-		Cols("revoked_at", "updated_at").
-		Update(&models.ProtocolCredential{RevokedAt: &now}); err != nil {
-		return fmt.Errorf("revoke protocol authorization code: %w", err)
+		Cols("revoked_at", "code_hash", "code_ciphertext", "updated_at").
+		Update(&models.ProtocolCredential{RevokedAt: &now, CodeHash: "", CodeCiphertext: ""}); err != nil {
+			return fmt.Errorf("revoke protocol authorization code: %w", err)
 	}
 	return nil
 }
@@ -236,4 +245,35 @@ func newProtocolCode() (string, error) {
 		groups = append(groups, encoded)
 	}
 	return strings.Join(groups, "-"), nil
+}
+
+// RevealProtocolCodes 解密当前用户所有有效协议授权码，仅在安全身份验证后调用。
+func (s *Service) RevealProtocolCodes(userID int) (map[string]string, error) {
+	if s == nil || s.engine == nil {
+		return nil, ErrUnavailable
+	}
+	if userID <= 0 {
+		return nil, ErrInvalidUser
+	}
+	if s.vaultRoot == "" {
+		return make(map[string]string), nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var items []models.ProtocolCredential
+	if err := s.engine.Where("user_id = ? AND enabled = ? AND revoked_at IS NULL", userID, true).Find(&items); err != nil {
+		return nil, fmt.Errorf("load protocol credentials for reveal: %w", err)
+	}
+	result := make(map[string]string, len(items))
+	for _, item := range items {
+		if item.CodeCiphertext == "" || item.CodeHash == "" {
+			continue
+		}
+		plain, err := credential.Decrypt(s.vaultRoot, item.CodeCiphertext)
+		if err != nil {
+			continue
+		}
+		result[item.Protocol] = plain
+	}
+	return result, nil
 }

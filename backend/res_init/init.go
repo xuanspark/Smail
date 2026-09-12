@@ -318,6 +318,7 @@ func startVerificationRuntime() error {
 		runtime.Stop()
 		return fmt.Errorf("start credential service: %w", err)
 	}
+	credential.SetVaultRoot(config.ROOT_PATH)
 	vault, err := externalemail.NewVault(config.ROOT_PATH)
 	if err != nil {
 		runtime.Stop()

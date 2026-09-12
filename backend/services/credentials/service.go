@@ -33,9 +33,28 @@ const (
 
 // Service 统一管理密保问题和离线恢复码。
 type Service struct {
-	engine *xorm.Engine
-	mu     sync.Mutex
-	now    func() time.Time
+	engine   *xorm.Engine
+	mu       sync.Mutex
+	now      func() time.Time
+	vaultRoot string
+}
+
+func (s *Service) SetVaultRoot(root string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.vaultRoot = root
+}
+
+func (s *Service) VaultRoot() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.vaultRoot
 }
 
 func NewService(engine *xorm.Engine) (*Service, error) {

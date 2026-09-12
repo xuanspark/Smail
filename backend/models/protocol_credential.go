@@ -10,6 +10,7 @@ type ProtocolCredential struct {
 	Enabled     bool       `xorm:"enabled notnull default(0)" json:"enabled"`
 	CodeHash    string     `xorm:"code_hash varchar(255) notnull" json:"-"`
 	CodeVersion int        `xorm:"code_version int notnull default(1)" json:"-"`
+	CodeCiphertext string     `xorm:"code_ciphertext varchar(512) null" json:"-"`
 	CreatedAt   time.Time  `xorm:"created_at datetime created notnull" json:"created_at"`
 	UpdatedAt   time.Time  `xorm:"updated_at datetime updated notnull" json:"updated_at"`
 	LastUsedAt  *time.Time `xorm:"last_used_at datetime null" json:"last_used_at,omitempty"`

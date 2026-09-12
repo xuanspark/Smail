@@ -16,6 +16,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/recovery"
@@ -430,6 +431,31 @@ func RevokeProtocolCredential(ctx *context.Context, w http.ResponseWriter, req *
 	}
 	protocol, _ := credentials.NormalizeProtocol(input.Protocol)
 	response.NewSuccessResponse(map[string]any{"protocol": protocol, "revoked": true}).FPrint(w)
+}
+
+// RevealProtocolCredentials 在安全身份验证成功后解密并返回当前用户所有有效协议授权码。
+func RevealProtocolCredentials(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	service, ok := requireProtocolCredentialContext(ctx, w)
+	if !ok {
+		return
+	}
+	var input struct {
+		Password string `json:"password"`
+	}
+	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.Password) == "" {
+		writeSecurityError(w, response.ParamsError, "请输入当前账号密码进行安全验证")
+		return
+	}
+	if _, err := auth.AuthenticateUserByID(ctx.UserID, input.Password); err != nil {
+		writeSecurityError(w, response.ParamsError, "密码验证失败")
+		return
+	}
+	codes, err := service.RevealProtocolCodes(ctx.UserID)
+	if err != nil {
+		writeSecurityError(w, response.ServerError, "解密授权码失败")
+		return
+	}
+	response.NewSuccessResponse(codes).FPrint(w)
 }
 func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	runtime := currentSecurityRuntime()

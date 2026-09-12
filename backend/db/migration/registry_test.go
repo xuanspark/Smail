@@ -284,6 +284,7 @@ func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
 		17: "1dad66acb5e7fecf6c39f4a78526b994748d90045220f446a2e80c1b5fd881e7",
 		18: "17622df3406657f199d78a3a1aa1f3a8693baf85aa7707910cc6d6cb44c13ee4",
 		19: "f24b94ca9e4c25b7973f6c15fcaddccc7f02bcf7886c0a4995d2f7b79f4a3a16",
+		20: "e0bc01f4c2df742bc23c519c2a399cc1c3f341565dbed014509a8c63d68bf725",
 	}
 	migrations := DefaultMigrations()
 	if len(migrations) != len(expected) {

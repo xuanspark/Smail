@@ -29,6 +29,7 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(17, "create_managed_logs", logStatements()),
 		DefineCustom(18, "expand_operation_log_actor_role", "expand_operation_log_actor_role_v1", applyOperationLogActorRoleSchema),
 		DefineForDialects(19, "create_user_contacts_and_trusted_senders", userContactStatements()),
+		DefineCustom(20, "expand_protocol_credential_ciphertext", "expand_protocol_credential_ciphertext_v1", applyProtocolCredentialCiphertextSchema),
 	}
 }
 
