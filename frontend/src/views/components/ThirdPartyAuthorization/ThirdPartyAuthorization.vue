@@ -2,41 +2,100 @@
   <div class="third-party-authorization" v-loading="protocolLoading">
     <section class="authorization-section">
       <div class="authorization-header">
-        <h3>邮件客户端协议</h3>
-        <p class="authorization-desc">
-          本地服务不依赖 SMTP 中继；开关只控制当前账号。
-        </p>
+        <div class="header-main">
+          <h3>???????</h3>
+          <p class="authorization-desc">
+            ?? IMAP?POP3?SMTP ????????????????????????????
+          </p>
+        </div>
+        <div class="header-actions">
+          <el-button
+            v-if="hasConfiguredProtocols && !codesRevealed"
+            type="primary"
+            plain
+            size="small"
+            @click="openVerifyDialog"
+          >
+            ?????????
+          </el-button>
+          <el-button
+            v-else-if="codesRevealed"
+            type="info"
+            plain
+            size="small"
+            @click="hideRevealedCodes"
+          >
+            ???????
+          </el-button>
+        </div>
       </div>
 
       <el-alert
-        title="使用完整邮箱和协议授权码登录；授权码仅显示一次，重新开启可继续使用未撤销的授权码。"
-        type="warning"
+        title="???????????????????????????????????????????????????????????????"
+        type="info"
         :closable="false"
         show-icon
       />
 
       <div class="protocol-list">
-        <div v-for="item in protocolCredentials" :key="item.protocol" class="protocol-item">
+        <div
+          v-for="item in protocolCredentials"
+          :key="item.protocol"
+          class="protocol-item"
+        >
           <div class="protocol-info">
             <div class="protocol-title">
               <strong>{{ protocolLabel(item.protocol) }}</strong>
               <el-tag size="small" :type="item.enabled ? 'success' : 'info'">
-                {{ item.enabled ? '已开启' : '已关闭' }}
+                {{ item.enabled ? '???' : '???' }}
               </el-tag>
               <el-tag size="small" :type="item.configured ? 'success' : 'warning'">
-                {{ item.configured ? '已配置授权码' : '未生成授权码' }}
+                {{ item.configured ? '??????' : '??????' }}
               </el-tag>
             </div>
-            <p>登录名：完整邮箱地址；密码：本协议授权码。</p>
+            <p class="protocol-guide">???????????????????????</p>
+
+            <div class="protocol-credential-slot">
+              <span class="slot-label">??????</span>
+              <template v-if="item.configured">
+                <template v-if="codesRevealed && revealedCodes[item.protocol]">
+                  <code class="revealed-code">{{ revealedCodes[item.protocol] }}</code>
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    class="copy-btn"
+                    @click="copyProtocolCode(revealedCodes[item.protocol])"
+                  >
+                    ??
+                  </el-button>
+                </template>
+                <template v-else>
+                  <span class="masked-code">????????????????</span>
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    class="reveal-btn"
+                    @click="openVerifyDialog"
+                  >
+                    ??????
+                  </el-button>
+                </template>
+              </template>
+              <template v-else>
+                <span class="unconfigured-tip">???????????????????</span>
+              </template>
+            </div>
           </div>
 
           <div class="protocol-actions">
             <el-switch
               :model-value="item.enabled"
               :loading="protocolLoading"
-              active-text="开启"
-              inactive-text="关闭"
-              :aria-label="`${protocolLabel(item.protocol)} 当前账号客户端访问`"
+              active-text="??"
+              inactive-text="??"
+              :aria-label="`${protocolLabel(item.protocol)} ?????????`"
               @change="value => setProtocolEnabled(item, value)"
             />
             <el-button
@@ -45,7 +104,7 @@
               :disabled="!item.enabled"
               @click="generateProtocolCode(item)"
             >
-              {{ item.configured ? '重新生成授权码' : '生成授权码' }}
+              {{ item.configured ? '???????' : '?????' }}
             </el-button>
             <el-button
               v-if="item.configured"
@@ -54,39 +113,83 @@
               size="small"
               @click="revokeProtocolCode(item)"
             >
-              撤销授权码
+              ?????
             </el-button>
           </div>
         </div>
       </div>
-
-      <div v-if="generatedProtocolCode" class="protocol-code-panel">
-        <div class="one-time-tip">
-          {{ protocolLabel(generatedProtocol) }} 授权码仅本次显示，请复制保存：
-        </div>
-        <code>{{ generatedProtocolCode }}</code>
-        <el-button type="primary" plain size="small" @click="copyProtocolCode">
-          复制授权码
-        </el-button>
-      </div>
     </section>
+
+    <!-- ???????? -->
+    <el-dialog
+      v-model="verifyDialogVisible"
+      title="??????"
+      width="min(440px, calc(100vw - 32px))"
+      :close-on-click-modal="false"
+      class="verify-reveal-dialog"
+      @close="closeVerifyDialog"
+    >
+      <div class="verify-dialog-body">
+        <p class="verify-dialog-tip">
+          ?????????????????????????????????
+        </p>
+        <el-form @submit.prevent="submitVerifyAndReveal">
+          <el-form-item label="??????">
+            <el-input
+              v-model="verifyPassword"
+              type="password"
+              show-password
+              placeholder="???????????"
+              autocomplete="current-password"
+              @keyup.enter="submitVerifyAndReveal"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="verify-dialog-footer">
+          <el-button @click="closeVerifyDialog">??</el-button>
+          <el-button
+            type="primary"
+            :loading="verifyLoading"
+            :disabled="!verifyPassword.trim()"
+            @click="submitVerifyAndReveal"
+          >
+            ???????
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { usePage } from './ThirdPartyAuthorization.js'
 
 const {
   protocolLoading,
   protocolCredentials,
-  generatedProtocolCode,
-  generatedProtocol,
+  revealedCodes,
+  codesRevealed,
+  verifyDialogVisible,
+  verifyPassword,
+  verifyLoading,
   protocolLabel,
   setProtocolEnabled,
   generateProtocolCode,
   copyProtocolCode,
   revokeProtocolCode,
+  openVerifyDialog,
+  closeVerifyDialog,
+  submitVerifyAndReveal,
+  hideRevealedCodes,
 } = usePage()
+
+const hasConfiguredProtocols = computed(() =>
+  Array.isArray(protocolCredentials.value) &&
+  protocolCredentials.value.some(item => item.configured)
+)
 </script>
 
 <style scoped src="./ThirdPartyAuthorization.css"></style>

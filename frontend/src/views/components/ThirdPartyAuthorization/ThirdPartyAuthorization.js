@@ -1,4 +1,4 @@
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 
 import { ElMessageBox, ElNotification } from 'element-plus'
 
@@ -10,9 +10,19 @@ export function usePage() {
   const generatedProtocolCode = ref('')
   const generatedProtocol = ref('')
 
+  // ??????????{ imap: 'xxxx', pop3: 'yyyy', smtp: 'zzzz' }
+  const revealedCodes = reactive({})
+  // ???????????????
+  const codesRevealed = ref(false)
+
+  // ????????
+  const verifyDialogVisible = ref(false)
+  const verifyPassword = ref('')
+  const verifyLoading = ref(false)
+
   const notify = (message, type = 'error') => {
     ElNotification({
-      title: type === 'success' ? '操作成功' : '操作失败',
+      title: type === 'success' ? '????' : '????',
       message,
       type,
     })
@@ -29,11 +39,11 @@ export function usePage() {
     try {
       const response = await http.get('/api/v1/security/credentials/protocols')
       if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '读取邮件客户端协议设置失败')
+        throw new Error(response.errorMsg || '?????????????')
       }
       protocolCredentials.value = Array.isArray(response.data) ? response.data : []
     } catch (error) {
-      notify(error?.message || '读取邮件客户端协议设置失败')
+      notify(error?.message || '?????????????')
     } finally {
       protocolLoading.value = false
     }
@@ -50,16 +60,19 @@ export function usePage() {
         enabled,
       })
       if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '协议设置失败')
+        throw new Error(response.errorMsg || '??????')
       }
-      if (!enabled && generatedProtocol.value === item.protocol) {
-        generatedProtocol.value = ''
-        generatedProtocolCode.value = ''
+      if (!enabled) {
+        if (generatedProtocol.value === item.protocol) {
+          generatedProtocol.value = ''
+          generatedProtocolCode.value = ''
+        }
+        delete revealedCodes[item.protocol]
       }
-      notify(`${protocolLabel(item.protocol)} 当前账号客户端访问已${enabled ? '开启' : '关闭'}`, 'success')
+      notify(`${protocolLabel(item.protocol)} ??????????${enabled ? '??' : '??'}`, 'success')
     } catch (error) {
       item.enabled = previous
-      notify(error?.message || '协议设置失败')
+      notify(error?.message || '??????')
     } finally {
       protocolLoading.value = false
     }
@@ -67,7 +80,7 @@ export function usePage() {
 
   const generateProtocolCode = async item => {
     if (!item.enabled) {
-      notify(`请先开启 ${protocolLabel(item.protocol)} 协议`)
+      notify(`???? ${protocolLabel(item.protocol)} ??`)
       return
     }
 
@@ -77,34 +90,39 @@ export function usePage() {
         protocol: item.protocol,
       })
       if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '生成授权码失败')
+        throw new Error(response.errorMsg || '???????')
       }
+      const newCode = response.data?.code || ''
       generatedProtocol.value = item.protocol
-      generatedProtocolCode.value = response.data?.code || ''
+      generatedProtocolCode.value = newCode
       item.configured = true
-      notify(`${protocolLabel(item.protocol)} 授权码已生成，请立即保存`, 'success')
+      // ??????????
+      revealedCodes[item.protocol] = newCode
+      codesRevealed.value = true
+      notify(`${protocolLabel(item.protocol)} ???????????`, 'success')
     } catch (error) {
-      notify(error?.message || '生成授权码失败')
+      notify(error?.message || '???????')
     } finally {
       protocolLoading.value = false
     }
   }
 
-  const copyProtocolCode = async () => {
-    if (!generatedProtocolCode.value) return
+  const copyProtocolCode = async (code) => {
+    const targetCode = typeof code === 'string' && code ? code : generatedProtocolCode.value
+    if (!targetCode) return
     try {
-      await navigator.clipboard.writeText(generatedProtocolCode.value)
-      notify('授权码已复制', 'success')
+      await navigator.clipboard.writeText(targetCode)
+      notify('??????????', 'success')
     } catch {
-      notify('复制失败，请手动复制授权码')
+      notify('?????????????')
     }
   }
 
   const revokeProtocolCode = async item => {
     try {
       await ElMessageBox.confirm(
-        `撤销后 ${protocolLabel(item.protocol)} 授权码将立即失效，是否继续？`,
-        '撤销协议授权码',
+        `??? ${protocolLabel(item.protocol)} ??????????????`,
+        '???????',
         { type: 'warning' },
       )
       protocolLoading.value = true
@@ -112,21 +130,71 @@ export function usePage() {
         protocol: item.protocol,
       })
       if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '撤销授权码失败')
+        throw new Error(response.errorMsg || '???????')
       }
       item.configured = false
       if (generatedProtocol.value === item.protocol) {
         generatedProtocol.value = ''
         generatedProtocolCode.value = ''
       }
-      notify(`${protocolLabel(item.protocol)} 授权码已撤销`, 'success')
+      delete revealedCodes[item.protocol]
+      notify(`${protocolLabel(item.protocol)} ??????`, 'success')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') {
-        notify(error?.message || '撤销授权码失败')
+        notify(error?.message || '???????')
       }
     } finally {
       protocolLoading.value = false
     }
+  }
+
+  // ????????
+  const openVerifyDialog = () => {
+    verifyPassword.value = ''
+    verifyDialogVisible.value = true
+  }
+
+  // ????????
+  const closeVerifyDialog = () => {
+    verifyPassword.value = ''
+    verifyDialogVisible.value = false
+  }
+
+  // ????????????????
+  const submitVerifyAndReveal = async () => {
+    if (!verifyPassword.value.trim()) {
+      notify('???????????????')
+      return
+    }
+
+    verifyLoading.value = true
+    try {
+      const response = await http.post('/api/v1/security/credentials/protocols/reveal', {
+        password: verifyPassword.value,
+      })
+      if (response.errorNo !== 0) {
+        throw new Error(response.errorMsg || '????????')
+      }
+      const data = response.data || {}
+      Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
+      Object.assign(revealedCodes, data)
+      codesRevealed.value = true
+      closeVerifyDialog()
+      notify('???????????????', 'success')
+    } catch (error) {
+      notify(error?.message || '????????')
+    } finally {
+      verifyLoading.value = false
+    }
+  }
+
+  // ???????????
+  const hideRevealedCodes = () => {
+    codesRevealed.value = false
+    Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
+    generatedProtocolCode.value = ''
+    generatedProtocol.value = ''
+    notify('????????', 'success')
   }
 
   onMounted(loadProtocolCredentials)
@@ -136,10 +204,19 @@ export function usePage() {
     protocolCredentials,
     generatedProtocolCode,
     generatedProtocol,
+    revealedCodes,
+    codesRevealed,
+    verifyDialogVisible,
+    verifyPassword,
+    verifyLoading,
     protocolLabel,
     setProtocolEnabled,
     generateProtocolCode,
     copyProtocolCode,
     revokeProtocolCode,
+    openVerifyDialog,
+    closeVerifyDialog,
+    submitVerifyAndReveal,
+    hideRevealedCodes,
   }
 }
