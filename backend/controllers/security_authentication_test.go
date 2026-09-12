@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/credentials"
@@ -30,6 +31,7 @@ func TestSecurityHandlersRejectUnauthenticatedRequests(t *testing.T) {
 		{name: "set protocol enabled", hand: SetProtocolCredentialEnabled, body: `{"protocol":"smtp","enabled":true}`},
 		{name: "generate protocol credential", hand: GenerateProtocolCredential, body: `{"protocol":"smtp"}`},
 		{name: "revoke protocol credential", hand: RevokeProtocolCredential, body: `{"protocol":"smtp"}`},
+		{name: "reveal protocol credentials", hand: RevealProtocolCredentials, body: `{"password":"FixtureP12"}`},
 		{name: "request verification", hand: RequestVerification, body: `{"purpose":"login","account":"smail","email":"user@example.com"}`},
 		{name: "verify verification", hand: VerifyVerification, body: `{"id":"challenge","account":"smail","email":"user@example.com","code":"12345678","purpose":"login"}`},
 		{name: "list external emails", hand: ListExternalEmails},
@@ -123,9 +125,16 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tempVault := t.TempDir()
+	credentialService.SetVaultRoot(tempVault)
+	previousDB := db.Instance
+	db.Instance = engine
 	previous := securityRuntime
 	securityRuntime.credentials = credentialService
-	t.Cleanup(func() { securityRuntime = previous })
+	t.Cleanup(func() {
+		securityRuntime = previous
+		db.Instance = previousDB
+	})
 
 	ctx := &appcontext.Context{UserID: user.ID, UserAccount: user.Account}
 	list := func() response.Response {
@@ -200,6 +209,44 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	if !foundSMTP {
 		t.Fatal("SMTP protocol status was not returned")
 	}
+
+	revealFailRecorder := httptest.NewRecorder()
+	revealFailRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/security/credentials/protocols/reveal",
+		strings.NewReader(`{"password":"wrong-password"}`),
+	)
+	RevealProtocolCredentials(ctx, revealFailRecorder, revealFailRequest)
+	var revealFailResult response.Response
+	if err := json.Unmarshal(revealFailRecorder.Body.Bytes(), &revealFailResult); err != nil {
+		t.Fatalf("invalid reveal fail response: %v", err)
+	}
+	if revealFailResult.ErrorNo == 0 {
+		t.Fatal("expected wrong password to fail reveal, got errorNo 0")
+	}
+
+	revealSuccessRecorder := httptest.NewRecorder()
+	revealSuccessRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/security/credentials/protocols/reveal",
+		strings.NewReader(`{"password":"FixtureP12"}`),
+	)
+	RevealProtocolCredentials(ctx, revealSuccessRecorder, revealSuccessRequest)
+	var revealSuccessResult response.Response
+	if err := json.Unmarshal(revealSuccessRecorder.Body.Bytes(), &revealSuccessResult); err != nil {
+		t.Fatalf("invalid reveal success response: %v", err)
+	}
+	if revealSuccessResult.ErrorNo != 0 {
+		t.Fatalf("reveal protocol credentials failed: %+v", revealSuccessResult)
+	}
+	revealedMap, ok := revealSuccessResult.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any reveal response, got %#v", revealSuccessResult.Data)
+	}
+	if revealedMap["smtp"] != generated["code"] {
+		t.Fatalf("expected revealed smtp code %v, got %v", generated["code"], revealedMap["smtp"])
+	}
+
 
 	revokeRecorder := httptest.NewRecorder()
 	revokeRequest := httptest.NewRequest(
