@@ -221,7 +221,12 @@ export function usePage() {
       Object.assign(revealedCodes, codes)
       codesRevealed.value = true
       closeVerifyDialog()
-      notify('安全验证通过，授权码已解密显示', 'success')
+      const count = Object.keys(codes).length
+      if (count > 0) {
+        notify(`安全验证通过，已解密显示 ${count} 个协议授权码`, 'success')
+      } else {
+        notify('安全验证通过，当前授权码未保留加密密文，可点击重新生成', 'warning')
+      }
     } catch (error) {
       notify(error?.message || '验证失败，请检查密码是否正确')
     } finally {

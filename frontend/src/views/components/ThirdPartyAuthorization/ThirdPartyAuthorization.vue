@@ -70,6 +70,18 @@
                     复制
                   </el-button>
                 </template>
+                <template v-else-if="codesRevealed && !revealedCodes[item.protocol]">
+                  <span class="unconfigured-tip">旧版授权码未保留密文，请点击重新生成</span>
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    class="copy-btn"
+                    @click="generateProtocolCode(item)"
+                  >
+                    重新生成
+                  </el-button>
+                </template>
                 <template v-else>
                   <span class="masked-code">••••••••••••••••</span>
                   <el-button

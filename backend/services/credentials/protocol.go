@@ -32,6 +32,7 @@ type ProtocolCredentialStatus struct {
 	Protocol   string     `json:"protocol"`
 	Enabled    bool       `json:"enabled"`
 	Configured bool       `json:"configured"`
+	CanReveal  bool       `json:"can_reveal"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
@@ -75,6 +76,7 @@ func (s *Service) ListProtocolCredentials(userID int) ([]ProtocolCredentialStatu
 			updatedAt := item.UpdatedAt
 			status.Enabled = item.Enabled
 			status.Configured = item.CodeHash != "" && item.RevokedAt == nil
+			status.CanReveal = item.CodeCiphertext != "" && item.RevokedAt == nil
 			status.CreatedAt = &createdAt
 			status.UpdatedAt = &updatedAt
 			status.LastUsedAt = item.LastUsedAt
@@ -255,11 +257,12 @@ func (s *Service) RevealProtocolCodes(userID int) (map[string]string, error) {
 	if userID <= 0 {
 		return nil, ErrInvalidUser
 	}
-	if s.vaultRoot == "" {
-		return make(map[string]string), nil
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	vaultRoot := s.vaultRoot
+	if vaultRoot == "" {
+		return make(map[string]string), nil
+	}
 	var items []models.ProtocolCredential
 	if err := s.engine.Where("user_id = ? AND enabled = ? AND revoked_at IS NULL", userID, true).Find(&items); err != nil {
 		return nil, fmt.Errorf("load protocol credentials for reveal: %w", err)
@@ -269,7 +272,7 @@ func (s *Service) RevealProtocolCodes(userID int) (map[string]string, error) {
 		if item.CodeCiphertext == "" || item.CodeHash == "" {
 			continue
 		}
-		plain, err := credential.Decrypt(s.vaultRoot, item.CodeCiphertext)
+		plain, err := credential.Decrypt(vaultRoot, item.CodeCiphertext)
 		if err != nil {
 			continue
 		}

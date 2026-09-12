@@ -164,12 +164,18 @@ func LoadSecurityContext(ctx *context.Context) {
 
 func credentialRuntime() *credentials.Service {
 	if service := currentSecurityRuntime().credentials; service != nil {
+		if service.VaultRoot() == "" && config.ROOT_PATH != "" {
+			service.SetVaultRoot(config.ROOT_PATH)
+		}
 		return service
 	}
 	if db.Instance == nil {
 		return nil
 	}
 	service, _ := credentials.NewService(db.Instance)
+	if service != nil && config.ROOT_PATH != "" {
+		service.SetVaultRoot(config.ROOT_PATH)
+	}
 	return service
 }
 
