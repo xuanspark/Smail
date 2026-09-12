@@ -62,6 +62,9 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/email/contacts", "/api/email/contacts", http.MethodGet, 0, email.ContactsList)
 	registerV1MethodRoute(mux, "/api/v1/email/contacts/delete", "/api/email/contacts/delete", http.MethodPost, 16<<10, email.DeleteContact)
 	registerV1MethodRoute(mux, "/api/v1/email/trust-sender", "/api/email/trust-sender", http.MethodPost, 16<<10, email.TrustSender)
+	registerV1SenderFiltersRoute(mux)
+	registerV1MethodRoute(mux, "/api/v1/email/sender-filters/delete", "/api/email/sender-filters/delete", http.MethodPost, 16<<10, email.DeleteSenderFilter)
+	registerV1MethodRoute(mux, "/api/v1/email/sender-filters/toggle", "/api/email/sender-filters/toggle", http.MethodPost, 16<<10, email.ToggleSenderFilter)
 	registerV1MethodRoute(mux, "/api/v1/settings/modify_password", "/api/settings/modify_password", http.MethodPost, 64<<10, controllers.ModifyPassword)
 	registerV1MethodRoute(mux, "/api/v1/rule/get", "/api/rule/get", http.MethodPost, 4<<10, controllers.GetRule)
 	registerV1MethodRoute(mux, "/api/v1/rule/add", "/api/rule/add", http.MethodPost, 64<<10, controllers.UpsertRule)
@@ -87,6 +90,25 @@ func registerV1MethodRoute(mux *http.ServeMux, path string, legacyPath string, m
 		wrapped = limitBody(maxBody, wrapped)
 	}
 	mux.HandleFunc(path, onlyMethod(method, wrapped))
+}
+
+func registerV1SenderFiltersRoute(mux *http.ServeMux) {
+	get := contextIterceptor(rewriteV1Path("/api/email/sender-filters", email.SenderFiltersList))
+	post := limitBody(16<<10, contextIterceptor(rewriteV1Path("/api/email/sender-filters", email.AddSenderFilter)))
+	del := limitBody(16<<10, contextIterceptor(rewriteV1Path("/api/email/sender-filters", email.DeleteSenderFilter)))
+	mux.HandleFunc("/api/v1/email/sender-filters", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			get.ServeHTTP(w, r)
+		case http.MethodPost:
+			post.ServeHTTP(w, r)
+		case http.MethodDelete:
+			del.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 }
 
 func registerV1CredentialsQuestionRoute(mux *http.ServeMux) {

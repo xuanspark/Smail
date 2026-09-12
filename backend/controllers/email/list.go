@@ -31,15 +31,17 @@ type emailListResponse struct {
 }
 
 type emilItem struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	Desc      string `json:"desc"`
-	Datetime  string `json:"datetime"`
-	IsRead    bool   `json:"is_read"`
-	Sender    User   `json:"sender"`
-	To        []User `json:"to"`
-	Dangerous bool   `json:"dangerous"`
-	Error     string `json:"error"`
+	ID           int    `json:"id"`
+	Title        string `json:"title"`
+	Desc         string `json:"desc"`
+	Datetime     string `json:"datetime"`
+	IsRead       bool   `json:"is_read"`
+	Sender       User   `json:"sender"`
+	To           []User `json:"to"`
+	Dangerous    bool   `json:"dangerous"`
+	IsTrusted    bool   `json:"is_trusted"`
+	IsBlacklisted bool  `json:"is_blacklisted"`
+	Error        string `json:"error"`
 }
 
 type User struct {
@@ -81,11 +83,17 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		response.NewErrorResponse(response.ServerError, "读取邮件列表失败", "").FPrint(w)
 		return
 	}
-	trustedMap := make(map[string]bool)
-	var trustedSenders []models.UserTrustedSender
-	if err := db.Instance.Table(&models.UserTrustedSender{}).Where("user_id = ?", ctx.UserID).Find(&trustedSenders); err == nil {
-		for _, item := range trustedSenders {
-			trustedMap[strings.ToLower(strings.TrimSpace(item.Email))] = true
+	whitelistMap := make(map[string]bool)
+	blacklistMap := make(map[string]bool)
+	var senderFilters []models.UserTrustedSender
+	if err := db.Instance.Table(&models.UserTrustedSender{}).Where("user_id = ?", ctx.UserID).Find(&senderFilters); err == nil {
+		for _, item := range senderFilters {
+			addr := strings.ToLower(strings.TrimSpace(item.Email))
+			if item.FilterType == models.FilterTypeBlacklist {
+				blacklistMap[addr] = true
+			} else {
+				whitelistMap[addr] = true
+			}
 		}
 	}
 
@@ -109,20 +117,27 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		authentication := parsemail.NewEmailAuthentication(email.SPFCheck == 1, email.DKIMCheck == 1)
+		senderAddr := strings.ToLower(strings.TrimSpace(sender.EmailAddress))
+		isTrusted := whitelistMap[senderAddr]
+		isBlacklisted := blacklistMap[senderAddr]
 		dangerous := authentication.Dangerous
-		if trustedMap[strings.ToLower(strings.TrimSpace(sender.EmailAddress))] {
+		if isBlacklisted {
+			dangerous = true
+		} else if isTrusted {
 			dangerous = false
 		}
 		items = append(items, &emilItem{
-			ID:        email.Id,
-			Title:     email.Subject,
-			Desc:      email.Text.String,
-			Datetime:  email.SendDate.Format("2006-01-02 15:04:05"),
-			IsRead:    email.IsRead == 1,
-			Sender:    sender,
-			To:        recipients,
-			Dangerous: dangerous,
-			Error:     email.Error.String,
+			ID:            email.Id,
+			Title:         email.Subject,
+			Desc:          email.Text.String,
+			Datetime:      email.SendDate.Format("2006-01-02 15:04:05"),
+			IsRead:        email.IsRead == 1,
+			Sender:        sender,
+			To:            recipients,
+			Dangerous:     dangerous,
+			IsTrusted:     isTrusted,
+			IsBlacklisted: isBlacklisted,
+			Error:         email.Error.String,
 		})
 	}
 

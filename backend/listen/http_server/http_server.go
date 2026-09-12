@@ -92,6 +92,21 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/email/contacts", onlyMethod(http.MethodGet, contextIterceptor(email.ContactsList)))
 	mux.HandleFunc("/api/email/contacts/delete", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(email.DeleteContact))))
 	mux.HandleFunc("/api/email/trust-sender", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(email.TrustSender))))
+	mux.HandleFunc("/api/email/sender-filters", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			contextIterceptor(email.SenderFiltersList)(w, r)
+		case http.MethodPost:
+			limitBody(16<<10, contextIterceptor(email.AddSenderFilter))(w, r)
+		case http.MethodDelete:
+			limitBody(16<<10, contextIterceptor(email.DeleteSenderFilter))(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/api/email/sender-filters/delete", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(email.DeleteSenderFilter))))
+	mux.HandleFunc("/api/email/sender-filters/toggle", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(email.ToggleSenderFilter))))
 	mux.HandleFunc("/api/settings/modify_password", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.ModifyPassword))))
 	mux.HandleFunc("/api/rule/get", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.GetRule))))
 	mux.HandleFunc("/api/rule/add", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.UpsertRule))))

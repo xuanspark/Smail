@@ -62,6 +62,15 @@ func TestDefaultMigrationsCreateCompleteSQLiteSchema(t *testing.T) {
 	if !exists {
 		t.Fatal("column operation_log.actor_role was not created")
 	}
+	for _, column := range []string{"filter_type", "updated_at"} {
+		exists, err := columnExists(context.Background(), db, DialectSQLite, "user_trusted_sender", column)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("column user_trusted_sender.%s was not created", column)
+		}
+	}
 }
 
 func sqliteIndexExists(t *testing.T, db *sql.DB, index string) bool {
@@ -285,6 +294,7 @@ func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
 		18: "17622df3406657f199d78a3a1aa1f3a8693baf85aa7707910cc6d6cb44c13ee4",
 		19: "f24b94ca9e4c25b7973f6c15fcaddccc7f02bcf7886c0a4995d2f7b79f4a3a16",
 		20: "e0bc01f4c2df742bc23c519c2a399cc1c3f341565dbed014509a8c63d68bf725",
+		21: "ac1a0b3be90128c0e0512d2cec858f8cd7e70abc5ff4734d7113b9674f08dbb0",
 	}
 	migrations := DefaultMigrations()
 	if len(migrations) != len(expected) {
