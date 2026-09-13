@@ -1,5 +1,5 @@
-import {EpMenu} from "vue-icons-plus/ep";
-import { Lock, Connection, Setting, FolderOpened, Filter, User, Grid, Document } from '@element-plus/icons-vue';
+﻿import {EpMenu} from "vue-icons-plus/ep";
+import { Lock, Connection, Setting, FolderOpened, Filter, User, Grid, Document, Checked } from '@element-plus/icons-vue';
 
 import {computed, ref, onMounted, onUnmounted, defineAsyncComponent} from 'vue'
 import SettingsPageStatus from '../SettingsPageStatus/SettingsPageStatus.vue'
@@ -25,6 +25,7 @@ const GroupSettings = lazySettings(() => import('../GroupSettings/GroupSettings.
 const RuleSettings = lazySettings(() => import('../RuleSettings/RuleSettings.vue'))
 const UserManagement = lazySettings(() => import('../UserManagement/UserManagement.vue'))
 const PluginSettings = lazySettings(() => import('../PluginSettings/PluginSettings.vue'))
+const SenderFilterManagement = lazySettings(() => import('../SenderFilterManagement/SenderFilterManagement.vue'))
 const LogSettings = lazySettings(() => import('../LogSettings/LogSettings.vue'))
 
 export function usePage() {
@@ -54,6 +55,7 @@ export function usePage() {
     { key: 'rule', label: lang.rule_setting, hint: '邮件处理规则', icon: Filter, component: RuleSettings, capability: 'user.read' },
     { key: 'users', label: lang.user_management, hint: '账号与权限管理', icon: User, component: UserManagement, capability: 'user.manage' },
     { key: 'plugins', label: lang.plugin_settings, hint: '扩展功能管理', icon: Grid, component: PluginSettings, capability: 'plugin.read' },
+    { key: 'sender-filter', label: '黑白名单', hint: '发件人信任与拦截', icon: Checked, component: SenderFilterManagement, capability: 'user.read' },
     { key: 'logs', label: '日志', hint: '操作、收发信与运行记录', icon: Document, component: LogSettings, capability: 'audit.read' },
   ].filter(item => {
     // 日志数据范围由服务端强制过滤；菜单只决定入口是否可见。
@@ -117,5 +119,6 @@ export {
   GroupSettings,
   RuleSettings,
   UserManagement,
-  PluginSettings
+  PluginSettings,
+  SenderFilterManagement
 }

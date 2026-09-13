@@ -1,44 +1,48 @@
-<template>
-  <div class="sender-filter-management" v-loading="loading">
-    <!-- 面板标题与快捷操作栏 -->
-    <div class="sf-header">
-      <div class="sf-title-group">
-        <h3 class="sf-title">发件人黑白名单管理</h3>
-        <div class="sf-badges">
-          <el-tag type="success" effect="plain" class="sf-badge">
-            信任白名单: {{ whitelistCount }}
-          </el-tag>
-          <el-tag type="danger" effect="plain" class="sf-badge">
-            拦截黑名单: {{ blacklistCount }}
-          </el-tag>
-        </div>
+﻿<template>
+  <div class="settings-card sender-filter-card" v-loading="loading">
+    <div class="settings-header">
+      <div class="header-main">
+        <h3>发件人黑白名单</h3>
+        <p class="settings-desc">
+          管理受信任的白名单与受拦截的黑名单发件人。白名单邮件不提示风险，黑名单发件人邮件将强行标记风险警示。
+        </p>
       </div>
-      <div class="sf-quick-add">
-        <el-input
-          v-model="addForm.email"
-          placeholder="输入发件人邮箱 (如 friend@example.com)"
-          clearable
-          size="default"
-          style="width: 280px"
-          @keyup.enter="handleAdd"
-        />
-        <el-select
-          v-model="addForm.filter_type"
-          size="default"
-          style="width: 120px"
-        >
-          <el-option label="信任白名单" value="whitelist" />
-          <el-option label="拦截黑名单" value="blacklist" />
-        </el-select>
-        <el-button
-          type="primary"
-          size="default"
-          :loading="addLoading"
-          @click="handleAdd"
-        >
-          添加名单
-        </el-button>
+      <div class="sf-badges">
+        <el-tag type="success" effect="plain" class="sf-badge">
+          信任白名单: {{ whitelistCount }}
+        </el-tag>
+        <el-tag type="danger" effect="plain" class="sf-badge">
+          拦截黑名单: {{ blacklistCount }}
+        </el-tag>
       </div>
+    </div>
+
+    <!-- 快捷添加区域 -->
+    <div class="sf-quick-add-box">
+      <el-input
+        v-model="addForm.email"
+        placeholder="输入发件人邮箱 (如 friend@example.com)"
+        clearable
+        size="default"
+        class="sf-input-email"
+        @keyup.enter="handleAdd"
+      />
+      <el-select
+        v-model="addForm.filter_type"
+        size="default"
+        class="sf-select-type"
+      >
+        <el-option label="信任白名单" value="whitelist" />
+        <el-option label="拦截黑名单" value="blacklist" />
+      </el-select>
+      <el-button
+        type="primary"
+        size="default"
+        :loading="addLoading"
+        @click="handleAdd"
+      >
+        添加名单
+      </el-button>
     </div>
 
     <!-- 筛选与搜索工具条 -->
@@ -75,12 +79,12 @@
       <el-table
         :data="filterList"
         stripe
-        size="small"
+        size="default"
         class="sf-table"
-        empty-text="暂无匹配的发件人规则"
+        empty-text="暂无匹配的发件人名单"
       >
-        <el-table-column prop="email" label="发件人邮箱" min-width="200" show-overflow-tooltip />
-        <el-table-column label="名单类型" width="130" align="center">
+        <el-table-column prop="email" label="发件人邮箱" min-width="220" show-overflow-tooltip />
+        <el-table-column label="名单属性" width="130" align="center">
           <template #default="{ row }">
             <el-tag
               v-if="row.filter_type === 'whitelist'"
@@ -100,7 +104,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="更新/添加时间" width="160" align="center">
+        <el-table-column label="更新时间" width="160" align="center">
           <template #default="{ row }">
             <span>{{ formatDate(row.updated_at || row.created_at) }}</span>
           </template>
@@ -170,7 +174,6 @@ const {
   currentTab,
   addForm,
   addLoading,
-  loadFilters,
   handleSearch,
   handleTabChange,
   handlePageChange,

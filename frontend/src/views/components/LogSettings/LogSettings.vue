@@ -1,8 +1,5 @@
-<template>
+﻿<template>
   <div class="log-settings-container">
-    <!-- 日志上方：发件人黑白名单管理（支持添加、删除、拉黑/转白，仅当前用户维护自身名单） -->
-    <SenderFilterManagement />
-
     <section class="log-settings">
       <header class="log-heading">
         <h2>日志记录</h2>
@@ -173,7 +170,6 @@
 
 <script setup>
 import { useLogs } from './LogSettings.js'
-import SenderFilterManagement from '../SenderFilterManagement/SenderFilterManagement.vue'
 
 const {
   category, categories, loading, error, items, offset,

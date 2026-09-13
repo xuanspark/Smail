@@ -1,45 +1,58 @@
-.sender-filter-management {
-  background: var(--el-bg-color-overlay, #ffffff);
-  border: 1px solid var(--el-border-color-light, #e4e7ed);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+﻿.sender-filter-card {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.sf-header {
+.settings-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 0;
 }
 
-.sf-title-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.sf-title {
-  margin: 0;
-  font-size: 16px;
+.header-main h3 {
+  margin: 0 0 6px 0;
+  font-size: 18px;
   font-weight: 600;
-  color: var(--el-text-color-primary, #303133);
+  color: var(--pm-text-primary, #303133);
+}
+
+.settings-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--pm-text-secondary, #909399);
+  line-height: 1.5;
 }
 
 .sf-badges {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .sf-badge {
   font-size: 12px;
 }
 
-.sf-quick-add {
+.sf-quick-add-box {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px 16px;
+  background-color: var(--el-fill-color-light, #f8fafc);
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 8px;
+}
+
+.sf-input-email {
+  width: 320px;
+}
+
+.sf-select-type {
+  width: 130px;
 }
 
 .sf-toolbar {
@@ -47,7 +60,6 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
@@ -60,7 +72,9 @@
 }
 
 .sf-table-wrapper {
-  margin-bottom: 12px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .sf-table {
@@ -69,6 +83,7 @@
 
 .sf-actions {
   display: flex;
+  justify-content: center;
   align-items: center;
   gap: 8px;
 }
@@ -76,20 +91,21 @@
 .sf-pagination {
   display: flex;
   justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 @media (max-width: 768px) {
-  .sf-header {
+  .settings-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 8px;
   }
-  .sf-quick-add {
-    width: 100%;
-    flex-wrap: wrap;
+  .sf-quick-add-box {
+    flex-direction: column;
+    align-items: stretch;
   }
-  .sf-quick-add .el-input {
+  .sf-input-email,
+  .sf-select-type {
     width: 100% !important;
   }
   .sf-toolbar {
