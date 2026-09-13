@@ -1,7 +1,7 @@
 <template>
   <div class="third-party-authorization" v-loading="loading">
     <section class="authorization-section">
-      <!-- 模块 1：客户端与专属授权码管理卡片 -->
+      <!-- 客户端与专属授权码管理卡片 -->
       <div class="panel-card client-control-card">
         <div class="card-header-bar">
           <div class="header-left">
@@ -122,15 +122,16 @@
             <el-button
               type="primary"
               size="default"
+              class="btn-primary-action"
               @click="openCreateDialog"
             >
-              立即新增客户端
+              + 立即新增客户端
             </el-button>
           </div>
         </div>
       </div>
 
-      <!-- 模块 2：通用客户端配置参数卡片 -->
+      <!-- 通用客户端配置参数卡片 -->
       <div class="panel-card proto-guide-card">
         <div class="card-header-bar">
           <div class="header-left">
@@ -151,6 +152,7 @@
                 type="primary"
                 link
                 size="small"
+                class="btn-card-copy"
                 @click="copyText(`imap.${currentDomain || 'solit.cn'}:993`, 'IMAP 参数')"
               >
                 复制
@@ -184,6 +186,7 @@
                 type="primary"
                 link
                 size="small"
+                class="btn-card-copy"
                 @click="copyText(`pop.${currentDomain || 'solit.cn'}:995`, 'POP3 参数')"
               >
                 复制
@@ -217,6 +220,7 @@
                 type="primary"
                 link
                 size="small"
+                class="btn-card-copy"
                 @click="copyText(`smtp.${currentDomain || 'solit.cn'}:465`, 'SMTP 参数')"
               >
                 复制
@@ -236,41 +240,6 @@
                 <span class="field-k">加密方式：</span>
                 <span class="field-v">SSL 隐式加密 / STARTTLS</span>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 模块 3：客户端使用与排错说明卡片（充实页面、解决大面积留白） -->
-      <div class="panel-card instructions-card">
-        <div class="card-header-bar">
-          <div class="header-left">
-            <span class="main-title">配置提示与常见问题</span>
-          </div>
-        </div>
-
-        <div class="instructions-content">
-          <div class="instruct-item">
-            <span class="instruct-num">1</span>
-            <div class="instruct-body">
-              <div class="instruct-title">一机一码隔离保护</div>
-              <div class="instruct-desc">建议手机、办公电脑与备用客户端分别创建专属授权码。若设备遗失或更换，仅需在上方撤销对应客户端，其他设备与主密码完全不受影响。</div>
-            </div>
-          </div>
-
-          <div class="instruct-item">
-            <span class="instruct-num">2</span>
-            <div class="instruct-body">
-              <div class="instruct-title">登录用户名规范</div>
-              <div class="instruct-desc">第三方客户端的“账户名称/用户名”一栏可直接填写账号名（如 <code>xuans</code>）或完整邮箱（如 <code>xuans@{{ currentDomain || 'solit.cn' }}</code>），密码填写生成的专属授权码。</div>
-            </div>
-          </div>
-
-          <div class="instruct-item">
-            <span class="instruct-num">3</span>
-            <div class="instruct-body">
-              <div class="instruct-title">证书信任与安全握手</div>
-              <div class="instruct-desc">当前邮件系统所有协议均强制启用安全加密连接。如使用第三方邮件软件出现证书提示，请确认服务器域名解析是否正确指向当前邮件服务器。</div>
             </div>
           </div>
         </div>
@@ -309,6 +278,7 @@
           <el-button
             type="primary"
             size="default"
+            class="btn-primary-action"
             :loading="createLoading"
             :disabled="!newClientName.trim()"
             @click="submitCreateClient"
@@ -351,6 +321,7 @@
           <el-button
             type="primary"
             size="default"
+            class="btn-primary-action"
             :loading="verifyLoading"
             :disabled="!verifyPassword.trim()"
             @click="submitVerifyAndReveal"

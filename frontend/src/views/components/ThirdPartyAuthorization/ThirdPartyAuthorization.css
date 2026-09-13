@@ -58,8 +58,28 @@
   gap: 10px;
 }
 
-.btn-primary-action {
-  font-weight: 600;
+/* 核心主要操作按钮：高对比度实心显色，杜绝半透明或虚化 */
+.btn-primary-action,
+.btn-primary-action.el-button--primary {
+  background-color: var(--pm-primary-color) !important;
+  border-color: var(--pm-primary-color) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-primary-action.el-button--primary:hover {
+  background-color: var(--pm-primary-hover, #0077ed) !important;
+  border-color: var(--pm-primary-hover, #0077ed) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 113, 227, 0.35);
+}
+
+.btn-primary-action.el-button--primary:active {
+  transform: translateY(0);
 }
 
 /* 卡片内容区域 */
@@ -253,6 +273,10 @@
   color: var(--pm-text-primary);
 }
 
+.btn-card-copy {
+  font-weight: 600;
+}
+
 .proto-fields {
   display: flex;
   flex-direction: column;
@@ -287,67 +311,6 @@
   font-weight: 700;
 }
 
-/* 模块 3：配置提示与常见问题卡片 */
-.instructions-card {
-  background: var(--pm-bg-secondary);
-}
-
-.instructions-content {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-}
-
-.instruct-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--pm-bg-primary);
-  border: 1px solid var(--pm-border-color);
-  border-radius: var(--pm-radius-sm);
-}
-
-.instruct-num {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--pm-primary-color) 16%, var(--pm-bg-secondary));
-  color: var(--pm-primary-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.instruct-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.instruct-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--pm-text-primary);
-}
-
-.instruct-desc {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--pm-text-secondary);
-}
-
-.instruct-desc code {
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--pm-primary-color) 10%, var(--pm-bg-secondary));
-  color: var(--pm-primary-color);
-  font-family: monospace;
-}
-
 /* 弹窗通用紧凑样式 */
 .compact-dialog .dialog-tip {
   margin: 0 0 14px;
@@ -363,8 +326,7 @@
 }
 
 @media (max-width: 960px) {
-  .proto-grid,
-  .instructions-content {
+  .proto-grid {
     grid-template-columns: 1fr;
   }
   .card-header-bar {
