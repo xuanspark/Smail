@@ -10,7 +10,7 @@ export function useSenderFilters() {
   const blacklistCount = ref(0)
 
   const currentPage = ref(1)
-  const pageSize = ref(10)
+  const pageSize = ref(7)
   const searchKeyword = ref('')
   const currentTab = ref('all') // 'all' | 'whitelist' | 'blacklist'
 

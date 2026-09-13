@@ -1,18 +1,15 @@
 ﻿<template>
   <div class="settings-card sender-filter-card" v-loading="loading">
-    <div class="settings-header">
+    <div class="settings-header sf-header">
       <div class="header-main">
         <h3>发件人黑白名单</h3>
-        <p class="settings-desc">
-          管理受信任的白名单与受拦截的黑名单发件人。白名单邮件不提示风险，黑名单发件人邮件将强行标记风险警示。
-        </p>
       </div>
       <div class="sf-badges">
         <el-tag type="success" effect="plain" class="sf-badge">
-          信任白名单: {{ whitelistCount }}
+          白名单: {{ whitelistCount }}
         </el-tag>
         <el-tag type="danger" effect="plain" class="sf-badge">
-          拦截黑名单: {{ blacklistCount }}
+          黑名单: {{ blacklistCount }}
         </el-tag>
       </div>
     </div>
@@ -54,8 +51,8 @@
         @change="handleTabChange"
       >
         <el-radio-button value="all">全部 ({{ total }})</el-radio-button>
-        <el-radio-button value="whitelist">仅白名单 ({{ whitelistCount }})</el-radio-button>
-        <el-radio-button value="blacklist">仅黑名单 ({{ blacklistCount }})</el-radio-button>
+        <el-radio-button value="whitelist">白名单 ({{ whitelistCount }})</el-radio-button>
+        <el-radio-button value="blacklist">黑名单 ({{ blacklistCount }})</el-radio-button>
       </el-radio-group>
       <div class="sf-search">
         <el-input
@@ -79,12 +76,12 @@
       <el-table
         :data="filterList"
         stripe
-        size="default"
+        size="small"
         class="sf-table"
         empty-text="暂无匹配的发件人名单"
       >
-        <el-table-column prop="email" label="发件人邮箱" min-width="220" show-overflow-tooltip />
-        <el-table-column label="名单属性" width="130" align="center">
+        <el-table-column prop="email" label="发件人邮箱" min-width="160" show-overflow-tooltip />
+        <el-table-column label="名单属性" width="95" align="center">
           <template #default="{ row }">
             <el-tag
               v-if="row.filter_type === 'whitelist'"
@@ -92,7 +89,7 @@
               size="small"
               effect="light"
             >
-              信任白名单
+              白名单
             </el-tag>
             <el-tag
               v-else
@@ -100,16 +97,16 @@
               size="small"
               effect="light"
             >
-              拦截黑名单
+              黑名单
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="更新时间" width="160" align="center">
+        <el-table-column label="更新时间" width="130" align="center">
           <template #default="{ row }">
             <span>{{ formatDate(row.updated_at || row.created_at) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="管理操作" width="180" align="center">
+        <el-table-column label="管理操作" width="140" align="center">
           <template #default="{ row }">
             <div class="sf-actions">
               <el-button
@@ -119,7 +116,7 @@
                 size="small"
                 @click="handleToggle(row)"
               >
-                拉入黑名单
+                转黑名单
               </el-button>
               <el-button
                 v-else
@@ -128,7 +125,7 @@
                 size="small"
                 @click="handleToggle(row)"
               >
-                转为白名单
+                转白名单
               </el-button>
               <el-button
                 type="danger"

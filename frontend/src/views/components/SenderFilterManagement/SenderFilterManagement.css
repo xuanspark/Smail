@@ -2,60 +2,59 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
-.settings-header {
+.sf-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 0;
 }
 
 .header-main h3 {
-  margin: 0 0 6px 0;
-  font-size: 18px;
+  margin: 0;
+  font-size: 17px;
   font-weight: 600;
   color: var(--pm-text-primary, #303133);
 }
 
-.settings-desc {
-  margin: 0;
-  font-size: 13px;
-  color: var(--pm-text-secondary, #909399);
-  line-height: 1.5;
-}
-
 .sf-badges {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .sf-badge {
   font-size: 12px;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 22px;
 }
 
 .sf-quick-add-box {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 8px 12px;
   background-color: var(--el-fill-color-light, #f8fafc);
   border: 1px solid var(--el-border-color-lighter, #ebeef5);
   border-radius: 8px;
 }
 
 .sf-input-email {
-  width: 320px;
+  flex: 1 1 200px;
+  min-width: 140px;
 }
 
 .sf-select-type {
-  width: 130px;
+  width: 116px;
+  flex-shrink: 0;
 }
 
 .sf-quick-add-box .el-button--primary {
+  flex-shrink: 0;
   background-color: var(--pm-primary-color, #2563eb) !important;
   border-color: var(--pm-primary-color, #2563eb) !important;
   color: #ffffff !important;
@@ -71,12 +70,11 @@
   transform: translateY(-1px);
 }
 
-
 .sf-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -84,8 +82,12 @@
   margin-bottom: 0;
 }
 
+.sf-search {
+  flex: 0 1 220px;
+}
+
 .sf-search-input {
-  width: 260px;
+  width: 100%;
 }
 
 .sf-table-wrapper {
@@ -98,24 +100,38 @@
   width: 100%;
 }
 
+.sf-table :deep(.el-table__cell) {
+  padding: 6px 0;
+}
+
+.sf-table :deep(.cell) {
+  padding: 0 8px;
+  font-size: 13px;
+}
+
 .sf-actions {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+.sf-actions .el-button {
+  padding: 2px 4px;
+  font-size: 12px;
 }
 
 .sf-pagination {
   display: flex;
   justify-content: flex-end;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 @media (max-width: 768px) {
-  .settings-header {
+  .sf-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px;
   }
   .sf-quick-add-box {
     flex-direction: column;
@@ -128,6 +144,10 @@
   .sf-toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .sf-search {
+    width: 100%;
+    flex: 1 1 100%;
   }
   .sf-search-input {
     width: 100%;
