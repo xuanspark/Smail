@@ -1,4 +1,4 @@
-﻿.sender-filter-card {
+.sender-filter-card {
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -54,6 +54,23 @@
 .sf-select-type {
   width: 130px;
 }
+
+.sf-quick-add-box .el-button--primary {
+  background-color: var(--pm-primary-color, #2563eb) !important;
+  border-color: var(--pm-primary-color, #2563eb) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+}
+
+.sf-quick-add-box .el-button--primary:hover {
+  background-color: var(--pm-primary-hover, #1d4ed8) !important;
+  border-color: var(--pm-primary-hover, #1d4ed8) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.36);
+  transform: translateY(-1px);
+}
+
 
 .sf-toolbar {
   display: flex;
