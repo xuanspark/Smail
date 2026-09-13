@@ -1,4 +1,4 @@
-package migration
+﻿package migration
 
 import (
 	"regexp"
@@ -31,6 +31,7 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(19, "create_user_contacts_and_trusted_senders", userContactStatements()),
 		DefineCustom(20, "expand_protocol_credential_ciphertext", "expand_protocol_credential_ciphertext_v1", applyProtocolCredentialCiphertextSchema),
 		DefineCustom(21, "expand_trusted_sender_blacklist", "expand_trusted_sender_blacklist_v1", applyTrustedSenderBlacklistSchema),
+		DefineForDialects(22, "create_client_credentials", clientCredentialStatements()),
 	}
 }
 

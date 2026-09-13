@@ -1,22 +1,21 @@
-<template>
-  <div class="third-party-authorization" v-loading="protocolLoading">
+﻿<template>
+  <div class="third-party-authorization" v-loading="loading">
     <section class="authorization-section">
-      <div class="authorization-header">
-        <div class="header-main">
-          <h3>邮件客户端协议</h3>
-          <p class="authorization-desc">
-            为 IMAP、POP3、SMTP 配置专属授权码，平时安全隐藏，验证密码后可查看或复制。
-          </p>
+      <!-- 顶部轻量工具条：紧凑一行 -->
+      <div class="compact-header">
+        <div class="header-left">
+          <span class="header-title">客户端专属授权码</span>
+          <span class="header-subtitle">为手机、Foxmail 等设备创建独立授权码，随时查看或撤销</span>
         </div>
-        <div class="header-actions">
+        <div class="header-right">
           <el-button
-            v-if="hasConfiguredProtocols && !codesRevealed"
+            v-if="hasClients && !codesRevealed"
             type="primary"
             plain
             size="small"
             @click="openVerifyDialog"
           >
-            安全验证查看授权码
+            安全验证查看明文
           </el-button>
           <el-button
             v-else-if="codesRevealed"
@@ -25,112 +24,206 @@
             size="small"
             @click="hideRevealedCodes"
           >
-            安全隐藏授权码
+            安全隐藏明文
+          </el-button>
+          <el-button
+            type="primary"
+            size="small"
+            @click="openCreateDialog"
+          >
+            + 新增客户端
           </el-button>
         </div>
       </div>
 
-      <el-alert
-        title="使用完整邮箱地址作为登录名，专属授权码作为密码。授权码平时处于加密保护状态，验证密码后可完整查看与一键复制。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-
-      <div class="protocol-list">
-        <div
-          v-for="item in protocolCredentials"
-          :key="item.protocol"
-          class="protocol-item"
-        >
-          <div class="protocol-info">
-            <div class="protocol-title">
-              <strong>{{ protocolLabel(item.protocol) }}</strong>
-              <el-tag size="small" :type="item.enabled ? 'success' : 'info'">
-                {{ item.enabled ? '已开启' : '已关闭' }}
-              </el-tag>
-              <el-tag size="small" :type="item.configured ? 'success' : 'warning'">
-                {{ item.configured ? '已配置授权码' : '未生成授权码' }}
-              </el-tag>
-            </div>
-            <p class="protocol-guide">登录名：完整邮箱地址；密码：本协议专属授权码。</p>
-
-            <div class="protocol-credential-slot">
-              <span class="slot-label">当前授权码：</span>
-              <template v-if="item.configured">
-                <template v-if="codesRevealed && revealedCodes[item.protocol]">
-                  <code class="revealed-code">{{ revealedCodes[item.protocol] }}</code>
-                  <el-button
-                    type="primary"
-                    link
-                    size="small"
-                    class="copy-btn"
-                    @click="copyProtocolCode(revealedCodes[item.protocol])"
-                  >
-                    复制
-                  </el-button>
-                </template>
-                <template v-else-if="codesRevealed && !revealedCodes[item.protocol]">
-                  <span class="unconfigured-tip">旧版授权码未保留密文，请点击重新生成</span>
-                  <el-button
-                    type="primary"
-                    link
-                    size="small"
-                    class="copy-btn"
-                    @click="generateProtocolCode(item)"
-                  >
-                    重新生成
-                  </el-button>
-                </template>
-                <template v-else>
-                  <span class="masked-code">••••••••••••••••</span>
-                  <el-button
-                    type="primary"
-                    link
-                    size="small"
-                    class="reveal-btn"
-                    @click="openVerifyDialog"
-                  >
-                    验证查看
-                  </el-button>
-                </template>
-              </template>
-              <template v-else>
-                <span class="unconfigured-tip">尚未生成专属授权码，请点击右侧生成</span>
-              </template>
-            </div>
+      <!-- 客户端选择与管理主卡片 -->
+      <div class="client-main-card">
+        <div class="client-picker-row">
+          <div class="picker-group">
+            <span class="picker-label">选择客户端：</span>
+            <el-select
+              v-model="selectedClientId"
+              placeholder="请选择或添加客户端"
+              size="default"
+              class="client-select"
+              @change="handleClientSelect"
+            >
+              <el-option
+                v-for="item in clientList"
+                :key="item.id"
+                :label="item.client_name"
+                :value="item.id"
+              >
+                <div class="client-option-item">
+                  <span>{{ item.client_name }}</span>
+                  <el-tag size="small" type="success">已就绪</el-tag>
+                </div>
+              </el-option>
+            </el-select>
           </div>
 
-          <div class="protocol-actions">
-            <el-switch
-              :model-value="item.enabled"
-              :loading="protocolLoading"
-              active-text="开启"
-              inactive-text="关闭"
-              :aria-label="`${protocolLabel(item.protocol)} 当前账号客户端访问`"
-              @change="value => setProtocolEnabled(item, value)"
-            />
+          <div class="picker-actions" v-if="currentClient">
             <el-button
-              type="primary"
+              type="warning"
+              plain
               size="small"
-              :disabled="!item.enabled"
-              @click="generateProtocolCode(item)"
+              @click="regenerateClientCode(currentClient)"
             >
-              {{ item.configured ? '重新生成授权码' : '生成授权码' }}
+              重新生成
             </el-button>
             <el-button
-              v-if="item.configured"
               type="danger"
               plain
               size="small"
-              @click="revokeProtocolCode(item)"
+              @click="revokeClientCode(currentClient)"
             >
-              撤销授权码
+              撤销删除
             </el-button>
+          </div>
+        </div>
+
+        <!-- 当前选中客户端的授权码展示条 -->
+        <div class="client-detail-box" v-if="currentClient">
+          <div class="code-display-row">
+            <span class="code-label">当前专属授权码：</span>
+            <div class="code-value-area">
+              <template v-if="codesRevealed && revealedCodes[currentClient.id]">
+                <code class="revealed-code">{{ revealedCodes[currentClient.id] }}</code>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  class="action-btn"
+                  @click="copyCode(revealedCodes[currentClient.id])"
+                >
+                  一键复制
+                </el-button>
+              </template>
+              <template v-else-if="codesRevealed && !revealedCodes[currentClient.id]">
+                <span class="text-tip">未保留加密密文，可点击重新生成</span>
+              </template>
+              <template v-else>
+                <span class="masked-code">••••••••••••••••••••</span>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  class="action-btn"
+                  @click="openVerifyDialog"
+                >
+                  验证查看
+                </el-button>
+              </template>
+            </div>
+            <div class="client-meta">
+              <span class="meta-item">创建时间：{{ formatTime(currentClient.created_at) }}</span>
+              <span class="meta-item" v-if="currentClient.last_used_at">
+                最近活跃：{{ formatTime(currentClient.last_used_at) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-client-box" v-else>
+          <span class="empty-tip">暂无可用客户端，请点击上方「+ 新增客户端」为您的设备配置专属授权码</span>
+        </div>
+      </div>
+
+      <!-- 客户端配置指引紧凑网格（一屏显示完整，无滚动条） -->
+      <div class="compact-guide-section">
+        <div class="guide-title">
+          <span>通用客户端配置参数</span>
+          <span class="guide-sub">支持用户名直接登录或完整邮箱登录，密码统一使用上方专属授权码</span>
+        </div>
+        <div class="guide-grid">
+          <div class="guide-card">
+            <div class="card-head">
+              <span class="card-proto">IMAP 收信服务</span>
+              <el-tag size="small" type="primary">SSL/TLS</el-tag>
+            </div>
+            <div class="card-line">
+              <span class="cl-label">服务器地址：</span>
+              <span class="cl-val">imap.{{ currentDomain || 'solit.cn' }}</span>
+            </div>
+            <div class="card-line">
+              <span class="cl-label">服务端口：</span>
+              <span class="cl-val highlight">993</span>
+            </div>
+          </div>
+
+          <div class="guide-card">
+            <div class="card-head">
+              <span class="card-proto">POP3 收信服务</span>
+              <el-tag size="small" type="primary">SSL/TLS</el-tag>
+            </div>
+            <div class="card-line">
+              <span class="cl-label">服务器地址：</span>
+              <span class="cl-val">pop.{{ currentDomain || 'solit.cn' }}</span>
+            </div>
+            <div class="card-line">
+              <span class="cl-label">服务端口：</span>
+              <span class="cl-val highlight">995</span>
+            </div>
+          </div>
+
+          <div class="guide-card">
+            <div class="card-head">
+              <span class="card-proto">SMTP 发信服务</span>
+              <el-tag size="small" type="primary">SSL / STARTTLS</el-tag>
+            </div>
+            <div class="card-line">
+              <span class="cl-label">服务器地址：</span>
+              <span class="cl-val">smtp.{{ currentDomain || 'solit.cn' }}</span>
+            </div>
+            <div class="card-line">
+              <span class="cl-label">服务端口：</span>
+              <span class="cl-val highlight">465 (SSL) / 587</span>
+            </div>
           </div>
         </div>
       </div>
     </section>
+
+    <!-- 新增客户端弹窗 -->
+    <el-dialog
+      v-model="createDialogVisible"
+      title="新增客户端专属授权码"
+      width="min(440px, calc(100vw - 32px))"
+      :close-on-click-modal="false"
+      class="compact-dialog"
+      @close="closeCreateDialog"
+    >
+      <div class="dialog-body">
+        <p class="dialog-tip">
+          为您的设备（例如“iPhone 自带邮件”、“公司 Foxmail”、“Mac Mail”）创建独立授权码：
+        </p>
+        <el-form @submit.prevent="submitCreateClient">
+          <el-form-item label="客户端名称">
+            <el-input
+              v-model="newClientName"
+              placeholder="例如：iPhone 邮件、Foxmail 办公本"
+              maxlength="32"
+              show-word-limit
+              autocomplete="off"
+              @keyup.enter="submitCreateClient"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="closeCreateDialog">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="createLoading"
+            :disabled="!newClientName.trim()"
+            @click="submitCreateClient"
+          >
+            立即生成
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
 
     <!-- 密码验证弹窗 -->
     <el-dialog
@@ -138,12 +231,12 @@
       title="安全身份验证"
       width="min(440px, calc(100vw - 32px))"
       :close-on-click-modal="false"
-      class="verify-reveal-dialog"
+      class="compact-dialog"
       @close="closeVerifyDialog"
     >
-      <div class="verify-dialog-body">
-        <p class="verify-dialog-tip">
-          查看已持久保存的协议授权码前，请先验证当前账号的登录密码：
+      <div class="dialog-body">
+        <p class="dialog-tip">
+          查看已保存的客户端专属授权码明文前，请先验证当前账号的登录密码：
         </p>
         <el-form @submit.prevent="submitVerifyAndReveal">
           <el-form-item label="登录密码">
@@ -159,7 +252,7 @@
         </el-form>
       </div>
       <template #footer>
-        <div class="verify-dialog-footer">
+        <div class="dialog-footer">
           <el-button @click="closeVerifyDialog">取消</el-button>
           <el-button
             type="primary"
@@ -167,7 +260,7 @@
             :disabled="!verifyPassword.trim()"
             @click="submitVerifyAndReveal"
           >
-            验证并查看授权码
+            验证并查看明文
           </el-button>
         </div>
       </template>
@@ -180,27 +273,35 @@ import { computed } from 'vue'
 import { usePage } from './ThirdPartyAuthorization.js'
 
 const {
-  protocolLoading,
-  protocolCredentials,
+  loading,
+  clientList,
+  selectedClientId,
+  currentClient,
+  currentDomain,
   revealedCodes,
   codesRevealed,
+  createDialogVisible,
+  newClientName,
+  createLoading,
   verifyDialogVisible,
   verifyPassword,
   verifyLoading,
-  protocolLabel,
-  setProtocolEnabled,
-  generateProtocolCode,
-  copyProtocolCode,
-  revokeProtocolCode,
+  handleClientSelect,
+  openCreateDialog,
+  closeCreateDialog,
+  submitCreateClient,
+  regenerateClientCode,
+  revokeClientCode,
+  copyCode,
+  formatTime,
   openVerifyDialog,
   closeVerifyDialog,
   submitVerifyAndReveal,
   hideRevealedCodes,
 } = usePage()
 
-const hasConfiguredProtocols = computed(() =>
-  Array.isArray(protocolCredentials.value) &&
-  protocolCredentials.value.some(item => item.configured)
+const hasClients = computed(() =>
+  Array.isArray(clientList.value) && clientList.value.length > 0
 )
 </script>
 

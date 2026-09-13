@@ -1,4 +1,4 @@
-package auth
+﻿package auth
 
 import (
 	"crypto/sha256"
@@ -66,16 +66,30 @@ func AuthenticateProtocol(protocol string, remoteAddress string, account string,
 	if protocolErr != nil || db.Instance == nil {
 		return fail()
 	}
+
 	identity, err := ResolveIdentifier(account)
-	if err != nil || identity.Kind != IdentifierEmail || identity.UserID <= 0 {
+	if err != nil {
 		return fail()
 	}
+	userID := identity.UserID
+	if identity.Kind == IdentifierAccount {
+		var u models.User
+		has, err := db.Instance.Where("account = ? AND disabled = 0", identity.Account).Get(&u)
+		if err != nil || !has || u.ID <= 0 {
+			return fail()
+		}
+		userID = u.ID
+	}
+	if userID <= 0 {
+		return fail()
+	}
+
 	service, err := credentials.NewService(db.Instance)
-	if err != nil || !service.VerifyProtocolCode(identity.UserID, normalizedProtocol, plain) {
+	if err != nil || !service.VerifyClientOrProtocolCode(userID, normalizedProtocol, plain) {
 		return fail()
 	}
 	var user models.User
-	has, err := db.Instance.ID(identity.UserID).Where("disabled = 0").Get(&user)
+	has, err := db.Instance.ID(userID).Where("disabled = 0").Get(&user)
 	if err != nil || !has || user.ID <= 0 {
 		return fail()
 	}

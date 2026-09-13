@@ -295,6 +295,7 @@ func TestDefaultMigrationChecksumsAreImmutable(t *testing.T) {
 		19: "f24b94ca9e4c25b7973f6c15fcaddccc7f02bcf7886c0a4995d2f7b79f4a3a16",
 		20: "e0bc01f4c2df742bc23c519c2a399cc1c3f341565dbed014509a8c63d68bf725",
 		21: "ac1a0b3be90128c0e0512d2cec858f8cd7e70abc5ff4734d7113b9674f08dbb0",
+		22: "1047cb22f5a32c8a09ba4ccedff8713a5225c14fdb98357db86a6e0723c30d8b",
 	}
 	migrations := DefaultMigrations()
 	if len(migrations) != len(expected) {
@@ -355,3 +356,5 @@ func TestDefaultMigrationsResumePublishedVersionOne(t *testing.T) {
 		})
 	}
 }
+
+
