@@ -66,6 +66,15 @@
   transform: translateY(-1px);
 }
 
+.refresh-btn {
+  margin-left: 4px;
+}
+
+.refresh-btn:hover .el-icon {
+  transform: rotate(90deg);
+  transition: transform 0.3s ease-in-out;
+}
+
 .compose-btn {
   border-radius: 999px;
   font-weight: 600;

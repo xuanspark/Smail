@@ -2,13 +2,14 @@ import './List.js'
 
 import {EpArrowDownBold} from "vue-icons-plus/ep";
 
-import {Delete, View, Folder, EditPen, Warning, CircleCheck, Switch, Check} from "@element-plus/icons-vue";
+import {Delete, View, Folder, EditPen, Warning, CircleCheck, Switch, Check, Refresh} from "@element-plus/icons-vue";
 
 import {useRouter} from 'vue-router'
 
-import {ref, watch, computed} from 'vue'
+import {ref, watch, computed, onMounted, onUnmounted} from 'vue'
 
 import useGroupStore from '../../stores/group'
+import {useGlobalStatusStore} from '../../stores/useGlobalStatusStore'
 
 import lang from '../../i18n/i18n';
 
@@ -20,8 +21,11 @@ export function usePage() {
   const router = useRouter();
   
   const groupStore = useGroupStore()
+  const globalStatus = useGlobalStatusStore()
   
   const groupList = ref([])
+  const isRefreshing = ref(false)
+  let refreshTimer = null
   
   const taskTableDataRef = ref(null)
   
@@ -58,11 +62,23 @@ export function usePage() {
   
   const totalPage = ref(0)
   
-  const updateList = function () {
-    http.post("/api/v1/email/list", {tag: tag, page_size: 15}).then(res => {
+  const updateList = async function (silent = false) {
+    if (!silent) {
+      isRefreshing.value = true
+    }
+    try {
+      const res = await http.post("/api/v1/email/list", {tag: tag, page_size: 15})
       data.value = res.data.list || []
       totalPage.value = res.data.total_page || 0
-    })
+    } catch (err) {
+      if (!silent) {
+        ElMessage.error(err?.message || '获取邮件列表失败')
+      }
+    } finally {
+      if (!silent) {
+        isRefreshing.value = false
+      }
+    }
   }
   
   const updateGroupList = async function () {
@@ -81,6 +97,48 @@ export function usePage() {
   updateList()
   
   updateGroupList()
+
+  // 定时刷新逻辑：已登录 60s，未登录 300s
+  const getRefreshInterval = () => {
+    return globalStatus.isLogin ? 60000 : 300000
+  }
+
+  const startAutoRefreshTimer = () => {
+    stopAutoRefreshTimer()
+    const interval = getRefreshInterval()
+    refreshTimer = setInterval(() => {
+      updateList(true)
+      updateGroupList()
+    }, interval)
+  }
+
+  const stopAutoRefreshTimer = () => {
+    if (refreshTimer) {
+      clearInterval(refreshTimer)
+      refreshTimer = null
+    }
+  }
+
+  const manualRefresh = async () => {
+    await Promise.all([
+      updateList(false),
+      updateGroupList()
+    ])
+    ElMessage.success('已刷新')
+    startAutoRefreshTimer()
+  }
+
+  watch(() => globalStatus.isLogin, () => {
+    startAutoRefreshTimer()
+  })
+
+  onMounted(() => {
+    startAutoRefreshTimer()
+  })
+
+  onUnmounted(() => {
+    stopAutoRefreshTimer()
+  })
   
   const rowClick = function (row) {
     router.push("/detail/" + row.id)
@@ -259,7 +317,9 @@ export function usePage() {
     trustSender,
     showError,
     errorDialogVisible,
-    currentErrorMsg
+    currentErrorMsg,
+    isRefreshing,
+    manualRefresh
   }
 }
 
@@ -272,5 +332,6 @@ export {
   EpArrowDownBold,
   EditPen,
   Warning,
-  Check
+  Check,
+  Refresh
 }

@@ -32,6 +32,9 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <el-button @click="manualRefresh" class="action-btn refresh-btn" :loading="isRefreshing" plain>
+          <el-icon><Refresh /></el-icon> {{ lang.refresh }}
+        </el-button>
         <el-button type="primary" class="compose-btn" @click="router.push('/editer')">
           <el-icon><EditPen /></el-icon> {{ lang.compose }}
         </el-button>
@@ -121,7 +124,7 @@
 </template>
 
 <script setup>
-import { usePage, CircleCheck, Switch, Delete, View, Folder, EpArrowDownBold, EditPen, Warning, Check } from './List.js'
+import { usePage, CircleCheck, Switch, Delete, View, Folder, EpArrowDownBold, EditPen, Warning, Check, Refresh } from './List.js'
 
 const {
   taskTableDataRef,
@@ -145,7 +148,9 @@ const {
   trustSender,
   showError,
   errorDialogVisible,
-  currentErrorMsg
+  currentErrorMsg,
+  isRefreshing,
+  manualRefresh
 } = usePage()
 </script>
 

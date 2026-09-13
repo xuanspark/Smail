@@ -11,6 +11,7 @@ const lang = {
     "plugin_settings": "插件配置",
     "lang": "zhCn",
     "submit": "提交",
+    "refresh": "刷新",
     "compose": "发件",
     "new": "新",
     "account": "账号",
