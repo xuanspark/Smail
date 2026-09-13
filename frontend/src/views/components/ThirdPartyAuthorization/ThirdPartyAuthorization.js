@@ -1,4 +1,4 @@
-﻿import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 
 import { ElMessageBox, ElNotification } from 'element-plus'
 
@@ -13,6 +13,8 @@ export function usePage() {
   // 解密后的各客户端授权码明文 { [clientId]: 'xxxx-yyyy-...' }
   const revealedCodes = reactive({})
   const codesRevealed = ref(false)
+  const revealCountdown = ref(0)
+  let countdownTimer = null
 
   // 新增客户端弹窗
   const createDialogVisible = ref(false)
@@ -35,6 +37,36 @@ export function usePage() {
       message,
       type,
     })
+  }
+
+  const clearCountdownTimer = () => {
+    if (countdownTimer) {
+      clearInterval(countdownTimer)
+      countdownTimer = null
+    }
+  }
+
+  const hideCodesAutomatically = (silent = false) => {
+    clearCountdownTimer()
+    revealCountdown.value = 0
+    Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
+    codesRevealed.value = false
+    if (!silent) {
+      notify('授权码明文已达到 60 秒安全保护期，已自动隐藏', 'info')
+    }
+  }
+
+  const startRevealCountdown = (seconds = 60) => {
+    clearCountdownTimer()
+    revealCountdown.value = seconds
+    codesRevealed.value = true
+
+    countdownTimer = setInterval(() => {
+      revealCountdown.value -= 1
+      if (revealCountdown.value <= 0) {
+        hideCodesAutomatically(false)
+      }
+    }, 1000)
   }
 
   const formatTime = (timeStr) => {
@@ -124,9 +156,9 @@ export function usePage() {
       if (item && item.id) {
         selectedClientId.value = item.id
         revealedCodes[item.id] = code
-        codesRevealed.value = true
+        startRevealCountdown(60)
       }
-      notify(`客户端「${name}」专属授权码已创建并就绪`, 'success')
+      notify(`客户端「${name}」专属授权码已创建并就绪（60秒内有效显示）`, 'success')
     } catch (error) {
       notify(error?.message || '创建客户端授权码失败')
     } finally {
@@ -160,8 +192,8 @@ export function usePage() {
       }
       const newCode = response.data?.code || ''
       revealedCodes[client.id] = newCode
-      codesRevealed.value = true
-      notify(`客户端「${client.client_name}」专属授权码已重新生成`, 'success')
+      startRevealCountdown(60)
+      notify(`客户端「${client.client_name}」专属授权码已重新生成（60秒内有效显示）`, 'success')
       await loadClientCredentials()
     } catch (error) {
       notify(error?.message || '重新生成失败')
@@ -253,13 +285,13 @@ export function usePage() {
       const map = response.data || {}
       Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
       Object.assign(revealedCodes, map)
-      codesRevealed.value = true
       closeVerifyDialog()
       const count = Object.keys(map).length
       if (count > 0) {
-        notify(`安全验证通过，已解密显示客户端专属授权码`, 'success')
+        startRevealCountdown(60)
+        notify('安全验证通过，授权码将在 60 秒内明文显示', 'success')
       } else {
-        notify('安全验证通过，当前未发现加密密文，可重新生成', 'warning')
+        notify('安全验证通过，当前未发现加密密文，可点击重新生成', 'warning')
       }
     } catch (error) {
       notify(error?.message || '验证失败，请检查密码是否正确')
@@ -268,15 +300,13 @@ export function usePage() {
     }
   }
 
-  const hideRevealedCodes = () => {
-    Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
-    codesRevealed.value = false
-    notify('已恢复安全隐藏状态', 'info')
-  }
-
   onMounted(() => {
     loadBaseInfo()
     loadClientCredentials()
+  })
+
+  onUnmounted(() => {
+    clearCountdownTimer()
   })
 
   return {
@@ -287,6 +317,7 @@ export function usePage() {
     currentDomain,
     revealedCodes,
     codesRevealed,
+    revealCountdown,
     createDialogVisible,
     newClientName,
     createLoading,
@@ -304,6 +335,5 @@ export function usePage() {
     openVerifyDialog,
     closeVerifyDialog,
     submitVerifyAndReveal,
-    hideRevealedCodes,
   }
 }

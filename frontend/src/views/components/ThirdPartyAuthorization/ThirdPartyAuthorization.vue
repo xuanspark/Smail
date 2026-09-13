@@ -1,38 +1,11 @@
-﻿<template>
+<template>
   <div class="third-party-authorization" v-loading="loading">
     <section class="authorization-section">
-      <!-- 顶部轻量工具条：紧凑一行 -->
+      <!-- 顶部轻量工具条：纯净标题与说明 -->
       <div class="compact-header">
         <div class="header-left">
           <span class="header-title">客户端专属授权码</span>
           <span class="header-subtitle">为手机、Foxmail 等设备创建独立授权码，随时查看或撤销</span>
-        </div>
-        <div class="header-right">
-          <el-button
-            v-if="hasClients && !codesRevealed"
-            type="primary"
-            plain
-            size="small"
-            @click="openVerifyDialog"
-          >
-            安全验证查看明文
-          </el-button>
-          <el-button
-            v-else-if="codesRevealed"
-            type="info"
-            plain
-            size="small"
-            @click="hideRevealedCodes"
-          >
-            安全隐藏明文
-          </el-button>
-          <el-button
-            type="primary"
-            size="small"
-            @click="openCreateDialog"
-          >
-            + 新增客户端
-          </el-button>
         </div>
       </div>
 
@@ -60,13 +33,22 @@
                 </div>
               </el-option>
             </el-select>
+
+            <el-button
+              type="primary"
+              size="default"
+              class="btn-create-client"
+              @click="openCreateDialog"
+            >
+              + 新增客户端
+            </el-button>
           </div>
 
           <div class="picker-actions" v-if="currentClient">
             <el-button
               type="warning"
               plain
-              size="small"
+              size="default"
               @click="regenerateClientCode(currentClient)"
             >
               重新生成
@@ -74,7 +56,7 @@
             <el-button
               type="danger"
               plain
-              size="small"
+              size="default"
               @click="revokeClientCode(currentClient)"
             >
               撤销删除
@@ -91,13 +73,20 @@
                 <code class="revealed-code">{{ revealedCodes[currentClient.id] }}</code>
                 <el-button
                   type="primary"
-                  link
-                  size="small"
+                  size="default"
                   class="action-btn"
                   @click="copyCode(revealedCodes[currentClient.id])"
                 >
                   一键复制
                 </el-button>
+                <el-tag
+                  size="default"
+                  type="warning"
+                  effect="plain"
+                  class="countdown-tag"
+                >
+                  {{ revealCountdown }}s 后自动隐藏
+                </el-tag>
               </template>
               <template v-else-if="codesRevealed && !revealedCodes[currentClient.id]">
                 <span class="text-tip">未保留加密密文，可点击重新生成</span>
@@ -106,12 +95,12 @@
                 <span class="masked-code">••••••••••••••••••••</span>
                 <el-button
                   type="primary"
-                  link
-                  size="small"
-                  class="action-btn"
+                  plain
+                  size="default"
+                  class="btn-verify-reveal"
                   @click="openVerifyDialog"
                 >
-                  验证查看
+                  安全验证查看明文
                 </el-button>
               </template>
             </div>
@@ -126,6 +115,15 @@
 
         <div class="empty-client-box" v-else>
           <span class="empty-tip">暂无可用客户端，请点击上方「+ 新增客户端」为您的设备配置专属授权码</span>
+          <div class="empty-action">
+            <el-button
+              type="primary"
+              size="default"
+              @click="openCreateDialog"
+            >
+              + 立即新增客户端
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -135,6 +133,7 @@
           <span>通用客户端配置参数</span>
           <span class="guide-sub">支持用户名直接登录或完整邮箱登录，密码统一使用上方专属授权码</span>
         </div>
+
         <div class="guide-grid">
           <div class="guide-card">
             <div class="card-head">
@@ -212,9 +211,10 @@
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="closeCreateDialog">取消</el-button>
+          <el-button size="default" @click="closeCreateDialog">取消</el-button>
           <el-button
             type="primary"
+            size="default"
             :loading="createLoading"
             :disabled="!newClientName.trim()"
             @click="submitCreateClient"
@@ -253,9 +253,10 @@
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="closeVerifyDialog">取消</el-button>
+          <el-button size="default" @click="closeVerifyDialog">取消</el-button>
           <el-button
             type="primary"
+            size="default"
             :loading="verifyLoading"
             :disabled="!verifyPassword.trim()"
             @click="submitVerifyAndReveal"
@@ -280,6 +281,7 @@ const {
   currentDomain,
   revealedCodes,
   codesRevealed,
+  revealCountdown,
   createDialogVisible,
   newClientName,
   createLoading,
@@ -297,7 +299,6 @@ const {
   openVerifyDialog,
   closeVerifyDialog,
   submitVerifyAndReveal,
-  hideRevealedCodes,
 } = usePage()
 
 const hasClients = computed(() =>

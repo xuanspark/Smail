@@ -1,4 +1,4 @@
-﻿.third-party-authorization {
+.third-party-authorization {
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -11,7 +11,7 @@
   gap: 12px;
 }
 
-/* 顶部轻量工具条 */
+/* 顶部轻量工具条：纯净标题栏 */
 .compact-header {
   display: flex;
   align-items: center;
@@ -45,40 +45,34 @@
   text-overflow: ellipsis;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 /* 客户端选择与管理主卡片 */
 .client-main-card {
-  padding: 12px 14px;
+  padding: 14px 16px;
   background: var(--pm-bg-secondary);
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-md);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .client-picker-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .picker-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .picker-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pm-text-primary);
   white-space: nowrap;
@@ -96,15 +90,19 @@
   width: 100%;
 }
 
+.btn-create-client {
+  font-weight: 600;
+}
+
 .picker-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* 授权码详情框 */
 .client-detail-box {
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--pm-bg-primary);
   border: 1px dashed var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
@@ -115,7 +113,7 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .code-label {
@@ -128,7 +126,8 @@
 .code-value-area {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .masked-code {
@@ -136,22 +135,30 @@
   font-family: monospace;
   font-size: 14px;
   color: var(--pm-text-secondary);
+  font-weight: 600;
 }
 
 .revealed-code {
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--pm-primary-color) 12%, var(--pm-bg-secondary));
   color: var(--pm-primary-color);
   font-family: monospace;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 1px;
 }
 
 .action-btn {
   font-size: 13px;
-  padding: 0 4px;
+}
+
+.countdown-tag {
+  font-weight: 600;
+}
+
+.btn-verify-reveal {
+  font-weight: 600;
 }
 
 .text-tip {
@@ -169,16 +176,24 @@
 }
 
 .empty-client-box {
-  padding: 12px;
+  padding: 18px 12px;
   text-align: center;
   background: var(--pm-bg-primary);
   border: 1px dashed var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
 .empty-tip {
   font-size: 13px;
   color: var(--pm-text-placeholder, #909399);
+}
+
+.empty-action {
+  margin-top: 4px;
 }
 
 /* 紧凑指引网格 */
