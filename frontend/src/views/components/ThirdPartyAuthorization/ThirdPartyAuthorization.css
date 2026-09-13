@@ -2,61 +2,28 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .authorization-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
-/* 顶部轻量工具条：纯净标题栏 */
-.compact-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
+/* 通用板块卡片容器 */
+.panel-card {
   background: var(--pm-bg-secondary);
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-md);
-}
-
-.header-left {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.header-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--pm-text-primary);
-  white-space: nowrap;
-}
-
-.header-subtitle {
-  font-size: 12px;
-  color: var(--pm-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 客户端选择与管理主卡片 */
-.client-main-card {
-  padding: 14px 16px;
-  background: var(--pm-bg-secondary);
-  border: 1px solid var(--pm-border-color);
-  border-radius: var(--pm-radius-md);
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-.client-picker-row {
+/* 顶部标题栏 */
+.card-header-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -64,22 +31,68 @@
   flex-wrap: wrap;
 }
 
-.picker-group {
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.main-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pm-text-primary);
+  white-space: nowrap;
+}
+
+.sub-title {
+  font-size: 13px;
+  color: var(--pm-text-secondary);
+  line-height: 1.4;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-primary-action {
+  font-weight: 600;
+}
+
+/* 卡片内容区域 */
+.card-content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.client-op-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.op-left-group {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.picker-label {
+.item-label {
   font-size: 14px;
   font-weight: 600;
   color: var(--pm-text-primary);
   white-space: nowrap;
 }
 
-.client-select {
-  width: 220px;
+.client-select-input {
+  width: 240px;
 }
 
 .client-option-item {
@@ -90,40 +103,40 @@
   width: 100%;
 }
 
-.btn-create-client {
-  font-weight: 600;
-}
-
-.picker-actions {
+.op-right-group {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-/* 授权码详情框 */
-.client-detail-box {
-  padding: 12px 14px;
+/* 授权码展示横条 */
+.code-banner {
+  padding: 14px 16px;
   background: var(--pm-bg-primary);
   border: 1px dashed var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
-}
-
-.code-display-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 10px;
 }
 
-.code-label {
-  font-size: 13px;
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.banner-label {
+  font-size: 14px;
   font-weight: 600;
   color: var(--pm-text-secondary);
   white-space: nowrap;
 }
 
-.code-value-area {
+.banner-code-box {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -133,7 +146,7 @@
 .masked-code {
   letter-spacing: 2px;
   font-family: monospace;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--pm-text-secondary);
   font-weight: 600;
 }
@@ -149,8 +162,8 @@
   letter-spacing: 1px;
 }
 
-.action-btn {
-  font-size: 13px;
+.btn-copy-code {
+  font-weight: 600;
 }
 
 .countdown-tag {
@@ -161,22 +174,27 @@
   font-weight: 600;
 }
 
-.text-tip {
-  font-size: 12px;
+.text-hint {
+  font-size: 13px;
   color: var(--pm-text-placeholder, #909399);
 }
 
-.client-meta {
+.banner-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   font-size: 12px;
   color: var(--pm-text-secondary);
   margin-left: auto;
 }
 
-.empty-client-box {
-  padding: 18px 12px;
+.meta-tag {
+  white-space: nowrap;
+}
+
+/* 空状态占位 */
+.empty-client-placeholder {
+  padding: 24px 16px;
   text-align: center;
   background: var(--pm-bg-primary);
   border: 1px dashed var(--pm-border-color);
@@ -184,89 +202,150 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.empty-tip {
-  font-size: 13px;
+.placeholder-text {
+  font-size: 14px;
   color: var(--pm-text-placeholder, #909399);
 }
 
-.empty-action {
-  margin-top: 4px;
-}
-
-/* 紧凑指引网格 */
-.compact-guide-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.guide-title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--pm-text-primary);
-}
-
-.guide-sub {
-  font-size: 12px;
-  font-weight: normal;
-  color: var(--pm-text-secondary);
-}
-
-.guide-grid {
+/* 通用协议指引网格 */
+.proto-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 14px;
 }
 
-.guide-card {
-  padding: 10px 12px;
-  background: var(--pm-bg-secondary);
+.proto-card {
+  padding: 14px 16px;
+  background: var(--pm-bg-primary);
   border: 1px solid var(--pm-border-color);
-  border-radius: var(--pm-radius-md);
+  border-radius: var(--pm-radius-sm);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.card-head {
+.proto-card:hover {
+  border-color: var(--pm-primary-color);
+}
+
+.proto-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 2px;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--pm-border-color);
 }
 
-.card-proto {
+.proto-name-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.proto-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pm-text-primary);
+}
+
+.proto-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.field-k {
+  color: var(--pm-text-secondary);
+  white-space: nowrap;
+}
+
+.field-v {
+  color: var(--pm-text-primary);
+  text-align: right;
+  word-break: break-all;
+}
+
+.font-mono {
+  font-family: monospace;
+}
+
+.field-v.highlight {
+  color: var(--pm-primary-color);
+  font-weight: 700;
+}
+
+/* 模块 3：配置提示与常见问题卡片 */
+.instructions-card {
+  background: var(--pm-bg-secondary);
+}
+
+.instructions-content {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.instruct-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--pm-bg-primary);
+  border: 1px solid var(--pm-border-color);
+  border-radius: var(--pm-radius-sm);
+}
+
+.instruct-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--pm-primary-color) 16%, var(--pm-bg-secondary));
+  color: var(--pm-primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.instruct-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.instruct-title {
   font-size: 13px;
   font-weight: 700;
   color: var(--pm-text-primary);
 }
 
-.card-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.instruct-desc {
   font-size: 12px;
-}
-
-.cl-label {
+  line-height: 1.5;
   color: var(--pm-text-secondary);
 }
 
-.cl-val {
-  font-family: monospace;
-  color: var(--pm-text-primary);
-  font-weight: 500;
-}
-
-.cl-val.highlight {
+.instruct-desc code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--pm-primary-color) 10%, var(--pm-bg-secondary));
   color: var(--pm-primary-color);
-  font-weight: 700;
+  font-family: monospace;
 }
 
 /* 弹窗通用紧凑样式 */
@@ -283,16 +362,24 @@
   gap: 10px;
 }
 
-@media (max-width: 800px) {
-  .guide-grid {
+@media (max-width: 960px) {
+  .proto-grid,
+  .instructions-content {
     grid-template-columns: 1fr;
   }
-  .compact-header {
+  .card-header-bar {
     flex-direction: column;
     align-items: stretch;
   }
-  .client-picker-row {
+  .client-op-row {
     flex-direction: column;
     align-items: stretch;
+  }
+  .code-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .banner-right {
+    margin-left: 0;
   }
 }

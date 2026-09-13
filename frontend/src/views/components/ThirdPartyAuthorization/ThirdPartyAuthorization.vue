@@ -1,182 +1,276 @@
 <template>
   <div class="third-party-authorization" v-loading="loading">
     <section class="authorization-section">
-      <!-- 顶部轻量工具条：纯净标题与说明 -->
-      <div class="compact-header">
-        <div class="header-left">
-          <span class="header-title">客户端专属授权码</span>
-          <span class="header-subtitle">为手机、Foxmail 等设备创建独立授权码，随时查看或撤销</span>
-        </div>
-      </div>
+      <!-- 模块 1：客户端与专属授权码管理卡片 -->
+      <div class="panel-card client-control-card">
+        <div class="card-header-bar">
+          <div class="header-left">
+            <span class="main-title">客户端专属授权码</span>
+            <span class="sub-title">为手机、Foxmail、Outlook 等设备创建独立授权码，随时查看或撤销</span>
+          </div>
 
-      <!-- 客户端选择与管理主卡片 -->
-      <div class="client-main-card">
-        <div class="client-picker-row">
-          <div class="picker-group">
-            <span class="picker-label">选择客户端：</span>
-            <el-select
-              v-model="selectedClientId"
-              placeholder="请选择或添加客户端"
-              size="default"
-              class="client-select"
-              @change="handleClientSelect"
-            >
-              <el-option
-                v-for="item in clientList"
-                :key="item.id"
-                :label="item.client_name"
-                :value="item.id"
-              >
-                <div class="client-option-item">
-                  <span>{{ item.client_name }}</span>
-                  <el-tag size="small" type="success">已就绪</el-tag>
-                </div>
-              </el-option>
-            </el-select>
-
+          <div class="header-actions">
             <el-button
               type="primary"
               size="default"
-              class="btn-create-client"
+              class="btn-primary-action"
               @click="openCreateDialog"
             >
               + 新增客户端
             </el-button>
           </div>
-
-          <div class="picker-actions" v-if="currentClient">
-            <el-button
-              type="warning"
-              plain
-              size="default"
-              @click="regenerateClientCode(currentClient)"
-            >
-              重新生成
-            </el-button>
-            <el-button
-              type="danger"
-              plain
-              size="default"
-              @click="revokeClientCode(currentClient)"
-            >
-              撤销删除
-            </el-button>
-          </div>
         </div>
 
-        <!-- 当前选中客户端的授权码展示条 -->
-        <div class="client-detail-box" v-if="currentClient">
-          <div class="code-display-row">
-            <span class="code-label">当前专属授权码：</span>
-            <div class="code-value-area">
-              <template v-if="codesRevealed && revealedCodes[currentClient.id]">
-                <code class="revealed-code">{{ revealedCodes[currentClient.id] }}</code>
-                <el-button
-                  type="primary"
-                  size="default"
-                  class="action-btn"
-                  @click="copyCode(revealedCodes[currentClient.id])"
+        <div class="card-content-area">
+          <div class="client-op-row">
+            <div class="op-left-group">
+              <span class="item-label">选择客户端：</span>
+              <el-select
+                v-model="selectedClientId"
+                placeholder="请选择客户端设备"
+                size="default"
+                class="client-select-input"
+                @change="handleClientSelect"
+              >
+                <el-option
+                  v-for="item in clientList"
+                  :key="item.id"
+                  :label="item.client_name"
+                  :value="item.id"
                 >
-                  一键复制
-                </el-button>
-                <el-tag
-                  size="default"
-                  type="warning"
-                  effect="plain"
-                  class="countdown-tag"
-                >
-                  {{ revealCountdown }}s 后自动隐藏
-                </el-tag>
-              </template>
-              <template v-else-if="codesRevealed && !revealedCodes[currentClient.id]">
-                <span class="text-tip">未保留加密密文，可点击重新生成</span>
-              </template>
-              <template v-else>
-                <span class="masked-code">••••••••••••••••••••</span>
-                <el-button
-                  type="primary"
-                  plain
-                  size="default"
-                  class="btn-verify-reveal"
-                  @click="openVerifyDialog"
-                >
-                  安全验证查看明文
-                </el-button>
-              </template>
+                  <div class="client-option-item">
+                    <span class="opt-name">{{ item.client_name }}</span>
+                    <el-tag size="small" type="success" effect="light">已就绪</el-tag>
+                  </div>
+                </el-option>
+              </el-select>
             </div>
-            <div class="client-meta">
-              <span class="meta-item">创建时间：{{ formatTime(currentClient.created_at) }}</span>
-              <span class="meta-item" v-if="currentClient.last_used_at">
+
+            <div class="op-right-group" v-if="currentClient">
+              <el-button
+                type="warning"
+                plain
+                size="default"
+                @click="regenerateClientCode(currentClient)"
+              >
+                重新生成
+              </el-button>
+              <el-button
+                type="danger"
+                plain
+                size="default"
+                @click="revokeClientCode(currentClient)"
+              >
+                撤销删除
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 授权码展示横条 -->
+          <div class="code-banner" v-if="currentClient">
+            <div class="banner-left">
+              <span class="banner-label">当前专属授权码：</span>
+              <div class="banner-code-box">
+                <template v-if="codesRevealed && revealedCodes[currentClient.id]">
+                  <code class="revealed-code">{{ revealedCodes[currentClient.id] }}</code>
+                  <el-button
+                    type="primary"
+                    size="default"
+                    class="btn-copy-code"
+                    @click="copyCode(revealedCodes[currentClient.id])"
+                  >
+                    一键复制
+                  </el-button>
+                  <el-tag
+                    size="default"
+                    type="warning"
+                    effect="plain"
+                    class="countdown-tag"
+                  >
+                    {{ revealCountdown }}s 后自动隐藏
+                  </el-tag>
+                </template>
+                <template v-else-if="codesRevealed && !revealedCodes[currentClient.id]">
+                  <span class="text-hint">未保留加密密文，可点击右上方重新生成</span>
+                </template>
+                <template v-else>
+                  <span class="masked-code">••••••••••••••••••••</span>
+                  <el-button
+                    type="primary"
+                    plain
+                    size="default"
+                    class="btn-verify-reveal"
+                    @click="openVerifyDialog"
+                  >
+                    安全验证查看明文
+                  </el-button>
+                </template>
+              </div>
+            </div>
+
+            <div class="banner-right">
+              <span class="meta-tag">创建时间：{{ formatTime(currentClient.created_at) }}</span>
+              <span class="meta-tag" v-if="currentClient.last_used_at">
                 最近活跃：{{ formatTime(currentClient.last_used_at) }}
               </span>
             </div>
           </div>
-        </div>
 
-        <div class="empty-client-box" v-else>
-          <span class="empty-tip">暂无可用客户端，请点击上方「+ 新增客户端」为您的设备配置专属授权码</span>
-          <div class="empty-action">
+          <!-- 空状态引导 -->
+          <div class="empty-client-placeholder" v-else>
+            <div class="placeholder-text">暂无可用客户端，请点击右上方「+ 新增客户端」为您的设备配置专属授权码</div>
             <el-button
               type="primary"
               size="default"
               @click="openCreateDialog"
             >
-              + 立即新增客户端
+              立即新增客户端
             </el-button>
           </div>
         </div>
       </div>
 
-      <!-- 客户端配置指引紧凑网格（一屏显示完整，无滚动条） -->
-      <div class="compact-guide-section">
-        <div class="guide-title">
-          <span>通用客户端配置参数</span>
-          <span class="guide-sub">支持用户名直接登录或完整邮箱登录，密码统一使用上方专属授权码</span>
+      <!-- 模块 2：通用客户端配置参数卡片 -->
+      <div class="panel-card proto-guide-card">
+        <div class="card-header-bar">
+          <div class="header-left">
+            <span class="main-title">通用客户端配置参数</span>
+            <span class="sub-title">支持用户名（如 xuans）或完整邮箱登录，密码统一使用上方专属授权码</span>
+          </div>
         </div>
 
-        <div class="guide-grid">
-          <div class="guide-card">
-            <div class="card-head">
-              <span class="card-proto">IMAP 收信服务</span>
-              <el-tag size="small" type="primary">SSL/TLS</el-tag>
+        <div class="proto-grid">
+          <!-- IMAP 收信 -->
+          <div class="proto-card">
+            <div class="proto-header">
+              <div class="proto-name-badge">
+                <span class="proto-name">IMAP 收信服务</span>
+                <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
+              </div>
+              <el-button
+                type="primary"
+                link
+                size="small"
+                @click="copyText(`imap.${currentDomain || 'solit.cn'}:993`, 'IMAP 参数')"
+              >
+                复制
+              </el-button>
             </div>
-            <div class="card-line">
-              <span class="cl-label">服务器地址：</span>
-              <span class="cl-val">imap.{{ currentDomain || 'solit.cn' }}</span>
-            </div>
-            <div class="card-line">
-              <span class="cl-label">服务端口：</span>
-              <span class="cl-val highlight">993</span>
+
+            <div class="proto-fields">
+              <div class="field-item">
+                <span class="field-k">服务器地址：</span>
+                <span class="field-v font-mono">imap.{{ currentDomain || 'solit.cn' }}</span>
+              </div>
+              <div class="field-item">
+                <span class="field-k">服务端口：</span>
+                <span class="field-v font-mono highlight">993</span>
+              </div>
+              <div class="field-item">
+                <span class="field-k">加密方式：</span>
+                <span class="field-v">SSL / TLS 隐式加密</span>
+              </div>
             </div>
           </div>
 
-          <div class="guide-card">
-            <div class="card-head">
-              <span class="card-proto">POP3 收信服务</span>
-              <el-tag size="small" type="primary">SSL/TLS</el-tag>
+          <!-- POP3 收信 -->
+          <div class="proto-card">
+            <div class="proto-header">
+              <div class="proto-name-badge">
+                <span class="proto-name">POP3 收信服务</span>
+                <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
+              </div>
+              <el-button
+                type="primary"
+                link
+                size="small"
+                @click="copyText(`pop.${currentDomain || 'solit.cn'}:995`, 'POP3 参数')"
+              >
+                复制
+              </el-button>
             </div>
-            <div class="card-line">
-              <span class="cl-label">服务器地址：</span>
-              <span class="cl-val">pop.{{ currentDomain || 'solit.cn' }}</span>
-            </div>
-            <div class="card-line">
-              <span class="cl-label">服务端口：</span>
-              <span class="cl-val highlight">995</span>
+
+            <div class="proto-fields">
+              <div class="field-item">
+                <span class="field-k">服务器地址：</span>
+                <span class="field-v font-mono">pop.{{ currentDomain || 'solit.cn' }}</span>
+              </div>
+              <div class="field-item">
+                <span class="field-k">服务端口：</span>
+                <span class="field-v font-mono highlight">995</span>
+              </div>
+              <div class="field-item">
+                <span class="field-k">加密方式：</span>
+                <span class="field-v">SSL / TLS 隐式加密</span>
+              </div>
             </div>
           </div>
 
-          <div class="guide-card">
-            <div class="card-head">
-              <span class="card-proto">SMTP 发信服务</span>
-              <el-tag size="small" type="primary">SSL / STARTTLS</el-tag>
+          <!-- SMTP 发信 -->
+          <div class="proto-card">
+            <div class="proto-header">
+              <div class="proto-name-badge">
+                <span class="proto-name">SMTP 发信服务</span>
+                <el-tag size="small" type="primary" effect="light">SSL / STARTTLS</el-tag>
+              </div>
+              <el-button
+                type="primary"
+                link
+                size="small"
+                @click="copyText(`smtp.${currentDomain || 'solit.cn'}:465`, 'SMTP 参数')"
+              >
+                复制
+              </el-button>
             </div>
-            <div class="card-line">
-              <span class="cl-label">服务器地址：</span>
-              <span class="cl-val">smtp.{{ currentDomain || 'solit.cn' }}</span>
+
+            <div class="proto-fields">
+              <div class="field-item">
+                <span class="field-k">服务器地址：</span>
+                <span class="field-v font-mono">smtp.{{ currentDomain || 'solit.cn' }}</span>
+              </div>
+              <div class="field-item">
+                <span class="field-k">服务端口：</span>
+                <span class="field-v font-mono highlight">465 (SSL) / 587</span>
+              </div>
+              <div class="field-item">
+                <span class="field-k">加密方式：</span>
+                <span class="field-v">SSL 隐式加密 / STARTTLS</span>
+              </div>
             </div>
-            <div class="card-line">
-              <span class="cl-label">服务端口：</span>
-              <span class="cl-val highlight">465 (SSL) / 587</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模块 3：客户端使用与排错说明卡片（充实页面、解决大面积留白） -->
+      <div class="panel-card instructions-card">
+        <div class="card-header-bar">
+          <div class="header-left">
+            <span class="main-title">配置提示与常见问题</span>
+          </div>
+        </div>
+
+        <div class="instructions-content">
+          <div class="instruct-item">
+            <span class="instruct-num">1</span>
+            <div class="instruct-body">
+              <div class="instruct-title">一机一码隔离保护</div>
+              <div class="instruct-desc">建议手机、办公电脑与备用客户端分别创建专属授权码。若设备遗失或更换，仅需在上方撤销对应客户端，其他设备与主密码完全不受影响。</div>
+            </div>
+          </div>
+
+          <div class="instruct-item">
+            <span class="instruct-num">2</span>
+            <div class="instruct-body">
+              <div class="instruct-title">登录用户名规范</div>
+              <div class="instruct-desc">第三方客户端的“账户名称/用户名”一栏可直接填写账号名（如 <code>xuans</code>）或完整邮箱（如 <code>xuans@{{ currentDomain || 'solit.cn' }}</code>），密码填写生成的专属授权码。</div>
+            </div>
+          </div>
+
+          <div class="instruct-item">
+            <span class="instruct-num">3</span>
+            <div class="instruct-body">
+              <div class="instruct-title">证书信任与安全握手</div>
+              <div class="instruct-desc">当前邮件系统所有协议均强制启用安全加密连接。如使用第三方邮件软件出现证书提示，请确认服务器域名解析是否正确指向当前邮件服务器。</div>
             </div>
           </div>
         </div>
@@ -294,6 +388,7 @@ const {
   submitCreateClient,
   regenerateClientCode,
   revokeClientCode,
+  copyText,
   copyCode,
   formatTime,
   openVerifyDialog,

@@ -106,7 +106,6 @@ export function usePage() {
       const list = Array.isArray(response.data) ? response.data : []
       clientList.value = list
       if (list.length > 0) {
-        // 如果当前选中的不在列表中，默认选中第一个
         if (!selectedClientId.value || !list.some(c => c.id === selectedClientId.value)) {
           selectedClientId.value = list[0].id
         }
@@ -236,26 +235,31 @@ export function usePage() {
     }
   }
 
-  const copyCode = async (codeText) => {
-    if (!codeText) {
-      notify('未找到可复制的授权码')
-      return
-    }
+  const copyText = async (text, label = '内容') => {
+    if (!text) return
     try {
       if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(codeText)
+        await navigator.clipboard.writeText(text)
       } else {
         const input = document.createElement('input')
-        input.value = codeText
+        input.value = text
         document.body.appendChild(input)
         input.select()
         document.execCommand('copy')
         document.body.removeChild(input)
       }
-      notify('专属授权码已复制到剪贴板', 'success')
+      notify(`${label}已复制到剪贴板`, 'success')
     } catch {
       notify('复制失败，请手动选择复制')
     }
+  }
+
+  const copyCode = async (codeText) => {
+    if (!codeText) {
+      notify('未找到可复制的授权码')
+      return
+    }
+    await copyText(codeText, '专属授权码')
   }
 
   const openVerifyDialog = () => {
@@ -330,6 +334,7 @@ export function usePage() {
     submitCreateClient,
     regenerateClientCode,
     revokeClientCode,
+    copyText,
     copyCode,
     formatTime,
     openVerifyDialog,
