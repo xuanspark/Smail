@@ -57,7 +57,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw '开发后端构建失败' }
     & go build -trimpath -ldflags $flags -o (Join-Path $output 'smail-admin.exe') ./cmd/smail-admin
     if ($LASTEXITCODE -ne 0) { throw '管理工具构建失败' }
-    & go build -o (Join-Path $output 'smail-config.exe') ./cmd/smail-config
+    & go build -trimpath -o (Join-Path $output 'smail-config.exe') ./cmd/smail-config
     if ($LASTEXITCODE -ne 0) { throw '配置工具构建失败' }
 } finally { Pop-Location }
 if (-not $SkipFrontend) {

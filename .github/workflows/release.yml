@@ -69,8 +69,8 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then extension=".exe"; fi
           cd backend
           BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-          go build -tags bundled -ldflags "$BUILD_FLAGS" -o ../out/release/smail$extension ./cmd/smail
-          go build -ldflags "$BUILD_FLAGS" -o ../out/release/smail-admin$extension ./cmd/smail-admin
+          go build -tags bundled -trimpath -ldflags "$BUILD_FLAGS" -o ../out/release/smail$extension ./cmd/smail
+          go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/release/smail-admin$extension ./cmd/smail-admin
       - name: Zip
         run: |
           cd ./out/release
