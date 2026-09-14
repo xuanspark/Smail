@@ -155,7 +155,7 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 		}
 	}
 	if entry.Caller != nil {
-		b.WriteString(fmt.Sprintf("[%s:%d]", entry.Caller.File, entry.Caller.Line))
+		b.WriteString(fmt.Sprintf("[%s:%d]", runtimepath.CleanCallerPath(entry.Caller.File), entry.Caller.Line))
 	}
 	b.WriteString(entry.Message)
 	// 错误字段也是有效内容，不能在消息为空时被格式器丢弃。

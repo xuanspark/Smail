@@ -11,10 +11,10 @@ const mailSecurity = config => {
   const value = normalizedMailSecurity(config.listener?.security)
   return value || 'both'
 }
-const relaySecurityForMail = config => mailSecurity(config) === 'implicit_tls' ? 'implicit_tls' : 'starttls'
+export const relaySecurityForMail = config => mailSecurity(config) === 'implicit_tls' ? 'implicit_tls' : 'starttls'
 const startTLSMail = config => mailSecurity(config) === 'starttls'
 const implicitTLSMail = config => mailSecurity(config) === 'implicit_tls'
-const relayConfigured = config => !!(
+export const relayConfigured = config => !!(
   config.relay?.relayHost || config.relay?.username || config.relay?.password ||
   config.relay?.from
 )

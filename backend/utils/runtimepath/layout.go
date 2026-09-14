@@ -270,3 +270,26 @@ func migrate(root string, rename func(string, string) error) ([]Move, error) {
 	}
 	return completed, nil
 }
+
+// CleanCallerPath 清洗调用者代码路径，去除本地盘符和宿主机绝对目录，只保留模块相对路径。
+func CleanCallerPath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(path, string(filepath.Separator), "/")
+	normalized = strings.ReplaceAll(normalized, "\\", "/")
+	for _, target := range []string{"backend/", "frontend/", "plugins/"} {
+		if index := strings.Index(normalized, target); index != -1 {
+			return normalized[index:]
+		}
+	}
+	marker := "smail/"
+	lower := strings.ToLower(normalized)
+	if index := strings.Index(lower, marker); index != -1 {
+		return normalized[index+len(marker):]
+	}
+	if len(normalized) >= 2 && normalized[1] == ':' {
+		return strings.TrimLeft(normalized[2:], "/")
+	}
+	return normalized
+}

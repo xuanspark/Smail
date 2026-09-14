@@ -1,6 +1,7 @@
 package framework
 
 import (
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
@@ -141,7 +142,7 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 			b.WriteString(fmt.Sprintf("[%s]", ctx.GetValue(context.LogID)))
 		}
 	}
-	b.WriteString(fmt.Sprintf("[%s:%d]", entry.Caller.File, entry.Caller.Line))
+	b.WriteString(fmt.Sprintf("[%s:%d]", runtimepath.CleanCallerPath(entry.Caller.File), entry.Caller.Line))
 	b.WriteString(entry.Message)
 
 	b.WriteString("\n")
