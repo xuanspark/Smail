@@ -197,6 +197,7 @@ type verificationCheckRequest struct {
 	Question     string               `json:"question"`
 	Answer       string               `json:"answer"`
 	RecoveryCode string               `json:"recovery_code"`
+	Continuation string               `json:"continuation"`
 	BindingID    int                  `json:"binding_id"`
 }
 
@@ -587,8 +588,19 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 	}
 	if methodOffline {
 		ticket, err = runtime.recovery.VerifyOfflineWithContext(input.Account, input.Question, input.Answer, input.RecoveryCode, remoteIP(req), browserContext)
+	} else if strings.EqualFold(strings.TrimSpace(input.Method), "email_recovery_code") {
+		ticket, err = runtime.recovery.ContinueEmailWithContext(input.Continuation, input.Account, input.Email, input.RecoveryCode, browserContext)
 	} else {
-		ticket, err = runtime.recovery.VerifyWithContext(input.ID, input.Account, input.Email, input.Code, input.RecoveryCode, remoteIP(req), browserContext)
+		var result recovery.EmailVerificationResult
+		result, err = runtime.recovery.VerifyEmailStepWithContext(input.ID, input.Account, input.Email, input.Code, remoteIP(req), browserContext)
+		if err == nil {
+			// 附加验证尚未完成，操作日志不能提前标记为身份验证成功。
+			if observer, ok := w.(interface{ ObservePending(bool) }); ok {
+				observer.ObservePending(result.RequiresRecoveryCode)
+			}
+			response.NewSuccessResponse(result).FPrint(w)
+			return
+		}
 	}
 	if err != nil {
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)

@@ -55,6 +55,7 @@ type Service struct {
 	invalidate   func(int, string)
 	mu           sync.Mutex
 	tickets      map[string]ticket
+	emailPending map[string]*emailContinuation
 	decoys       map[string]decoyChallenge
 	now          func() time.Time
 }
@@ -92,7 +93,8 @@ func NewService(engine *xorm.Engine, verify *verification.Service, external *ext
 	}
 	return &Service{
 		engine: engine, verification: verify, external: external, credentials: credential,
-		tickets: make(map[string]ticket), decoys: make(map[string]decoyChallenge), now: time.Now,
+		tickets: make(map[string]ticket), emailPending: make(map[string]*emailContinuation),
+		decoys: make(map[string]decoyChallenge), now: time.Now,
 	}, nil
 }
 
@@ -224,43 +226,47 @@ func (s *Service) Verify(challengeID, account, email, code, recoveryCode, remote
 }
 
 func (s *Service) VerifyWithContext(challengeID, account, email, code, recoveryCode, remoteIP, browserContext string) (string, error) {
+	user, item, err := s.verifyEmailIdentity(challengeID, account, email, code, remoteIP, browserContext)
+	if err != nil {
+		return "", err
+	}
+	method := "email"
+	if user.EffectiveRole() == access.RoleAdmin {
+		if strings.TrimSpace(recoveryCode) == "" {
+			return "", ErrRecoveryDenied
+		}
+		if err := s.credentials.ConsumeRecoveryCode(user.ID, recoveryCode); err != nil {
+			return "", ErrRecoveryDenied
+		}
+		method = "email_admin"
+	}
+	return s.issueTicketFor(user.ID, user.SessionVersion, method, item.ID, item.CredentialVersion, browserContext)
+}
+
+func (s *Service) verifyEmailIdentity(challengeID, account, email, code, remoteIP, browserContext string) (*models.User, *models.ExternalEmail, error) {
 	if s == nil || s.verification == nil {
-		return "", ErrUnavailable
+		return nil, nil, ErrUnavailable
 	}
 	if s.consumeDecoyChallengeWithContext(challengeID, account, email, code, browserContext) {
-		return "", ErrRecoveryDenied
+		return nil, nil, ErrRecoveryDenied
 	}
 	normalizedAccount, normalizeErr := auth.NormalizeIdentifier(account)
 	if normalizeErr != nil {
-		return "", ErrRecoveryDenied
+		return nil, nil, ErrRecoveryDenied
 	}
 	var user models.User
 	has, err := s.engine.Where("account = ? AND disabled = 0", normalizedAccount).Get(&user)
 	if err != nil || !has || user.EffectiveRole() == access.RoleSuperAdmin || s.external == nil {
-		return "", ErrRecoveryDenied
+		return nil, nil, ErrRecoveryDenied
 	}
 	item, err := s.external.FindVerifiedByEmail(email)
 	if err != nil || item.UserID != user.ID {
-		return "", ErrRecoveryDenied
+		return nil, nil, ErrRecoveryDenied
 	}
 	if err := s.verification.VerifyBoundWithContext(challengeID, normalizedAccount, email, code, verification.PurposePasswordRecover, item.ID, remoteIP, browserContext); err != nil {
-		return "", err
+		return nil, nil, err
 	}
-	ticketID, err := s.issueTicketFor(user.ID, user.SessionVersion, "email", item.ID, item.CredentialVersion, browserContext)
-	if err != nil {
-		return "", err
-	}
-	if user.EffectiveRole() == access.RoleAdmin {
-		if strings.TrimSpace(recoveryCode) == "" {
-			s.invalidateTicket(ticketID)
-			return "", ErrRecoveryDenied
-		}
-		if err := s.credentials.ConsumeRecoveryCode(user.ID, recoveryCode); err != nil {
-			s.invalidateTicket(ticketID)
-			return "", ErrRecoveryDenied
-		}
-	}
-	return ticketID, nil
+	return &user, item, nil
 }
 
 func (s *Service) VerifyOffline(identifier, question, answer, recoveryCode, remoteIP string) (string, error) {
@@ -343,7 +349,10 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if err != nil || !has || user.Disabled != 0 || user.EffectiveRole() == access.RoleSuperAdmin || user.SessionVersion != item.SessionVersion {
 		return ErrRecoveryDenied
 	}
-	if item.Method == "email" {
+	if item.Method == "email" || item.Method == "email_admin" {
+		if user.EffectiveRole() == access.RoleAdmin && item.Method != "email_admin" {
+			return ErrRecoveryDenied
+		}
 		if s.external == nil || item.CredentialID <= 0 {
 			return ErrRecoveryDenied
 		}
@@ -457,6 +466,11 @@ func (s *Service) cleanupLocked(now time.Time) {
 			delete(s.tickets, id)
 		}
 	}
+	for id, item := range s.emailPending {
+		if !now.Before(item.ExpiresAt) {
+			delete(s.emailPending, id)
+		}
+	}
 }
 
 func (s *Service) issueDecoyChallenge(account, email string) (string, error) {
@@ -548,6 +562,11 @@ func (s *Service) InvalidateUser(userID int) {
 	for id, item := range s.tickets {
 		if item.UserID == userID {
 			delete(s.tickets, id)
+		}
+	}
+	for id, item := range s.emailPending {
+		if item.UserID == userID {
+			delete(s.emailPending, id)
 		}
 	}
 }

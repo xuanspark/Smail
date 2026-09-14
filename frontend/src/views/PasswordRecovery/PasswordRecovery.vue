@@ -63,6 +63,7 @@
         <el-form
           class="recovery-form"
           label-position="top"
+          :disabled="isActionDisabled"
           @submit.prevent="handleStepOneNext"
         >
           <!-- 邮箱验证方式：用户名与外部安全邮箱紧密相邻 -->
@@ -81,7 +82,6 @@
                   v-model="recovery.identifier"
                   autocomplete="username"
                   placeholder="请输入用户名或完整邮箱"
-                  @input="onIdentifierChange"
                 />
               </el-form-item>
 
@@ -116,13 +116,6 @@
               </div>
             </el-form-item>
 
-            <el-form-item label="管理员离线恢复码（普通用户留空）">
-              <el-input
-                v-model="recovery.recoveryCode"
-                autocomplete="one-time-code"
-                placeholder="管理员账号需额外输入离线恢复码"
-              />
-            </el-form-item>
           </section>
 
           <!-- 离线恢复方式 -->
@@ -137,7 +130,6 @@
                 v-model="recovery.identifier"
                 autocomplete="username"
                 placeholder="请输入用户名或完整邮箱"
-                @input="onIdentifierChange"
               />
             </el-form-item>
 
@@ -145,7 +137,7 @@
               <el-input
                 v-model="recovery.question"
                 autocomplete="off"
-                placeholder="请输入您访置的密保问题"
+                placeholder="请输入您设置的密保问题"
               />
             </el-form-item>
 
@@ -296,6 +288,39 @@
         </div>
       </div>
     </div>
+
+    <el-dialog
+      :model-value="adminRecoveryVisible"
+      title="管理员附加验证"
+      width="min(440px, calc(100vw - 32px))"
+      align-center
+      append-to-body
+      destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!loading"
+      :show-close="!loading"
+      @update:model-value="cancelAdminVerification"
+    >
+      <div class="admin-recovery-dialog">
+        <p class="admin-recovery-description">邮箱验证已通过，请输入此管理员账号的离线恢复码。</p>
+        <el-form label-position="top" :disabled="loading" @submit.prevent="confirmAdminVerification">
+          <el-form-item label="离线恢复码" required :error="adminRecoveryError">
+            <el-input
+              v-model="recovery.recoveryCode"
+              type="password"
+              show-password
+              autocomplete="off"
+              maxlength="64"
+              placeholder="请输入未使用的离线恢复码"
+            />
+          </el-form-item>
+          <div class="admin-recovery-actions">
+            <el-button :disabled="loading" @click="cancelAdminVerification">取消</el-button>
+            <el-button type="primary" native-type="submit" :loading="loading">验证并继续</el-button>
+          </div>
+        </el-form>
+      </div>
+    </el-dialog>
   </AuthLayout>
 </template>
 
@@ -315,6 +340,10 @@ const {
   isActionDisabled,
   isCodeButtonDisabled,
   passwordMismatchError,
+  adminRecoveryVisible,
+  adminRecoveryError,
+  cancelAdminVerification,
+  confirmAdminVerification,
   switchRecoveryMethod,
   requestRecoveryCode,
   handleStepOneNext,
@@ -323,7 +352,6 @@ const {
   resetStepOne,
   resetStepTwo,
   validatePasswordMatch,
-  onIdentifierChange,
   goLogin
 } = usePage()
 </script>
