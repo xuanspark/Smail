@@ -204,6 +204,8 @@ func CodeMessage(purpose Purpose, code string) (string, string) {
 		purposeText = "完成登录二次验证"
 	case PurposePasswordRecover:
 		purposeText = "完成密码恢复验证"
+	case PurposePasswordChange:
+		purposeText = "完成修改密码安全验证"
 	case PurposeExternalEmailBind:
 		purposeText = "完成外部邮箱绑定验证"
 	case PurposeExternalEmailChange:

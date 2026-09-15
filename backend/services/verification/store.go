@@ -34,6 +34,7 @@ type Purpose string
 const (
 	PurposeLogin               Purpose = "login"
 	PurposePasswordRecover     Purpose = "password_recover"
+	PurposePasswordChange      Purpose = "password_change"
 	PurposeExternalEmailBind   Purpose = "external_email_bind"
 	PurposeExternalEmailChange Purpose = "external_email_change"
 )
@@ -185,7 +186,7 @@ func (s *Store) Issue(request IssueRequest, delivery Delivery) (Challenge, error
 // IsSupportedPurpose 保证验证码只能用于已确认的业务流程。
 func IsSupportedPurpose(purpose Purpose) bool {
 	switch purpose {
-	case PurposeLogin, PurposePasswordRecover, PurposeExternalEmailBind, PurposeExternalEmailChange:
+	case PurposeLogin, PurposePasswordRecover, PurposePasswordChange, PurposeExternalEmailBind, PurposeExternalEmailChange:
 		return true
 	default:
 		return false
