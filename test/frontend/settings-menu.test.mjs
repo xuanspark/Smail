@@ -35,11 +35,11 @@ test('二级菜单只发送可见且尚未选中的选项，不提前修改父�
 test('一级菜单保留能力过滤和当前分类标题联动', () => {
   const source = read('HomeHeader/HomeHeader.js')
   const names = [
-    'EpMenu', 'Lock', 'Connection', 'Setting', 'FolderOpened', 'Filter', 'User', 'Grid', 'Document',
+    'EpMenu', 'Lock', 'Connection', 'Setting', 'FolderOpened', 'Filter', 'User', 'Grid', 'Document', 'Checked',
     'SettingsPageStatus', 'BrandLogo'
   ]
   const createPage = compileFunction(
-    source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
+    source.replace(/^\uFEFF?import .*$/gm, '').replace('export function usePage', 'function usePage')
       .replace(/export \{[\s\S]*?\}\s*$/, '') + '\nreturn usePage()',
     ['computed', 'ref', 'onMounted', 'onUnmounted', 'window', 'useGlobalStatusStore', 'lang', 'defineAsyncComponent', ...names]
   )
@@ -50,14 +50,14 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   })
   const page = createPage(computed, ref, () => {}, () => {}, { innerWidth: 1440 }, () => store,
     { security: '安全', plugin_settings: '插件配置' }, () => ({}), ...names.map(name => ({ name })))
-  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'group', 'rule'])
+  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'group', 'rule', 'sender-filter'])
   assert.equal(page.settingsMenu.value.find(item => item.key === 'third-party').label, '邮件客户端')
   assert.equal(page.activeSettings.value.label, '安全')
   capabilities.add('config.read')
   capabilities.add('plugin.read_global')
   store.settingsActiveTab = 'config'
   assert.equal(page.activeSettings.value.label, '配置管理')
-  assert.equal(page.settingsMenu.value.length, 6)
+  assert.equal(page.settingsMenu.value.length, 7)
   assert.equal(page.settingsMenu.value.find(item => item.key === 'plugins').label, '插件配置')
   assert.ok(page.settingsMenu.value.every(item => item.icon && item.hint))
   capabilities.delete('config.read')
@@ -139,7 +139,7 @@ test('配置管理只在真实移动端将内部导航移到内容顶部', () =>
   const containerStart = config.indexOf('@container settings-content (max-width: 560px)')
   const desktopStart = config.indexOf('@media (min-width: 769px)', containerStart)
   const containerRule = config.slice(containerStart, desktopStart)
-  assert.match(header, /min\(100vw, max\(50vw, 820px\)\)/)
+  assert.match(header, /min\(100vw, max\(56vw, 880px\)\)/)
   assert.match(config, /grid-template-areas: "main submenu"/)
   assert.match(config, /@media \(min-width: 769px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\)/)
   assert.match(config, /@media \(max-width: 768px\)[\s\S]*"submenu"[\s\S]*"main"/)

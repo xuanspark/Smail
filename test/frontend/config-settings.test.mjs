@@ -6,7 +6,12 @@ import { createRequire } from 'node:module'
 import { computed, reactive, ref } from './vue.mjs'
 
 const formSource = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigForm/ConfigForm.js', import.meta.url), 'utf8')
-const formHelpers = compileFunction(formSource.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, updateFormConfig, validateFormConfig }')()
+const formHelpers = compileFunction(
+  formSource
+    .replaceAll('export const ', 'const ')
+    .replaceAll('export function ', 'function ')
+  + '\nreturn { readFormConfig, updateFormConfig, validateFormConfig, relayConfigured, relaySecurityForMail }'
+)()
 const recentAuthenticationSource = readFileSync(new URL('../../frontend/src/utils/recentAuthentication.js', import.meta.url), 'utf8')
   .replace(/^import .*$/gm, '')
   .replaceAll('export async function ', 'async function ')
@@ -18,7 +23,7 @@ const compileRecentAuthentication = compileFunction(
 const source = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigSettings.js', import.meta.url), 'utf8')
 const compilePage = compileFunction(
   source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage(pageKey)',
-  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount', 'readFormConfig', 'updateFormConfig', 'validateFormConfig', 'isRecentAuthenticationCancelled', 'requestWithRecentAuthentication']
+  ['computed', 'onMounted', 'reactive', 'ref', 'ElMessage', 'ElMessageBox', 'http', 'useGlobalStatusStore', 'pageKey', 'onBeforeUnmount', 'readFormConfig', 'updateFormConfig', 'validateFormConfig', 'relayConfigured', 'relaySecurityForMail', 'isRecentAuthenticationCancelled', 'requestWithRecentAuthentication']
 )
 const createPageWithKey = (...args) => {
   const http = args[6]
@@ -29,6 +34,8 @@ const createPageWithKey = (...args) => {
     formHelpers.readFormConfig,
     formHelpers.updateFormConfig,
     formHelpers.validateFormConfig,
+    formHelpers.relayConfigured,
+    formHelpers.relaySecurityForMail,
     recentAuthentication.isRecentAuthenticationCancelled,
     recentAuthentication.requestWithRecentAuthentication
   )
