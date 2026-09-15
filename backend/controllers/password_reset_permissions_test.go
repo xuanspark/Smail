@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
@@ -15,6 +17,8 @@ import (
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/externalemail"
+	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/session"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
@@ -179,7 +183,7 @@ func authPasswordMatches(hash, plain string) bool {
 	return password.Verify(hash, plain)
 }
 
-func TestSuperAdminCannotChangePasswordThroughWeb(t *testing.T) {
+func TestSuperAdminCannotChangePasswordWithoutEmailVerification(t *testing.T) {
 	testRoot := t.TempDir()
 	oldConfig := config.Instance
 	oldDB := db.Instance
@@ -208,8 +212,159 @@ func TestSuperAdminCannotChangePasswordThroughWeb(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.ErrorNo != response.NoAccessPrivileges {
+	if result.ErrorNo != response.ParamsError {
 		t.Fatalf("expected web reset to be denied, got %d", result.ErrorNo)
 	}
 	assertUserPassword(t, user.ID, "OldPass123")
+}
+
+func TestSuperAdminPasswordChangeVerification(t *testing.T) {
+	for _, scenario := range []string{"success", "missing", "wrong-code", "wrong-purpose", "wrong-email", "unverified", "expired", "security-version", "disabled", "invalid-password", "replay"} {
+		t.Run(scenario, func(t *testing.T) {
+			testRoot := t.TempDir()
+			oldConfig, oldDB, oldSession := config.Instance, db.Instance, session.Instance
+			oldRuntime := currentSecurityRuntime()
+			oldPair, oldAccount, oldIP := loginPairAttempts, loginAccountAttempts, loginIPAttempts
+			loginPairAttempts = newLoginLimiter(loginFailureLimit)
+			loginAccountAttempts = newLoginLimiter(loginAccountFailureLimit)
+			loginIPAttempts = newLoginLimiter(loginIPFailureLimit)
+			session.Instance = scs.New()
+			t.Cleanup(func() {
+				_ = db.Instance.Close()
+				config.Instance, db.Instance, session.Instance = oldConfig, oldDB, oldSession
+				loginPairAttempts, loginAccountAttempts, loginIPAttempts = oldPair, oldAccount, oldIP
+				ConfigureSecurityRuntime(oldRuntime.verification, oldRuntime.external, oldRuntime.recovery, oldRuntime.credentials)
+			})
+			config.Instance = &config.Config{DbType: config.DBTypeSQLite, DbDSN: filepath.Join(testRoot, "password.db")}
+			if err := db.Init(""); err != nil {
+				t.Fatal(err)
+			}
+			user := newControllerTestUser(t, "verified-super", "超级管理员", access.RoleSuperAdmin, "OldPass123")
+			user.SecurityVersion = 1
+			if _, err := db.Instance.Insert(&user); err != nil {
+				t.Fatal(err)
+			}
+			vault := externalemail.NewVaultWithKeys([]byte("01234567890123456789012345678901"), []byte("abcdefabcdefabcdefabcdefabcdefab"))
+			repo, err := externalemail.NewRepository(db.Instance, vault)
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding, err := repo.Bind(externalemail.BindRequest{UserID: user.ID, Email: "owner@example.com", Type: models.ExternalEmailTypePrimary})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario != "unverified" {
+				if err := repo.Verify(user.ID, binding.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			store, err := verification.NewStore(32)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var code string
+			var delivered verification.Challenge
+			send := func(challenge verification.Challenge, value string) error {
+				delivered, code = challenge, value
+				return nil
+			}
+			service, err := verification.NewService(store, send, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ConfigureSecurityRuntime(service, repo, nil, nil)
+			ctx := &appcontext.Context{UserID: user.ID, UserAccount: user.Account, Role: access.RoleSuperAdmin, Lang: "zhCn"}
+			issueRecorder := httptest.NewRecorder()
+			RequestVerification(ctx, issueRecorder, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"purpose":"password_change","account":"verified-super"}`)))
+			if scenario == "unverified" {
+				if delivered.ID != "" {
+					t.Fatal("sent to unverified email")
+				}
+				return
+			}
+			if delivered.ID == "" || delivered.Email != "owner@example.com" {
+				t.Fatalf("issue failed: %s", issueRecorder.Body.String())
+			}
+			input := modifyPasswordRequest{Password: "NewPass123", Code: code, ChallengeID: delivered.ID}
+			switch scenario {
+			case "missing":
+				input.Code = ""
+			case "wrong-code":
+				input.Code = "not-a-code"
+			case "wrong-email":
+				input.Email = "other@example.com"
+			case "invalid-password":
+				input.Password = "short"
+			case "security-version":
+				_, err = db.Instance.ID(user.ID).Cols("security_version").Update(&models.User{SecurityVersion: 2})
+			case "disabled":
+				_, err = db.Instance.ID(user.ID).Cols("disabled").Update(&models.User{Disabled: 1})
+			case "wrong-purpose", "expired":
+				purpose, ttl := verification.PurposeLogin, time.Minute
+				if scenario == "expired" {
+					purpose, ttl = verification.PurposePasswordChange, time.Nanosecond
+				}
+				challenge, issueErr := store.Issue(verification.IssueRequest{Purpose: purpose, Account: user.Account, Email: delivered.Email, ResourceID: binding.ID, BrowserTransaction: strconv.Itoa(user.SecurityVersion), TTL: ttl}, send)
+				if issueErr != nil {
+					t.Fatal(issueErr)
+				}
+				input.ChallengeID, input.Code = challenge.ID, code
+				if scenario == "expired" {
+					time.Sleep(time.Millisecond)
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			change := func() int {
+				body, err := json.Marshal(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(string(body)))
+				loaded, err := session.Instance.Load(req.Context(), "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				session.Instance.Put(loaded, "user_id", user.ID)
+				recorder := httptest.NewRecorder()
+				ModifyPassword(ctx, recorder, req.WithContext(loaded))
+				var result struct {
+					ErrorNo int `json:"errorNo"`
+				}
+				if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.ErrorNo == 0 && session.Instance.Exists(loaded, "user_id") {
+					t.Fatal("session survived password change")
+				}
+				return result.ErrorNo
+			}
+			succeeded := scenario == "success" || scenario == "replay"
+			if result := change(); (result == 0) != succeeded {
+				t.Fatalf("unexpected result: %d", result)
+			}
+			if !succeeded {
+				assertUserPassword(t, user.ID, "OldPass123")
+				if scenario == "invalid-password" {
+					input.Password = "NewPass123"
+					if change() != 0 {
+						t.Fatal("invalid password consumed verification")
+					}
+				}
+				return
+			}
+			assertUserPassword(t, user.ID, "NewPass123")
+			var updated models.User
+			if _, err := db.Instance.ID(user.ID).Get(&updated); err != nil {
+				t.Fatal(err)
+			}
+			if updated.SessionVersion != 2 || updated.SecurityVersion != 2 {
+				t.Fatal("security versions not rotated")
+			}
+			if scenario == "replay" && change() == 0 {
+				t.Fatal("verification replay accepted")
+			}
+		})
+	}
 }

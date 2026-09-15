@@ -6,7 +6,7 @@ import (
 )
 
 func TestSupportedPurposes(t *testing.T) {
-	for _, purpose := range []Purpose{PurposeLogin, PurposePasswordRecover, PurposeExternalEmailBind, PurposeExternalEmailChange} {
+	for _, purpose := range []Purpose{PurposeLogin, PurposePasswordRecover, PurposePasswordChange, PurposeExternalEmailBind, PurposeExternalEmailChange} {
 		if !IsSupportedPurpose(purpose) {
 			t.Fatalf("purpose %q was rejected", purpose)
 		}

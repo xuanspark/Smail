@@ -58,3 +58,15 @@
   .credential-actions { width: 100%; }
   .credential-actions .el-button { flex: 1; }
 }
+.password-verification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.password-verification-row strong {
+  overflow-wrap: anywhere;
+}

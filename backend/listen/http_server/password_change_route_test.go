@@ -55,7 +55,7 @@ func TestModifyPasswordRouteRejectsUnauthenticatedRequest(t *testing.T) {
 	}
 }
 
-func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
+func TestSuperAdminCannotChangeOwnPasswordWithoutEmailVerification(t *testing.T) {
 	oldConfig := config.Instance
 	oldInit := config.IsInit
 	oldDB := db.Instance
@@ -104,7 +104,7 @@ func TestSuperAdminCannotChangeOwnPasswordAfterLogin(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.ErrorNo != response.NoAccessPrivileges {
+	if result.ErrorNo != response.ParamsError {
 		t.Fatalf("super admin web password change was not rejected: %s", recorder.Body.String())
 	}
 

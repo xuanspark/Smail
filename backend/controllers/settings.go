@@ -22,15 +22,14 @@ import (
 type modifyPasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	Password        string `json:"password"`
+	Code            string `json:"code"`
+	ChallengeID     string `json:"challenge_id"`
+	Email           string `json:"email"`
 }
 
 func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 || strings.TrimSpace(ctx.UserAccount) == "" {
 		response.NewErrorResponse(response.NoAccessPrivileges, "未登录用户不能修改密码", "").FPrint(w)
-		return
-	}
-	if ctx.EffectiveRole() == access.RoleSuperAdmin {
-		response.NewErrorResponse(response.NoAccessPrivileges, "超级管理员必须通过部署端专用通道重置密码", "").FPrint(w)
 		return
 	}
 	var retData modifyPasswordRequest
@@ -39,7 +38,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
 	}
-	if retData.CurrentPassword == "" || retData.Password == "" {
+	if retData.Password == "" || (ctx.EffectiveRole() != access.RoleSuperAdmin && retData.CurrentPassword == "") {
 		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
 	}
@@ -50,13 +49,28 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "aperror"), "").FPrint(w)
 		return
 	}
-	currentUser, err := auth.Authenticate(ctx.UserAccount, retData.CurrentPassword)
-	if err != nil || currentUser.ID != ctx.UserID {
+	var currentUser *models.User
+	var err error
+	if ctx.EffectiveRole() == access.RoleSuperAdmin {
+		// 先校验新密码格式，避免无效输入消耗一次性验证码。
+		if password.ValidateUserPassword(retData.Password) != nil {
+			writeSecurityError(w, response.ParamsError, "密码长度必须为 8-12 字节")
+			return
+		}
+		currentUser, err = verifyPasswordChange(ctx, req, retData)
+	} else {
+		currentUser, err = auth.Authenticate(ctx.UserAccount, retData.CurrentPassword)
+	}
+	if err != nil || currentUser == nil || currentUser.ID != ctx.UserID {
 		loginPairAttempts.recordFailure(pairKey)
 		loginAccountAttempts.recordFailure(accountKey)
 		loginIPAttempts.recordFailure(ipKey)
 		log.WithContext(ctx).Info("password change authentication failed")
-		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "aperror"), "").FPrint(w)
+		if ctx.EffectiveRole() == access.RoleSuperAdmin {
+			writeSecurityError(w, response.ParamsError, "请使用已绑定主安全邮箱的有效验证码，失败后可重新获取")
+		} else {
+			response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "aperror"), "").FPrint(w)
+		}
 		return
 	}
 	loginPairAttempts.clear(pairKey)
@@ -107,7 +121,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		}
 	}()
 
-	affected, err := tx.Where("id = ? and password = ? and session_version = ?", ctx.UserID, currentUser.Password, currentUser.SessionVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&user)
+	affected, err := tx.Where("id = ? and password = ? and session_version = ? and security_version = ? and disabled = 0", ctx.UserID, currentUser.Password, currentUser.SessionVersion, currentUser.SecurityVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&user)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("update password failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
@@ -129,6 +143,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		return
 	}
 	committed = true
+	InvalidateSecurityRuntimeUser(ctx.UserID, ctx.UserAccount)
 	if err := session.Instance.Destroy(req.Context()); err != nil {
 		log.WithContext(ctx).WithError(err).Error("session destruction after password change failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)

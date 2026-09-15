@@ -15,28 +15,63 @@
       ref="globalSecurityPolicyPage"
     />
 
-    <section v-if="selectedSection === 'password' && !isSuperAdmin" class="security-section">
+    <section v-if="selectedSection === 'password'" class="security-section">
       <div class="settings-header">
         <h3>{{ lang.modify_pwd }}</h3>
-        <p class="settings-desc">{{ lang.modify_pwd_desc }}</p>
+        <p class="settings-desc">{{ isSuperAdmin ? '通过主安全邮箱验证码修改密码，完成后需重新登录。' : lang.modify_pwd_desc }}</p>
       </div>
       <div class="settings-body">
         <el-form :model="ruleForm" :rules="rules" status-icon label-position="top" class="settings-form">
-          <el-form-item :label="lang.current_pwd" prop="current_pwd"><el-input v-model="ruleForm.current_pwd" type="password" :placeholder="lang.enter_current_pwd" show-password class="premium-input" /></el-form-item>
-          <el-form-item :label="lang.modify_pwd" prop="new_pwd"><el-input v-model="ruleForm.new_pwd" type="password" :placeholder="lang.enter_new_pwd" show-password class="premium-input" /></el-form-item>
-          <el-form-item :label="lang.enter_again" prop="new_pwd2"><el-input v-model="ruleForm.new_pwd2" type="password" :placeholder="lang.confirm_new_pwd" show-password class="premium-input" /></el-form-item>
-          <div class="form-actions"><el-button type="primary" @click="submit" class="submit-btn">{{ lang.submit }}</el-button></div>
+          <template v-if="isSuperAdmin">
+            <el-form-item label="主要外部安全邮箱">
+              <div v-if="primaryEmail" class="password-verification-row">
+                <strong>{{ primaryEmail.email }}</strong>
+                <el-button
+                  :loading="passwordSending"
+                  :disabled="passwordCountdown > 0 || passwordSubmitting"
+                  @click="sendPasswordCode"
+                >
+                  {{ passwordCountdown > 0 ? `${passwordCountdown} 秒后重发` : '获取验证码' }}
+                </el-button>
+              </div>
+              <el-button v-else type="primary" link @click="selectSection('external-email')">
+                请先绑定并验证主要外部安全邮箱
+              </el-button>
+            </el-form-item>
+            <el-form-item label="邮箱验证码" required>
+              <el-input
+                v-model="ruleForm.code"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="8"
+                placeholder="请输入邮箱中的 8 位验证码"
+                :disabled="!primaryEmail || passwordSubmitting"
+              />
+            </el-form-item>
+          </template>
+          <el-form-item v-else :label="lang.current_pwd" prop="current_pwd">
+            <el-input v-model="ruleForm.current_pwd" type="password" autocomplete="current-password" :placeholder="lang.enter_current_pwd" show-password class="premium-input" />
+          </el-form-item>
+          <el-form-item :label="lang.modify_pwd" prop="new_pwd">
+            <el-input v-model="ruleForm.new_pwd" type="password" autocomplete="new-password" :placeholder="lang.enter_new_pwd" show-password class="premium-input" />
+          </el-form-item>
+          <el-form-item :label="lang.enter_again" prop="new_pwd2">
+            <el-input v-model="ruleForm.new_pwd2" type="password" autocomplete="new-password" :placeholder="lang.confirm_new_pwd" show-password class="premium-input" />
+          </el-form-item>
+          <div class="form-actions">
+            <el-button type="primary" :loading="passwordSubmitting" :disabled="passwordSending || (isSuperAdmin && !primaryEmail)" @click="submit" class="submit-btn">
+              {{ lang.submit }}
+            </el-button>
+          </div>
         </el-form>
       </div>
       <el-divider class="settings-divider" />
     </section>
 
-    <el-alert v-if="selectedSection === 'password' && isSuperAdmin" title="超级管理员密码只能通过部署端专用本机通道重置，网页不会提供修改入口。" type="warning" :closable="false" show-icon class="security-alert" />
-
     <section v-if="selectedSection === 'question'" class="security-section">
       <div class="settings-header">
         <h3>密保问题</h3>
-        <p v-if="isSuperAdmin" class="settings-desc">此设置不会开放超级管理员网页密码恢复，密码仍须通过部署端本机通道重置。</p>
+        <p v-if="isSuperAdmin" class="settings-desc">密保不用于超级管理员重置密码，请使用修改密码页面的邮箱验证或部署端本机恢复通道。</p>
         <p v-else class="settings-desc">密保问题不能单独重置密码，必须与离线恢复码组合使用。</p>
       </div>
       <el-form :model="questionForm" label-position="top" class="settings-form">
@@ -111,6 +146,7 @@ import ExternalEmailBindingDialog from './ExternalEmailBindingDialog/ExternalEma
 const {
   lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
   globalSecurityPolicyPage,
+  primaryEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
   registering, credentialsLoading, credentials, securityLoading,
   securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
   externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,

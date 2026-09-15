@@ -1,4 +1,4 @@
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 import { ElMessageBox, ElNotification } from 'element-plus'
 
@@ -19,9 +19,7 @@ export function usePage() {
     if (canReadGlobalPolicy.value) {
       options.push({ value: 'security-policy', label: '安全策略' })
     }
-    if (!isSuperAdmin.value) {
-      options.push({ value: 'password', label: lang.modify_pwd })
-    }
+    options.push({ value: 'password', label: lang.modify_pwd })
     options.push({ value: 'question', label: '密保问题' })
     if (!isSuperAdmin.value) {
       options.push({ value: 'recovery', label: '离线恢复码' })
@@ -60,10 +58,16 @@ export function usePage() {
   const externalEmails = ref([])
   const externalListLoading = ref(false)
   const externalDialogVisible = ref(false)
+  const primaryEmail = computed(() => externalEmails.value.find(item => item.type === 'primary' && item.status === 'verified'))
+  const passwordSending = ref(false)
+  const passwordSubmitting = ref(false)
+  const passwordChallenge = ref('')
+  const passwordCountdown = ref(0)
+  let passwordTimer = null
   let lastNotificationKey = ''
   let lastNotificationAt = 0
 
-  const ruleForm = reactive({ current_pwd: '', new_pwd: '', new_pwd2: '' })
+  const ruleForm = reactive({ current_pwd: '', new_pwd: '', new_pwd2: '', code: '' })
   const rules = reactive({
     current_pwd: [{ required: true, message: lang.err_required_pwd, trigger: 'blur' }],
     new_pwd: [{ required: true, message: lang.err_required_pwd, trigger: 'blur' }],
@@ -255,15 +259,74 @@ export function usePage() {
   const logout = () => http.post('/api/v1/logout', {}).then(() => location.reload())
 
   const submit = async () => {
-    if (!ruleForm.current_pwd || !ruleForm.new_pwd) return
+    if (passwordSubmitting.value || passwordSending.value) return
+    if (!ruleForm.new_pwd || (!isSuperAdmin.value && !ruleForm.current_pwd)) {
+      notify('请填写完整的密码信息')
+      return
+    }
+    const passwordBytes = new TextEncoder().encode(ruleForm.new_pwd).length
+    if (passwordBytes < 8 || passwordBytes > 12) {
+      notify('密码长度必须为 8-12 字节')
+      return
+    }
     if (ruleForm.new_pwd !== ruleForm.new_pwd2) {
       notify(lang.err_pwd_diff)
       return
     }
-    const res = await http.post('/api/v1/settings/modify_password', { current_password: ruleForm.current_pwd, password: ruleForm.new_pwd })
-    notify(res.errorNo === 0 ? '密码修改成功' : res.errorMsg, res.errorNo === 0 ? 'success' : 'error')
-    if (res.errorNo === 0) Object.assign(ruleForm, { current_pwd: '', new_pwd: '', new_pwd2: '' })
+    if (isSuperAdmin.value && (!primaryEmail.value || !passwordChallenge.value || !/^\d{8}$/.test(ruleForm.code.trim()))) {
+      notify('请获取并输入主安全邮箱中的 8 位验证码')
+      return
+    }
+    passwordSubmitting.value = true
+    try {
+      const payload = isSuperAdmin.value
+        ? { password: ruleForm.new_pwd, challenge_id: passwordChallenge.value, code: ruleForm.code.trim() }
+        : { current_password: ruleForm.current_pwd, password: ruleForm.new_pwd }
+      const res = await http.post('/api/v1/settings/modify_password', payload)
+      if (res.errorNo !== 0) throw new Error(res.errorMsg || '密码修改失败')
+      Object.assign(ruleForm, { current_pwd: '', new_pwd: '', new_pwd2: '', code: '' })
+      passwordChallenge.value = ''
+      notify('密码修改成功，请重新登录；原安全凭据已失效', 'success')
+      globalStatus.clear()
+      location.assign('/login')
+    } catch (error) {
+      notify(error?.message || '密码修改失败，请重新获取验证码后重试')
+    } finally {
+      passwordSubmitting.value = false
+    }
   }
+
+  const sendPasswordCode = async () => {
+    if (passwordSending.value || passwordSubmitting.value || passwordCountdown.value > 0 || !primaryEmail.value) return
+    passwordSending.value = true
+    passwordChallenge.value = ''
+    ruleForm.code = ''
+    try {
+      const res = await http.post('/api/v1/security/verification/request', {
+        purpose: 'password_change', account: globalStatus.userInfos.account,
+      })
+      if (res.errorNo !== 0 || !res.data?.id) throw new Error(res.errorMsg || '验证码发送失败')
+      passwordChallenge.value = res.data.id
+      passwordCountdown.value = 60
+      const deadline = Date.now() + 60000
+      clearInterval(passwordTimer)
+      passwordTimer = setInterval(() => {
+        passwordCountdown.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+        if (!passwordCountdown.value) clearInterval(passwordTimer)
+      }, 1000)
+      notify(`验证码已发送至 ${res.data.email || primaryEmail.value.email}`, 'success')
+    } catch (error) {
+      notify(error?.message || '验证码发送失败')
+    } finally {
+      passwordSending.value = false
+    }
+  }
+
+  watch(() => primaryEmail.value?.id, () => {
+    passwordChallenge.value = ''
+    ruleForm.code = ''
+  })
+  onUnmounted(() => clearInterval(passwordTimer))
 
   onMounted(async () => {
     await loadSecurityData()
@@ -276,6 +339,7 @@ export function usePage() {
   return {
     lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
     globalSecurityPolicyPage,
+    primaryEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
     registering, credentialsLoading, credentials, securityLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
     externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,

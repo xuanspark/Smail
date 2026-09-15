@@ -482,6 +482,10 @@ func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.ParamsError, "请求无效")
 		return
 	}
+	if input.Purpose == verification.PurposePasswordChange {
+		requestPasswordChangeVerification(ctx, w, req, input, runtime)
+		return
+	}
 	if input.Email == "" || strings.TrimSpace(input.Account) == "" || !verification.IsSupportedPurpose(input.Purpose) || runtime.verification == nil {
 		writeSecurityError(w, response.ParamsError, "请求已受理")
 		return
