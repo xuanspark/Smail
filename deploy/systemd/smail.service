@@ -7,9 +7,9 @@ Wants=network-online.target
 Type=simple
 User=smail
 Group=smail
-EnvironmentFile=/etc/smail/smail.env
-WorkingDirectory=/var/lib/smail
-ExecStart=/usr/local/lib/smail/smail
+Environment=SMAIL_ROOT=/opt/smail
+WorkingDirectory=/opt/smail
+ExecStart=/opt/smail/smail
 Restart=on-failure
 RestartSec=5s
 RuntimeDirectory=smail
@@ -22,7 +22,7 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ReadWritePaths=/var/lib/smail /run/smail
+ReadWritePaths=/opt/smail/config /opt/smail/data /opt/smail/ssl /opt/smail/log -/opt/smail/plugins /run/smail
 
 [Install]
 WantedBy=multi-user.target
