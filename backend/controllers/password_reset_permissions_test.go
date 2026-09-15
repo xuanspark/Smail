@@ -219,7 +219,7 @@ func TestSuperAdminCannotChangePasswordWithoutEmailVerification(t *testing.T) {
 }
 
 func TestSuperAdminPasswordChangeVerification(t *testing.T) {
-	for _, scenario := range []string{"success", "missing", "wrong-code", "wrong-purpose", "wrong-email", "unverified", "expired", "security-version", "disabled", "invalid-password", "replay"} {
+	for _, scenario := range []string{"success", "backup", "primary-priority", "binding-disabled", "binding-changed", "missing", "wrong-code", "wrong-purpose", "wrong-email", "unverified", "expired", "security-version", "disabled", "invalid-password", "replay"} {
 		t.Run(scenario, func(t *testing.T) {
 			testRoot := t.TempDir()
 			oldConfig, oldDB, oldSession := config.Instance, db.Instance, session.Instance
@@ -249,7 +249,11 @@ func TestSuperAdminPasswordChangeVerification(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding, err := repo.Bind(externalemail.BindRequest{UserID: user.ID, Email: "owner@example.com", Type: models.ExternalEmailTypePrimary})
+			bindingType := models.ExternalEmailTypePrimary
+			if scenario == "backup" || scenario == "primary-priority" || scenario == "binding-changed" {
+				bindingType = models.ExternalEmailTypeBackup
+			}
+			binding, err := repo.Bind(externalemail.BindRequest{UserID: user.ID, Email: "owner@example.com", Type: bindingType})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -274,6 +278,30 @@ func TestSuperAdminPasswordChangeVerification(t *testing.T) {
 			}
 			ConfigureSecurityRuntime(service, repo, nil, nil)
 			ctx := &appcontext.Context{UserID: user.ID, UserAccount: user.Account, Role: access.RoleSuperAdmin, Lang: "zhCn"}
+			// 客户端既不能替换收件地址，也不能为其他账号申请改密验证码。
+			for _, body := range []string{
+				`{"purpose":"password_change","account":"verified-super","email":"attacker@example.com"}`,
+				`{"purpose":"password_change","account":"another-user"}`,
+			} {
+				RequestVerification(ctx, httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
+				if delivered.ID != "" {
+					t.Fatal("issued verification for client-controlled recipient or account")
+				}
+			}
+			addPrimary := func() {
+				primary, err := repo.Bind(externalemail.BindRequest{UserID: user.ID, Email: "primary@example.com", Type: models.ExternalEmailTypePrimary})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := repo.Verify(user.ID, primary.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			expectedEmail := "owner@example.com"
+			if scenario == "primary-priority" {
+				addPrimary()
+				expectedEmail = "primary@example.com"
+			}
 			issueRecorder := httptest.NewRecorder()
 			RequestVerification(ctx, issueRecorder, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"purpose":"password_change","account":"verified-super"}`)))
 			if scenario == "unverified" {
@@ -282,11 +310,15 @@ func TestSuperAdminPasswordChangeVerification(t *testing.T) {
 				}
 				return
 			}
-			if delivered.ID == "" || delivered.Email != "owner@example.com" {
+			if delivered.ID == "" || delivered.Email != expectedEmail {
 				t.Fatalf("issue failed: %s", issueRecorder.Body.String())
 			}
 			input := modifyPasswordRequest{Password: "NewPass123", Code: code, ChallengeID: delivered.ID}
 			switch scenario {
+			case "binding-disabled":
+				err = repo.Disable(user.ID, binding.ID)
+			case "binding-changed":
+				addPrimary()
 			case "missing":
 				input.Code = ""
 			case "wrong-code":
@@ -340,7 +372,7 @@ func TestSuperAdminPasswordChangeVerification(t *testing.T) {
 				}
 				return result.ErrorNo
 			}
-			succeeded := scenario == "success" || scenario == "replay"
+			succeeded := scenario == "success" || scenario == "backup" || scenario == "primary-priority" || scenario == "replay"
 			if result := change(); (result == 0) != succeeded {
 				t.Fatalf("unexpected result: %d", result)
 			}

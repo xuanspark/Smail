@@ -58,7 +58,10 @@ export function usePage() {
   const externalEmails = ref([])
   const externalListLoading = ref(false)
   const externalDialogVisible = ref(false)
-  const primaryEmail = computed(() => externalEmails.value.find(item => item.type === 'primary' && item.status === 'verified'))
+  const passwordEmail = computed(() => {
+    const verified = externalEmails.value.filter(item => item.status === 'verified')
+    return verified.find(item => item.type === 'primary') || verified.find(item => item.type === 'backup')
+  })
   const passwordSending = ref(false)
   const passwordSubmitting = ref(false)
   const passwordChallenge = ref('')
@@ -273,8 +276,8 @@ export function usePage() {
       notify(lang.err_pwd_diff)
       return
     }
-    if (isSuperAdmin.value && (!primaryEmail.value || !passwordChallenge.value || !/^\d{8}$/.test(ruleForm.code.trim()))) {
-      notify('请获取并输入主安全邮箱中的 8 位验证码')
+    if (isSuperAdmin.value && (!passwordEmail.value || !passwordChallenge.value || !/^\d{8}$/.test(ruleForm.code.trim()))) {
+      notify('请获取并输入安全邮箱中的 8 位验证码')
       return
     }
     passwordSubmitting.value = true
@@ -297,7 +300,7 @@ export function usePage() {
   }
 
   const sendPasswordCode = async () => {
-    if (passwordSending.value || passwordSubmitting.value || passwordCountdown.value > 0 || !primaryEmail.value) return
+    if (passwordSending.value || passwordSubmitting.value || passwordCountdown.value > 0 || !passwordEmail.value) return
     passwordSending.value = true
     passwordChallenge.value = ''
     ruleForm.code = ''
@@ -314,7 +317,7 @@ export function usePage() {
         passwordCountdown.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
         if (!passwordCountdown.value) clearInterval(passwordTimer)
       }, 1000)
-      notify(`验证码已发送至 ${res.data.email || primaryEmail.value.email}`, 'success')
+      notify(`验证码已发送至 ${res.data.email || passwordEmail.value.email}`, 'success')
     } catch (error) {
       notify(error?.message || '验证码发送失败')
     } finally {
@@ -322,7 +325,7 @@ export function usePage() {
     }
   }
 
-  watch(() => primaryEmail.value?.id, () => {
+  watch(() => passwordEmail.value?.id, () => {
     passwordChallenge.value = ''
     ruleForm.code = ''
   })
@@ -339,7 +342,7 @@ export function usePage() {
   return {
     lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
     globalSecurityPolicyPage,
-    primaryEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
+    passwordEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
     registering, credentialsLoading, credentials, securityLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
     externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,

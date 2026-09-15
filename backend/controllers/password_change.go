@@ -16,7 +16,7 @@ import (
 
 var errPasswordChangeVerification = errors.New("password change verification unavailable")
 
-// 从数据库读取当前身份和主要安全邮箱，不允许客户端指定验证码接收人。
+// 从数据库读取当前身份和已验证安全邮箱，不允许客户端指定验证码接收人。
 func passwordChangeIdentity(ctx *context.Context, runtime securityRuntimeState) (*models.User, *models.ExternalEmail, string, error) {
 	if ctx == nil || db.Instance == nil || runtime.external == nil || runtime.verification == nil {
 		return nil, nil, "", errPasswordChangeVerification
@@ -26,8 +26,25 @@ func passwordChangeIdentity(ctx *context.Context, runtime securityRuntimeState) 
 	if err != nil || !found || user.Disabled != 0 || user.EffectiveRole() != access.RoleSuperAdmin || user.Account != ctx.UserAccount {
 		return nil, nil, "", errPasswordChangeVerification
 	}
-	binding, err := runtime.external.FindVerifiedPrimaryByUser(user.ID)
+	bindings, err := runtime.external.List(user.ID)
 	if err != nil {
+		return nil, nil, "", errPasswordChangeVerification
+	}
+	var binding *models.ExternalEmail
+	for i := range bindings {
+		item := &bindings[i]
+		if item.Status != models.ExternalEmailStatusVerified {
+			continue
+		}
+		if item.EmailType == models.ExternalEmailTypePrimary {
+			binding = item
+			break
+		}
+		if binding == nil && item.EmailType == models.ExternalEmailTypeBackup {
+			binding = item
+		}
+	}
+	if binding == nil {
 		return nil, nil, "", errPasswordChangeVerification
 	}
 	email, err := runtime.external.Decrypt(*binding)
@@ -40,11 +57,11 @@ func passwordChangeIdentity(ctx *context.Context, runtime securityRuntimeState) 
 func requestPasswordChangeVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request, input verificationRequest, runtime securityRuntimeState) {
 	user, binding, email, err := passwordChangeIdentity(ctx, runtime)
 	if err != nil {
-		writeSecurityError(w, response.ParamsError, "请确认超级管理员已绑定并验证主要外部安全邮箱")
+		writeSecurityError(w, response.ParamsError, "请确认超级管理员已绑定并验证外部安全邮箱")
 		return
 	}
 	if input.Email != "" && !strings.EqualFold(strings.TrimSpace(input.Email), email) {
-		writeSecurityError(w, response.ParamsError, "邮箱地址与绑定的主安全邮箱不匹配")
+		writeSecurityError(w, response.ParamsError, "邮箱地址与当前验证邮箱不匹配")
 		return
 	}
 	challenge, err := runtime.verification.Issue(verification.IssueRequest{

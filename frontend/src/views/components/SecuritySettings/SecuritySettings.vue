@@ -18,14 +18,14 @@
     <section v-if="selectedSection === 'password'" class="security-section">
       <div class="settings-header">
         <h3>{{ lang.modify_pwd }}</h3>
-        <p class="settings-desc">{{ isSuperAdmin ? '通过主安全邮箱验证码修改密码，完成后需重新登录。' : lang.modify_pwd_desc }}</p>
+        <p class="settings-desc">{{ isSuperAdmin ? '通过已验证安全邮箱修改密码，优先主要邮箱；完成后需重新登录。' : lang.modify_pwd_desc }}</p>
       </div>
       <div class="settings-body">
         <el-form :model="ruleForm" :rules="rules" status-icon label-position="top" class="settings-form">
           <template v-if="isSuperAdmin">
-            <el-form-item label="主要外部安全邮箱">
-              <div v-if="primaryEmail" class="password-verification-row">
-                <strong>{{ primaryEmail.email }}</strong>
+            <el-form-item label="外部安全邮箱">
+              <div v-if="passwordEmail" class="password-verification-row">
+                <strong>{{ passwordEmail.email }}</strong>
                 <el-button
                   :loading="passwordSending"
                   :disabled="passwordCountdown > 0 || passwordSubmitting"
@@ -35,7 +35,7 @@
                 </el-button>
               </div>
               <el-button v-else type="primary" link @click="selectSection('external-email')">
-                请先绑定并验证主要外部安全邮箱
+                请先绑定并验证外部安全邮箱
               </el-button>
             </el-form-item>
             <el-form-item label="邮箱验证码" required>
@@ -45,7 +45,7 @@
                 autocomplete="one-time-code"
                 maxlength="8"
                 placeholder="请输入邮箱中的 8 位验证码"
-                :disabled="!primaryEmail || passwordSubmitting"
+                :disabled="!passwordEmail || passwordSubmitting"
               />
             </el-form-item>
           </template>
@@ -59,7 +59,7 @@
             <el-input v-model="ruleForm.new_pwd2" type="password" autocomplete="new-password" :placeholder="lang.confirm_new_pwd" show-password class="premium-input" />
           </el-form-item>
           <div class="form-actions">
-            <el-button type="primary" :loading="passwordSubmitting" :disabled="passwordSending || (isSuperAdmin && !primaryEmail)" @click="submit" class="submit-btn">
+            <el-button type="primary" :loading="passwordSubmitting" :disabled="passwordSending || (isSuperAdmin && !passwordEmail)" @click="submit" class="submit-btn">
               {{ lang.submit }}
             </el-button>
           </div>
@@ -146,7 +146,7 @@ import ExternalEmailBindingDialog from './ExternalEmailBindingDialog/ExternalEma
 const {
   lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
   globalSecurityPolicyPage,
-  primaryEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
+  passwordEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
   registering, credentialsLoading, credentials, securityLoading,
   securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
   externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,

@@ -67,7 +67,7 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		loginIPAttempts.recordFailure(ipKey)
 		log.WithContext(ctx).Info("password change authentication failed")
 		if ctx.EffectiveRole() == access.RoleSuperAdmin {
-			writeSecurityError(w, response.ParamsError, "请使用已绑定主安全邮箱的有效验证码，失败后可重新获取")
+			writeSecurityError(w, response.ParamsError, "请使用已绑定安全邮箱的有效验证码，失败后可重新获取")
 		} else {
 			response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "aperror"), "").FPrint(w)
 		}

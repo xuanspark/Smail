@@ -59,7 +59,7 @@ test('普通用户和管理员维持当前密码验证', async () => {
   }
 })
 
-test('无主安全邮箱、未获取验证码、密码不一致时不能提交', async () => {
+test('无已验证安全邮箱、未获取验证码、密码不一致时不能提交', async () => {
   const { page, calls } = fixture()
   await page.submit()
   page.externalEmails.value = []
@@ -67,6 +67,20 @@ test('无主安全邮箱、未获取验证码、密码不一致时不能提交',
   page.ruleForm.new_pwd2 = 'OtherPass1'
   await page.submit()
   assert.equal(calls.length, 0)
+})
+
+test('安全邮箱优先主要邮箱，没有主要邮箱时允许已验证备用邮箱', async () => {
+  const { page, calls } = fixture()
+  const backup = { id: 2, type: 'backup', status: 'verified', email: 'b***@example.com' }
+  const primary = page.externalEmails.value[0]
+  page.externalEmails.value = [backup, primary]
+  assert.equal(page.passwordEmail.value.id, 1)
+  page.externalEmails.value = [backup, { ...primary, status: 'disabled' }]
+  assert.equal(page.passwordEmail.value.id, 2)
+  await page.sendPasswordCode()
+  assert.equal(calls.length, 1)
+  page.externalEmails.value = [{ ...backup, status: 'pending' }]
+  assert.equal(page.passwordEmail.value, undefined)
 })
 
 test('请求失败不虚报成功、不登出且释放提交状态', async () => {
