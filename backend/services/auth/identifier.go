@@ -52,6 +52,20 @@ func NormalizeIdentifierKey(identifier string) (string, error) {
 	return normalized, err
 }
 
+// NormalizeProtocolIdentifier 仅接受属于已配置邮箱域名的完整地址，供 SMTP、IMAP、POP3 客户端认证使用。
+// Web 登录仍可使用短账号或已验证的外部邮箱，不能复用到邮件协议认证。
+func NormalizeProtocolIdentifier(identifier string) (string, error) {
+	normalized, kind, err := parseLoginIdentifier(identifier)
+	if err != nil || kind != IdentifierEmail {
+		return "", errors.New("invalid identifier")
+	}
+	parts := strings.SplitN(normalized, "@", 2)
+	if len(parts) != 2 || !isConfiguredLoginDomain(parts[1]) {
+		return "", errors.New("invalid identifier")
+	}
+	return normalized, nil
+}
+
 // ResolveIdentifier 将账号或已验证邮箱绑定解析为唯一用户身份。
 func ResolveIdentifier(identifier string) (ResolvedIdentity, error) {
 	normalized, kind, err := parseLoginIdentifier(identifier)

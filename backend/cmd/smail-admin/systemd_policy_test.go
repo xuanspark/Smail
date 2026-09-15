@@ -113,6 +113,16 @@ func TestSmailServiceUsesOnlyBindServiceCapability(t *testing.T) {
 			t.Fatalf("smail unit is missing %q", required)
 		}
 	}
+	usesEnvironmentFile := false
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == "EnvironmentFile=/etc/smail/smail.env" {
+			usesEnvironmentFile = true
+			break
+		}
+	}
+	if !usesEnvironmentFile {
+		t.Fatal("smail unit must define EnvironmentFile as a standalone directive")
+	}
 	if strings.Contains(content, "User=root") {
 		t.Fatal("smail unit must not run as root")
 	}

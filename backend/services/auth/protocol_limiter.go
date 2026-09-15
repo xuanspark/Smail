@@ -1,4 +1,4 @@
-﻿package auth
+package auth
 
 import (
 	"crypto/sha256"
@@ -46,7 +46,7 @@ var (
 func AuthenticateProtocol(protocol string, remoteAddress string, account string, plain string) (*models.User, error) {
 	normalizedProtocol, protocolErr := credentials.NormalizeProtocol(protocol)
 	normalizedAccount := strings.ToLower(strings.TrimSpace(account))
-	if normalizedIdentifier, err := NormalizeIdentifierKey(account); err == nil {
+	if normalizedIdentifier, err := NormalizeProtocolIdentifier(account); err == nil {
 		normalizedAccount = normalizedIdentifier
 	}
 	normalizedRemote := protocolRemoteHost(remoteAddress)
@@ -67,19 +67,15 @@ func AuthenticateProtocol(protocol string, remoteAddress string, account string,
 		return fail()
 	}
 
-	identity, err := ResolveIdentifier(account)
+	protocolIdentifier, err := NormalizeProtocolIdentifier(account)
+	if err != nil {
+		return fail()
+	}
+	identity, err := ResolveIdentifier(protocolIdentifier)
 	if err != nil {
 		return fail()
 	}
 	userID := identity.UserID
-	if identity.Kind == IdentifierAccount {
-		var u models.User
-		has, err := db.Instance.Where("account = ? AND disabled = 0", identity.Account).Get(&u)
-		if err != nil || !has || u.ID <= 0 {
-			return fail()
-		}
-		userID = u.ID
-	}
 	if userID <= 0 {
 		return fail()
 	}

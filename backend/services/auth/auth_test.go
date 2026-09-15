@@ -150,6 +150,7 @@ func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	protocolCodes := make(map[string]string)
 	for _, protocol := range []string{"smtp", "imap", "pop3"} {
 		if err := service.SetProtocolEnabled(user.ID, protocol, true); err != nil {
 			t.Fatalf("enable %s: %v", protocol, err)
@@ -158,6 +159,7 @@ func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T
 		if err != nil {
 			t.Fatalf("generate %s code: %v", protocol, err)
 		}
+		protocolCodes[protocol] = code
 		got, err := AuthenticateProtocol(protocol, "192.0.2.10:12345", " Alice@Example.com ", code)
 		if err != nil {
 			t.Fatalf("%s full email authentication failed: %v", protocol, err)
@@ -170,10 +172,10 @@ func TestProtocolAuthenticationAcceptsConfiguredFullEmailIdentifier(t *testing.T
 		}
 	}
 
-	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice", "CorrectP12"); err == nil {
+	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice", protocolCodes["imap"]); err == nil {
 		t.Fatal("account-only protocol login should be rejected")
 	}
-	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice@other.example", "CorrectP12"); err == nil {
+	if _, err := AuthenticateProtocol("imap", "192.0.2.10:12345", "alice@other.example", protocolCodes["imap"]); err == nil {
 		t.Fatal("unconfigured email domain should be rejected")
 	}
 }

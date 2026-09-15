@@ -84,9 +84,9 @@ if [ ! -e /etc/smail/smail.env ]; then
   # 只创建默认根目录；已存在的文件始终保留部署人员的自定义环境配置。
   umask 0077
   printf '%s\n' 'SMAIL_ROOT=/opt/smail' > /etc/smail/smail.env
-  chown root:root /etc/smail/smail.env
-  chmod 0600 /etc/smail/smail.env
 fi
+chown root:root /etc/smail/smail.env
+chmod 0600 /etc/smail/smail.env
 for directory in config data ssl log plugins; do
   target="$runtime_dir/$directory"
   # 内置插件在临时沙箱中展开，只兼容已存在的历史插件目录。

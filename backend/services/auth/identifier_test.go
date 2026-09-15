@@ -93,7 +93,6 @@ func TestNormalizeIdentifierKeepsLegacyAccountCompatibility(t *testing.T) {
 	}
 }
 
-
 func TestResolveIdentifierFallbackToConfiguredDomainUser(t *testing.T) {
 	oldConfig := config.Instance
 	oldDB := db.Instance
@@ -105,6 +104,14 @@ func TestResolveIdentifierFallbackToConfiguredDomainUser(t *testing.T) {
 	}
 	if err := db.Init(""); err != nil {
 		t.Fatal(err)
+	}
+	if got, err := NormalizeProtocolIdentifier(" Bob@Solit.cn "); err != nil || got != "bob@solit.cn" {
+		t.Fatalf("normalized protocol identifier = %q, err = %v", got, err)
+	}
+	for _, identifier := range []string{"bob", "bob@other.com"} {
+		if _, err := NormalizeProtocolIdentifier(identifier); err == nil {
+			t.Fatalf("protocol identifier %q was accepted", identifier)
+		}
 	}
 	t.Cleanup(func() {
 		if db.Instance != nil && db.Instance != oldDB {

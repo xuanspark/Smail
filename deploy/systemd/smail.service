@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=smail
 Group=smail
+EnvironmentFile=/etc/smail/smail.env
 # 运行环境仅由 root 可读写的独立文件提供，避免在 unit 中混入部署环境配置。
 EnvironmentFile=/etc/smail/smail.env
 WorkingDirectory=/opt/smail
