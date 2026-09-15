@@ -9,7 +9,6 @@ User=smail
 Group=smail
 # 运行环境仅由 root 可读写的独立文件提供，避免在 unit 中混入部署环境配置。
 EnvironmentFile=/etc/smail/smail.env
-EnvironmentFile=/etc/smail/smail.env
 WorkingDirectory=/opt/smail
 ExecStart=/opt/smail/smail
 Restart=on-failure
