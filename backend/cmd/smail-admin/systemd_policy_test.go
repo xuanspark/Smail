@@ -73,6 +73,27 @@ func TestInstallerDisablesAdminAutostart(t *testing.T) {
 	}
 }
 
+func TestInstallerManagesProtectedEnvironmentFile(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	installer, err := os.ReadFile(filepath.Join(root, "deploy", "install-systemd.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(installer)
+	for _, required := range []string{
+		"/etc/smail/smail.env",
+		"install -d -o root -g root -m 0750 /etc/smail",
+		"if [ ! -e /etc/smail/smail.env ]; then",
+		"'SMAIL_ROOT=/opt/smail'",
+		"chmod 0600 /etc/smail/smail.env",
+		"cp -p -- /etc/smail/smail.env \"$backup_dir/smail.env\"",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("installer is missing protected environment-file behavior %q", required)
+		}
+	}
+}
+
 func TestSmailServiceUsesOnlyBindServiceCapability(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	unit, err := os.ReadFile(filepath.Join(root, "deploy", "systemd", "smail.service"))

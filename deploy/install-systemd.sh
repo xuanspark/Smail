@@ -46,12 +46,17 @@ for directory in config data ssl log plugins; do
   fi
 done
 for target in "$runtime_dir/smail" "$runtime_dir/smail-admin" \
-  /etc/systemd/system/smail.service /etc/systemd/system/smail-admin.service; do
+  /etc/systemd/system/smail.service /etc/systemd/system/smail-admin.service \
+  /etc/smail/smail.env; do
   if [ -L "$target" ] || { [ -e "$target" ] && [ ! -f "$target" ]; }; then
     echo "程序或服务文件不能是链接或特殊文件：$target" >&2
     exit 1
   fi
 done
+if [ -L /etc/smail ] || { [ -e /etc/smail ] && [ ! -d /etc/smail ]; }; then
+  echo "服务环境目录不能是链接或普通文件：/etc/smail" >&2
+  exit 1
+fi
 if [ -L /run/smail ] || { [ -e /run/smail ] && [ ! -d /run/smail ]; }; then
   echo "本机控制目录不能是链接或普通文件。" >&2
   exit 1
@@ -69,10 +74,19 @@ done
 for name in smail.service smail-admin.service; do
   if [ -f "/etc/systemd/system/$name" ]; then cp -p -- "/etc/systemd/system/$name" "$backup_dir/$name"; fi
 done
+if [ -f /etc/smail/smail.env ]; then cp -p -- /etc/smail/smail.env "$backup_dir/smail.env"; fi
 
 if ! getent group smail >/dev/null; then groupadd --system smail; fi
 if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-dir "$runtime_dir" --shell /usr/sbin/nologin smail; fi
 install -d -o root -g root -m 0755 "$runtime_dir"
+install -d -o root -g root -m 0750 /etc/smail
+if [ ! -e /etc/smail/smail.env ]; then
+  # 只创建默认根目录；已存在的文件始终保留部署人员的自定义环境配置。
+  umask 0077
+  printf '%s\n' 'SMAIL_ROOT=/opt/smail' > /etc/smail/smail.env
+  chown root:root /etc/smail/smail.env
+  chmod 0600 /etc/smail/smail.env
+fi
 for directory in config data ssl log plugins; do
   target="$runtime_dir/$directory"
   # 内置插件在临时沙箱中展开，只兼容已存在的历史插件目录。
