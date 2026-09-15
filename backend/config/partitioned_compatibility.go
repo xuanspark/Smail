@@ -52,8 +52,9 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 	cfg := &Config{
 		LogLevel: root.LogLevel, Domain: root.Domains.Primary,
 		Domains: append([]string(nil), root.Domains.Accepted...), WebDomain: root.Domains.Web,
-		AccessHosts: append([]string(nil), root.Domains.AccessHosts...),
-		DbType:      driver, DbDSN: dsn, SetupState: runtime.SetupState,
+		AdminRecoveryDomain: root.Domains.AdminRecovery,
+		AccessHosts:         append([]string(nil), root.Domains.AccessHosts...),
+		DbType:              driver, DbDSN: dsn, SetupState: runtime.SetupState,
 		IsInit:   runtime.SetupState == SetupStateReady,
 		HttpPort: root.HTTP.Port, HttpsPort: root.HTTP.HTTPSPort,
 		HttpsEnabled: 2, TLSMode: root.HTTP.TLSMode,

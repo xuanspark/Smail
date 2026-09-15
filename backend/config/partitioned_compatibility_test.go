@@ -55,7 +55,7 @@ func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 		PublishConfigSnapshot(oldSnapshot)
 	})
 	writeLegacyMigrationFixture(t, root, map[string]any{
-		"logLevel": "info", "domain": "mail.example.com", "webDomain": "mail.example.com",
+		"logLevel": "info", "domain": "mail.example.com", "webDomain": "mail.example.com", "adminRecoveryDomain": "recovery.mail.example.com",
 		"dbType": "sqlite", "dbDSN": "./config/existing.db", "isInit": true,
 		"sslType": "1", "SSLPublicKeyPath": "./config/ssl/site.crt", "SSLPrivateKeyPath": "./config/ssl/site.key",
 		"httpPort": 80, "httpsPort": 443, "httpsEnabled": 1,
@@ -76,7 +76,7 @@ func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 		if !cfg.IsSetupReady() || cfg.DbType != DBTypeSQLite || cfg.DbDSN != filepath.Join(root, "data", "existing.db") {
 			t.Fatal("partitioned startup lost initialization or database identity")
 		}
-		if cfg.WebDomain != "mail.example.com" || cfg.SSL.CertificateRef != "data/ssl/site.crt" {
+		if cfg.WebDomain != "mail.example.com" || cfg.AdminRecoveryDomain != "recovery.mail.example.com" || cfg.SSL.CertificateRef != "data/ssl/site.crt" {
 			t.Fatal("partitioned startup lost domain or certificate path")
 		}
 	}

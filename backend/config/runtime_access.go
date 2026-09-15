@@ -133,6 +133,28 @@ func CurrentWebDomain() string {
 	return cfg.WebDomain
 }
 
+// CurrentAdminRecoveryDomain 返回超级管理员本机恢复通道的部署标识域名。
+// 此值不用于提供公网重置路由；未配置时沿用主邮件域名。
+func CurrentAdminRecoveryDomain() string {
+	if manager := CurrentManager(); manager != nil {
+		runtime := manager.Snapshot()
+		if runtime.Generation != 0 {
+			if domain := runtime.Root.Domains.AdminRecovery; domain != "" {
+				return domain
+			}
+			return runtime.Root.Domains.Primary
+		}
+	}
+	cfg := CurrentConfig()
+	if cfg == nil {
+		return ""
+	}
+	if cfg.AdminRecoveryDomain != "" {
+		return cfg.AdminRecoveryDomain
+	}
+	return cfg.Domain
+}
+
 // SetRuntimeSetupPort stores the temporary setup listener port outside the persisted configuration.
 func SetRuntimeSetupPort(port int) {
 	setupPort.Store(int64(port))

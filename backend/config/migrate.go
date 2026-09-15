@@ -49,6 +49,7 @@ type legacyMigrationConfig struct {
 	Domain                  string     `json:"domain"`
 	Domains                 []string   `json:"domains"`
 	WebDomain               string     `json:"webDomain"`
+	AdminRecoveryDomain     string     `json:"adminRecoveryDomain"`
 	AccessHosts             []string   `json:"accessHosts"`
 	DkimPrivateKeyPath      string     `json:"dkimPrivateKeyPath"`
 	SSLType                 string     `json:"sslType"`
@@ -88,7 +89,7 @@ type legacyMigrationConfig struct {
 }
 
 var legacyMigrationKnownFields = map[string]struct{}{
-	"logLevel": {}, "domain": {}, "domains": {}, "webDomain": {}, "accessHosts": {},
+	"logLevel": {}, "domain": {}, "domains": {}, "webDomain": {}, "adminRecoveryDomain": {}, "accessHosts": {},
 	"dkimPrivateKeyPath": {}, "sslType": {}, "SSLPrivateKeyPath": {}, "SSLPublicKeyPath": {},
 	"dbDSN": {}, "dbType": {}, "httpsEnabled": {}, "spamFilterLevel": {}, "httpPort": {}, "httpsPort": {}, "tlsMode": {}, "trustedProxyCidrs": {},
 	"weChatPushAppId": {}, "weChatPushSecret": {}, "weChatPushTemplateId": {}, "weChatPushUserId": {},
@@ -499,10 +500,11 @@ func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConf
 		LogLevel:      legacy.LogLevel,
 		Database:      database,
 		Domains: DomainConfig{
-			Primary:     legacy.Domain,
-			Accepted:    accepted,
-			Web:         legacy.WebDomain,
-			AccessHosts: append([]string(nil), legacy.AccessHosts...),
+			Primary:       legacy.Domain,
+			Accepted:      accepted,
+			Web:           legacy.WebDomain,
+			AdminRecovery: legacy.AdminRecoveryDomain,
+			AccessHosts:   append([]string(nil), legacy.AccessHosts...),
 		},
 		HTTP: HTTPConfig{
 			Port:              legacy.HttpPort,

@@ -192,6 +192,9 @@ func validationCertificateDomains(candidate *RuntimeConfig) []string {
 		if candidate.Root.Domains.Web != "" {
 			domains = append(domains, candidate.Root.Domains.Web)
 		}
+		if candidate.Root.Domains.AdminRecovery != "" {
+			domains = append(domains, candidate.Root.Domains.AdminRecovery)
+		}
 		for _, domain := range candidate.Root.Domains.Accepted {
 			domains = append(domains, "smtp."+domain, "imap."+domain, "pop."+domain)
 		}
@@ -201,11 +204,11 @@ func validationCertificateDomains(candidate *RuntimeConfig) []string {
 }
 
 func runtimeCertificateDomains(candidate *RuntimeConfig) []string {
-	return SSLCertificateDomains(candidate.Root.Domains.Primary, candidate.Root.Domains.Web, candidate.Root.Domains.Accepted)
+	return SSLCertificateDomains(candidate.Root.Domains.Primary, candidate.Root.Domains.Web, candidate.Root.Domains.Accepted, candidate.Root.Domains.AdminRecovery)
 }
 
-// SSLCertificateDomains 统一初始化和配置管理所需的 Web、主域及邮件协议域名。
-func SSLCertificateDomains(primary, web string, accepted []string) []string {
+// SSLCertificateDomains 统一初始化和配置管理所需的 Web、主域、邮件协议及恢复通道域名。
+func SSLCertificateDomains(primary, web string, accepted []string, adminRecovery ...string) []string {
 	seen := make(map[string]bool)
 	var domains []string
 	appendDomain := func(value string) {
@@ -217,6 +220,9 @@ func SSLCertificateDomains(primary, web string, accepted []string) []string {
 	}
 	appendDomain(web)
 	appendDomain(primary)
+	for _, domain := range adminRecovery {
+		appendDomain(domain)
+	}
 	for _, domain := range accepted {
 		domain = strings.TrimSpace(domain)
 		if domain == "" {

@@ -37,6 +37,7 @@ func CurrentCertificateConfig() *Config {
 		cfg.SSL = runtime.SSL.TLS
 		cfg.Domain, cfg.WebDomain = runtime.Root.Domains.Primary, runtime.Root.Domains.Web
 		cfg.Domains = runtime.Root.Domains.Accepted
+		cfg.AdminRecoveryDomain = runtime.Root.Domains.AdminRecovery
 		cfg.TLSMode = runtime.Root.HTTP.TLSMode
 		cfg.HttpsEnabled = 2
 		if runtime.Root.HTTP.HTTPSEnabled {
@@ -98,7 +99,12 @@ func loadValidatedRuntimeCertificate(cfg *Config) (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	runtime := RuntimeConfig{Root: RootConfig{Domains: DomainConfig{Primary: cfg.Domain, Web: cfg.WebDomain, Accepted: cfg.Domains}}}
+	runtime := RuntimeConfig{Root: RootConfig{Domains: DomainConfig{
+		Primary:       cfg.Domain,
+		Web:           cfg.WebDomain,
+		Accepted:      cfg.Domains,
+		AdminRecovery: cfg.AdminRecoveryDomain,
+	}}}
 	runtime.SSL.TLS = cfg.SSL
 	if cfg.SSLType == SSLTypeAutoDNS {
 		runtime.SSL.TLS.Management = SSLManagementProject

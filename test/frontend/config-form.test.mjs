@@ -7,7 +7,10 @@ import { createRequire } from 'node:module'
 const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
 const source = readFileSync(new URL('ConfigForm/ConfigForm.js', root), 'utf8')
 const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } = compileFunction(
-  source.replaceAll('export function ', 'function ') + '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
+  source
+    .replaceAll('export function ', 'function ')
+    .replaceAll('export const ', 'const ') +
+    '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
 )()
 
 test('基础配置不再展示冗余安全选项与开关，通行密钥由系统默认解析，用户权限仍由账号设置管理', () => {
@@ -274,12 +277,26 @@ test('开关、数字、空数字和列表保持真实类型，代理 HTTPS 正�
 test('域名校验兼容大小写和末尾点，拒绝重复项、空白和路径', () => {
   const valid = { database: { type: 'sqlite' }, domains: { primary: 'Example.com.', web: 'mail.example.com', accepted: ['example.com'] } }
   assert.deepEqual(validateFormConfig('base', valid), {})
+  const fields = getFieldGroups('base', valid).flatMap(group => group.fields)
+  const recovery = fields.find(field => field.path.join('.') === 'domains.adminRecovery')
+  assert.ok(recovery)
+  assert.match(recovery.hint, /不开放公网重置页面/)
+  assert.deepEqual(validateFormConfig('base', { ...valid, domains: { ...valid.domains, adminRecovery: '' } }), {})
+  assert.deepEqual(validateFormConfig('base', { ...valid, domains: { ...valid.domains, adminRecovery: 'recovery.example.com' } }), {})
   for (const accepted of [[], ['example.com', 'Example.com.'], [''], [' https://example.com'], ['other.example.com'], 'example.com', [null]]) {
     assert.ok(validateFormConfig('base', { ...valid, domains: { ...valid.domains, accepted } })['domains.accepted'])
   }
   for (const primary of ['https://example.com', 'example.com/path', 'bad..com', '-bad.com', '127.0.0.1', '例子.com']) {
     assert.ok(validateFormConfig('base', { ...valid, domains: { ...valid.domains, primary } })['domains.primary'])
   }
+  for (const adminRecovery of ['https://example.com', 'example.com/path', 'bad..com', '-bad.com', '127.0.0.1', '例子.com', ' recovery.example.com']) {
+    assert.ok(validateFormConfig('base', { ...valid, domains: { ...valid.domains, adminRecovery } })['domains.adminRecovery'])
+  }
+  const text = JSON.stringify({ ...valid, domains: { ...valid.domains, accepted: ['example.com'], accessHosts: ['192.0.2.10'], adminRecovery: '' } })
+  const updated = readFormConfig(updateFormConfig(text, 'base', ['domains', 'adminRecovery'], 'recovery.example.com'))
+  assert.equal(updated.domains.adminRecovery, 'recovery.example.com')
+  assert.deepEqual(updated.domains.accepted, ['example.com'])
+  assert.deepEqual(updated.domains.accessHosts, ['192.0.2.10'])
 })
 
 test('插件网络列表拒绝无效和重复目标，空设置可编辑且非标准设置不覆盖', () => {

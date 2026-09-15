@@ -83,7 +83,7 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 }
 
 func validateDomains(domains DomainConfig) error {
-	if domains.Primary == "" && domains.Web == "" && len(domains.Accepted) == 0 && len(domains.AccessHosts) == 0 {
+	if domains.Primary == "" && domains.Web == "" && domains.AdminRecovery == "" && len(domains.Accepted) == 0 && len(domains.AccessHosts) == 0 {
 		return nil
 	}
 	primary, err := normalizeConfigDomain(domains.Primary)
@@ -93,6 +93,12 @@ func validateDomains(domains DomainConfig) error {
 	web, err := normalizeConfigDomain(domains.Web)
 	if err != nil || web != strings.ToLower(strings.TrimSuffix(domains.Web, ".")) {
 		return ErrInvalidDomainConfig
+	}
+	if domains.AdminRecovery != "" {
+		recovery, recoveryErr := normalizeConfigDomain(domains.AdminRecovery)
+		if recoveryErr != nil || recovery != strings.ToLower(strings.TrimSuffix(domains.AdminRecovery, ".")) {
+			return ErrInvalidDomainConfig
+		}
 	}
 	seen := make(map[string]struct{}, len(domains.Accepted))
 	for _, item := range domains.Accepted {

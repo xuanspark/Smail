@@ -30,6 +30,7 @@ type Config struct {
 	Domain                  string            `json:"domain"`
 	Domains                 []string          `json:"domains"` //多域名设置，把所有收信域名都填进去
 	WebDomain               string            `json:"webDomain"`
+	AdminRecoveryDomain     string            `json:"adminRecoveryDomain,omitempty"`
 	AccessHosts             []string          `json:"accessHosts,omitempty"`
 	DkimPrivateKeyPath      string            `json:"dkimPrivateKeyPath"`
 	SSLType                 string            `json:"sslType"` // 0表示自动生成证书，HTTP挑战模式，1表示用户上传证书，2表示自动-DNS挑战模式

@@ -88,6 +88,7 @@ const baseGroups = [
   group('site', '站点与域名', '', [
     field('domains.primary', '主邮件域名', 'text', { required: true, placeholder: 'example.com' }),
     field('domains.web', '网页访问域名', 'text', { required: true, placeholder: 'mail.example.com' }),
+    field('domains.adminRecovery', '超级管理员恢复域名', 'text', { placeholder: 'recovery.example.com', hint: '留空时使用主邮件域名。该配置仅用于本机恢复通道的部署标识与证书规划，不开放公网重置页面。' }),
     field('domains.accepted', '接收邮件的域名', 'list', { required: true, wide: false, hint: '需包含主邮件域名，每个域名单独填写。', placeholder: 'example.com' }),
     field('logLevel', '日志级别', 'select', { options: options([['', '默认级别'], ['debug', '调试'], ['info', '信息'], ['warn', '警告'], ['error', '错误']]) })
   ]),
@@ -325,6 +326,9 @@ export function validateFormConfig(section, config) {
     const domains = config.domains || {}
     for (const name of ['primary', 'web']) {
       if (!validDomain(domains[name])) errors[`domains.${name}`] = '请填写有效域名，不包含协议、路径或空格'
+    }
+    if (domains.adminRecovery !== undefined && domains.adminRecovery !== '' && !validDomain(domains.adminRecovery)) {
+      errors['domains.adminRecovery'] = '请填写有效域名，不包含协议、路径或空格'
     }
     if (Array.isArray(domains.accepted) && domains.accepted.every(validDomain)) {
       const accepted = domains.accepted.map(normalizedDomain)

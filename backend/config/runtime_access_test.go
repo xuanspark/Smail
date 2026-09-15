@@ -216,6 +216,42 @@ func TestCurrentMailDomainsFallsBackToLegacyConfig(t *testing.T) {
 	}
 }
 
+func TestCurrentAdminRecoveryDomainUsesConfiguredValueAndSafeFallback(t *testing.T) {
+	previousManager := CurrentManager()
+	previousInstance := Instance
+	defer func() {
+		SetRuntimeManager(previousManager)
+		Instance = previousInstance
+		PublishConfigSnapshot(previousInstance)
+	}()
+
+	runtime := validRuntimeConfig()
+	runtime.Root.Domains.AdminRecovery = "recovery.example.com"
+	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
+	if got := CurrentAdminRecoveryDomain(); got != "recovery.example.com" {
+		t.Fatalf("configured recovery domain = %q", got)
+	}
+
+	runtime.Root.Domains.AdminRecovery = ""
+	runtime.Root.Domains.Primary = "example.com"
+	SetRuntimeManager(&ConfigManager{snapshots: runtimeAccessSnapshotStore{runtime: runtime}})
+	if got := CurrentAdminRecoveryDomain(); got != "example.com" {
+		t.Fatalf("partition fallback recovery domain = %q", got)
+	}
+
+	SetRuntimeManager(nil)
+	Instance = &Config{Domain: "legacy.example.com", AdminRecoveryDomain: "recovery.legacy.example.com"}
+	PublishConfigSnapshot(Instance)
+	if got := CurrentAdminRecoveryDomain(); got != "recovery.legacy.example.com" {
+		t.Fatalf("legacy configured recovery domain = %q", got)
+	}
+	Instance = &Config{Domain: "legacy.example.com"}
+	PublishConfigSnapshot(Instance)
+	if got := CurrentAdminRecoveryDomain(); got != "legacy.example.com" {
+		t.Fatalf("legacy fallback recovery domain = %q", got)
+	}
+}
+
 func TestCurrentSMTPRuntimeSettingsReadsPartitionSnapshot(t *testing.T) {
 	previousManager := CurrentManager()
 	defer SetRuntimeManager(previousManager)

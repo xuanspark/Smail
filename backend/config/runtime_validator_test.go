@@ -65,6 +65,9 @@ func TestValidateRuntimeConfigRejectsCrossSectionViolations(t *testing.T) {
 		{name: "primary_domain_missing", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) {
 			runtime.Root.Domains.Accepted = []string{"example.com"}
 		}, want: ErrInvalidDomainConfig},
+		{name: "invalid_admin_recovery_domain", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) {
+			runtime.Root.Domains.AdminRecovery = "https://recovery.example.com/reset"
+		}, want: ErrInvalidDomainConfig},
 		{name: "generation_mismatch", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) { runtime.Email.Meta.Generation++ }, want: ErrSectionGenerationMismatch},
 		{name: "missing_super_admin", mutate: func(_ *RuntimeConfig, options *RuntimeValidationOptions) { options.HasSuperAdmin = false }, want: ErrInvalidRuntimeConfig},
 		{name: "network_without_capability", mutate: func(runtime *RuntimeConfig, _ *RuntimeValidationOptions) {

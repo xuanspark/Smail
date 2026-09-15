@@ -35,10 +35,11 @@ type SectionMeta struct {
 }
 
 type DomainConfig struct {
-	Primary     string   `json:"primary,omitempty"`
-	Accepted    []string `json:"accepted,omitempty"`
-	Web         string   `json:"web,omitempty"`
-	AccessHosts []string `json:"accessHosts,omitempty"`
+	Primary       string   `json:"primary,omitempty"`
+	Accepted      []string `json:"accepted,omitempty"`
+	Web           string   `json:"web,omitempty"`
+	AdminRecovery string   `json:"adminRecovery,omitempty"`
+	AccessHosts   []string `json:"accessHosts,omitempty"`
 }
 
 type HTTPConfig struct {
