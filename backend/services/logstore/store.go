@@ -38,6 +38,7 @@ type Query struct {
 	// ScopeActorID 不接受客户端直接赋值；非空时由服务端强制限制可见账号。
 	ScopeActorID         string
 	IncludeOrdinaryUsers bool
+	SystemOnly           bool
 	ID                   string
 	Kind                 string
 	ActorID              string
@@ -180,6 +181,13 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 	}
 	statement := "SELECT " + columns + " FROM " + table + " WHERE created_at >= ? AND kind = ?"
 	args := []any{from.UnixNano(), query.Kind}
+	if query.SystemOnly {
+		if query.Kind != "mail" {
+			return nil, ErrInvalid
+		}
+		// 兼容早期系统记录的空操作者；仍与服务端账号范围条件取交集。
+		statement += " AND (actor_id = '0' OR actor_id = '')"
+	}
 	if query.ScopeActorID != "" {
 		statement += " AND (actor_id = ?"
 		args = append(args, query.ScopeActorID)

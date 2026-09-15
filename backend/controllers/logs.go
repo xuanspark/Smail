@@ -48,6 +48,20 @@ func GetLogs(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) 
 	bounded, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 	defer cancel()
 	query := logstore.Query{Kind: values.Get("kind"), ActorID: values.Get("actorId"), Limit: limit + 1, Offset: offset}
+	if values.Has("systemOnly") {
+		value := values.Get("systemOnly")
+		if query.Kind != "mail" || (value != "true" && value != "false") {
+			writeConfigError(w, config.ErrInvalidAuditQuery)
+			return
+		}
+		if value == "true" {
+			if ctx.EffectiveRole() != access.RoleSuperAdmin {
+				writeConfigAccessError(w, &access.Denial{Code: access.CodeAccessDenied})
+				return
+			}
+			query.SystemOnly = true
+		}
+	}
 	if ctx.EffectiveRole() != access.RoleSuperAdmin {
 		query.ScopeActorID = strconv.Itoa(ctx.UserID)
 		query.IncludeOrdinaryUsers = ctx.EffectiveRole() == access.RoleAdmin

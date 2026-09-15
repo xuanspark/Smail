@@ -172,6 +172,9 @@ func Init(serverVersion string) error {
 		if err := db.Init(serverVersion); err != nil {
 			return err
 		}
+		if err := db.ValidateSuperAdmin(db.Instance); err != nil {
+			return err
+		}
 		dialect, err := migration.ParseDialect(cfg.DbType)
 		if err != nil {
 			return err

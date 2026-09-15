@@ -10,7 +10,6 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
-	"git.pcux.cn/xuans/Smail/services/access"
 	requestcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	_ "github.com/go-sql-driver/mysql"
@@ -174,17 +173,8 @@ func fixHistoryData() error {
 		return errors.Wrap(err)
 	}
 
-	// 只有一个账号，且不是管理员账号，将账号提权为管理员
-	if len(user) == 1 && user[0].IsAdmin == 0 {
-		u := user[0]
-		u.ApplyRole(access.RoleSuperAdmin)
-		_, err = Instance.Update(&u)
-		if err != nil {
-			return errors.Wrap(err)
-		}
-	}
-
-	if len(user) != 1 {
+	// 历史邮件只能归入唯一超级管理员，不能把仅存的普通账号自动提权。
+	if len(user) != 1 || ValidateSuperAdmin(Instance) != nil {
 		return nil
 	}
 

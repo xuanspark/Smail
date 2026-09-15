@@ -2,10 +2,40 @@ package logstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 )
+
+func TestSystemMailScopeIntersectsPermissionsAndPagination(t *testing.T) {
+	s := testStore(t)
+	now := time.Now().UTC()
+	for index, actor := range []string{"0", "4", "", "0"} {
+		if err := s.Write(context.Background(), Entry{ID: fmt.Sprint(index), Kind: "mail", ActorID: actor, CreatedAt: now.Add(-time.Duration(index) * time.Minute), Action: "投递邮件", Result: "success", Payload: []byte(`{}`)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for page, actor := range []string{"0", "", "0"} {
+		items, err := s.Query(context.Background(), Query{Kind: "mail", SystemOnly: true, Limit: 1, Offset: page})
+		if err != nil || len(items) != 1 || items[0].ActorID != actor {
+			t.Fatalf("系统邮件分页错误：%+v %v", items, err)
+		}
+	}
+	for _, includeUsers := range []bool{false, true} {
+		items, err := s.Query(context.Background(), Query{Kind: "mail", SystemOnly: true, ScopeActorID: "4", IncludeOrdinaryUsers: includeUsers})
+		if err != nil || len(items) != 0 {
+			t.Fatal("系统筛选扩大了权限范围")
+		}
+	}
+	items, err := s.Query(context.Background(), Query{Kind: "mail", SystemOnly: true, From: now.Add(-time.Minute), To: now})
+	if err != nil || len(items) != 1 {
+		t.Fatal("系统筛选没有遵守时间窗口")
+	}
+	if _, err := s.Query(context.Background(), Query{Kind: "operation", SystemOnly: true}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("非邮件分类接受了系统邮件筛选")
+	}
+}
 
 func TestLogScopeFiltersBeforePagination(t *testing.T) {
 	s := testStore(t)

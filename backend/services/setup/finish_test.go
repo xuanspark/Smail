@@ -2,9 +2,13 @@ package setup
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
+	"git.pcux.cn/xuans/Smail/models"
+	"xorm.io/xorm"
 )
 
 func TestFinishPersistsServicePorts(t *testing.T) {
@@ -120,6 +124,22 @@ func prepareFinishConfigTest(t *testing.T) {
 	previousManager := config.CurrentManager()
 	previousSetupPort := config.RuntimeSetupPort()
 	previousInitState := config.IsInit
+	previousDB := db.Instance
+	engine, err := xorm.NewEngine("sqlite", filepath.Join(t.TempDir(), "finish.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		db.Instance = previousDB
+		_ = engine.Close()
+	})
+	if err := engine.Sync2(new(models.User)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Insert(&models.User{Account: "root", Name: "root", Password: "unused", Role: "super_admin", IsAdmin: 1}); err != nil {
+		t.Fatal(err)
+	}
+	db.Instance = engine
 
 	config.ROOT_PATH = t.TempDir() + string(os.PathSeparator)
 	config.Instance = nil

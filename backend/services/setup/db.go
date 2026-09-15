@@ -18,6 +18,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -147,10 +148,13 @@ func GetAdminPassword(ctx *context.Context) (string, error) {
 		return "", databaseError("数据库尚未初始化，请先完成数据库设置", nil)
 	}
 	users := []*models.User{}
-	if err := db.Instance.Find(&users); err != nil {
+	if err := db.Instance.Where(models.SuperAdminPredicate).Limit(2).Find(&users); err != nil {
 		return "", errors.Wrap(err)
 	}
-	if len(users) > 0 {
+	if len(users) > 1 {
+		return "", db.ErrSuperAdminInvariant
+	}
+	if len(users) == 1 {
 		return users[0].Account, nil
 	}
 	return "", nil
@@ -173,21 +177,40 @@ func SetAdminPassword(ctx *context.Context, account, pwd string) error {
 	if err != nil {
 		return errors.Wrap(err)
 	}
-	count, err := db.Instance.Count(new(models.User))
+	user := models.User{Account: account, Name: "admin", SessionVersion: 1, SecurityVersion: 1}
+	user.ApplyRole(access.RoleSuperAdmin)
+	if err := auth.SetPassword(&user, pwd); err != nil {
+		return errors.Wrap(err)
+	}
+	tx := db.Instance.NewSession()
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		return errors.Wrap(err)
+	}
+	defer tx.Rollback()
+	// 锁定必然存在的首条迁移记录，跨进程串行化初始化；三种数据库均支持此写锁。
+	// 先获得写锁再读取用户数，避免两个初始化进程同时看到空库。
+	if _, err := tx.Exec("UPDATE schema_migration SET execution_ms = execution_ms WHERE version = 1"); err != nil {
+		return errors.Wrap(err)
+	}
+	lockRows, err := tx.QueryString("SELECT version FROM schema_migration WHERE version = 1")
+	if err != nil {
+		return errors.Wrap(err)
+	}
+	if len(lockRows) != 1 {
+		return databaseError("数据库迁移记录不完整，不能初始化超级管理员", nil)
+	}
+	count, err := tx.Count(new(models.User))
 	if err != nil {
 		return errors.Wrap(err)
 	}
 	if count != 0 {
-		return errors.New("administrator already exists")
+		return databaseError("账号已初始化，不能再次创建超级管理员", nil)
 	}
-	user := models.User{Account: account, Name: "admin", IsAdmin: 1, SessionVersion: 1}
-	if err := auth.SetPassword(&user, pwd); err != nil {
+	if _, err := tx.Insert(&user); err != nil {
 		return errors.Wrap(err)
 	}
-	if _, err := db.Instance.Insert(&user); err != nil {
-		return errors.Wrap(err)
-	}
-	return nil
+	return tx.Commit()
 }
 
 func validateAdminPassword(pwd string) error {

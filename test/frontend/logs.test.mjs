@@ -19,6 +19,29 @@ function fixture(get, role = 'super_admin') {
   return { page, dispose: () => dispose() }
 }
 
+test('系统收发信筛选仅超管可用，切换时不携带冲突的操作者编号', async () => {
+  for (const role of ['super_admin', 'admin', 'user']) {
+    const requests = []
+    const { page } = fixture(async (_, { params }) => {
+      requests.push(params)
+      return { errorNo: 0, data: { items: [] } }
+    }, role)
+    page.category.value = 'mail'
+    page.actorId.value = '42'
+    page.mailScope.value = 'system'
+    await page.search()
+    assert.equal(page.canFilterSystemMail.value, role === 'super_admin')
+    assert.equal(requests[0].systemOnly, role === 'super_admin' ? true : undefined)
+    assert.equal(requests[0].actorId, role === 'admin' ? '42' : undefined)
+    page.mailScope.value = 'all'
+    await page.search()
+    assert.equal(requests[1].systemOnly, undefined)
+    assert.equal(requests[1].actorId, role === 'user' ? undefined : '42')
+    assert.equal(page.displayActor({ actorId: '0', payload: { actorName: 'xuans' } }), '系统')
+  }
+  assert.match(read('LogSettings.vue'), /v-if="canFilterSystemMail"/)
+})
+
 test('普通用户不发送操作者筛选，管理员保留范围内筛选', async () => {
   for (const role of ['user', 'admin']) {
     const requests = []

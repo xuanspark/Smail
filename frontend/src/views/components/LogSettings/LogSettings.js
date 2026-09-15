@@ -14,6 +14,9 @@ export function useLogs() {
   const offset = ref(0)
   const hasMore = ref(false)
   const actorId = ref('')
+  const mailScope = ref('all')
+  const canFilterSystemMail = computed(() => store.role === 'super_admin' && category.value === 'mail')
+  const systemMailSelected = computed(() => canFilterSystemMail.value && mailScope.value === 'system')
   const recentRange = () => {
     const end = new Date()
     return [new Date(end.getTime() - 24 * 60 * 60 * 1000), end]
@@ -38,7 +41,7 @@ export function useLogs() {
   const actionLabel = value => ({ update: '保存配置', rollback: '回滚配置', migration: '迁移配置' }[value] || value || '未记录操作')
   const displayObject = item => item.payload?.object || item.payload?.stage || '未记录对象'
   const displayOutcome = item => item.payload?.outcome || '历史记录未提供结果说明'
-  const displayActor = item => item.payload?.actorName || (item.actorId && item.actorId !== '0' ? item.actorId : '系统')
+  const displayActor = item => !item.actorId || item.actorId === '0' ? '系统' : (item.payload?.actorName || item.actorId)
   const details = computed(() => detail.value?.payload || {})
   const runtimeRows = computed(() => lines.value.map((line, index) => parseRuntimeLine(line, offset.value + index + 1)))
   const runtimeSummary = computed(() => summarizeRuntime(runtimeRows.value))
@@ -93,7 +96,8 @@ export function useLogs() {
       return
     }
     appliedFilters = { kind: category.value, from: from.toISOString(), to: to.toISOString() }
-    if (canFilterActor.value && !isRuntime.value && actorId.value.trim()) appliedFilters.actorId = actorId.value.trim()
+    if (systemMailSelected.value) appliedFilters.systemOnly = true
+    else if (canFilterActor.value && !isRuntime.value && actorId.value.trim()) appliedFilters.actorId = actorId.value.trim()
     offset.value = 0
     previousOffsets.length = 0
     detail.value = null
@@ -120,6 +124,7 @@ export function useLogs() {
     runtimeDetail.value = null
     search()
   })
+  watch(mailScope, search)
   onMounted(search)
   onBeforeUnmount(() => {
     ++requestId
@@ -129,6 +134,7 @@ export function useLogs() {
   return {
     category, categories, loading, error, items, lines, offset,
     canFilterActor,
+    mailScope, canFilterSystemMail, systemMailSelected,
     hasMore, actorId, dateRange, detail, details, isRuntime,
     runtimeDetail, runtimeRows, runtimeSummary, visibleCount, pageRange,
     currentCategory, resultType, runtimeRowClass, timeParts,

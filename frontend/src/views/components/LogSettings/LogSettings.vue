@@ -19,7 +19,11 @@
           format="YYYY-MM-DD HH:mm"
           aria-label="日志时间范围"
         />
-        <el-input v-if="!isRuntime && canFilterActor" v-model="actorId" clearable placeholder="操作者编号" aria-label="操作者编号" @keyup.enter="search" />
+        <el-select v-if="canFilterSystemMail" v-model="mailScope" class="mail-scope" aria-label="收发信记录范围">
+          <el-option label="全部收发信" value="all" />
+          <el-option label="系统收发信" value="system" />
+        </el-select>
+        <el-input v-if="!isRuntime && canFilterActor && !systemMailSelected" v-model="actorId" clearable placeholder="操作者编号" aria-label="操作者编号" @keyup.enter="search" />
         <div class="log-filter-actions">
           <el-button :disabled="loading" @click="recent">最近 24 小时</el-button>
           <el-button type="primary" :loading="loading" @click="search">查询</el-button>
@@ -174,6 +178,7 @@ import { useLogs } from './LogSettings.js'
 const {
   category, categories, loading, error, items, offset,
   canFilterActor,
+  mailScope, canFilterSystemMail, systemMailSelected,
   hasMore, actorId, dateRange, detail, details, isRuntime,
   runtimeDetail, runtimeRows, runtimeSummary, pageRange,
   currentCategory, resultType, runtimeRowClass, timeParts,

@@ -102,6 +102,11 @@
   max-width: 190px;
 }
 
+.log-filters .mail-scope {
+  flex: 0 1 145px;
+  min-width: 130px;
+}
+
 .log-filter-actions {
   display: flex;
   align-items: center;

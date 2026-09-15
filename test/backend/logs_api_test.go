@@ -66,11 +66,14 @@ func TestLogsAPIRejectsUnscopedAccessAndValidatesQueries(t *testing.T) {
 		}
 	}
 	for _, role := range []access.Role{access.RoleUser, access.RoleAdmin} {
+		if got := call(role, "kind=mail&systemOnly=true"); got.ErrorNo != response.NoAccessPrivileges {
+			t.Fatalf("低权限账号能够查询系统邮件：%s", role)
+		}
 		if got := call(role, "kind=runtime&listFiles=true"); got.ErrorNo != response.NoAccessPrivileges {
 			t.Fatalf("低权限用户能读取全局文件列表：%s", role)
 		}
 	}
-	for _, query := range []string{"kind=config", "kind=unknown", "kind=mail&limit=501", "kind=mail&offset=-1", "kind=mail&from=invalid", "kind=mail&from=2026-09-08T00:00:00Z&to=2026-09-01T00:00:00Z"} {
+	for _, query := range []string{"kind=operation&systemOnly=true", "kind=mail&systemOnly=1", "kind=config", "kind=unknown", "kind=mail&limit=501", "kind=mail&offset=-1", "kind=mail&from=invalid", "kind=mail&from=2026-09-08T00:00:00Z&to=2026-09-01T00:00:00Z"} {
 		if got := call(access.RoleSuperAdmin, query); got.ErrorNo != response.ParamsError {
 			t.Fatalf("invalid query accepted: %s => %d", query, got.ErrorNo)
 		}
@@ -120,6 +123,18 @@ func TestLogsAPIRejectsUnscopedAccessAndValidatesQueries(t *testing.T) {
 		history := call(access.RoleSuperAdmin, values.Encode())
 		if history.ErrorNo != 0 || len(history.Data.(map[string]any)[key].([]any)) != 1 {
 			t.Fatalf("指定时段：%+v", history)
+		}
+	}
+	filtered := call(access.RoleSuperAdmin, "kind=mail&systemOnly=true")
+	if filtered.ErrorNo != 0 || len(filtered.Data.(map[string]any)["items"].([]any)) != 10 {
+		t.Fatal("超级管理员无法筛选系统邮件")
+	}
+	for _, role := range []access.Role{access.RoleAdmin, access.RoleUser} {
+		for _, query := range []string{"kind=mail", "kind=mail&actorId=0", "kind=mail&systemOnly=false"} {
+			got := call(role, query)
+			if got.ErrorNo != 0 || len(got.Data.(map[string]any)["items"].([]any)) != 0 {
+				t.Fatal("低权限账号读取到了系统邮件")
+			}
 		}
 	}
 }

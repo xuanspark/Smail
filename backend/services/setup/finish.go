@@ -2,6 +2,7 @@ package setup
 
 import (
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/signal"
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	"sync"
@@ -13,6 +14,9 @@ var finishMu sync.Mutex
 func Finish() error {
 	finishMu.Lock()
 	defer finishMu.Unlock()
+	if err := db.ValidateSuperAdmin(db.Instance); err != nil {
+		return err
+	}
 	cfg, err := config.ReadConfig()
 	if err != nil {
 		return errors.Wrap(err)
