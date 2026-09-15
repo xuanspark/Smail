@@ -136,7 +136,7 @@
         <div class="card-header-bar">
           <div class="header-left">
             <span class="main-title">通用客户端配置参数</span>
-            <span class="sub-title">支持用户名（如 xuans）或完整邮箱登录，密码统一使用上方专属授权码</span>
+            <span class="sub-title">请使用完整邮箱地址登录，密码统一使用上方专属授权码</span>
           </div>
         </div>
 
