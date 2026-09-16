@@ -28,7 +28,7 @@ import (
 	olog "log"
 )
 
-//go:embed dist/*
+//go:embed all:dist/*
 var local embed.FS
 
 var httpsServer *http.Server

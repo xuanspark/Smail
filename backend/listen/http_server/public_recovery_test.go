@@ -2,6 +2,7 @@ package http_server
 
 import (
 	"crypto/tls"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,6 +61,33 @@ func TestPublicRecoveryPageIsServedOnlyFromMailDomain(t *testing.T) {
 	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://web.example.com/rest/"))
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("web domain recovery page returned %d, want 404", recorder.Code)
+	}
+}
+
+func TestPublicRecoveryServesUnderscorePrefixedBuildAssets(t *testing.T) {
+	configurePublicRecoveryRouteTest(t)
+	handler, err := newPublicRecoveryHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	recoveryHandler, ok := handler.(*publicRecoveryHandler)
+	if !ok {
+		t.Fatalf("unexpected public recovery handler type %T", handler)
+	}
+
+	matches, err := fs.Glob(recoveryHandler.frontend, "assets/_plugin-vue_export-helper-*.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("embedded frontend does not contain the Vue export helper asset")
+	}
+
+	recorder := httptest.NewRecorder()
+	request := publicRecoveryRequest(http.MethodGet, "https://mx.example.com/"+matches[0])
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("underscore-prefixed asset returned %d, want %d", recorder.Code, http.StatusOK)
 	}
 }
 
