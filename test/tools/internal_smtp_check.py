@@ -1,5 +1,6 @@
 """仅在指定远程部署机执行内部 SMTP 收信回归，不修改业务配置。"""
 
+import base64
 import hashlib
 import json
 import smtplib
@@ -74,14 +75,17 @@ def main():
         (backup / name).chmod(0o600)
     with sqlite3.connect(f'file:{ROOT / "data/smail.db"}?mode=ro', uri=True) as database:
         database.row_factory = sqlite3.Row
+        policy = json.loads((ROOT / 'config/email.json').read_text(encoding='utf-8')).get('policy', {})
+        assert policy.get('spamFilterLevel', 0) == 0, 'This fixture requires the current unfiltered policy'
         users = dict(database.execute("SELECT account,id FROM user WHERE account IN ('admin','remotecheck')"))
         assert set(users) == {'admin', 'remotecheck'}
         results = []
         cases = [
             ('text', ['remotecheck@solit.cn'], False, {users['remotecheck']}),
             ('multipart', ['remotecheck@solit.cn', 'admin@solit.cn'], True, set(users.values())),
-            ('unknown', [f'missing-{RUN}@solit.cn'], False, set()),
-            ('relay', ['nobody@external-check.invalid'], False, set()),
+            ('admin_only', ['admin@solit.cn'], True, {users['admin']}),
+            ('unknown', [f'missing-{RUN}@solit.cn'], False, {users['admin']}),
+            ('relay', ['nobody@external-check.invalid'], False, {users['admin']}),
         ]
         for label, recipients, multipart, expected_users in cases:
             result = deliver(label, recipients, multipart)
@@ -98,13 +102,16 @@ def main():
                     attachments = json.loads(email['attachments'])
                     assert len(attachments) == 1
                     assert attachments[0]['Filename'] == '中文验收附件.txt', repr(attachments[0]['Filename'])
+                    assert base64.b64decode(attachments[0]['Content']) == ATTACHMENT
                 result.update(email_id=email['id'], owners=sorted(expected_users),
                               mailbox_status=[row['status'] for row in relations], stored=True)
+                if label in ('unknown', 'relay'):
+                    result['outcome'] = 'administrator_fallback_no_outgoing_record'
             else:
                 assert not emails, f'{label}: unexpected stored message'
                 result.update(stored=False, outcome='accepted_then_discarded')
             results.append(result)
-        summary = {'run': RUN, 'backup': str(backup), 'target': '127.0.0.1:25',
+        summary = {'run': RUN, 'backup': str(backup), 'target': '127.0.0.1:25', 'spam_filter_level': 0,
                    'certificate_sha256': hashlib.sha256((ROOT / 'ssl/custom.crt').read_bytes()).hexdigest(),
                    'results': results}
         (backup / 'result.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
