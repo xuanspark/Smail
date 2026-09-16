@@ -215,6 +215,11 @@ func Init(serverVersion string) error {
 			}()
 		}
 		hooks.Init(serverVersion)
+		httpRun, httpsRun, err := http_server.PrepareWebServers()
+		if err != nil {
+			stopServices()
+			return fmt.Errorf("prepare web services: %w", err)
+		}
 		mailSecurity := config.CurrentMailSecurity()
 		// SMTP 25 用于服务器间投递，始终保留并支持机会性 STARTTLS。
 		startService(serviceErrors, "SMTP", smtp_server.Start)
@@ -225,8 +230,8 @@ func Init(serverVersion string) error {
 			startService(serviceErrors, "SMTP STARTTLS", smtp_server.StartWithTLSNew)
 		}
 		// http server start
-		startService(serviceErrors, "HTTPS", http_server.HttpsStart)
-		startService(serviceErrors, "HTTP", http_server.HttpStart)
+		startService(serviceErrors, "HTTPS", httpsRun)
+		startService(serviceErrors, "HTTP", httpRun)
 
 		// 等待 HTTP 服务启动后再执行需要 HTTP 回调的 ACME 操作。
 		if err := waitHTTPReady(serviceErrors); err != nil {

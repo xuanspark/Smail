@@ -1,6 +1,7 @@
 package http_server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -8,7 +9,49 @@ import (
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/dto/response"
 )
+
+func TestSetupAuthenticationStatusRequiresBootstrapAuthorization(t *testing.T) {
+	const token = "0123456789abcdefghijklmnop"
+	for _, endpoint := range []string{"/api/user/info", "/api/v1/user/info"} {
+		t.Run(endpoint, func(t *testing.T) {
+			security := withSetupSecurity(t, token)
+			mux := http.NewServeMux()
+			registerSetupAPIRoutes(mux, security, func(http.ResponseWriter, *http.Request) { t.Fatal("setup mutation invoked") })
+			for _, scenario := range []struct {
+				method, source, token string
+				ready                 bool
+				status                int
+			}{
+				{http.MethodPost, "127.0.0.1:1234", token, false, http.StatusOK},
+				{http.MethodPost, "127.0.0.1:1234", "", false, http.StatusForbidden},
+				{http.MethodPost, "192.0.2.1:1234", token, false, http.StatusForbidden},
+				{http.MethodGet, "127.0.0.1:1234", token, false, http.StatusMethodNotAllowed},
+				{http.MethodPost, "127.0.0.1:1234", token, true, http.StatusForbidden},
+			} {
+				config.SetInitState(scenario.ready)
+				request := httptest.NewRequest(scenario.method, endpoint, nil)
+				request.RemoteAddr = scenario.source
+				request.AddCookie(&http.Cookie{Name: setupCookieName, Value: scenario.token})
+				recorder := httptest.NewRecorder()
+				mux.ServeHTTP(recorder, request)
+				if recorder.Code != scenario.status {
+					t.Fatalf("status = %d, want %d", recorder.Code, scenario.status)
+				}
+				if recorder.Code == http.StatusOK {
+					var result response.Response
+					if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil || result.ErrorNo != response.NeedSetup {
+						t.Fatalf("setup state response = %+v, error = %v", result, err)
+					}
+					if recorder.Header().Get("Cache-Control") != "no-store" {
+						t.Fatal("setup state can be cached")
+					}
+				}
+			}
+		})
+	}
+}
 
 func withSetupSecurity(t *testing.T, token string) *setupSecurity {
 	t.Helper()

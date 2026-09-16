@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/controllers"
+	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/utils/ip"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
@@ -89,6 +90,14 @@ func registerSetupAPIRoutes(mux *http.ServeMux, security *setupSecurity, next ht
 	authorized := security.authorize(next)
 	mux.HandleFunc("/api/setup", authorized)
 	mux.HandleFunc("/api/v1/setup", authorized)
+	// 安装阶段尚无业务会话，通过受保护的状态接口引导前端进入安装向导。
+	status := security.authorize(setupOnlyPost(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		response.NewErrorResponse(response.NeedSetup, "请先完成初始化", "").FPrint(w)
+	}))
+	mux.HandleFunc("/api/user/info", status)
+	mux.HandleFunc("/api/v1/user/info", status)
 }
 
 func setupOnlyPost(next http.HandlerFunc) http.HandlerFunc {

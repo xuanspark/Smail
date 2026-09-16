@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -32,6 +33,7 @@ import (
 var local embed.FS
 
 var httpsServer *http.Server
+var httpsServerMu sync.Mutex
 
 type nullWrite struct{}
 
@@ -41,25 +43,53 @@ func (w *nullWrite) Write(p []byte) (int, error) {
 
 // HttpsStart 启动仅承载业务的 HTTPS 服务。
 func HttpsStart() error {
+	server, err := prepareHTTPSServer()
+	if err != nil {
+		return err
+	}
+	return serveHTTPSServer(server)
+}
+
+func serveHTTPSServer(server *http.Server) error {
+	if server == nil {
+		return nil
+	}
+	log.WithFields(log.Fields{"action": "启动 HTTPS 监听", "object": server.Addr, "result": "started"}).Info("开始绑定监听端口")
+	if err := server.ListenAndServeTLS("", ""); err != nil {
+		if errors.Is(err, http.ErrServerClosed) {
+			log.WithFields(log.Fields{"action": "停止 HTTPS 监听", "object": server.Addr, "result": "success"}).Info("监听已正常关闭")
+			return nil
+		}
+		return fmt.Errorf("serve HTTPS on %s: %w", server.Addr, err)
+	}
+	return nil
+}
+
+func prepareHTTPSServer() (*http.Server, error) {
+	httpsServerMu.Lock()
+	defer httpsServerMu.Unlock()
+	if httpsServer != nil {
+		return nil, fmt.Errorf("HTTPS server is already started")
+	}
 	legacyCfg := config.CurrentConfig()
 	if legacyCfg == nil && config.CurrentManager() == nil {
-		return fmt.Errorf("runtime configuration is unavailable")
+		return nil, fmt.Errorf("runtime configuration is unavailable")
 	}
 	httpCfg := config.CurrentHTTPConfig()
 	if httpCfg.TLSMode == config.HTTPSTLSModeProxy {
 		log.WithFields(log.Fields{"action": "启动内置 HTTPS 监听", "result": "skipped"}).Info("HTTPS 由反向代理处理，跳过内置监听")
-		return nil
+		return nil, nil
 	}
 	mux := http.NewServeMux()
 	if err := router(mux); err != nil {
-		return err
+		return nil, err
 	}
 	publicRecovery, err := newPublicRecoveryHandler()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if session.Instance == nil {
-		return fmt.Errorf("session manager is unavailable")
+		return nil, fmt.Errorf("session manager is unavailable")
 	}
 
 	nullLog := olog.New(&nullWrite{}, "", olog.Ldate)
@@ -69,14 +99,14 @@ func HttpsStart() error {
 	}
 
 	if config.DevelopmentMode && legacyCfg != nil && legacyCfg.HttpsEnabled == 2 {
-		return nil
+		return nil, nil
 	}
 	if legacyCfg == nil {
-		return fmt.Errorf("legacy SSL configuration is unavailable")
+		return nil, fmt.Errorf("legacy SSL configuration is unavailable")
 	}
 	tlsConfig, err := config.NewRuntimeTLSConfig()
 	if err != nil {
-		return fmt.Errorf("resolve HTTPS certificate: %w", err)
+		return nil, fmt.Errorf("resolve HTTPS certificate: %w", err)
 	}
 
 	httpsServer = &http.Server{
@@ -90,18 +120,12 @@ func HttpsStart() error {
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          nullLog,
 	}
-	log.WithFields(log.Fields{"action": "启动 HTTPS 监听", "object": httpsServer.Addr, "result": "started"}).Info("开始绑定监听端口")
-	if err := httpsServer.ListenAndServeTLS("", ""); err != nil {
-		if errors.Is(err, http.ErrServerClosed) {
-			log.WithFields(log.Fields{"action": "停止 HTTPS 监听", "object": httpsServer.Addr, "result": "success"}).Info("监听已正常关闭")
-			return nil
-		}
-		return fmt.Errorf("serve HTTPS on port %d: %w", httpsPort, err)
-	}
-	return nil
+	return httpsServer, nil
 }
 
 func HttpsStop() {
+	httpsServerMu.Lock()
+	defer httpsServerMu.Unlock()
 	if httpsServer != nil {
 		if err := httpsServer.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.WithError(err).Warn("close HTTPS server failed")

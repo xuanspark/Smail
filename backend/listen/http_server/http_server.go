@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -20,8 +21,11 @@ import (
 
 // 这个服务只负责 HTTP 到 HTTPS 的安全跳转，不承载业务会话。
 var httpServer *http.Server
+var httpServerMu sync.Mutex
 
 func HttpStop() {
+	httpServerMu.Lock()
+	defer httpServerMu.Unlock()
 	if httpServer != nil {
 		if err := httpServer.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.WithError(err).Warn("close HTTP server failed")
@@ -276,8 +280,29 @@ func allowRouteMethod(w http.ResponseWriter, r *http.Request, allowed ...string)
 }
 
 func HttpStart() error {
+	server, err := prepareHTTPServer()
+	if err != nil {
+		return err
+	}
+	return serveHTTPServer(server)
+}
+
+func serveHTTPServer(server *http.Server) error {
+	log.WithFields(log.Fields{"action": "启动 HTTP 监听", "object": server.Addr, "result": "started"}).Info("开始绑定监听端口")
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve HTTP: %w", err)
+	}
+	return nil
+}
+
+func prepareHTTPServer() (*http.Server, error) {
+	httpServerMu.Lock()
+	defer httpServerMu.Unlock()
+	if httpServer != nil {
+		return nil, fmt.Errorf("HTTP server is already started")
+	}
 	if config.CurrentConfig() == nil && config.CurrentManager() == nil {
-		return fmt.Errorf("runtime configuration is unavailable")
+		return nil, fmt.Errorf("runtime configuration is unavailable")
 	}
 	cfg := config.CurrentHTTPConfig()
 	httpPort := 80
@@ -287,7 +312,7 @@ func HttpStart() error {
 
 	handler, err := newHTTPHandler(cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpServer = &http.Server{
@@ -299,11 +324,7 @@ func HttpStart() error {
 		IdleTimeout:       time.Second * 30,
 		MaxHeaderBytes:    16 << 10,
 	}
-	log.WithFields(log.Fields{"action": "启动 HTTP 监听", "object": fmt.Sprintf(":%d", httpPort), "result": "started"}).Info("开始绑定监听端口")
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("serve HTTP: %w", err)
-	}
-	return nil
+	return httpServer, nil
 }
 
 func newHTTPHandler(cfg config.HTTPConfig) (http.Handler, error) {
