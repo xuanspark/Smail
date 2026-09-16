@@ -22,6 +22,48 @@ func mustParseEmail(t *testing.T, to []string, r io.Reader, size int) *Email {
 	return email
 }
 
+func TestAttachmentFilenameFromMIME(t *testing.T) {
+	cases := []struct {
+		name        string
+		contentType string
+		disposition string
+		want        string
+	}{
+		{"plain", "application/octet-stream", `attachment; filename="report.txt"`, "report.txt"},
+		{"quoted_semicolon", "application/octet-stream", `attachment; filename="report; final.txt"`, "report; final.txt"},
+		{"extended_utf8", "text/plain", "attachment; filename*=utf-8''%E4%B8%AD%E6%96%87.txt", "中文.txt"},
+		{"continued_utf8", "text/html", "attachment; filename*0*=utf-8''%E4%B8%AD;\r\n filename*1*=%E6%96%87.txt", "中文.txt"},
+		{"encoded_word", "application/octet-stream", `attachment; filename="=?UTF-8?B?5Lit5paHLnR4dA==?="`, "中文.txt"},
+		{"content_type_name", `application/octet-stream; name="legacy.txt"`, "attachment", "legacy.txt"},
+		{"preserve_name_priority", `application/octet-stream; name="legacy.txt"`, `attachment; filename="other.txt"`, "legacy.txt"},
+		{"missing", "application/octet-stream", "attachment", "no_name_file"},
+		{"invalid", "application/octet-stream", "attachment; filename", "no_name_file"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte("From: sender@example.com\r\n" +
+				"To: recipient@example.com\r\n" +
+				"Subject: MIME attachment\r\n" +
+				"MIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/mixed; boundary=attachment-test\r\n\r\n" +
+				"--attachment-test\r\nContent-Type: text/plain\r\n\r\nbody\r\n" +
+				"--attachment-test\r\nContent-Type: " + tc.contentType + "\r\n" +
+				"Content-Disposition: " + tc.disposition + "\r\n\r\nattachment body\r\n" +
+				"--attachment-test--\r\n")
+			email := mustParseEmail(t, []string{"recipient@example.com"}, bytes.NewReader(raw), len(raw))
+			if len(email.Attachments) != 1 {
+				t.Fatalf("附件数量错误：%d", len(email.Attachments))
+			}
+			if got := email.Attachments[0].Filename; got != tc.want {
+				t.Fatalf("附件名称错误：实际 %q，预期 %q", got, tc.want)
+			}
+			if got := string(email.Attachments[0].Content); got != "attachment body" {
+				t.Fatalf("附件内容被改变：%q", got)
+			}
+		})
+	}
+}
+
 func builtMessageDate(t *testing.T, raw []byte) time.Time {
 	t.Helper()
 

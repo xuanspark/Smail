@@ -522,13 +522,9 @@ func getFileName(entity *message.Entity, p map[string]string) string {
 		return fileName
 	}
 
-	contentDisposition := entity.Header.Get("Content-Disposition")
-
-	filenameRegex := regexp.MustCompile(`filename\s*=\s*"?([^";]+)"?`)
-	matches := filenameRegex.FindStringSubmatch(contentDisposition)
-
-	if len(matches) >= 2 {
-		return strings.Trim(strings.TrimSpace(matches[1]), `"`)
+	_, params, err := entity.Header.ContentDisposition()
+	if err == nil && params["filename"] != "" {
+		return params["filename"]
 	}
 
 	return "no_name_file"
