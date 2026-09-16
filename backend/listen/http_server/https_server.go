@@ -54,6 +54,13 @@ func HttpsStart() error {
 	if err := router(mux); err != nil {
 		return err
 	}
+	publicRecovery, err := newPublicRecoveryHandler()
+	if err != nil {
+		return err
+	}
+	if session.Instance == nil {
+		return fmt.Errorf("session manager is unavailable")
+	}
 
 	nullLog := olog.New(&nullWrite{}, "", olog.Ldate)
 	httpsPort := 443
@@ -75,7 +82,7 @@ func HttpsStart() error {
 	httpsServer = &http.Server{
 		TLSConfig:         tlsConfig,
 		Addr:              fmt.Sprintf(":%d", httpsPort),
-		Handler:           securityHeaders(dbmigration.GuardHTTP(session.Instance.LoadAndSave(mux))),
+		Handler:           securityHeaders(dbmigration.GuardHTTP(publicRecoveryOrSessionHandler(publicRecovery, session.Instance.LoadAndSave(mux)))),
 		ReadTimeout:       time.Second * 90,
 		ReadHeaderTimeout: time.Second * 10,
 		WriteTimeout:      time.Second * 90,

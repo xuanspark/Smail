@@ -15,7 +15,7 @@ func TestRedirectToHTTPSPreservesPathQueryAndPort(t *testing.T) {
 	config.Instance = &config.Config{WebDomain: "mail.example.com", HttpsPort: 8443}
 	t.Cleanup(func() { config.Instance = old })
 
-	request := httptest.NewRequest(http.MethodGet, "http://old.example/a%2Fb?x=1&y=2", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://mail.example.com/a%2Fb?x=1&y=2", nil)
 	recorder := httptest.NewRecorder()
 	redirectToHTTPS(recorder, request)
 
@@ -78,9 +78,35 @@ func TestRedirectToHTTPSAllowsConfiguredIPHost(t *testing.T) {
 	t.Cleanup(func() { config.Instance = old })
 
 	recorder := httptest.NewRecorder()
-	redirectToHTTPS(recorder, httptest.NewRequest(http.MethodGet, "http://old.example/Reset", nil))
+	redirectToHTTPS(recorder, httptest.NewRequest(http.MethodGet, "http://192.0.2.10/Reset", nil))
 	if location := recorder.Header().Get("Location"); recorder.Code != http.StatusPermanentRedirect || location != "https://192.0.2.10/Reset" {
 		t.Fatalf("unexpected IP redirect: status=%d location=%q", recorder.Code, location)
+	}
+}
+
+func TestRedirectToHTTPSKeepsConfiguredMailDomain(t *testing.T) {
+	old := config.Instance
+	config.Instance = &config.Config{Domain: "mx.example.com", WebDomain: "web.example.com", HttpsPort: 443}
+	t.Cleanup(func() { config.Instance = old })
+
+	request := httptest.NewRequest(http.MethodGet, "http://mx.example.com/rest/?next=1", nil)
+	recorder := httptest.NewRecorder()
+	redirectToHTTPS(recorder, request)
+
+	if recorder.Code != http.StatusPermanentRedirect || recorder.Header().Get("Location") != "https://mx.example.com/rest/?next=1" {
+		t.Fatalf("unexpected mail domain redirect: status=%d location=%q", recorder.Code, recorder.Header().Get("Location"))
+	}
+}
+
+func TestRedirectToHTTPSRejectsUnknownRequestHost(t *testing.T) {
+	old := config.Instance
+	config.Instance = &config.Config{Domain: "mx.example.com", WebDomain: "web.example.com", HttpsPort: 443}
+	t.Cleanup(func() { config.Instance = old })
+
+	recorder := httptest.NewRecorder()
+	redirectToHTTPS(recorder, httptest.NewRequest(http.MethodGet, "http://evil.example/rest/", nil))
+	if recorder.Code != http.StatusUpgradeRequired || recorder.Header().Get("Location") != "" {
+		t.Fatalf("unknown host was redirected: status=%d location=%q", recorder.Code, recorder.Header().Get("Location"))
 	}
 }
 

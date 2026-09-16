@@ -316,7 +316,11 @@ func newHTTPHandler(cfg config.HTTPConfig) (http.Handler, error) {
 		if session.Instance == nil {
 			return nil, fmt.Errorf("session manager is unavailable")
 		}
-		handler = dbmigration.GuardHTTP(session.Instance.LoadAndSave(mux))
+		publicRecovery, err := newPublicRecoveryHandler()
+		if err != nil {
+			return nil, err
+		}
+		handler = dbmigration.GuardHTTP(publicRecoveryOrSessionHandler(publicRecovery, session.Instance.LoadAndSave(mux)))
 	} else {
 		mux.HandleFunc("/.well-known/", controllers.AcmeChallenge)
 		mux.HandleFunc("/api/ping", controllers.Ping)
@@ -331,30 +335,39 @@ func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "HTTPS is required", http.StatusUpgradeRequired)
 		return
 	}
-	host := strings.TrimSpace(config.CurrentWebDomain())
-	if host == "" {
+	host, ok := configuredHTTPSRedirectHost(r)
+	if !ok {
 		w.Header().Set("Connection", "close")
 		http.Error(w, "HTTPS is required", http.StatusUpgradeRequired)
 		return
-	}
-	parsed, err := url.Parse("//" + host)
-	if err != nil || parsed.Hostname() == "" || parsed.User != nil ||
-		parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-		w.Header().Set("Connection", "close")
-		http.Error(w, "HTTPS is required", http.StatusUpgradeRequired)
-		return
-	}
-	host = strings.TrimSuffix(parsed.Hostname(), ".")
-	if strings.Contains(host, ":") {
-		host = "[" + host + "]"
-	}
-	httpsPort := config.CurrentHTTPConfig().HTTPSPort
-	if httpsPort > 0 && httpsPort != 443 {
-		host = fmt.Sprintf("%s:%d", host, httpsPort)
 	}
 	target := "https://" + host + r.URL.EscapedPath()
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
 	http.Redirect(w, r, target, http.StatusPermanentRedirect)
+}
+
+func configuredHTTPSRedirectHost(r *http.Request) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	requestHost, _, ok := normalizeAuthority(r.Host, "80")
+	if !ok {
+		return "", false
+	}
+	for _, configured := range []string{config.CurrentWebDomain(), config.CurrentMailDomains().Primary} {
+		host, port, valid := configuredHTTPSAuthority(configured)
+		if !valid || host != requestHost {
+			continue
+		}
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+		if port != "443" {
+			host = fmt.Sprintf("%s:%s", host, port)
+		}
+		return host, true
+	}
+	return "", false
 }
