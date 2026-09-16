@@ -11,6 +11,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"net/netip"
 	"net/textproto"
 	"strings"
 	"testing"
@@ -37,6 +38,27 @@ func TestDialRejectsNonPublicRemoteAddress(t *testing.T) {
 			_, err := Dial(net.JoinHostPort(host, "25"), "example.com")
 			if !errors.Is(err, ErrUnsafeRemoteAddress) {
 				t.Fatalf("Dial() error = %v, want ErrUnsafeRemoteAddress", err)
+			}
+		})
+	}
+}
+
+func TestContainsOnlyBenchmarkAddresses(t *testing.T) {
+	tests := []struct {
+		name      string
+		addresses []netip.Addr
+		want      bool
+	}{
+		{name: "empty", want: false},
+		{name: "fake IP", addresses: []netip.Addr{netip.MustParseAddr("198.18.1.77")}, want: true},
+		{name: "multiple fake IPs", addresses: []netip.Addr{netip.MustParseAddr("198.18.1.77"), netip.MustParseAddr("198.19.1.82")}, want: true},
+		{name: "public IP", addresses: []netip.Addr{netip.MustParseAddr("47.251.242.178")}, want: false},
+		{name: "mixed", addresses: []netip.Addr{netip.MustParseAddr("198.18.1.77"), netip.MustParseAddr("127.0.0.1")}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := containsOnlyBenchmarkAddresses(tt.addresses); got != tt.want {
+				t.Fatalf("containsOnlyBenchmarkAddresses() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
@@ -30,9 +31,11 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/smtp"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -47,7 +50,10 @@ const (
 	outboundSMTPTLSHandshakeTimeout = 2 * time.Second
 	outboundSMTPTransactionTimeout  = 2 * time.Minute
 	outboundSMTPQuitWriteTimeout    = 250 * time.Millisecond
+	remoteAddressResponseLimit      = 64 * 1024
 )
+
+var benchmarkNetworkPrefix = netip.MustParsePrefix("198.18.0.0/15")
 
 // A Client represents a client connection to an SMTP server.
 type Client struct {
@@ -188,6 +194,78 @@ func resolveRemoteAddresses(ctx context.Context, host string) ([]netip.Addr, err
 	}
 	if len(addresses) == 0 {
 		return nil, errors.New("smtp: remote address is unavailable")
+	}
+	if containsOnlyBenchmarkAddresses(addresses) {
+		addresses, err = resolveRemoteAddressesOverHTTPS(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("smtp: resolve real remote address: %w", err)
+		}
+	}
+	return addresses, nil
+}
+
+func containsOnlyBenchmarkAddresses(addresses []netip.Addr) bool {
+	if len(addresses) == 0 {
+		return false
+	}
+	for _, address := range addresses {
+		if !benchmarkNetworkPrefix.Contains(address.Unmap()) {
+			return false
+		}
+	}
+	return true
+}
+
+func resolveRemoteAddressesOverHTTPS(ctx context.Context, host string) ([]netip.Addr, error) {
+	endpoint := "https://cloudflare-dns.com/dns-query?name=" + url.QueryEscape(host) + "&type=A"
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/dns-json")
+
+	client := &http.Client{
+		Timeout: outboundSMTPDialTimeout,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected DNS response status: %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Status int `json:"Status"`
+		Answer []struct {
+			Type int    `json:"type"`
+			Data string `json:"data"`
+		} `json:"Answer"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(response.Body, remoteAddressResponseLimit))
+	if err = decoder.Decode(&payload); err != nil {
+		return nil, err
+	}
+	if payload.Status != 0 {
+		return nil, fmt.Errorf("DNS response code: %d", payload.Status)
+	}
+
+	addresses := make([]netip.Addr, 0, len(payload.Answer))
+	for _, answer := range payload.Answer {
+		if answer.Type != 1 {
+			continue
+		}
+		address, parseErr := netip.ParseAddr(strings.TrimSpace(answer.Data))
+		if parseErr == nil {
+			addresses = append(addresses, address.Unmap())
+		}
+	}
+	if len(addresses) == 0 {
+		return nil, errors.New("remote address is unavailable")
 	}
 	return addresses, nil
 }
