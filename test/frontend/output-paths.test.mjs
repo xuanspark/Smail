@@ -30,14 +30,22 @@ test('前端构建必须自动同步 Go 嵌入资源', async () => {
 
 test('前端入口按需加载 Element Plus，并延迟设置页和写信编辑器', async () => {
   const main = await read('frontend/src/main.js')
+  const mainApp = await read('frontend/src/main-app.js')
   const vite = await read('frontend/vite.config.js')
   const header = await read('frontend/src/views/components/HomeHeader/HomeHeader.js')
   assert.doesNotMatch(main, /app\.use\(ElementPlus\)/)
   assert.doesNotMatch(main, /element-plus\/dist\/index\.css/)
-  assert.match(main, /element-services\.css/)
+  assert.match(main, /public-recovery\.js/)
+  assert.match(mainApp, /element-services\.css/)
   assert.match(vite, /manualChunks\(id\)/)
   assert.match(header, /defineAsyncComponent/)
   assert.match(header, /import\('\.\.\/ConfigSettings\/ConfigSettings\.vue'\)/)
+})
+
+test('开发服务器将匿名恢复入口和接口安全转发到后端', async () => {
+  const vite = await read('frontend/vite.config.js')
+  assert.match(vite, /"\/public-password-recovery": developmentBackendProxy\(backendUrl, backendOrigin\)/)
+  assert.match(vite, /"\/rest\/api\/recovery": developmentBackendProxy\(backendUrl, publicRecoveryOrigin\)/)
 })
 
 test('开发启动必须固定运行配置根目录并集中保存日志', async () => {

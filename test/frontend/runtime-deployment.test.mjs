@@ -21,6 +21,7 @@ test('开发配置只从模拟部署目录读取且不返回凭据字段', async
   await writeFile(path.join(root, 'ssl/private.key'), 'key', { mode: 0o600 })
   const runtime = readDevelopmentRuntime(root)
   assert.equal(runtime.origin, 'https://mail.example.test')
+  assert.equal(runtime.mailOrigin, 'https://mail.example.test')
   assert.equal(runtime.generation, 9)
   assert.equal(runtime.privateKeyPath, path.join(root, 'ssl/private.key'))
   assert.equal(JSON.stringify(runtime).includes('not-exported'), false)
@@ -29,6 +30,26 @@ test('开发配置只从模拟部署目录读取且不返回凭据字段', async
   assert.throws(() => resolveRuntimeFile(root, path.join(root, 'ssl/private.key')))
   await writeFile(path.join(root, 'config/ssl.json'), JSON.stringify({ meta: { generation: 10 }, tls: {} }))
   assert.throws(() => readDevelopmentRuntime(root), /事务尚未完成/)
+})
+
+test('开发运行配置单独保留主邮件域名供匿名恢复接口校验', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'smail-runtime-recovery-domain-'))
+  await mkdir(path.join(root, 'config'))
+  await mkdir(path.join(root, 'ssl'))
+  await writeFile(path.join(root, 'config/config.json'), JSON.stringify({
+    generation: 5,
+    domains: { web: 'web.example.test', primary: 'mail.example.test' }
+  }))
+  await writeFile(path.join(root, 'config/ssl.json'), JSON.stringify({
+    meta: { generation: 5 },
+    tls: { certificateRef: 'ssl/public.crt', privateKeyRef: 'ssl/private.key' }
+  }))
+  await writeFile(path.join(root, 'ssl/public.crt'), 'certificate')
+  await writeFile(path.join(root, 'ssl/private.key'), 'key', { mode: 0o600 })
+
+  const runtime = readDevelopmentRuntime(root)
+  assert.equal(runtime.origin, 'https://web.example.test')
+  assert.equal(runtime.mailOrigin, 'https://mail.example.test')
 })
 
 test('源码指纹检测编辑且忽略编译嵌入目录', async () => {

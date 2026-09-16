@@ -30,6 +30,21 @@ const developmentHTTPRedirect = (frontendOrigin, host = '127.0.0.1', port = 80) 
   }
 })
 
+const developmentBackendProxy = (backendUrl, backendOrigin) => ({
+  target: backendUrl,
+  changeOrigin: true,
+  secure: false,
+  configure: (proxy) => {
+    proxy.on('proxyReq', (proxyRequest) => {
+      const originURL = new URL(backendOrigin)
+      proxyRequest.setHeader('origin', backendOrigin)
+      proxyRequest.setHeader('host', originURL.host)
+      proxyRequest.setHeader('x-forwarded-proto', originURL.protocol.replace(':', ''))
+      proxyRequest.removeHeader('referer')
+    })
+  }
+})
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -37,6 +52,7 @@ export default defineConfig(({ mode, command }) => {
   const developmentTLS = command === 'serve' ? readDevelopmentTLS() : undefined
   const runtime = developmentTLS?.runtime
   const backendOrigin = runtime?.origin
+  const publicRecoveryOrigin = runtime?.mailOrigin
   const frontendOrigin = runtime?.origin
 
   return {
@@ -64,20 +80,10 @@ export default defineConfig(({ mode, command }) => {
       https: developmentTLS?.options,
       cors: true,
       proxy: {
-        "/api": {
-          target: backendUrl,
-          changeOrigin: true,
-          secure: false,
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyRequest) => {
-              const originURL = new URL(backendOrigin)
-              proxyRequest.setHeader('origin', backendOrigin)
-              proxyRequest.setHeader('host', originURL.host)
-              proxyRequest.setHeader('x-forwarded-proto', originURL.protocol.replace(':', ''))
-              proxyRequest.removeHeader('referer')
-            })
-          }
-        },
+        "/api": developmentBackendProxy(backendUrl, backendOrigin),
+        // 匿名恢复入口由后端按 Web 域名计算跳转，恢复 API 则必须保持主邮件域名的同源校验。
+        "/public-password-recovery": developmentBackendProxy(backendUrl, backendOrigin),
+        "/rest/api/recovery": developmentBackendProxy(backendUrl, publicRecoveryOrigin),
         "/attachments": {
           target: backendUrl,
           changeOrigin: true,

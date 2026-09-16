@@ -90,10 +90,15 @@ export function readDevelopmentRuntime(root = runtimeRoot, { previous = false } 
   if (typeof webDomain !== 'string' || !/^[a-z0-9.-]+(?::\d+)?$/i.test(webDomain)) {
     throw new Error('请先在 yunx-test/config/config.json 配置有效的 Web 域名')
   }
+  const mailDomain = config.domains?.primary || webDomain
+  if (typeof mailDomain !== 'string' || !/^[a-z0-9.-]+(?::\d+)?$/i.test(mailDomain)) {
+    throw new Error('请先在 yunx-test/config/config.json 配置有效的主邮件域名')
+  }
   const certificatePath = resolveDevelopmentCertificate(root, previous ? ssl.tls?.previousCertificateRef : ssl.tls?.certificateRef)
   const privateKeyPath = resolveDevelopmentCertificate(root, previous ? ssl.tls?.previousPrivateKeyRef : ssl.tls?.privateKeyRef, true)
   return {
     origin: `https://${webDomain}`,
+    mailOrigin: `https://${mailDomain}`,
     certificatePath,
     privateKeyPath,
     generation: config.generation
