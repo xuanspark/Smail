@@ -112,11 +112,23 @@ func enablePublicRecoveryForTest(t *testing.T) {
 	old := config.Instance
 	oldManager := config.CurrentManager()
 	config.SetRuntimeManager(nil)
-	config.Instance = &config.Config{SetupState: config.SetupStateReady, WebDomain: "example.com", ExternalRecoveryEnabled: true}
+	config.Instance = &config.Config{SetupState: config.SetupStateReady, Domain: "mail.example.com", WebDomain: "example.com", ExternalRecoveryEnabled: true}
 	t.Cleanup(func() {
 		config.Instance = old
 		config.SetRuntimeManager(oldManager)
 	})
+}
+
+func invokePublicLinkRequirements(t *testing.T, token string) (int, map[string]bool, http.Header) {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "https://mail.example.com/rest/api/recovery/requirements", strings.NewReader(`{"token":"`+token+`"}`))
+	recorder := httptest.NewRecorder()
+	PublicLinkPasswordRecoveryRequirements(recorder, request)
+	result := map[string]bool{}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid requirements response: %v; body=%s", err, recorder.Body.String())
+	}
+	return recorder.Code, result, recorder.Header()
 }
 
 func jsonShape(value any) []string {
@@ -232,5 +244,46 @@ func TestWebAuthnRecoveryBeginResponsesDoNotRevealAccountState(t *testing.T) {
 	for _, body := range bodies[1:] {
 		status, current, shape := invokePublicSecurityHandler(t, BeginWebAuthnRecovery, body)
 		assertPublicResponseEquivalent(t, baselineStatus, baseline, baselineShape, status, current, shape)
+	}
+}
+
+func TestPublicLinkPasswordRecoveryRequirementsExposeOnlyLinkAvailability(t *testing.T) {
+	enablePublicRecoveryForTest(t)
+	recoveryService, _, _, user, _ := newPublicSecurityFixture(t)
+	var token string
+	recoveryService.SetPublicLinkDelivery(func(_ string, value string) error {
+		token = value
+		return nil
+	})
+	if err := recoveryService.BeginPublicLink(user.Account); err != nil {
+		t.Fatal(err)
+	}
+	if token == "" {
+		t.Fatal("public recovery delivery did not receive a token")
+	}
+
+	previous := currentSecurityRuntime()
+	ConfigureSecurityRuntime(previous.verification, previous.external, recoveryService, previous.credentials)
+	t.Cleanup(func() {
+		ConfigureSecurityRuntime(previous.verification, previous.external, previous.recovery, previous.credentials)
+	})
+
+	status, valid, headers := invokePublicLinkRequirements(t, token)
+	if status != http.StatusOK {
+		t.Fatalf("valid token status = %d, want %d", status, http.StatusOK)
+	}
+	if !valid["available"] || valid["requires_recovery_code"] {
+		t.Fatalf("valid token requirements = %#v", valid)
+	}
+	if headers.Get("Cache-Control") != "no-store" {
+		t.Fatalf("cache policy = %q", headers.Get("Cache-Control"))
+	}
+
+	status, invalid, _ := invokePublicLinkRequirements(t, "invalid-token")
+	if status != http.StatusOK {
+		t.Fatalf("invalid token status = %d, want %d", status, http.StatusOK)
+	}
+	if invalid["available"] || invalid["requires_recovery_code"] || len(invalid) != 2 {
+		t.Fatalf("invalid token requirements = %#v", invalid)
 	}
 }

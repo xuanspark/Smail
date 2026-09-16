@@ -2,8 +2,8 @@ package controllers
 
 import (
 	"crypto/rand"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -720,15 +720,19 @@ func PublicLinkPasswordRecoveryRequirements(w http.ResponseWriter, req *http.Req
 		return
 	}
 	runtime := currentSecurityRuntime()
+	available := false
 	requiresRecoveryCode := false
 	if runtime.recovery != nil {
 		var err error
 		requiresRecoveryCode, err = runtime.recovery.PublicLinkRequiresRecoveryCode(input.Token)
-		if err != nil {
-			requiresRecoveryCode = false
+		if err == nil {
+			available = true
 		}
 	}
-	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{"requires_recovery_code": requiresRecoveryCode})
+	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{
+		"available":              available,
+		"requires_recovery_code": requiresRecoveryCode,
+	})
 }
 
 func writePublicRecoveryJSON(w http.ResponseWriter, status int, value any) {

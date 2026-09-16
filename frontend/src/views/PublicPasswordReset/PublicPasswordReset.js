@@ -94,7 +94,7 @@ export function usePage() {
       if (resetToken.value !== token || page.value !== 'reset') {
         return
       }
-      if (!result.ok || !result.data) {
+      if (!result.ok || result.data?.available !== true) {
         errorMessage.value = '恢复链接无效或已失效，请重新申请。'
         return
       }
