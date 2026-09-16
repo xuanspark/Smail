@@ -25,12 +25,10 @@ func MarkRead(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, id := range reqData.IDs {
-		if _, err := detail.GetEmailDetail(ctx, id, true); err != nil {
-			log.WithContext(ctx).WithError(err).Error("mark email read failed")
-			response.NewErrorResponse(response.ServerError, "更新邮件失败", "").FPrint(w)
-			return
-		}
+	if err := detail.MarkEmailsRead(ctx, reqData.IDs); err != nil {
+		log.WithContext(ctx).WithError(err).Error("mark email read failed")
+		response.NewErrorResponse(response.ServerError, "更新邮件失败", "").FPrint(w)
+		return
 	}
 	response.NewSuccessResponse("success").FPrint(w)
 

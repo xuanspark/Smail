@@ -13,6 +13,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	"git.pcux.cn/xuans/Smail/utils/query"
 	"strings"
+	"xorm.io/xorm"
 )
 import . "xorm.io/builder"
 
@@ -100,6 +101,60 @@ func MakeRead(ctx *context.Context, emailID int, read bool) error {
 	}
 	return nil
 }
+
+func MarkEmailsRead(ctx *context.Context, emailIDs []int) error {
+	if ctx == nil || ctx.UserID <= 0 || db.Instance == nil {
+		return errors.New("Not authorized")
+	}
+
+	uniqueIDs := make([]int, 0, len(emailIDs))
+	seenIDs := make(map[int]struct{}, len(emailIDs))
+	for _, emailID := range emailIDs {
+		if emailID <= 0 {
+			return errors.New("invalid email id")
+		}
+		if _, exists := seenIDs[emailID]; exists {
+			continue
+		}
+		seenIDs[emailID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, emailID)
+	}
+	if len(uniqueIDs) == 0 {
+		return errors.New("empty email id list")
+	}
+
+	placeholders, idArgs, ok := query.IntList(uniqueIDs, 10000)
+	if !ok {
+		return errors.New("invalid email id list")
+	}
+
+	return db.Transaction(db.Instance, func(session *xorm.Session) error {
+		var relations []models.UserEmail
+		selectArgs := append([]any{ctx.UserID}, idArgs...)
+		selectSQL := fmt.Sprintf("SELECT id,email_id,is_read FROM user_email WHERE user_id = ? AND email_id IN (%s)", placeholders)
+		if err := session.SQL(selectSQL, selectArgs...).Find(&relations); err != nil {
+			return fmt.Errorf("load email ownership for read update: %w", err)
+		}
+
+		ownedIDs := make(map[int]struct{}, len(relations))
+		for _, relation := range relations {
+			ownedIDs[relation.EmailID] = struct{}{}
+		}
+		for _, emailID := range uniqueIDs {
+			if _, owned := ownedIDs[emailID]; !owned {
+				return fmt.Errorf("email %d is not owned by current user", emailID)
+			}
+		}
+
+		updateArgs := append([]any{ctx.UserID}, idArgs...)
+		updateSQL := fmt.Sprintf("user_id = ? AND email_id IN (%s) AND is_read <> 1", placeholders)
+		if _, err := session.Table("user_email").Where(updateSQL, updateArgs...).Cols("is_read").Update(map[string]any{"is_read": 1}); err != nil {
+			return fmt.Errorf("update email read state: %w", err)
+		}
+		return nil
+	})
+}
+
 func FindUE(ctx *context.Context, groupName string, req list.ImapListReq, uid bool) ([]models.UserEmail, error) {
 	var ue []models.UserEmail
 	if uid {
