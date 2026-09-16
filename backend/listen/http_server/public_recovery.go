@@ -233,12 +233,12 @@ func requestMatchesHTTPSAuthority(r *http.Request, configured string) bool {
 	if r == nil {
 		return false
 	}
-	expectedHost, _, ok := configuredHTTPSAuthority(configured)
+	expectedHost, expectedPort, ok := configuredHTTPSAuthority(configured)
 	if !ok {
 		return false
 	}
-	requestHost, _, ok := normalizeAuthority(r.Host, "443")
-	return ok && requestHost == expectedHost
+	requestHost, requestPort, ok := normalizeAuthority(r.Host, "443")
+	return ok && requestHost == expectedHost && requestPort == expectedPort
 }
 
 func configuredHTTPSAuthority(value string) (string, string, bool) {

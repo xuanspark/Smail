@@ -49,7 +49,7 @@ export function usePage() {
   }
 
   const goForgotPassword = () => {
-    router.push({ name: "forgot-password" })
+    window.location.assign('/public-password-recovery')
   }
 
   return {

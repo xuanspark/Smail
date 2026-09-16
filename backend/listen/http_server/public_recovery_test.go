@@ -63,6 +63,34 @@ func TestPublicRecoveryPageIsServedOnlyFromMailDomain(t *testing.T) {
 	}
 }
 
+func TestPublicRecoveryPageRequiresConfiguredHTTPSPort(t *testing.T) {
+	configurePublicRecoveryRouteTest(t)
+	config.Instance.HttpsPort = 8443
+	handler, err := newPublicRecoveryHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowed := httptest.NewRecorder()
+	handler.ServeHTTP(allowed, publicRecoveryRequest(http.MethodGet, "https://mx.example.com:8443/rest/"))
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("configured HTTPS port returned %d, want %d", allowed.Code, http.StatusOK)
+	}
+
+	for _, target := range []string{
+		"https://mx.example.com/rest/",
+		"https://mx.example.com:9443/rest/",
+	} {
+		t.Run(target, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, target))
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("unexpected recovery page status %d for %q", recorder.Code, target)
+			}
+		})
+	}
+}
+
 func TestPublicRecoveryLoginEntryRedirectsOnlyFromWebDomain(t *testing.T) {
 	configurePublicRecoveryRouteTest(t)
 	handler, err := newPublicRecoveryHandler()
