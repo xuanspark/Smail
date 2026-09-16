@@ -69,6 +69,12 @@ func (s *Service) BeginPublicLink(identifier string) error {
 	}
 	for ticketKey, item := range s.publicTickets {
 		if item.UserID == user.ID {
+			// 正在提交的旧链接优先完成，期间不签发会与其竞争的新链接。
+			// 调用方统一隐藏该结果，因此不会泄露账户或链接状态。
+			if item.Busy {
+				s.mu.Unlock()
+				return ErrRecoveryDenied
+			}
 			delete(s.publicTickets, ticketKey)
 		}
 	}
@@ -87,6 +93,23 @@ func (s *Service) BeginPublicLink(identifier string) error {
 		return fmt.Errorf("deliver public recovery link: %w", err)
 	}
 	return nil
+}
+
+// PublicLinkRequiresRecoveryCode 返回当前一次性链接是否属于管理员。
+// 此方法只为恢复页决定是否展示恢复码字段；令牌必须由收件人持有，且不会返回账号或角色详情。
+func (s *Service) PublicLinkRequiresRecoveryCode(token string) (bool, error) {
+	if s == nil || strings.TrimSpace(token) == "" {
+		return false, ErrInvalidRequest
+	}
+	key := ticketKey(token)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleanupLocked(s.now())
+	item, ok := s.publicTickets[key]
+	if !ok || item.Busy {
+		return false, ErrRecoveryExpired
+	}
+	return item.Role == access.RoleAdmin, nil
 }
 
 // CompletePublicLink 在同一数据库事务中完成管理员恢复码核销、密码更新和旧凭据撤销。

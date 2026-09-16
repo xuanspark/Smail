@@ -703,6 +703,34 @@ func CompletePublicLinkPasswordRecovery(w http.ResponseWriter, req *http.Request
 	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{"reset": true})
 }
 
+// PublicLinkPasswordRecoveryRequirements 只返回恢复页渲染所需的最小信息。
+// 一次性令牌不写入日志，也不返回账户、邮箱或角色名称。
+func PublicLinkPasswordRecoveryRequirements(w http.ResponseWriter, req *http.Request) {
+	if !PublicMailRecoveryEnabled() || req == nil {
+		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"available": false})
+		return
+	}
+	var input struct {
+		Token string `json:"token"`
+	}
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"available": false})
+		return
+	}
+	runtime := currentSecurityRuntime()
+	requiresRecoveryCode := false
+	if runtime.recovery != nil {
+		var err error
+		requiresRecoveryCode, err = runtime.recovery.PublicLinkRequiresRecoveryCode(input.Token)
+		if err != nil {
+			requiresRecoveryCode = false
+		}
+	}
+	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{"requires_recovery_code": requiresRecoveryCode})
+}
+
 func writePublicRecoveryJSON(w http.ResponseWriter, status int, value any) {
 	if w == nil {
 		return
