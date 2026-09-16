@@ -33,9 +33,9 @@ const (
 
 // Service 统一管理密保问题和离线恢复码。
 type Service struct {
-	engine   *xorm.Engine
-	mu       sync.Mutex
-	now      func() time.Time
+	engine    *xorm.Engine
+	mu        sync.Mutex
+	now       func() time.Time
 	vaultRoot string
 }
 
@@ -209,8 +209,35 @@ func (s *Service) ConsumeRecoveryCode(userID int, code string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.consumeRecoveryCode(s.engine, userID, code)
+}
+
+// ConsumeRecoveryCodeWithSession 在调用方已开启的事务中原子核销一枚恢复码。
+// 密码重置等复合安全操作必须使用此方法，避免密码更新失败时恢复码被提前消耗。
+func (s *Service) ConsumeRecoveryCodeWithSession(session *xorm.Session, userID int, code string) error {
+	if s == nil || s.engine == nil || session == nil {
+		return ErrUnavailable
+	}
+	if userID <= 0 {
+		return ErrInvalidUser
+	}
+	code = strings.TrimSpace(strings.ToUpper(code))
+	if len(code) < 12 || len(code) > 64 {
+		return ErrInvalidCode
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.consumeRecoveryCode(session, userID, code)
+}
+
+type recoveryCodeSession interface {
+	Where(queryInterface interface{}, args ...interface{}) *xorm.Session
+	ID(id interface{}) *xorm.Session
+}
+
+func (s *Service) consumeRecoveryCode(session recoveryCodeSession, userID int, code string) error {
 	var items []models.RecoveryCode
-	if err := s.engine.Where("user_id = ? AND used_at IS NULL", userID).Find(&items); err != nil {
+	if err := session.Where("user_id = ? AND used_at IS NULL", userID).Find(&items); err != nil {
 		return fmt.Errorf("load recovery codes: %w", err)
 	}
 	for _, item := range items {
@@ -218,7 +245,7 @@ func (s *Service) ConsumeRecoveryCode(userID int, code string) error {
 			continue
 		}
 		now := s.now()
-		affected, err := s.engine.ID(item.ID).Where("used_at IS NULL").Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now})
+		affected, err := session.ID(item.ID).Where("used_at IS NULL").Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now})
 		if err != nil {
 			return fmt.Errorf("consume recovery code: %w", err)
 		}

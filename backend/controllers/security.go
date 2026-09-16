@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"encoding/hex"
 	"errors"
 	"net"
@@ -40,6 +41,15 @@ func PublicRecoveryEnabled() bool {
 	}
 	hosts := append([]string{current.WebDomain, current.Domain}, current.AccessHosts...)
 	return hasConfiguredRecoveryHost(hosts...)
+}
+
+// PublicMailRecoveryEnabled 仅判断主邮件域名下匿名恢复链接入口是否可用。
+// 旧主站恢复流程仍使用 PublicRecoveryEnabled，以保持原有兼容行为。
+func PublicMailRecoveryEnabled() bool {
+	if !config.IsSetupReady() || !config.CurrentEmailPolicy().ExternalRecoveryEnabled {
+		return false
+	}
+	return hasConfiguredRecoveryHost(config.CurrentMailDomains().Primary)
 }
 
 func hasConfiguredRecoveryHost(values ...string) bool {
@@ -643,6 +653,64 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 	}
 	clearRecoveryBrowserContext(w, req)
 	response.NewSuccessResponse(map[string]any{"reset": true}).FPrint(w)
+}
+
+// BeginPublicLinkPasswordRecovery 是主邮件域名 /rest/ 的无会话恢复入口。
+// 所有申请结果统一返回 accepted，避免泄露账户、邮箱绑定和角色状态。
+func BeginPublicLinkPasswordRecovery(w http.ResponseWriter, req *http.Request) {
+	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{"accepted": true})
+	if !PublicMailRecoveryEnabled() || req == nil {
+		return
+	}
+	var input struct {
+		Identifier string `json:"identifier"`
+	}
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		return
+	}
+	runtime := currentSecurityRuntime()
+	if runtime.recovery == nil {
+		return
+	}
+	// 投递和账户状态异常均保持同样的受理响应，且恢复服务不记录令牌。
+	_ = runtime.recovery.BeginPublicLink(input.Identifier)
+}
+
+// CompletePublicLinkPasswordRecovery 仅消费独立链接票据；不使用主站会话、CSRF 或恢复上下文。
+func CompletePublicLinkPasswordRecovery(w http.ResponseWriter, req *http.Request) {
+	if !PublicMailRecoveryEnabled() || req == nil {
+		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"reset": false})
+		return
+	}
+	var input struct {
+		Token        string `json:"token"`
+		NewPassword  string `json:"new_password"`
+		RecoveryCode string `json:"recovery_code"`
+	}
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"reset": false})
+		return
+	}
+	runtime := currentSecurityRuntime()
+	if runtime.recovery == nil || runtime.recovery.CompletePublicLink(input.Token, input.NewPassword, input.RecoveryCode) != nil {
+		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"reset": false})
+		return
+	}
+	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{"reset": true})
+}
+
+func writePublicRecoveryJSON(w http.ResponseWriter, status int, value any) {
+	if w == nil {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func recoveryBrowserContext(req *http.Request, w http.ResponseWriter, create bool) (string, bool) {

@@ -47,17 +47,19 @@ type WebAuthnVerifier interface {
 }
 
 type Service struct {
-	engine       *xorm.Engine
-	verification *verification.Service
-	external     *externalemail.Repository
-	credentials  *credentials.Service
-	webauthn     WebAuthnVerifier
-	invalidate   func(int, string)
-	mu           sync.Mutex
-	tickets      map[string]ticket
-	emailPending map[string]*emailContinuation
-	decoys       map[string]decoyChallenge
-	now          func() time.Time
+	engine         *xorm.Engine
+	verification   *verification.Service
+	external       *externalemail.Repository
+	credentials    *credentials.Service
+	webauthn       WebAuthnVerifier
+	invalidate     func(int, string)
+	mu             sync.Mutex
+	tickets        map[string]ticket
+	emailPending   map[string]*emailContinuation
+	publicTickets  map[string]*publicTicket
+	publicDelivery PublicLinkDelivery
+	decoys         map[string]decoyChallenge
+	now            func() time.Time
 }
 
 type ticket struct {
@@ -93,7 +95,7 @@ func NewService(engine *xorm.Engine, verify *verification.Service, external *ext
 	}
 	return &Service{
 		engine: engine, verification: verify, external: external, credentials: credential,
-		tickets: make(map[string]ticket), emailPending: make(map[string]*emailContinuation),
+		tickets: make(map[string]ticket), emailPending: make(map[string]*emailContinuation), publicTickets: make(map[string]*publicTicket),
 		decoys: make(map[string]decoyChallenge), now: time.Now,
 	}, nil
 }
@@ -114,6 +116,17 @@ func (s *Service) SetSecurityStateInvalidator(invalidator func(int, string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invalidate = invalidator
+}
+
+// SetPublicLinkDelivery 设置独立公网恢复链接的系统邮件投递器。
+// 投递器只接收目的邮箱和一次性令牌，不得记录令牌或完整链接。
+func (s *Service) SetPublicLinkDelivery(delivery PublicLinkDelivery) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publicDelivery = delivery
 }
 
 func (s *Service) currentWebAuthnVerifier() WebAuthnVerifier {
@@ -471,6 +484,11 @@ func (s *Service) cleanupLocked(now time.Time) {
 			delete(s.emailPending, id)
 		}
 	}
+	for id, item := range s.publicTickets {
+		if !now.Before(item.ExpiresAt) {
+			delete(s.publicTickets, id)
+		}
+	}
 }
 
 func (s *Service) issueDecoyChallenge(account, email string) (string, error) {
@@ -567,6 +585,11 @@ func (s *Service) InvalidateUser(userID int) {
 	for id, item := range s.emailPending {
 		if item.UserID == userID {
 			delete(s.emailPending, id)
+		}
+	}
+	for id, item := range s.publicTickets {
+		if item.UserID == userID {
+			delete(s.publicTickets, id)
 		}
 	}
 }

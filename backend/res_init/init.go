@@ -345,6 +345,7 @@ func startVerificationRuntime() error {
 		return fmt.Errorf("start recovery service: %w", err)
 	}
 	recover.SetWebAuthnVerifier(webAuthnRuntimeService)
+	recover.SetPublicLinkDelivery(newPublicRecoveryLinkDelivery())
 	controllers.ConfigureSecurityRuntime(service, external, recover, credential)
 	credentialService = credential
 	verificationRuntime = runtime

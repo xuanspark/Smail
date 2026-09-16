@@ -3,6 +3,7 @@ package res_init
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -38,11 +39,30 @@ func newVerificationDeliveryWithDependencies(
 			return fmt.Errorf("load verification mail settings: %w", err)
 		}
 		if smtpRelayRequested(runtimeSettings) {
-			return deliverRelay(runtimeSettings, challenge, code)
+			relayErr := deliverRelay(runtimeSettings, challenge, code)
+			if relayErr == nil {
+				return nil
+			}
+			if !smtpRelayComplete(runtimeSettings) {
+				return relayErr
+			}
+			if projectErr := deliverProject(challenge, code); projectErr != nil {
+				return fmt.Errorf("SMTP 中继投递失败且项目自身投递失败: %w", projectErr)
+			}
+			return nil
 		}
 
 		return deliverProject(challenge, code)
 	}
+}
+
+func smtpRelayComplete(settings config.SMTPRuntimeSettings) bool {
+	relay := settings.Relay
+	if strings.TrimSpace(relay.RelayHost) == "" || relay.RelayPort < 1 || relay.RelayPort > 65535 ||
+		strings.TrimSpace(relay.Security) == "" || strings.TrimSpace(relay.From) == "" {
+		return false
+	}
+	return (strings.TrimSpace(relay.Username) == "") == (strings.TrimSpace(settings.Password) == "")
 }
 
 func smtpRelayRequested(settings config.SMTPRuntimeSettings) bool {
@@ -116,4 +136,47 @@ func deliverVerificationWithProjectMail(challenge verification.Challenge, code s
 		return fmt.Errorf("%w: project mail delivery failed", verification.ErrMailDeliveryFailed)
 	}
 	return nil
+}
+
+// newPublicRecoveryLinkDelivery 固定使用项目自身邮件服务，不能走外部 SMTP 中继。
+func newPublicRecoveryLinkDelivery() recovery.PublicLinkDelivery {
+	return func(email, token string) error {
+		domain := strings.TrimSpace(config.CurrentMailDomains().Primary)
+		if domain == "" || strings.TrimSpace(email) == "" || strings.TrimSpace(token) == "" {
+			return verification.ErrProjectMailUnavailable
+		}
+		link, err := publicRecoveryLink(domain, token)
+		if err != nil {
+			return err
+		}
+		messageID, err := parsemail.GenerateMsgID(domain)
+		if err != nil {
+			return fmt.Errorf("generate public recovery message id: %w", err)
+		}
+		sender := &parsemail.User{Name: "Smail 安全中心", EmailAddress: "no-reply@" + domain}
+		message := &parsemail.Email{
+			From: sender, Sender: sender, To: []*parsemail.User{{EmailAddress: email}},
+			Subject: "Smail 密码恢复链接",
+			Text: []byte("您好，您正在恢复 Smail 密码。请在五分钟内打开以下一次性链接完成重置：\r\n" + link + "\r\n\r\n如果并非本人操作，请忽略此邮件。"),
+			MsgID: messageID,
+		}
+		ctx := &appcontext.Context{Context: context.Background(), Values: make(map[string]any)}
+		if deliveryErr, _ := send.SendTriggered(ctx, message, "系统密码恢复链接"); deliveryErr != nil {
+			return fmt.Errorf("%w: project mail delivery failed", verification.ErrMailDeliveryFailed)
+		}
+		return nil
+	}
+}
+
+func publicRecoveryLink(domain, token string) (string, error) {
+	parsed, err := url.Parse("https://" + strings.TrimSpace(domain))
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("invalid primary mail domain")
+	}
+	if port := config.CurrentHTTPConfig().HTTPSPort; port > 0 && port != 443 && parsed.Port() == "" {
+		parsed.Host = parsed.Hostname() + fmt.Sprintf(":%d", port)
+	}
+	parsed.Path = "/rest/"
+	parsed.Fragment = "/reset-password/" + token
+	return parsed.String(), nil
 }
