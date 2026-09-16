@@ -58,7 +58,7 @@
           <el-form-item prop="receivers" class="flex-grow-item m-0 border-less-select">
             <el-select 
               v-model="ruleForm.receivers" 
-              multiple filterable allow-create :reserve-keyword="false" 
+              multiple filterable allow-create default-first-option :reserve-keyword="false"
               placeholder="请输入收件人地址（输入后按回车，或从下方历史联系人选择）"
             >
               <el-option 
@@ -86,7 +86,7 @@
           <el-form-item prop="cc" class="flex-grow-item m-0 border-less-select">
             <el-select 
               v-model="ruleForm.cc" 
-              multiple filterable allow-create :reserve-keyword="false" 
+              multiple filterable allow-create default-first-option :reserve-keyword="false"
               placeholder="请输入抄送人地址"
             >
               <el-option 
@@ -108,7 +108,7 @@
           <el-form-item prop="bcc" class="flex-grow-item m-0 border-less-select">
             <el-select 
               v-model="ruleForm.bcc" 
-              multiple filterable allow-create :reserve-keyword="false" 
+              multiple filterable allow-create default-first-option :reserve-keyword="false"
               placeholder="请输入密送人地址"
             >
               <el-option 

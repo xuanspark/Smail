@@ -1,5 +1,6 @@
 <script setup>
 import {RouterView, useRoute} from 'vue-router'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import HomeHeader from '@/views/components/HomeHeader/HomeHeader.vue'
 import HomeAside from '@/views/components/HomeAside/HomeAside.vue';
 import SecuritySetupPrompt from '@/views/components/SecuritySetupPrompt/SecuritySetupPrompt.vue'
@@ -23,6 +24,7 @@ watch(
 </script>
 
 <template>
+  <el-config-provider :locale="zhCn">
   <StartupStatus v-if="showStartupStatus" />
   <div v-else id="main">
     <HomeHeader v-if="!standalonePages.includes(pageName)"/>
@@ -56,6 +58,7 @@ watch(
       <SecuritySetupPrompt v-if="!standalonePages.includes(pageName)" />
     </div>
   </div>
+  </el-config-provider>
 </template>
 
 
