@@ -283,8 +283,8 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				"object": domain.mxHost + ":25",
 			}).Infof("SMTP 25 端口 STARTTLS 投递失败: %s", err.Error())
 
-			// 再试用587投递
-			err = smtp.SendMailWithTls(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":587", nil, from, fromDomain, buildAddress(tos), data)
+			// 587 使用 STARTTLS，只有 465 使用隐式 TLS。
+			err = smtp.SendMail(strings.TrimSuffix(domain.mxHost, "."), domain.mxHost+":587", nil, from, fromDomain, buildAddress(tos), data)
 			if err == nil {
 				accepted.Add(int64(len(tos)))
 				return

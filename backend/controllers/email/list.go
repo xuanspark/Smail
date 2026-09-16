@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strings"
 
+	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/dto/response"
-	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/list"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -31,17 +31,18 @@ type emailListResponse struct {
 }
 
 type emilItem struct {
-	ID           int    `json:"id"`
-	Title        string `json:"title"`
-	Desc         string `json:"desc"`
-	Datetime     string `json:"datetime"`
-	IsRead       bool   `json:"is_read"`
-	Sender       User   `json:"sender"`
-	To           []User `json:"to"`
-	Dangerous    bool   `json:"dangerous"`
-	IsTrusted    bool   `json:"is_trusted"`
-	IsBlacklisted bool  `json:"is_blacklisted"`
-	Error        string `json:"error"`
+	ID            int    `json:"id"`
+	Title         string `json:"title"`
+	Desc          string `json:"desc"`
+	Datetime      string `json:"datetime"`
+	IsRead        bool   `json:"is_read"`
+	Sender        User   `json:"sender"`
+	To            []User `json:"to"`
+	Dangerous     bool   `json:"dangerous"`
+	IsTrusted     bool   `json:"is_trusted"`
+	IsBlacklisted bool   `json:"is_blacklisted"`
+	Error         string `json:"error"`
+	Status        int8   `json:"status"`
 }
 
 type User struct {
@@ -138,6 +139,7 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			IsTrusted:     isTrusted,
 			IsBlacklisted: isBlacklisted,
 			Error:         email.Error.String,
+			Status:        email.Status,
 		})
 	}
 

@@ -37,7 +37,7 @@ const lang = {
     "only_prefix": "只需要邮箱前缀",
     "err_email_format": "邮箱地址错误，请检查邮箱格式！",
     "err_title_must": "标题必填！",
-    "succ_send": "发送成功!",
+    "succ_send": "邮件已提交，正在投递",
     "outbox": "发件箱",
     "modify_pwd": "修改密码",
     "enter_again": "确认密码",

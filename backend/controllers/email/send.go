@@ -245,32 +245,12 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		SendUserID:   ctx.UserID,
 		SendDate:     now,
 		CronSendTime: now,
-		Status:       consts.EmailStatusSent,
+		Status:       consts.EmailStatusDeliveryPending,
 		CreateTime:   now,
 		MsgID:        msgID,
 	}
 
-	err = db.Transaction(db.Instance, func(session *xorm.Session) error {
-		candidate := modelEmail
-		candidate.Id = 0
-		if _, insertErr := session.Insert(&candidate); insertErr != nil {
-			return insertErr
-		}
-		if candidate.Id <= 0 {
-			return fmt.Errorf("insert outgoing email returned no identifier")
-		}
-		relation := models.UserEmail{
-			UserID:  ctx.UserID,
-			EmailID: candidate.Id,
-			Status:  consts.EmailStatusSent,
-			IsRead:  1,
-		}
-		if _, insertErr := session.Insert(&relation); insertErr != nil {
-			return insertErr
-		}
-		modelEmail = candidate
-		return nil
-	})
+	err = persistOutgoingEmail(db.Instance, ctx.UserID, &modelEmail)
 
 	if err != nil || modelEmail.Id <= 0 {
 		if err != nil {
@@ -282,7 +262,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// ??????????????????
+	// 邮件持久化成功后再记录联系人。
 	var contactList []models.UserContact
 	for _, recipient := range append(append(e.To, e.Cc...), e.Bcc...) {
 		if recipient != nil && recipient.EmailAddress != "" {
@@ -345,6 +325,31 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}, nil)
 
 	response.NewSuccessResponse(i18n.GetText(ctx.Lang, "succ")).FPrint(w)
+}
+
+func persistOutgoingEmail(engine *xorm.Engine, userID int, email *models.Email) error {
+	return db.Transaction(engine, func(session *xorm.Session) error {
+		candidate := *email
+		candidate.Id = 0
+		candidate.Status = consts.EmailStatusDeliveryPending
+		if _, err := session.Insert(&candidate); err != nil {
+			return err
+		}
+		if candidate.Id <= 0 {
+			return fmt.Errorf("insert outgoing email returned no identifier")
+		}
+		relation := models.UserEmail{
+			UserID:  userID,
+			EmailID: candidate.Id,
+			Status:  consts.EmailStatusDeliveryPending,
+			IsRead:  1,
+		}
+		if _, err := session.Insert(&relation); err != nil {
+			return err
+		}
+		*email = candidate
+		return nil
+	})
 }
 
 func decodeAttachment(data string) (string, []byte, error) {

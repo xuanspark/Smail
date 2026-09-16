@@ -78,14 +78,18 @@
                   </el-tooltip>
                   
                   <template v-if="isOutbox">
-                    <el-tag type="success" effect="light" size="small" v-if="!scope.row.error || scope.row.error === ''">
+                    <el-tag type="warning" effect="light" size="small" v-if="scope.row.status === 6">
+                      待投递
+                    </el-tag>
+                    <el-tag type="success" effect="light" size="small" v-else-if="scope.row.status === 1 && !scope.row.error">
                       <el-icon><Check /></el-icon> 发送成功
                     </el-tag>
-                    <el-tooltip :content="scope.row.error" placement="top" v-else>
+                    <el-tooltip :content="scope.row.error || '未知投递错误'" placement="top" v-else-if="scope.row.status === 2 || scope.row.error">
                       <el-tag type="danger" effect="light" size="small" class="clickable-tag" @click.stop="showError(scope.row)">
                         <el-icon><Warning /></el-icon> 发送失败 (查看详情)
                       </el-tag>
                     </el-tooltip>
+                    <el-tag type="info" effect="light" size="small" v-else>状态未确认</el-tag>
                   </template>
                 </div>
 
