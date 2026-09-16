@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
@@ -27,12 +28,20 @@ func TestProtocolClientHandlersIsolateEveryRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	previousDB, previousRuntime := db.Instance, currentSecurityRuntime()
+	previousConfig, previousManager := config.Instance, config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{Domain: "example.com", Domains: []string{"example.com"}}
 	t.Cleanup(func() {
 		ConfigureSecurityRuntime(previousRuntime.verification, previousRuntime.external, previousRuntime.recovery, previousRuntime.credentials)
+		config.Instance = previousConfig
+		config.SetRuntimeManager(previousManager)
 		db.Instance = previousDB
 		_ = engine.Close()
 	})
-	if err := engine.Sync2(&models.User{}, &models.UserEmail{}, &models.ProtocolCredential{}); err != nil {
+	if _, err := auth.NormalizeProtocolIdentifier("actor0@example.com"); err != nil {
+		t.Fatalf("测试邮件域名未生效：%v", err)
+	}
+	if err := engine.Sync2(&models.User{}, &models.UserEmail{}, &models.ProtocolCredential{}, &models.ClientCredential{}); err != nil {
 		t.Fatal(err)
 	}
 	db.Instance = engine
@@ -113,8 +122,16 @@ func TestProtocolClientHandlersIsolateEveryRole(t *testing.T) {
 					got, err := auth.AuthenticateProtocol(protocol, "192.0.2.231:12345", user.Account+"@example.com", plain)
 					return err == nil && got != nil && got.ID == user.ID
 				}
-				if !login(code) || login("WebOnly42") {
-					t.Fatal("协议认证未正确区分授权码与网页登录密码")
+				if !login(code) {
+					t.Fatalf("%s 拒绝了当前用户的有效协议授权码", protocol)
+				}
+				if login("WebOnly42") {
+					t.Fatalf("%s 错误接受了网页登录密码", protocol)
+				}
+				for _, identifier := range []string{user.Account, user.Account + "@external.example"} {
+					if _, err := auth.AuthenticateProtocol(protocol, "192.0.2.232:12345", identifier, code); err == nil {
+						t.Fatalf("%s 错误接受了短账号或未配置域名", protocol)
+					}
 				}
 				listed := call(ListProtocolCredentials, http.MethodGet, "")
 				mustSucceed(listed)
