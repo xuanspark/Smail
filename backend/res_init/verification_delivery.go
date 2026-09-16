@@ -142,24 +142,25 @@ func deliverVerificationWithProjectMail(challenge verification.Challenge, code s
 // newPublicRecoveryLinkDelivery 固定使用项目自身邮件服务，不能走外部 SMTP 中继。
 func newPublicRecoveryLinkDelivery() recovery.PublicLinkDelivery {
 	return func(email, token string) error {
-		domain := strings.TrimSpace(config.CurrentMailDomains().Primary)
-		if domain == "" || strings.TrimSpace(email) == "" || strings.TrimSpace(token) == "" {
+		mailDomain := strings.TrimSpace(config.CurrentMailDomains().Primary)
+		webDomain := strings.TrimSpace(config.CurrentWebDomain())
+		if mailDomain == "" || webDomain == "" || strings.TrimSpace(email) == "" || strings.TrimSpace(token) == "" {
 			return verification.ErrProjectMailUnavailable
 		}
-		link, err := publicRecoveryLink(domain, token)
+		link, err := publicRecoveryLink(webDomain, token)
 		if err != nil {
 			return err
 		}
-		messageID, err := parsemail.GenerateMsgID(domain)
+		messageID, err := parsemail.GenerateMsgID(mailDomain)
 		if err != nil {
 			return fmt.Errorf("generate public recovery message id: %w", err)
 		}
-		sender := &parsemail.User{Name: "Smail 安全中心", EmailAddress: "no-reply@" + domain}
+		sender := &parsemail.User{Name: "Smail 安全中心", EmailAddress: "no-reply@" + mailDomain}
 		message := &parsemail.Email{
 			From: sender, Sender: sender, To: []*parsemail.User{{EmailAddress: email}},
 			Subject: "Smail 密码恢复链接",
-			Text: []byte("您好，您正在恢复 Smail 密码。请在五分钟内打开以下一次性链接完成重置：\r\n" + link + "\r\n\r\n如果并非本人操作，请忽略此邮件。"),
-			MsgID: messageID,
+			Text:    []byte("您好，您正在恢复 Smail 密码。请在五分钟内打开以下一次性链接完成重置：\r\n" + link + "\r\n\r\n如果并非本人操作，请忽略此邮件。"),
+			MsgID:   messageID,
 		}
 		ctx := &appcontext.Context{Context: context.Background(), Values: make(map[string]any)}
 		if deliveryErr, _ := send.SendTriggered(ctx, message, "系统密码恢复链接"); deliveryErr != nil {
@@ -169,10 +170,10 @@ func newPublicRecoveryLinkDelivery() recovery.PublicLinkDelivery {
 	}
 }
 
-func publicRecoveryLink(domain, token string) (string, error) {
-	parsed, err := url.Parse("https://" + strings.TrimSpace(domain))
+func publicRecoveryLink(webDomain, token string) (string, error) {
+	parsed, err := url.Parse("https://" + strings.TrimSpace(webDomain))
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", fmt.Errorf("invalid primary mail domain")
+		return "", fmt.Errorf("invalid web domain")
 	}
 	if port := config.CurrentHTTPConfig().HTTPSPort; port > 0 && port != 443 && parsed.Port() == "" {
 		parsed.Host = parsed.Hostname() + fmt.Sprintf(":%d", port)

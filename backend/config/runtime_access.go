@@ -133,8 +133,8 @@ func CurrentWebDomain() string {
 	return cfg.WebDomain
 }
 
-// CurrentAdminRecoveryDomain 返回超级管理员本机恢复通道的部署标识域名。
-// 此值不用于提供公网重置路由；未配置时沿用主邮件域名。
+// CurrentAdminRecoveryDomain 仅用于读取旧配置。
+// 公网一次性恢复入口统一使用 CurrentWebDomain，不再使用独立恢复域名。
 func CurrentAdminRecoveryDomain() string {
 	if manager := CurrentManager(); manager != nil {
 		runtime := manager.Snapshot()

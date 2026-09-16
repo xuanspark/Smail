@@ -53,7 +53,7 @@ func (h *publicRecoveryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !isPublicRecoveryMailHost(r) {
+	if !isPublicRecoveryWebHost(r) {
 		http.NotFound(w, r)
 		return
 	}
@@ -133,7 +133,7 @@ func publicRecoveryOrSessionHandler(publicRecovery, mainSite http.Handler) http.
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := normalizedPublicRecoveryPath(r.URL.Path)
 		if path == "/public-password-recovery" || isPublicRecoveryReservedPath(path) ||
-			(isPublicRecoveryMailHost(r) && isPublicRecoveryAssetPath(path)) {
+			(controllers.PublicMailRecoveryEnabled() && isPublicRecoveryWebHost(r) && isPublicRecoveryAssetPath(path)) {
 			publicRecovery.ServeHTTP(w, r)
 			return
 		}
@@ -213,7 +213,7 @@ func isPublicRecoveryOrigin(value string) bool {
 	if err != nil || u.User != nil || !strings.EqualFold(u.Scheme, "https") || u.Host == "" {
 		return false
 	}
-	expectedHost, expectedPort, ok := configuredHTTPSAuthority(config.CurrentMailDomains().Primary)
+	expectedHost, expectedPort, ok := configuredHTTPSAuthority(config.CurrentWebDomain())
 	if !ok {
 		return false
 	}
@@ -221,8 +221,8 @@ func isPublicRecoveryOrigin(value string) bool {
 	return ok && originHost == expectedHost && originPort == expectedPort
 }
 
-func isPublicRecoveryMailHost(r *http.Request) bool {
-	return requestMatchesHTTPSAuthority(r, config.CurrentMailDomains().Primary)
+func isPublicRecoveryWebHost(r *http.Request) bool {
+	return requestMatchesHTTPSAuthority(r, config.CurrentWebDomain())
 }
 
 func isCurrentWebHost(r *http.Request) bool {
@@ -255,7 +255,7 @@ func currentHTTPSPort() int {
 }
 
 func publicRecoveryBaseURL() (string, bool) {
-	return configuredHTTPSURL(config.CurrentMailDomains().Primary, "/rest/", "")
+	return configuredHTTPSURL(config.CurrentWebDomain(), "/rest/", "")
 }
 
 func publicRecoveryLoginURL() (string, bool) {

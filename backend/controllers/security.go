@@ -43,13 +43,13 @@ func PublicRecoveryEnabled() bool {
 	return hasConfiguredRecoveryHost(hosts...)
 }
 
-// PublicMailRecoveryEnabled 仅判断主邮件域名下匿名恢复链接入口是否可用。
+// PublicMailRecoveryEnabled 仅判断 Web 域名下匿名恢复链接入口是否可用。
 // 旧主站恢复流程仍使用 PublicRecoveryEnabled，以保持原有兼容行为。
 func PublicMailRecoveryEnabled() bool {
 	if !config.IsSetupReady() || !config.CurrentEmailPolicy().ExternalRecoveryEnabled {
 		return false
 	}
-	return hasConfiguredRecoveryHost(config.CurrentMailDomains().Primary)
+	return hasConfiguredRecoveryHost(config.CurrentWebDomain())
 }
 
 func hasConfiguredRecoveryHost(values ...string) bool {
@@ -655,7 +655,7 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 	response.NewSuccessResponse(map[string]any{"reset": true}).FPrint(w)
 }
 
-// BeginPublicLinkPasswordRecovery 是主邮件域名 /rest/ 的无会话恢复入口。
+// BeginPublicLinkPasswordRecovery 是 Web 域名 /rest/ 的无会话恢复入口。
 // 所有申请结果统一返回 accepted，避免泄露账户、邮箱绑定和角色状态。
 func BeginPublicLinkPasswordRecovery(w http.ResponseWriter, req *http.Request) {
 	writePublicRecoveryJSON(w, http.StatusOK, map[string]bool{"accepted": true})

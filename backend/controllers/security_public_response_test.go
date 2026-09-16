@@ -121,7 +121,7 @@ func enablePublicRecoveryForTest(t *testing.T) {
 
 func invokePublicLinkRequirements(t *testing.T, token string) (int, map[string]bool, http.Header) {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "https://mail.example.com/rest/api/recovery/requirements", strings.NewReader(`{"token":"`+token+`"}`))
+	request := httptest.NewRequest(http.MethodPost, "https://web.example.com/rest/api/recovery/requirements", strings.NewReader(`{"token":"`+token+`"}`))
 	recorder := httptest.NewRecorder()
 	PublicLinkPasswordRecoveryRequirements(recorder, request)
 	result := map[string]bool{}

@@ -191,9 +191,9 @@ func TestValidateSSLMaterialRejectsDomainExpiryAndWeakKeys(t *testing.T) {
 	}
 }
 
-func TestSSLCertificateDomainsIncludesConfiguredAdminRecoveryDomain(t *testing.T) {
-	domains := SSLCertificateDomains("example.com", "mail.example.com", []string{"example.com"}, "recovery.example.com")
-	for _, want := range []string{"example.com", "mail.example.com", "recovery.example.com", "smtp.example.com", "imap.example.com", "pop.example.com"} {
+func TestSSLCertificateDomainsIncludesWebAndMailServiceDomains(t *testing.T) {
+	domains := SSLCertificateDomains("example.com", "mail.example.com", []string{"example.com"})
+	for _, want := range []string{"example.com", "mail.example.com", "smtp.example.com", "imap.example.com", "pop.example.com"} {
 		found := false
 		for _, got := range domains {
 			if got == want {

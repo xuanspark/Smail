@@ -74,3 +74,16 @@ func TestVerificationDeliveryPreservesSettingsError(t *testing.T) {
 		t.Fatalf("error = %v, want wrapped settings error", err)
 	}
 }
+
+func TestPublicRecoveryLinkUsesWebDomain(t *testing.T) {
+	link, err := publicRecoveryLink("web.example.com", "one-time-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link != "https://web.example.com/rest/#/reset-password/one-time-token" {
+		t.Fatalf("public recovery link = %q", link)
+	}
+	if _, err := publicRecoveryLink("https://web.example.com/path", "one-time-token"); err == nil {
+		t.Fatal("invalid web domain was accepted")
+	}
+}

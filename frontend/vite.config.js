@@ -52,7 +52,6 @@ export default defineConfig(({ mode, command }) => {
   const developmentTLS = command === 'serve' ? readDevelopmentTLS() : undefined
   const runtime = developmentTLS?.runtime
   const backendOrigin = runtime?.origin
-  const publicRecoveryOrigin = runtime?.mailOrigin
   const frontendOrigin = runtime?.origin
 
   return {
@@ -81,9 +80,9 @@ export default defineConfig(({ mode, command }) => {
       cors: true,
       proxy: {
         "/api": developmentBackendProxy(backendUrl, backendOrigin),
-        // 匿名恢复入口由后端按 Web 域名计算跳转，恢复 API 则必须保持主邮件域名的同源校验。
+        // 匿名恢复页面与恢复 API 均复用 Web 域名和现有 HTTPS 证书。
         "/public-password-recovery": developmentBackendProxy(backendUrl, backendOrigin),
-        "/rest/api/recovery": developmentBackendProxy(backendUrl, publicRecoveryOrigin),
+        "/rest/api/recovery": developmentBackendProxy(backendUrl, backendOrigin),
         "/attachments": {
           target: backendUrl,
           changeOrigin: true,

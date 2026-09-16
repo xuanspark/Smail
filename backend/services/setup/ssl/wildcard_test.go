@@ -52,18 +52,17 @@ func TestWildcardCertificateDomains(t *testing.T) {
 
 func TestCertificateDomainsFollowChallengeMode(t *testing.T) {
 	cfg := &config.Config{
-		Domain:              "xuans.com",
-		WebDomain:           "web.xuans.com",
-		AdminRecoveryDomain: "recovery.xuans.com",
-		Domains:             []string{"xuans.com"},
+		Domain:    "xuans.com",
+		WebDomain: "web.xuans.com",
+		Domains:   []string{"xuans.com"},
 	}
 
 	cfg.SSLType = config.SSLTypeAutoHTTP
 	httpDomains := certificateDomains(cfg)
-	if len(httpDomains) != 6 {
-		t.Fatalf("got %d HTTP domains, want 6: %v", len(httpDomains), httpDomains)
+	if len(httpDomains) != 5 {
+		t.Fatalf("got %d HTTP domains, want 5: %v", len(httpDomains), httpDomains)
 	}
-	if httpDomains[0] != "web.xuans.com" || httpDomains[1] != "xuans.com" || httpDomains[2] != "recovery.xuans.com" {
+	if httpDomains[0] != "web.xuans.com" || httpDomains[1] != "xuans.com" || httpDomains[2] != "smtp.xuans.com" {
 		t.Fatalf("unexpected HTTP domains: %v", httpDomains)
 	}
 
@@ -74,7 +73,7 @@ func TestCertificateDomainsFollowChallengeMode(t *testing.T) {
 	}
 }
 
-func TestDNSWildcardRejectsUncoveredAdminRecoveryDomain(t *testing.T) {
+func TestDNSWildcardIgnoresLegacyAdminRecoveryDomain(t *testing.T) {
 	base := &config.Config{
 		Domain:              "example.com",
 		WebDomain:           "mail.example.com",
@@ -83,13 +82,13 @@ func TestDNSWildcardRejectsUncoveredAdminRecoveryDomain(t *testing.T) {
 		AdminRecoveryDomain: "recovery.example.com",
 	}
 	if err := validateWildcardConfiguration(base); err != nil {
-		t.Fatalf("covered recovery domain was rejected: %v", err)
+		t.Fatalf("legacy recovery domain changed wildcard validation: %v", err)
 	}
 	for _, value := range []string{"example.com", "a.recovery.example.com", "recovery.other.example"} {
 		candidate := *base
 		candidate.AdminRecoveryDomain = value
-		if err := validateWildcardConfiguration(&candidate); err == nil {
-			t.Fatalf("uncovered recovery domain %q was accepted", value)
+		if err := validateWildcardConfiguration(&candidate); err != nil {
+			t.Fatalf("legacy recovery domain %q changed wildcard validation: %v", value, err)
 		}
 	}
 }

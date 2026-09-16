@@ -306,7 +306,7 @@ func sslDomains(cfg *config.Config) []string {
 	if cfg == nil {
 		return nil
 	}
-	return config.SSLCertificateDomains(cfg.Domain, cfg.WebDomain, cfg.Domains, cfg.AdminRecoveryDomain)
+	return config.SSLCertificateDomains(cfg.Domain, cfg.WebDomain, cfg.Domains)
 }
 
 func certificateMatchesConfiguredDomains(cert *x509.Certificate, cfg *config.Config) bool {
@@ -342,9 +342,6 @@ func validateWildcardConfiguration(cfg *config.Config) error {
 	}
 	if cfg.WebDomain != "" && !covered(cfg.WebDomain) {
 		return newUserCertificateError("Web 域名必须是主域名的一级子域名，泛域名证书不覆盖根域名或多级子域名")
-	}
-	if cfg.AdminRecoveryDomain != "" && !covered(cfg.AdminRecoveryDomain) {
-		return newUserCertificateError("超级管理员恢复域名必须是主邮件域名的一级子域名，才能由 DNS 泛域名证书覆盖")
 	}
 	for _, domain := range cfg.Domains {
 		if !covered("smtp."+domain) || !covered("imap."+domain) || !covered("pop."+domain) {

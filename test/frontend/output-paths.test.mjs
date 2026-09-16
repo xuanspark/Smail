@@ -45,7 +45,8 @@ test('前端入口按需加载 Element Plus，并延迟设置页和写信编辑�
 test('开发服务器将匿名恢复入口和接口安全转发到后端', async () => {
   const vite = await read('frontend/vite.config.js')
   assert.match(vite, /"\/public-password-recovery": developmentBackendProxy\(backendUrl, backendOrigin\)/)
-  assert.match(vite, /"\/rest\/api\/recovery": developmentBackendProxy\(backendUrl, publicRecoveryOrigin\)/)
+  assert.match(vite, /"\/rest\/api\/recovery": developmentBackendProxy\(backendUrl, backendOrigin\)/)
+  assert.doesNotMatch(vite, /publicRecoveryOrigin|mailOrigin/)
 })
 
 test('开发启动必须固定运行配置根目录并集中保存日志', async () => {

@@ -38,7 +38,7 @@ func publicRecoveryRequest(method, target string) *http.Request {
 	return request
 }
 
-func TestPublicRecoveryPageIsServedOnlyFromMailDomain(t *testing.T) {
+func TestPublicRecoveryPageIsServedOnlyFromWebDomain(t *testing.T) {
 	configurePublicRecoveryRouteTest(t)
 	handler, err := newPublicRecoveryHandler()
 	if err != nil {
@@ -46,9 +46,9 @@ func TestPublicRecoveryPageIsServedOnlyFromMailDomain(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://mx.example.com/rest/"))
+	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://web.example.com/rest/"))
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("mail recovery page returned %d", recorder.Code)
+		t.Fatalf("web recovery page returned %d", recorder.Code)
 	}
 	if !strings.Contains(recorder.Body.String(), `data-login-url="https://web.example.com/#/login"`) {
 		t.Fatal("mail recovery page did not contain the configured web login URL")
@@ -58,9 +58,9 @@ func TestPublicRecoveryPageIsServedOnlyFromMailDomain(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://web.example.com/rest/"))
+	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://mx.example.com/rest/"))
 	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("web domain recovery page returned %d, want 404", recorder.Code)
+		t.Fatalf("mail domain recovery page returned %d, want 404", recorder.Code)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestPublicRecoveryServesUnderscorePrefixedBuildAssets(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	request := publicRecoveryRequest(http.MethodGet, "https://mx.example.com/"+matches[0])
+	request := publicRecoveryRequest(http.MethodGet, "https://web.example.com/"+matches[0])
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("underscore-prefixed asset returned %d, want %d", recorder.Code, http.StatusOK)
@@ -100,14 +100,14 @@ func TestPublicRecoveryPageRequiresConfiguredHTTPSPort(t *testing.T) {
 	}
 
 	allowed := httptest.NewRecorder()
-	handler.ServeHTTP(allowed, publicRecoveryRequest(http.MethodGet, "https://mx.example.com:8443/rest/"))
+	handler.ServeHTTP(allowed, publicRecoveryRequest(http.MethodGet, "https://web.example.com:8443/rest/"))
 	if allowed.Code != http.StatusOK {
 		t.Fatalf("configured HTTPS port returned %d, want %d", allowed.Code, http.StatusOK)
 	}
 
 	for _, target := range []string{
-		"https://mx.example.com/rest/",
-		"https://mx.example.com:9443/rest/",
+		"https://web.example.com/rest/",
+		"https://web.example.com:9443/rest/",
 	} {
 		t.Run(target, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func TestPublicRecoveryLoginEntryRedirectsOnlyFromWebDomain(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://web.example.com/public-password-recovery"))
-	if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "https://mx.example.com/rest/" {
+	if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "https://web.example.com/rest/" {
 		t.Fatalf("unexpected login entry redirect: status=%d location=%q", recorder.Code, recorder.Header().Get("Location"))
 	}
 
@@ -158,7 +158,7 @@ func TestPublicRecoveryAPIRejectsCookiesAndCrossSiteRequests(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			request := publicRecoveryRequest(http.MethodPost, "https://mx.example.com/rest/api/recovery/begin")
+			request := publicRecoveryRequest(http.MethodPost, "https://web.example.com/rest/api/recovery/begin")
 			request.Header.Set("Content-Type", "application/json")
 			test.prepare(request)
 			recorder := httptest.NewRecorder()
@@ -182,7 +182,7 @@ func TestPublicRecoveryAPIUsesNoMainSessionHandler(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	request := publicRecoveryRequest(http.MethodPost, "https://mx.example.com/rest/api/recovery/begin")
+	request := publicRecoveryRequest(http.MethodPost, "https://web.example.com/rest/api/recovery/begin")
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -207,8 +207,56 @@ func TestPublicRecoveryStaticAssetsBypassMainSessionHandler(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://mx.example.com/smail-logo.png"))
+	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://web.example.com/smail-logo.png"))
 	if recorder.Code != http.StatusOK || mainCalls != 0 {
 		t.Fatalf("public recovery asset used main handler: status=%d calls=%d", recorder.Code, mainCalls)
+	}
+}
+
+func TestPublicRecoveryDoesNotInterceptUnrelatedMainSitePaths(t *testing.T) {
+	configurePublicRecoveryRouteTest(t)
+	publicRecovery, err := newPublicRecoveryHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainCalls := 0
+	handler := publicRecoveryOrSessionHandler(publicRecovery, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mainCalls++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	for _, target := range []string{
+		"https://web.example.com/",
+		"https://web.example.com/api/v1/user/info",
+		"https://mx.example.com/assets/main.js",
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, target))
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("unrelated path %q returned %d, want %d", target, recorder.Code, http.StatusNoContent)
+		}
+	}
+	if mainCalls != 3 {
+		t.Fatalf("main handler calls = %d, want 3", mainCalls)
+	}
+}
+
+func TestDisabledPublicRecoveryAssetsUseMainSite(t *testing.T) {
+	configurePublicRecoveryRouteTest(t)
+	config.Instance.ExternalRecoveryEnabled = false
+	publicRecovery, err := newPublicRecoveryHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainCalls := 0
+	handler := publicRecoveryOrSessionHandler(publicRecovery, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mainCalls++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, "https://web.example.com/smail-logo.png"))
+	if recorder.Code != http.StatusNoContent || mainCalls != 1 {
+		t.Fatalf("disabled recovery intercepted main asset: status=%d calls=%d", recorder.Code, mainCalls)
 	}
 }
