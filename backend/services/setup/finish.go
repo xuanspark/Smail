@@ -40,7 +40,7 @@ func Finish() error {
 		cfg.LoginPolicy = "new_device"
 	}
 
-	err = config.WriteConfig(cfg)
+	err = config.FinalizeSetupConfig(cfg)
 	if err != nil {
 		return errors.Wrap(err)
 	}

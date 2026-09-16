@@ -20,6 +20,10 @@ func TestFinishPersistsServicePorts(t *testing.T) {
 	if err := config.WriteConfig(&config.Config{
 		SetupState:   config.SetupStateBootstrap,
 		HttpsEnabled: 1,
+		Domain:       "example.com",
+		WebDomain:    "mail.example.com",
+		DbType:       config.DBTypeSQLite,
+		DbDSN:        filepath.Join(config.ROOT_PATH, "data", "smail.db"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +43,14 @@ func TestFinishPersistsServicePorts(t *testing.T) {
 	}
 	if !loaded.VerificationEnabled || !loaded.ExternalRecoveryEnabled || loaded.LoginPolicy != "new_device" {
 		t.Fatalf("security defaults = verification %t, recovery %t, policy %q", loaded.VerificationEnabled, loaded.ExternalRecoveryEnabled, loaded.LoginPolicy)
+	}
+	for _, name := range []string{"config.json", "email.json", "smtp.json", "ssl.json", "plugins.json"} {
+		if _, err := os.Stat(filepath.Join(config.ROOT_PATH, "config", name)); err != nil {
+			t.Fatalf("partition %s: %v", name, err)
+		}
+	}
+	if err := Finish(); err != nil {
+		t.Fatalf("repeated completion failed: %v", err)
 	}
 }
 
@@ -75,6 +87,10 @@ func TestFinishRepairsReadyConfigWithMissingPorts(t *testing.T) {
 		SetupState:   config.SetupStateReady,
 		IsInit:       true,
 		HttpsEnabled: 1,
+		Domain:       "example.com",
+		WebDomain:    "mail.example.com",
+		DbType:       config.DBTypeSQLite,
+		DbDSN:        filepath.Join(config.ROOT_PATH, "data", "smail.db"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +117,10 @@ func TestFinishKeepsInternalHTTPSDisabledInProxyMode(t *testing.T) {
 		TLSMode:      config.HTTPSTLSModeProxy,
 		HttpsPort:    9443,
 		HttpsEnabled: 1,
+		Domain:       "example.com",
+		WebDomain:    "mail.example.com",
+		DbType:       config.DBTypeSQLite,
+		DbDSN:        filepath.Join(config.ROOT_PATH, "data", "smail.db"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +134,35 @@ func TestFinishKeepsInternalHTTPSDisabledInProxyMode(t *testing.T) {
 	}
 	if loaded.HttpPort != 9001 || loaded.HttpsPort != 0 || loaded.HttpsEnabled != 2 {
 		t.Fatalf("proxy config = HTTP %d, HTTPS %d, enabled %d", loaded.HttpPort, loaded.HttpsPort, loaded.HttpsEnabled)
+	}
+}
+
+func TestFinishRejectsInvalidConfigBeforeReady(t *testing.T) {
+	prepareFinishConfigTest(t)
+	if err := config.WriteConfig(&config.Config{
+		SetupState: config.SetupStateBootstrap,
+		DbType:     config.DBTypeSQLite,
+		DbDSN:      filepath.Join(config.ROOT_PATH, "data", "smail.db"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Finish(); err == nil {
+		t.Fatal("missing domains must prevent setup completion")
+	}
+	loaded, err := config.ReadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.IsSetupReady() || loaded.IsInit || config.IsSetupReady() {
+		t.Fatal("failed completion published ready state")
+	}
+	loaded.Domain = "example.com"
+	loaded.WebDomain = "mail.example.com"
+	if err := config.WriteConfig(loaded); err != nil {
+		t.Fatal(err)
+	}
+	if err := Finish(); err != nil {
+		t.Fatalf("corrected setup cannot retry: %v", err)
 	}
 }
 

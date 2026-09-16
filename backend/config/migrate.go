@@ -149,6 +149,10 @@ func PlanLegacyMigration(root string, _ RuntimeValidationOptions) (LegacyMigrati
 	return plan, nil
 }
 func MigrateLegacyConfig(root string, options RuntimeValidationOptions) (LegacyMigrationResult, error) {
+	return migrateLegacyConfig(root, options, false)
+}
+
+func migrateLegacyConfig(root string, options RuntimeValidationOptions, completeSetup bool) (LegacyMigrationResult, error) {
 	plan, err := PlanLegacyMigration(root, options)
 	if err != nil {
 		return LegacyMigrationResult{}, err
@@ -167,6 +171,10 @@ func MigrateLegacyConfig(root string, options RuntimeValidationOptions) (LegacyM
 	var legacy legacyMigrationConfig
 	if err := json.Unmarshal(legacyData, &legacy); err != nil {
 		return LegacyMigrationResult{}, err
+	}
+	if completeSetup {
+		legacy.SetupState = SetupStateReady
+		legacy.IsInit = true
 	}
 	runtime, manualFields, err := legacyRuntimeConfig(root, legacy)
 	if err != nil {
