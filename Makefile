@@ -1,7 +1,7 @@
 SMAIL_VERSION ?= $(shell git describe --tags --always --dirty)
 GIT_HASH ?= $(shell git show -s --format=%H)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-GO_VERSION ?= $(shell go version)
+GO_VERSION ?= $(shell cd backend && go version)
 BUILD_LDFLAGS = -s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=$(SMAIL_VERSION)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(GIT_HASH)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(BUILD_TIME)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(GO_VERSION)'
 
 .PHONY: build clean clean_codex_test_artifacts build_fe build_server wechat_push spam_block telegram_push plugin package test test_mysql test_postgres
