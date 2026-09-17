@@ -6,8 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/libexec/smail-acme/renew_certificate.py
-ExecStopPost=/usr/bin/systemctl start nginx.service
-TimeoutStartSec=240
+EnvironmentFile=-/etc/smail/acme-dns.env
+TimeoutStartSec=720
+TimeoutStopSec=15
 MemoryHigh=96M
 MemoryMax=128M
 MemorySwapMax=0

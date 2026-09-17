@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 SERVER = 'https://acme-staging-v02.api.letsencrypt.org/directory'
 SOURCE = Path('/usr/local/libexec/smail-acme/renew_certificate.py')
+LEGACY_SOURCE_SHA256 = '6d0abbe9466f8becd61b1cb3c750bfffb938d16c5a9bcae0b96d1451227d4216'
 DOMAINS = {'solit.cn', 'mail.solit.cn', 'smtp.solit.cn', 'imap.solit.cn', 'pop.solit.cn'}
 RUN = subprocess.run
 
@@ -53,6 +54,8 @@ def main():
             parser.error('演练目录必须归 root 所有且禁止其他用户访问')
     if (evidence / 'result.json').exists():
         parser.error('禁止覆盖已有演练结果，请使用新的证据目录')
+    if digest(SOURCE) != LEGACY_SOURCE_SHA256:
+        parser.error('本工具仅用于已封存的停机续期实现，不能用于 DNS 无停机续期验收')
     run(['nginx', '-t'], check=True)
     run(['systemctl', 'is-active', '--quiet', 'nginx'], check=True)
 
