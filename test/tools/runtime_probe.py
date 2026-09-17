@@ -26,20 +26,26 @@ ADDRESS = ACCOUNT + '@runtime.invalid'
 
 class LocalHTTPS(http.client.HTTPSConnection):
     def connect(self):
-        raw = socket.create_connection(('127.0.0.1', self.port), self.timeout)
+        raw = socket.create_connection(('127.0.0.1', self.port), self.timeout, self.source_address)
         self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
 
 
 class Client:
-    def __init__(self, context=None):
+    def __init__(self, context=None, port=None, source=None):
         self.context = context
+        self.port = port or (443 if context else 80)
+        self.source = (source, 0) if source else None
         self.cookies = SimpleCookie()
 
-    def request(self, path, payload=None, method='POST'):
-        connection = (LocalHTTPS(HOST, 443, timeout=30, context=self.context)
-                      if self.context else http.client.HTTPConnection('127.0.0.1', 80, timeout=30))
+    def request(self, path, payload=None, method='POST', extra_headers=None):
+        connection = (LocalHTTPS(HOST, self.port, timeout=30, context=self.context,
+                                 source_address=self.source)
+                      if self.context else http.client.HTTPConnection('127.0.0.1', self.port, timeout=30))
         origin = 'https://' + HOST if self.context else 'http://127.0.0.1'
+        if self.port != (443 if self.context else 80):
+            origin += ':' + str(self.port)
         headers = {'Origin': origin, 'Content-Type': 'application/json'}
+        headers.update(extra_headers or {})
         if self.cookies:
             headers['Cookie'] = '; '.join(item.key + '=' + item.coded_value for item in self.cookies.values())
         if 'smail_csrf' in self.cookies:
@@ -138,6 +144,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('root', type=Path)
     parser.add_argument('--live-net', required=True)
+    parser.add_argument('--proxy', action='store_true')
     args = parser.parse_args()
     assert str(Path('/proc/self/ns/net').readlink()) != args.live_net, '禁止在宿主网络执行测试'
     root = args.root.resolve(strict=True)
@@ -145,7 +152,8 @@ def main():
     result = {'stage': 'setup', 'passed': False}
     started = time.monotonic()
     try:
-        client = Client()
+        setup_port = 8001 if args.proxy else 80
+        client = Client(port=setup_port)
         for _ in range(60):
             try:
                 assert client.request('/', method='GET')[0] == 200
@@ -156,7 +164,7 @@ def main():
             raise AssertionError('初始化服务未就绪')
         assert 'smail_setup_token' in client.cookies, '初始化令牌未下发'
         assert client.cookies['smail_setup_token']['httponly']
-        assert Client().request('/api/v1/setup', {'step': 'database', 'action': 'get'})[0] == 403
+        assert Client(port=setup_port).request('/api/v1/setup', {'step': 'database', 'action': 'get'})[0] == 403
         assert not (root / 'data/smail.db').exists(), '业务库必须从空数据开始'
         setup = '/api/v1/setup'
         client.success(setup, {'step': 'database', 'action': 'set', 'db_type': 'sqlite', 'db_dsn': ''})
@@ -185,6 +193,9 @@ def main():
         assert 'smail_csrf' in client.cookies
         assert client.success('/api/v1/user/info').get('account') == ACCOUNT
         result['setup'] = {'empty_database': True, 'token_required': True, 'login': True, 'session': True}
+        if args.proxy:
+            from runtime_proxy import configure_proxy
+            result['proxy'] = configure_proxy(client, context, login, Client, LocalHTTPS)
         result['stage'] = 'protocols'
         codes = {}
         for protocol in ('smtp', 'imap', 'pop3'):
@@ -256,6 +267,9 @@ def main():
             assert client.success('/api/v1/login', login).get('account') == ACCOUNT
             round_result['recovered'] = True
             (root.parent / 'probe-result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+        if args.proxy:
+            from runtime_proxy import verify_proxy_sources
+            result['proxy']['sources'] = verify_proxy_sources(context, login, Client)
         result['stage'] = 'complete'
         result['passed'] = True
     finally:
