@@ -71,3 +71,17 @@ test('只有真实登录失效的 Blob 错误才跳转登录', async () => {
   await assert.rejects(api.failure({ response: res, config: res.config }))
   assert.equal(api.redirects(), 1)
 })
+
+test('认证繁忙保留错误码和中文提示，不跳转或清除登录', async () => {
+  const api = fixture()
+  for (const path of ['/api/v1/login', '/api/v1/user/info', '/api/v1/security/recovery/verify']) {
+    const res = response({ errorNo: 503, errorMsg: '认证服务暂时繁忙，请稍后重试', data: { code: 'AUTH_BUSY' } }, 503)
+    res.config.url = path
+    await assert.rejects(api.failure({ response: res, config: res.config }), result => {
+      assert.equal(result.apiErrorCode, 'AUTH_BUSY')
+      assert.match(result.message, /稍后重试/)
+      return true
+    })
+    assert.equal(api.redirects(), 0)
+  }
+})

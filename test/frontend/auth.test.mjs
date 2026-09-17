@@ -85,3 +85,10 @@ test("并发认证刷新只执行一次请求并返回同一个结果", async ()
     assert.equal(await third, AUTH_STATUS.UNAUTHENTICATED);
     assert.equal(requestCount, 2);
 });
+
+test("认证接口繁忙不判定为登录失效", () => {
+    assert.equal(
+        classifyAuthenticationError({response: {status: 503, data: {errorNo: 503}}}, {authenticationRequest: true}),
+        AUTH_STATUS.UNAVAILABLE
+    );
+});

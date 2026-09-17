@@ -94,6 +94,10 @@ export function usePage() {
       if (resetToken.value !== token || page.value !== 'reset') {
         return
       }
+      if (result.status === 429 || result.status >= 500) {
+        errorMessage.value = '暂时无法验证恢复链接，请稍后刷新重试。'
+        return
+      }
       if (!result.ok || result.data?.available !== true) {
         errorMessage.value = '恢复链接无效或已失效，请重新申请。'
         return
@@ -139,6 +143,10 @@ export function usePage() {
         new_password: form.newPassword,
         recovery_code: requiresRecoveryCode.value ? form.recoveryCode.trim() : ''
       })
+      if (result.status === 429 || result.status >= 500) {
+        errorMessage.value = '重置服务暂时不可用，请稍后重试。'
+        return
+      }
       if (!result.ok || result.data?.reset !== true) {
         errorMessage.value = '重置失败。恢复链接可能已失效，请重新申请。'
         return
@@ -149,7 +157,7 @@ export function usePage() {
       form.recoveryCode = ''
       page.value = 'success'
     } catch {
-      errorMessage.value = '重置失败。恢复链接可能已失效，请重新申请。'
+      errorMessage.value = '暂时无法确认重置结果，请稍后重试；若链接已失效，请尝试使用新密码登录。'
     } finally {
       loading.value = false
     }

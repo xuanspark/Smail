@@ -281,6 +281,12 @@ export function usePage() {
       acceptVerificationTicket(result.data.ticket)
     } catch (err) {
       if (version !== requestVersion) return
+      // 临时不可用不代表恢复码错误，保留输入及附加验证凭证。
+      if ([408, 429, 500, 502, 503, 504].includes(err.response?.status)
+        || (err.isAxiosError && !err.response)) {
+        adminRecoveryError.value = '验证服务暂时不可用，请稍后重试'
+        return
+      }
       recovery.recoveryCode = ''
       continuationAttempts++
       if (continuationAttempts >= 5) {

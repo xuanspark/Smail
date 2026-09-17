@@ -42,7 +42,9 @@ export function usePage() {
       globalStatus.setUser(res.data, true)
       await router.replace(redirect)
     } catch (error) {
-      ElMessage.error("登录请求失败，请稍后重试")
+      ElMessage.error(error.response?.status === 503
+        ? "认证服务暂时繁忙，请稍后重试"
+        : "登录请求失败，请稍后重试")
     } finally {
       loading.value = false
     }

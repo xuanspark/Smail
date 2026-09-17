@@ -21,6 +21,7 @@ export async function postPublicRecovery(endpoint, payload) {
 
   return {
     ok: response.ok,
+    status: response.status,
     data: result
   }
 }
