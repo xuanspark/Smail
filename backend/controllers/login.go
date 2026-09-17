@@ -83,7 +83,7 @@ func loginRemoteHost(req *http.Request) string {
 	if req == nil {
 		return "unknown"
 	}
-	host := normalizeRemoteHost(req.RemoteAddr)
+	host := remoteIP(req)
 	if host == "" {
 		host = "unknown"
 	}

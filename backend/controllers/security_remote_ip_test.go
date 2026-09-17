@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"git.pcux.cn/xuans/Smail/config"
 )
 
 func TestRemoteIPNormalizesIPv4AndIPv6Addresses(t *testing.T) {
@@ -28,6 +30,43 @@ func TestRemoteIPNormalizesIPv4AndIPv6Addresses(t *testing.T) {
 				t.Fatalf("login remote host = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestRemoteIPTrustedProxySeparatesLoginLimits(t *testing.T) {
+	oldConfig, oldManager := config.Instance, config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{
+		TLSMode:           config.HTTPSTLSModeDirect,
+		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
+	}
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+	})
+	first := httptest.NewRequest(http.MethodPost, "https://mail.example.com/api/login", nil)
+	first.RemoteAddr = "127.0.0.1:1234"
+	first.Header.Set("X-Forwarded-For", "192.0.2.10")
+	second := first.Clone(first.Context())
+	second.Header.Set("X-Forwarded-For", "192.0.2.11")
+	limiter := newLoginLimiter(1)
+	limiter.recordFailure(limiter.ipKey(first))
+	if !limiter.blocked(limiter.ipKey(first)) || limiter.blocked(limiter.ipKey(second)) {
+		t.Fatal("可信代理后的两个客户端共享了 IP 限流状态")
+	}
+	if limiter.key(first, "user") == limiter.key(second, "user") {
+		t.Fatal("账号与 IP 组合限流没有区分客户端")
+	}
+	if remoteIP(first) != "192.0.2.10" || loginRemoteHost(first) != remoteIP(first) {
+		t.Fatal("安全验证与登录限流的客户端地址不一致")
+	}
+	second.RemoteAddr = "198.51.100.10:4321"
+	second.Header.Set("X-Forwarded-For", "192.0.2.10")
+	if remoteIP(second) != "198.51.100.10" {
+		t.Fatal("非可信连接能够伪造安全验证来源")
+	}
+	if first.RemoteAddr != "127.0.0.1:1234" {
+		t.Fatal("代理解析修改了真实连接来源")
 	}
 }
 

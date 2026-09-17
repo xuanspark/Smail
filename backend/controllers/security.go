@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -23,6 +22,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/recovery"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
+	"git.pcux.cn/xuans/Smail/utils/clientip"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
@@ -1076,25 +1076,7 @@ func DisableExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http
 }
 
 func remoteIP(req *http.Request) string {
-	if req == nil {
-		return ""
-	}
-	return normalizeRemoteHost(req.RemoteAddr)
-}
-
-func normalizeRemoteHost(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if host, _, err := net.SplitHostPort(value); err == nil {
-		value = host
-	}
-	value = strings.Trim(value, "[]")
-	if parsed := net.ParseIP(value); parsed != nil {
-		return parsed.String()
-	}
-	return value
+	return clientip.Resolve(req, config.CurrentHTTPConfig().TrustedProxyCIDRs)
 }
 
 func maskEmail(value string) string {
