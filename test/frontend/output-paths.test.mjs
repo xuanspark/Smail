@@ -96,7 +96,7 @@ test('六个平台默认包含三个插件，构建和发布名称与后端目�
   assert.match(await read('Makefile'), /package: build_server plugin/)
   assert.match(await read('.github/workflows/release.yml'), /node deploy\/build-plugins\.mjs --target=/)
   assert.match(await read('deploy/package.mjs'), /sha256: createHash\('sha256'\)/)
-  assert.match(await read('deploy/package.mjs'), /files,\n      createdAt/)
+  assert.match(await read('deploy/package.mjs'), /files,\r?\n      createdAt/)
 })
 
 test('安全工作流必须先构建嵌入资源再执行 Go 测试', async () => {

@@ -10,6 +10,20 @@ import subprocess
 import time
 
 
+def dependency_bindings(root):
+    bindings = set()
+    for relative in ('node-v22.23.2-linux-x64', 'frontend/node_modules'):
+        target = (root / relative).resolve(strict=True)
+        if (len(target.parts) < 5 or target.parts[1:3] != ('var', 'tmp')
+                or not target.parts[3].startswith('smail-review-')
+                or any(not re.fullmatch(r'[A-Za-z0-9_.-]+', part) for part in target.parts[3:])
+                or not target.is_dir()):
+            raise ValueError('测试依赖必须位于受控审查目录')
+        if not target.is_relative_to(root):
+            bindings.add(str(target))
+    return sorted(bindings)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('directory')
@@ -21,6 +35,8 @@ def main():
         assert os.geteuid() == 0
         memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
         assert int(memory['MemAvailable'].split()[0]) >= 256 * 1024, '可用内存不足'
+        # PrivateTmp 会隐藏其他审查目录，只读挂载已验证的依赖，不开放整个临时目录。
+        bindings = dependency_bindings(root)
         command = [
             'systemd-run', '--wait', '--pipe', '--unit=smail-frontend-tests-' + time.strftime('%Y%m%d-%H%M%S'),
             '-p', 'User=smail', '-p', 'Group=smail', '-p', 'MemoryMax=128M', '-p', 'MemorySwapMax=0',
@@ -29,6 +45,7 @@ def main():
             '-p', 'PrivateTmp=yes', '-p', 'PrivateNetwork=yes', '-p', 'BindPaths=' + str(root),
             '-p', 'ProtectSystem=strict', '-p', 'ProtectHome=yes', '-p', 'InaccessiblePaths=/opt/smail /run/smail',
             '-p', 'NoNewPrivileges=yes', '-p', 'ReadWritePaths=' + str(root), '-p', 'WorkingDirectory=' + str(root),
+            *[argument for target in bindings for argument in ('-p', 'BindReadOnlyPaths=' + target)],
             'python3', str(root / 'run_frontend_review.py'), str(root), '--worker',
         ]
         return subprocess.run(command).returncode

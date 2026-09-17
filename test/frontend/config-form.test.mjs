@@ -15,6 +15,7 @@ const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } =
 
 test('公网 HTTPS 端口独立编辑且保留内部监听与模式切换', () => {
   const config = {
+    database: { type: 'sqlite' },
     domains: { primary: 'example.com', web: 'mail.example.com', accepted: ['example.com'] },
     http: { port: 8001, httpsPort: 8002, httpsEnabled: true, tlsMode: 'direct' }
   }
