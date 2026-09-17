@@ -18,7 +18,8 @@ import (
 )
 
 type securityTestAction struct {
-	quitErr error
+	quitErr    error
+	passErrors []error
 }
 
 func (a *securityTestAction) User(session *Session, username string) error {
@@ -27,6 +28,13 @@ func (a *securityTestAction) User(session *Session, username string) error {
 }
 
 func (a *securityTestAction) Pass(session *Session, password string) error {
+	if len(a.passErrors) > 0 {
+		err := a.passErrors[0]
+		a.passErrors = a.passErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
 	session.Status = TRANSACTION
 	return nil
 }
@@ -97,6 +105,49 @@ func TestQuitReportsMailboxUpdateResult(t *testing.T) {
 				t.Fatal("server did not close the connection after QUIT")
 			}
 		})
+	}
+}
+
+func TestPassReportsTemporaryFailureWithoutLeakingInternalErrors(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	t.Cleanup(func() { _ = clientConn.Close() })
+	if err := clientConn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{Domain: "test", Action: &securityTestAction{passErrors: []error{
+		ErrAuthenticationTemporary,
+		fmt.Errorf("private database detail: %w", ErrAuthenticationTemporary),
+		errors.New("[SYS/TEMP] untrusted detail\r\n+OK injected"),
+		errors.New("private credential detail"),
+	}}}
+	done := make(chan struct{})
+	go func() {
+		server.handleClient(serverConn)
+		close(done)
+	}()
+	reader := bufio.NewReader(clientConn)
+	readResponseLine(t, reader, "+OK")
+	writeCommand(t, clientConn, "USER user")
+	readResponseLine(t, reader, "+OK")
+	for _, want := range []string{
+		"-ERR [SYS/TEMP] Authentication temporarily unavailable\r\n",
+		"-ERR [SYS/TEMP] Authentication temporarily unavailable\r\n",
+		"-ERR Password incorrect!\r\n",
+		"-ERR Password incorrect!\r\n",
+		"+OK User signed in\r\n",
+	} {
+		writeCommand(t, clientConn, "PASS test-password")
+		line, err := reader.ReadString('\n')
+		if err != nil || line != want {
+			t.Fatalf("POP3 认证响应错误：%q，预期 %q，错误 %v", line, want, err)
+		}
+	}
+	writeCommand(t, clientConn, "QUIT")
+	readResponseLine(t, reader, "+OK Bye")
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("POP3 恢复认证后未正常退出")
 	}
 }
 

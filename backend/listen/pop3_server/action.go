@@ -107,7 +107,7 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 	user, err := auth.AuthenticateProtocol("pop3", remoteAddress, session.User, pwd)
 	if err != nil {
 		if errors2.Is(err, password.ErrBusy) {
-			return errors2.New("[SYS/TEMP] Authentication temporarily unavailable")
+			return gopop.ErrAuthenticationTemporary
 		}
 		log.WithContext(session.Ctx).WithFields(log.Fields{
 			"action": "POP3 客户端登录",

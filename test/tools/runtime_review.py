@@ -23,12 +23,24 @@ def service_state():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--main-sha', required=True)
+    parser.add_argument('--binary', type=Path, default=Path('/opt/smail/smail'))
     args = parser.parse_args()
     assert os.geteuid() == 0 and run('hostname') == 'ikun2'
     os.umask(0o027)
     live = Path('/opt/smail')
-    with (live / 'smail').open('rb') as stream:
+    binary = args.binary.resolve(strict=True)
+    assert binary == args.binary and binary.is_file()
+    if binary != live / 'smail':
+        assert binary.parent.parent == Path('/var/tmp') and binary.parent.name.startswith('smail-review-')
+        assert binary.stat().st_uid == 0 and binary.stat().st_mode & 0o022 == 0
+        assert binary.parent.stat().st_uid == 0 and binary.parent.stat().st_mode & 0o022 == 0
+    with binary.open('rb') as stream:
         assert hashlib.file_digest(stream, 'sha256').hexdigest() == args.main_sha
+        stream.seek(0)
+        header = stream.read(20)
+        assert header[:5] == b'\x7fELF\x02' and header[18:20] == b'\x3e\x00'
+    with (live / 'smail').open('rb') as stream:
+        live_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
     memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
     assert int(memory['MemAvailable'].split()[0]) >= 272 * 1024, '可用内存不足，暂停隔离验收'
     stamp = time.strftime('%Y%m%d-%H%M%S')
@@ -40,7 +52,7 @@ def main():
     for directory in (root, control, root / 'ssl'):
         directory.mkdir(mode=0o750)
         shutil.chown(directory, user='smail', group='smail')
-    shutil.copy2(live / 'smail', root / 'smail')
+    shutil.copy2(binary, root / 'smail')
     (root / 'smail').chmod(0o755)
     shutil.copy2(Path(__file__).with_name('runtime_probe.py'), target / 'runtime_probe.py')
     subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
@@ -56,7 +68,8 @@ def main():
     before = service_state()
     unit = 'smail-runtime-review-' + stamp
     probe_unit = 'smail-runtime-probe-' + stamp
-    result = {'target': str(target), 'unit': unit, 'main_sha256': args.main_sha, 'before': before}
+    result = {'target': str(target), 'unit': unit, 'main_sha256': args.main_sha,
+              'source': str(binary), 'live_sha256': live_sha, 'before': before}
     started = time.strftime('%Y-%m-%dT%H:%M:%S')
     try:
         subprocess.run([
@@ -94,8 +107,9 @@ def main():
         ], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=270)
         (target / 'probe.log').write_text(probe.stdout, encoding='utf-8')
         result['probe_code'] = probe.returncode
+        if (target / 'probe-result.json').exists():
+            result['probe'] = json.loads((target / 'probe-result.json').read_text())
         assert probe.returncode == 0, '隔离验收失败，请检查保留的 probe.log'
-        result['probe'] = json.loads((target / 'probe-result.json').read_text())
         assert result['probe']['passed']
         with sqlite3.connect(f'file:{live / "data/smail.db"}?mode=ro', uri=True) as database:
             message_id = result['probe']['smtp']['message_id']
@@ -107,7 +121,9 @@ def main():
         subprocess.run(['systemctl', 'stop', unit], check=True)
         subprocess.run(['systemctl', 'stop', probe_unit], check=False, stderr=subprocess.DEVNULL)
         result['after'] = service_state()
-        result['live_unchanged'] = result['after'] == before
+        with (live / 'smail').open('rb') as stream:
+            result['live_unchanged'] = (result['after'] == before
+                                        and hashlib.file_digest(stream, 'sha256').hexdigest() == live_sha)
         result['integrity'] = {}
         for name in ('smail.db', 'smail-state.db'):
             path = root / 'data' / name

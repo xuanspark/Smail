@@ -193,6 +193,13 @@ def main():
             codes[protocol] = client.success(base + 'generate', {'protocol': protocol})['code']
             assert protocol_operation(protocol, context, codes[protocol])() == 'success'
         result['protocol_login'] = list(codes)
+        with smtp_connect(context) as smtp:
+            try:
+                smtp.auth('PLAIN', lambda challenge=None: '\0' + ADDRESS + '\0invalid-code')
+                raise AssertionError('SMTP 错误凭据未被拒绝')
+            except smtplib.SMTPAuthenticationError as error:
+                assert error.smtp_code == 535 and error.smtp_error.startswith(b'5.7.8 ')
+        result['smtp_invalid_credentials'] = 535
         result['stage'] = 'smtp'
         message = EmailMessage()
         message['From'] = 'probe@runtime.invalid'
@@ -218,7 +225,10 @@ def main():
         result['smtp'] = {'message_id': message_id, 'stored': True, 'owners': 1, 'attachment': True}
         result['stage'] = 'overload'
         rounds = []
+        result['overload'] = rounds
         for protocol in codes:
+            round_result = {'protocol': protocol, 'responses': [], 'recovered': False}
+            rounds.append(round_result)
             operations = [protocol_operation(protocol, context, codes[protocol]) for _ in range(4)]
             barrier = threading.Barrier(8, timeout=20)
 
@@ -236,14 +246,16 @@ def main():
                 return {'outcome': operation(), 'seconds': round(time.monotonic() - began, 3)}
 
             with ThreadPoolExecutor(max_workers=8) as pool:
-                responses = list(pool.map(execute, operations + [http_operation] * 4))
+                for response in pool.map(execute, operations + [http_operation] * 4):
+                    round_result['responses'].append(response)
+            responses = round_result['responses']
             assert any(item['outcome'] == 'busy' for item in responses[:4]), protocol + ' 未观察到繁忙响应'
             assert any(item['outcome'] == 'busy' for item in responses[4:]), 'HTTP 未观察到繁忙响应'
             assert any(item['outcome'] == 'success' for item in responses), '所有请求均失败'
             assert protocol_operation(protocol, context, codes[protocol])() == 'success'
             assert client.success('/api/v1/login', login).get('account') == ACCOUNT
-            rounds.append({'protocol': protocol, 'responses': responses, 'recovered': True})
-        result['overload'] = rounds
+            round_result['recovered'] = True
+            (root.parent / 'probe-result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         result['stage'] = 'complete'
         result['passed'] = True
     finally:

@@ -73,7 +73,7 @@ func (s *Session) AuthPlain(username, pwd string) error {
 			"result": "failure",
 			"object": s.RemoteAddress.String(),
 		}).Info("SMTP 客户端认证失败")
-		return errors.New("password error")
+		return &smtp.SMTPError{Code: 535, EnhancedCode: smtp.EnhancedCode{5, 7, 8}, Message: "Authentication credentials invalid"}
 	}
 
 	s.User = user.Account

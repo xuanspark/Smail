@@ -17,6 +17,9 @@ const maxPOP3CommandLineBytes = 8 << 10
 
 var errPOP3CommandLineTooLong = errors.New("POP3 command line exceeds the allowed size")
 
+// ErrAuthenticationTemporary 仅用于映射固定的临时失败响应，不回显内部错误。
+var ErrAuthenticationTemporary = errors.New("[SYS/TEMP] Authentication temporarily unavailable")
+
 // Server Pop3服务实例
 type Server struct {
 	Domain           string        // 域名
@@ -215,7 +218,9 @@ func (s *Server) handleClient(conn net.Conn) {
 		case "PASS":
 			password := getSafeArg(args, 0)
 			cmdError = s.Action.Pass(session, password)
-			if cmdError != nil {
+			if errors.Is(cmdError, ErrAuthenticationTemporary) {
+				fmt.Fprint(conn, "-ERR [SYS/TEMP] Authentication temporarily unavailable"+eol)
+			} else if cmdError != nil {
 				fmt.Fprint(conn, "-ERR Password incorrect!"+eol)
 			} else {
 				fmt.Fprint(conn, "+OK User signed in"+eol)

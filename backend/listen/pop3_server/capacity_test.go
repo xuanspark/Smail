@@ -1,7 +1,7 @@
 package pop3_server
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -21,7 +21,7 @@ func TestPOP3BusyReturnsTemporaryAuthenticationFailure(t *testing.T) {
 	release := passwordtest.Hold(t)
 	for index := 0; index < 12; index++ {
 		err := (action{}).Pass(session, code)
-		if err == nil || !strings.HasPrefix(err.Error(), "[SYS/TEMP]") || session.Status == gopop.TRANSACTION || ctx.UserID != 0 {
+		if !errors.Is(err, gopop.ErrAuthenticationTemporary) || session.Status == gopop.TRANSACTION || ctx.UserID != 0 {
 			t.Fatalf("POP3 繁忙响应或会话状态错误：%v", err)
 		}
 	}
