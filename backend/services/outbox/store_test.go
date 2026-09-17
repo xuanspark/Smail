@@ -173,8 +173,8 @@ func TestResultFailureRollsBackAndNeverRedelivers(t *testing.T) {
 	if err := r.process(jobs[0]); err == nil {
 		t.Fatal("result failure was ignored")
 	}
-	if err := r.process(jobs[0]); err != nil {
-		t.Fatal(err)
+	if err := r.tick(); err == nil {
+		t.Fatal("result retry failure was ignored")
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("SMTP called %d times", calls.Load())
@@ -186,6 +186,77 @@ func TestResultFailureRollsBackAndNeverRedelivers(t *testing.T) {
 	}
 	if job.State != running {
 		t.Fatalf("state=%s", job.State)
+	}
+	if _, err := engine.Exec("DROP TRIGGER reject_result"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.tick(); err != nil {
+		t.Fatal(err)
+	}
+	if r.pending != nil || calls.Load() != 1 {
+		t.Fatal("result was not recovered without another SMTP attempt")
+	}
+	var persisted models.OutboundDelivery
+	if found, err := engine.ID(job.ID).Get(&persisted); err != nil || !found || persisted.State != accepted {
+		t.Fatalf("result not persisted: %+v %v", persisted, err)
+	}
+}
+
+func TestPersistResultAfterLostCommitResponse(t *testing.T) {
+	for _, deliveryErr := range []error{nil, &textproto.Error{Code: 451, Msg: "later"}, &smtp.DeliveryUncertainError{Cause: io.EOF}} {
+		engine, _, jobs := queueFixture(t)
+		job := jobs[0]
+		if ok, err := claim(engine, &job); err != nil || !ok {
+			t.Fatal(err)
+		}
+		result := deliveryResult(job, deliveryErr)
+		if _, err := persistResult(engine, result); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := persistResult(engine, result); err != nil {
+			t.Fatalf("same result must be idempotent: %v", err)
+		}
+		result.Attempts++
+		if _, err := persistResult(engine, result); err == nil {
+			t.Fatal("different attempt must not overwrite persisted result")
+		}
+	}
+}
+
+func TestPendingResultStopsNewClaimsAndSurvivesRestartSafely(t *testing.T) {
+	engine, _, jobs := queueFixture(t)
+	if _, err := engine.Exec("CREATE TRIGGER reject_result BEFORE UPDATE ON user_email BEGIN SELECT RAISE(ABORT, 'injected failure'); END"); err != nil {
+		t.Fatal(err)
+	}
+	var calls int
+	r := &Runtime{engine: engine, deliver: func(_ *context.Context, _ *parsemail.Email, _ string) error {
+		calls++
+		return nil
+	}}
+	for i := 0; i < 4; i++ {
+		if err := r.tick(); err == nil {
+			t.Fatal("persistence failure ignored")
+		}
+	}
+	var second models.OutboundDelivery
+	if _, err := engine.ID(jobs[1].ID).Get(&second); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || second.State != queued || second.Attempts != 0 {
+		t.Fatalf("new delivery started during outage: calls=%d job=%+v", calls, second)
+	}
+	if _, err := engine.Exec("DROP TRIGGER reject_result"); err != nil {
+		t.Fatal(err)
+	}
+	if err := recoverInterrupted(engine); err != nil {
+		t.Fatal(err)
+	}
+	var first models.OutboundDelivery
+	if _, err := engine.ID(jobs[0].ID).Get(&first); err != nil || first.State != uncertain {
+		t.Fatalf("lost in-memory result must remain uncertain: %+v %v", first, err)
+	}
+	if _, err := persistResult(engine, r.pending.job); err == nil {
+		t.Fatal("stale runtime overwrote restart recovery")
 	}
 }
 

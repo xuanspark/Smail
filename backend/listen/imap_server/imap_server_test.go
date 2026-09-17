@@ -958,6 +958,9 @@ func TestIDLE(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	reader := bufio.NewReader(conn)
 	line, err := reader.ReadString('\n')

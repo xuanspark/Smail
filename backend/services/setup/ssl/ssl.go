@@ -203,6 +203,10 @@ func isAbsoluteUserCertificatePath(value string) bool {
 	if filepath.IsAbs(value) {
 		return true
 	}
+	// 非 Windows 主机也要识别盘符，避免把异平台路径静默拼到项目目录。
+	if len(value) >= 2 && value[1] == ':' && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) {
+		return true
+	}
 	volume := filepath.VolumeName(value)
 	return volume != "" || strings.HasPrefix(value, `\\`) || strings.HasPrefix(value, "//")
 }
@@ -218,8 +222,8 @@ func validateUserCertificatePaths(privatePath, publicPath string) (string, strin
 		}
 		path := strings.TrimSpace(value)
 		if isAbsoluteUserCertificatePath(path) {
-			if filepath.VolumeName(path) != "" && !filepath.IsAbs(path) {
-				return "", nil, newUserCertificateError("SSL 路径必须是完整的绝对路径")
+			if !filepath.IsAbs(path) {
+				return "", nil, newUserCertificateError("SSL 路径必须是当前服务器支持的完整绝对路径")
 			}
 		} else {
 			path = filepath.Join(rootPath, path)

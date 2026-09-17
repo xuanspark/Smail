@@ -24,6 +24,13 @@ type Runtime struct {
 	done    chan struct{}
 	once    sync.Once
 	deliver func(*context.Context, *parsemail.Email, string) error
+	pending *pendingResult
+}
+
+type pendingResult struct {
+	job     models.OutboundDelivery
+	ctx     *context.Context
+	message *parsemail.Email
 }
 
 func Start(engine *xorm.Engine) (*Runtime, error) {
@@ -58,20 +65,8 @@ func (r *Runtime) loop() {
 			return
 		default:
 		}
-		var jobs []models.OutboundDelivery
-		err := r.engine.Where("state = ? AND next_attempt <= ?", queued, time.Now().Unix()).Asc("id").Limit(20).Find(&jobs)
-		if err != nil {
-			log.WithError(err).Error("读取持久投递队列失败")
-		}
-		for _, job := range jobs {
-			select {
-			case <-r.stop:
-				return
-			default:
-			}
-			if err := r.process(job); err != nil {
-				log.WithError(err).WithField("delivery_id", job.ID).Error("处理持久投递队列失败")
-			}
+		if err := r.tick(); err != nil {
+			log.WithError(err).Error("处理持久投递队列失败")
 		}
 		select {
 		case <-r.stop:
@@ -81,12 +76,37 @@ func (r *Runtime) loop() {
 	}
 }
 
+func (r *Runtime) tick() error {
+	// 单工作器最多保留一个未落库结果，恢复前不领取新任务，避免内存积压和重复投递。
+	if r.pending != nil {
+		return dbmigration.WhileWritable(r.flushResult)
+	}
+	var jobs []models.OutboundDelivery
+	if err := r.engine.Where("state = ? AND next_attempt <= ?", queued, time.Now().Unix()).Asc("id").Limit(20).Find(&jobs); err != nil {
+		return err
+	}
+	for _, job := range jobs {
+		select {
+		case <-r.stop:
+			return nil
+		default:
+		}
+		if err := r.process(job); err != nil {
+			return fmt.Errorf("投递任务 %d: %w", job.ID, err)
+		}
+	}
+	return nil
+}
+
 func (r *Runtime) process(job models.OutboundDelivery) error {
 	// 迁移必须等待 SMTP 及结果落库结束，冻结源库后不再领取任务。
 	return dbmigration.WhileWritable(func() error { return r.processWritable(job) })
 }
 
 func (r *Runtime) processWritable(job models.OutboundDelivery) error {
+	if r.pending != nil {
+		return r.flushResult()
+	}
 	// 读取失败时尚未开始投递，保留排队状态供数据库恢复后继续处理。
 	var stored models.Email
 	emailFound, err := r.engine.ID(job.EmailID).Get(&stored)
@@ -126,20 +146,23 @@ func (r *Runtime) processWritable(job models.OutboundDelivery) error {
 		}
 		return r.deliver(ctx, message, job.Recipient)
 	}()
-	// 只重试结果落库，绝不因数据库故障再次调用 SMTP。
-	var terminal bool
-	for attempt := 0; attempt < 3; attempt++ {
-		terminal, err = finish(r.engine, job, deliveryErr)
-		if err == nil {
-			break
-		}
-		time.Sleep(time.Second)
+	// 固定首次结果及退避时间，后续只重试落库，绝不再次调用 SMTP。
+	r.pending = &pendingResult{job: deliveryResult(job, deliveryErr), ctx: ctx, message: message}
+	return r.flushResult()
+}
+
+func (r *Runtime) flushResult() error {
+	result := r.pending
+	if result == nil {
+		return nil
 	}
+	terminal, err := persistResult(r.engine, result.job)
 	if err != nil {
-		return fmt.Errorf("投递结果写入失败，保留在途记录并禁止自动重投: %w", err)
+		return fmt.Errorf("投递任务 %d 结果写入失败，已暂停领取任务并等待数据库恢复: %w", result.job.ID, err)
 	}
-	if terminal && message != nil {
-		r.notify(ctx, message, job.EmailID)
+	r.pending = nil
+	if terminal && result.message != nil {
+		r.notify(result.ctx, result.message, result.job.EmailID)
 	}
 	return nil
 }

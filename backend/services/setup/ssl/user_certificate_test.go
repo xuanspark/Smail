@@ -54,12 +54,13 @@ func TestIsAbsoluteUserCertificatePathRecognizesWindowsPaths(t *testing.T) {
 	cases := []string{
 		`C:\outside\private.key`,
 		`D:/outside/public.crt`,
+		`C:private.key`,
 		`\\server\share\private.key`,
 		`//server/share/public.crt`,
 	}
 	for _, value := range cases {
 		if !isAbsoluteUserCertificatePath(value) {
-			t.Errorf("path %q was accepted", value)
+			t.Errorf("path %q was not recognized", value)
 		}
 	}
 }
@@ -70,6 +71,17 @@ func TestIsAbsoluteUserCertificatePathRejectsEmptyAndAcceptsRelative(t *testing.
 	}
 	if isAbsoluteUserCertificatePath(`config/ssl/upload/private.key`) {
 		t.Fatal("controlled relative path must not be treated as absolute")
+	}
+}
+
+func TestValidateUserCertificatePathsRejectsNonNativeAbsolutePath(t *testing.T) {
+	for _, path := range []string{`C:private.key`, `C:\outside\private.key`, `\\server\share\private.key`} {
+		if filepath.IsAbs(path) {
+			continue
+		}
+		if _, _, err := validateUserCertificatePaths(path, path); err == nil || err.Error() != "SSL 路径必须是当前服务器支持的完整绝对路径" {
+			t.Fatalf("non-native path %q: %v", path, err)
+		}
 	}
 }
 

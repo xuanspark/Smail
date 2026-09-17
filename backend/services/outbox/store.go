@@ -151,6 +151,10 @@ func claim(engine *xorm.Engine, job *models.OutboundDelivery) (bool, error) {
 }
 
 func finish(engine *xorm.Engine, job models.OutboundDelivery, deliveryErr error) (bool, error) {
+	return persistResult(engine, deliveryResult(job, deliveryErr))
+}
+
+func deliveryResult(job models.OutboundDelivery, deliveryErr error) models.OutboundDelivery {
 	job.State, job.LastError, job.NextAttempt = accepted, "", 0
 	if deliveryErr != nil {
 		// 不保存远端响应原文，避免凭据或恶意超长内容进入数据库和页面。
@@ -163,6 +167,10 @@ func finish(engine *xorm.Engine, job models.OutboundDelivery, deliveryErr error)
 			job.NextAttempt = time.Now().Add(time.Minute * time.Duration(1<<(job.Attempts-1))).Unix()
 		}
 	}
+	return job
+}
+
+func persistResult(engine *xorm.Engine, job models.OutboundDelivery) (bool, error) {
 	terminal := false
 	err := db.Transaction(engine, func(session *xorm.Session) error {
 		count, err := session.ID(job.ID).Where("state = ? AND attempts = ?", running, job.Attempts).Cols("state", "last_error", "next_attempt").Update(&job)
@@ -170,7 +178,17 @@ func finish(engine *xorm.Engine, job models.OutboundDelivery, deliveryErr error)
 			return err
 		}
 		if count != 1 {
-			return errors.New("投递任务状态已发生变化")
+			// 提交响应丢失时，确认同一次尝试的相同结果已落库，不覆盖后续尝试。
+			var stored models.OutboundDelivery
+			found, readErr := session.ID(job.ID).Get(&stored)
+			if readErr != nil {
+				return readErr
+			}
+			if !found || stored.EmailID != job.EmailID || stored.Recipient != job.Recipient ||
+				stored.Attempts != job.Attempts || stored.State != job.State ||
+				stored.LastError != job.LastError || stored.NextAttempt != job.NextAttempt {
+				return errors.New("投递任务状态已发生变化")
+			}
 		}
 		terminal, err = syncStatus(session, job.EmailID)
 		return err

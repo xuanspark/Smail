@@ -96,6 +96,13 @@ func TestPersistPluginConfigReplacesFileAtomically(t *testing.T) {
 	if !RegisterHook("spam_block", &HookSender{name: "spam_block.exe"}) {
 		t.Fatal("plugin hook registration failed")
 	}
+	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
+		// 普通用户创建的插件目录不满足生产所有者要求，必须拒绝写入。
+		if err := PersistPluginConfig("spam_block", `{"url":"https://model.example.com"}`); err == nil {
+			t.Fatal("non-root-owned plugin directory was accepted")
+		}
+		return
+	}
 	for _, payload := range []string{`{"url":"https://model.example.com"}`, `{"url":"https://model.example.com/v2"}`} {
 		if err = PersistPluginConfig("spam_block", payload); err != nil {
 			t.Fatal(err)
