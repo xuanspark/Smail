@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 ExecStart=/usr/local/libexec/smail-acme/renew_certificate.py
 EnvironmentFile=-/etc/smail/acme-dns.env
+EnvironmentFile=-/etc/smail/acme-renew.env
 TimeoutStartSec=720
 TimeoutStopSec=15
 MemoryHigh=96M

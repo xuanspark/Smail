@@ -96,6 +96,7 @@ class RenewalTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 1)
             if command[0].endswith('/lego'):
                 self.assertEqual(kwargs['timeout'], 600)
+                self.assertEqual(kwargs['umask'], 0o077)
                 self.assertEqual(command[command.index('--dns') + 1], 'alidns')
                 self.assertNotIn('--tls', command)
                 self.assertIn('--server', command)
