@@ -81,9 +81,9 @@ if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-di
 install -d -o root -g root -m 0755 "$runtime_dir"
 install -d -o root -g root -m 0750 /etc/smail
 if [ ! -e /etc/smail/smail.env ]; then
-  # 只创建默认根目录；已存在的文件始终保留部署人员的自定义环境配置。
+  # 只为新部署设置回收预算；已存在的文件始终保留部署人员的自定义环境配置。
   umask 0077
-  printf '%s\n' 'SMAIL_ROOT=/opt/smail' > /etc/smail/smail.env
+  printf '%s\n' 'SMAIL_ROOT=/opt/smail' 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
 fi
 chown root:root /etc/smail/smail.env
 chmod 0600 /etc/smail/smail.env
@@ -112,3 +112,5 @@ systemctl disable smail-admin >/dev/null 2>&1 || true
 echo "Smail 已安装到 $runtime_dir，旧程序和服务文件备份在 $backup_dir。"
 echo "配置、数据库和证书未覆盖；请使用 systemctl start smail 启动并检查运行状态。"
 echo "smail-admin 仅允许按需执行 start/stop，不支持开机自启动。"
+echo "主服务默认内存高水位 384 MiB、硬上限 512 MiB；不是容量承诺，请先核对同机资源预算。"
+echo "旧环境文件不会自动补写 GOMEMLIMIT；启动后请按《生产资源部署说明》执行只读资源预检。"

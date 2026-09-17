@@ -2,6 +2,8 @@
 Description=Smail 邮件服务
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300s
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -12,7 +14,20 @@ EnvironmentFile=/etc/smail/smail.env
 WorkingDirectory=/opt/smail
 ExecStart=/opt/smail/smail
 Restart=on-failure
-RestartSec=5s
+RestartSec=10s
+# 队列等待 25 秒、数据库等待 35 秒，另留服务与日志收尾时间。
+TimeoutStopSec=90s
+KillMode=control-group
+OOMPolicy=stop
+# 默认预算只是部署起点；上线前须核对同机服务余量并完成容量验收。
+MemoryAccounting=true
+MemoryHigh=384M
+MemoryMax=512M
+MemorySwapMax=0
+CPUAccounting=true
+CPUQuota=100%
+TasksAccounting=true
+TasksMax=256
 RuntimeDirectory=smail
 RuntimeDirectoryMode=0750
 # 目录由 smail 进程拥有，允许主服务创建受保护的本机控制套接字。
