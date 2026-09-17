@@ -360,7 +360,7 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	}
 	if item.Busy {
 		s.mu.Unlock()
-		return ErrRecoveryDenied
+		return ErrRecoveryExpired
 	}
 	if item.HasBrowserContextDigest {
 		providedDigest := sha256.Sum256([]byte(strings.TrimSpace(browserContext)))
