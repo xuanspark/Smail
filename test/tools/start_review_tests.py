@@ -12,7 +12,8 @@ def main():
     parser.add_argument('directory')
     parser.add_argument('--only', action='append', default=[])
     parser.add_argument('--run', default='')
-    parser.add_argument('--memory-mib', type=int, choices=(64, 96, 128, 192), default=192)
+    parser.add_argument('--per-test', action='store_true')
+    parser.add_argument('--memory-mib', type=int, choices=(64, 96, 128, 192), default=128)
     args = parser.parse_args()
     root = Path(args.directory).resolve(strict=True)
     assert os.geteuid() == 0
@@ -39,6 +40,8 @@ def main():
         command.extend(['--only', directory])
     if args.run:
         command.extend(['--run', args.run])
+    if args.per_test:
+        command.append('--per-test')
     print('测试服务：' + unit, flush=True)
     return subprocess.run(command).returncode
 
