@@ -28,7 +28,9 @@ func AuthenticateIdentifier(identifier, plain string) (*models.User, error) {
 	identity, err := ResolveIdentifier(identifier)
 	if err != nil {
 		if plain != "" {
-			password.VerifyDummy(plain)
+			if err := password.CheckDummy(plain); err != nil {
+				return nil, err
+			}
 		}
 		return nil, errors.New("invalid credentials")
 	}
@@ -57,7 +59,9 @@ func AuthenticateUserByID(userID int, plain string) (*models.User, error) {
 func authenticateUserByID(userID int, plain string) (*models.User, error) {
 	if userID <= 0 {
 		if plain != "" {
-			password.VerifyDummy(plain)
+			if err := password.CheckDummy(plain); err != nil {
+				return nil, err
+			}
 		}
 		return nil, errors.New("invalid credentials")
 	}
@@ -72,16 +76,24 @@ func authenticateUserByID(userID int, plain string) (*models.User, error) {
 func authenticateLoadedUser(user *models.User, has bool, err error, plain string) (*models.User, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			password.VerifyDummy(plain)
+			if err := password.CheckDummy(plain); err != nil {
+				return nil, err
+			}
 			return nil, errors.New("invalid credentials")
 		}
 		return nil, fmt.Errorf("load user: %w", err)
 	}
 	if !has || user.ID == 0 {
-		password.VerifyDummy(plain)
+		if err := password.CheckDummy(plain); err != nil {
+			return nil, err
+		}
 		return nil, errors.New("invalid credentials")
 	}
-	if !password.Verify(user.Password, plain) {
+	matched, err := password.Check(user.Password, plain)
+	if err != nil {
+		return nil, err
+	}
+	if !matched {
 		return nil, errors.New("invalid credentials")
 	}
 	return user, nil

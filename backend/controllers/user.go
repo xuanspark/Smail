@@ -86,6 +86,9 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 	user := models.User{Name: username, Account: account, Disabled: reqData.Disabled, SessionVersion: 1, SecurityVersion: 1}
 	user.ApplyRole(targetRole)
 	if err := auth.SetPassword(&user, reqData.Password); err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		if errors.Is(err, password.ErrInvalidLength) {
 			response.NewErrorResponse(response.ParamsError, "密码长度必须为 8-12 字节", "").FPrint(w)
 			return
@@ -337,6 +340,9 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	user.Disabled = reqData.Disabled
 	if reqData.Password != "" {
 		if err := auth.SetPassword(&user, reqData.Password); err != nil {
+			if writePasswordBusy(w, err) {
+				return
+			}
 			if errors.Is(err, password.ErrInvalidLength) {
 				response.NewErrorResponse(response.ParamsError, "密码长度必须为 8-12 字节", "").FPrint(w)
 				return

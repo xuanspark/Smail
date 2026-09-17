@@ -3,10 +3,12 @@ package recovery
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"strings"
 
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
 const maxEmailContinuationAttempts = 5
@@ -93,10 +95,14 @@ func (s *Service) ContinueEmailWithContext(continuation, identifier, email, reco
 
 	// 数据库和恢复码哈希验证不占用全局锁；同一凭证同时只能有一个请求验证。
 	invalidate := false
+	busy := false
 	defer func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.emailPending[key] == pending {
+			if busy {
+				pending.Attempts--
+			}
 			if invalidate || pending.Attempts >= maxEmailContinuationAttempts {
 				delete(s.emailPending, key)
 			} else {
@@ -115,6 +121,10 @@ func (s *Service) ContinueEmailWithContext(continuation, identifier, email, reco
 		return "", ErrRecoveryDenied
 	}
 	if err := s.credentials.ConsumeRecoveryCode(user.ID, recoveryCode); err != nil {
+		if errors.Is(err, password.ErrBusy) {
+			busy = true
+			return "", err
+		}
 		return "", ErrRecoveryDenied
 	}
 	invalidate = true

@@ -202,6 +202,9 @@ func Login(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 
 	user, err := auth.AuthenticateIdentifier(identifier, reqData.Password)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		loginPairAttempts.recordFailure(pairKey)
 		loginAccountAttempts.recordFailure(accountKey)
 		loginIPAttempts.recordFailure(ipKey)

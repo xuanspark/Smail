@@ -24,6 +24,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/verification"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -279,6 +280,9 @@ func SetSecurityQuestion(ctx *context.Context, w http.ResponseWriter, req *http.
 		return
 	}
 	if err := service.SetSecurityQuestion(ctx.UserID, input.Question, input.Answer); err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, "密保问题设置失败")
 		return
 	}
@@ -308,6 +312,9 @@ func GenerateRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *htt
 	}
 	codes, err := service.GenerateRecoveryCodes(ctx.UserID, input.Count)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, "离线恢复码生成失败")
 		return
 	}
@@ -424,6 +431,9 @@ func GenerateProtocolCredential(ctx *context.Context, w http.ResponseWriter, req
 	}
 	code, err := service.GenerateProtocolCode(ctx.UserID, input.Protocol)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, "请先开启协议后再生成授权码")
 		return
 	}
@@ -464,6 +474,9 @@ func RevealProtocolCredentials(ctx *context.Context, w http.ResponseWriter, req 
 		return
 	}
 	if _, err := auth.AuthenticateUserByID(ctx.UserID, input.Password); err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, "密码验证失败")
 		return
 	}
@@ -617,6 +630,9 @@ func VerifyPasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *ht
 		}
 	}
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
@@ -647,6 +663,9 @@ func CompletePasswordRecovery(ctx *context.Context, w http.ResponseWriter, req *
 		return
 	}
 	if err := runtime.recovery.CompleteWithContext(input.Ticket, input.NewPassword, browserContext); err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		emailRecoveryFailureIPAttempts.recordFailure(failureKey)
 		writeSecurityError(w, response.ParamsError, "重置失败")
 		return
@@ -696,7 +715,16 @@ func CompletePublicLinkPasswordRecovery(w http.ResponseWriter, req *http.Request
 		return
 	}
 	runtime := currentSecurityRuntime()
-	if runtime.recovery == nil || runtime.recovery.CompletePublicLink(input.Token, input.NewPassword, input.RecoveryCode) != nil {
+	if runtime.recovery == nil {
+		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"reset": false})
+		return
+	}
+	if err := runtime.recovery.CompletePublicLink(input.Token, input.NewPassword, input.RecoveryCode); err != nil {
+		if errors.Is(err, password.ErrBusy) {
+			w.Header().Set("Retry-After", "1")
+			writePublicRecoveryJSON(w, http.StatusServiceUnavailable, map[string]bool{"reset": false})
+			return
+		}
 		writePublicRecoveryJSON(w, http.StatusBadRequest, map[string]bool{"reset": false})
 		return
 	}

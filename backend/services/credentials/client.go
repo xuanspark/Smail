@@ -1,4 +1,4 @@
-﻿package credentials
+package credentials
 
 import (
 	"errors"
@@ -286,14 +286,18 @@ func (s *Service) RevealClientCredentials(userID int) (map[int]string, error) {
 
 // VerifyClientOrProtocolCode 同时支持客户端专属授权码以及遗留的协议授权码
 func (s *Service) VerifyClientOrProtocolCode(userID int, protocol string, rawPlain string) bool {
+	matched, _ := s.CheckClientOrProtocolCode(userID, protocol, rawPlain)
+	return matched
+}
+
+// CheckClientOrProtocolCode 将计算过载向上返回，避免被当成密码错误累计封禁。
+func (s *Service) CheckClientOrProtocolCode(userID int, protocol string, rawPlain string) (bool, error) {
 	if s == nil || s.engine == nil || userID <= 0 || rawPlain == "" || len([]byte(rawPlain)) > 256 {
-		password.VerifyDummy(rawPlain)
-		return false
+		return false, password.CheckDummy(rawPlain)
 	}
 	cleanedPlain := CleanAuthCode(rawPlain)
 	if cleanedPlain == "" {
-		password.VerifyDummy(rawPlain)
-		return false
+		return false, password.CheckDummy(rawPlain)
 	}
 
 	// 1. 优先校验客户端专属授权码
@@ -302,12 +306,22 @@ func (s *Service) VerifyClientOrProtocolCode(userID int, protocol string, rawPla
 	if err == nil && len(clients) > 0 {
 		for _, client := range clients {
 			// 比对清洗后的统一大写无横线授权码
-			if password.Verify(client.CodeHash, cleanedPlain) {
+			matched, err := password.Check(client.CodeHash, cleanedPlain)
+			if err != nil {
+				return false, err
+			}
+			if matched {
 				now := s.now()
-				_, _ = s.engine.ID(client.ID).
+				affected, err := s.engine.ID(client.ID).
 					Where("revoked_at IS NULL AND code_version = ? AND code_hash = ?", client.CodeVersion, client.CodeHash).
 					Cols("last_used_at", "updated_at").Update(&models.ClientCredential{LastUsedAt: &now})
-				return true
+				if err != nil || affected == 1 {
+					return err == nil, err
+				}
+				valid, err := s.engine.ID(client.ID).
+					Where("revoked_at IS NULL AND code_version = ? AND code_hash = ?", client.CodeVersion, client.CodeHash).
+					Exist(&models.ClientCredential{})
+				return valid, err
 			}
 		}
 	}
@@ -315,20 +329,25 @@ func (s *Service) VerifyClientOrProtocolCode(userID int, protocol string, rawPla
 	// 2. 回退校验旧版按协议划分的授权码（支持 cleanedPlain 或原樣 rawPlain）
 	protocol, err = NormalizeProtocol(protocol)
 	if err != nil {
-		password.VerifyDummy(rawPlain)
-		return false
+		return false, password.CheckDummy(rawPlain)
 	}
 	var item models.ProtocolCredential
 	has, err := s.engine.Where("user_id = ? AND protocol = ? AND enabled = ? AND revoked_at IS NULL", userID, protocol, true).Get(&item)
 	if err != nil || !has || item.CodeHash == "" {
-		password.VerifyDummy(rawPlain)
-		return false
+		return false, password.CheckDummy(rawPlain)
 	}
 
 	// 兼容旧哈希直接比对原始输入，或者比对清洗后的输入
-	matched := password.Verify(item.CodeHash, strings.TrimSpace(rawPlain)) || password.Verify(item.CodeHash, cleanedPlain)
-	if !matched {
-		return false
+	trimmedPlain := strings.TrimSpace(rawPlain)
+	matched, err := password.Check(item.CodeHash, trimmedPlain)
+	if err != nil {
+		return false, err
+	}
+	if !matched && trimmedPlain != cleanedPlain {
+		matched, err = password.Check(item.CodeHash, cleanedPlain)
+	}
+	if err != nil || !matched {
+		return false, err
 	}
 
 	now := s.now()
@@ -336,11 +355,14 @@ func (s *Service) VerifyClientOrProtocolCode(userID int, protocol string, rawPla
 		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
 		Cols("last_used_at", "updated_at").Update(&models.ProtocolCredential{LastUsedAt: &now})
 	if err == nil && affected == 1 {
-		return true
+		return true, nil
+	}
+	if err != nil {
+		return false, err
 	}
 
 	valid, err := s.engine.ID(item.ID).
 		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
 		Exist(&models.ProtocolCredential{})
-	return err == nil && valid
+	return valid, err
 }

@@ -62,6 +62,9 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		currentUser, err = auth.Authenticate(ctx.UserAccount, retData.CurrentPassword)
 	}
 	if err != nil || currentUser == nil || currentUser.ID != ctx.UserID {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		loginPairAttempts.recordFailure(pairKey)
 		loginAccountAttempts.recordFailure(accountKey)
 		loginIPAttempts.recordFailure(ipKey)
@@ -89,6 +92,9 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 		PasswordChangedAt:  &now,
 	}
 	if err := auth.SetPassword(&user, retData.Password); err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		if errors.Is(err, password.ErrInvalidLength) {
 			response.NewErrorResponse(response.ParamsError, "密码长度必须为 8-12 字节", "").FPrint(w)
 			return

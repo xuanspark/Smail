@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
-	"git.pcux.cn/xuans/Smail/utils/password"
 	"git.pcux.cn/xuans/Smail/utils/credential"
+	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
 const (
@@ -189,30 +189,34 @@ func (s *Service) RevokeProtocolCode(userID int, protocol string) error {
 	if _, err := s.engine.Where("user_id = ? AND protocol = ? AND revoked_at IS NULL", userID, protocol).
 		Cols("revoked_at", "code_hash", "code_ciphertext", "updated_at").
 		Update(&models.ProtocolCredential{RevokedAt: &now, CodeHash: "", CodeCiphertext: ""}); err != nil {
-			return fmt.Errorf("revoke protocol authorization code: %w", err)
+		return fmt.Errorf("revoke protocol authorization code: %w", err)
 	}
 	return nil
 }
 
 // VerifyProtocolCode 校验协议开关和授权码，不接受网页登录密码。
 func (s *Service) VerifyProtocolCode(userID int, protocol string, plain string) bool {
+	matched, _ := s.CheckProtocolCode(userID, protocol, plain)
+	return matched
+}
+
+// CheckProtocolCode 保留计算过载错误，供需要区分重试与认证失败的调用方使用。
+func (s *Service) CheckProtocolCode(userID int, protocol string, plain string) (bool, error) {
 	if s == nil || s.engine == nil || userID <= 0 || plain == "" || len([]byte(plain)) > 256 {
-		password.VerifyDummy(plain)
-		return false
+		return false, password.CheckDummy(plain)
 	}
 	protocol, err := NormalizeProtocol(protocol)
 	if err != nil {
-		password.VerifyDummy(plain)
-		return false
+		return false, password.CheckDummy(plain)
 	}
 	var item models.ProtocolCredential
 	has, err := s.engine.Where("user_id = ? AND protocol = ? AND enabled = ? AND revoked_at IS NULL", userID, protocol, true).Get(&item)
 	if err != nil || !has || item.CodeHash == "" {
-		password.VerifyDummy(plain)
-		return false
+		return false, password.CheckDummy(plain)
 	}
-	if !password.Verify(item.CodeHash, strings.TrimSpace(plain)) {
-		return false
+	matched, err := password.Check(item.CodeHash, strings.TrimSpace(plain))
+	if err != nil || !matched {
+		return false, err
 	}
 	now := s.now()
 	// 哈希计算期间可能发生关闭、撤销或换码，返回成功前必须再次原子确认凭据状态。
@@ -220,16 +224,16 @@ func (s *Service) VerifyProtocolCode(userID int, protocol string, plain string) 
 		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
 		Cols("last_used_at", "updated_at").Update(&models.ProtocolCredential{LastUsedAt: &now})
 	if err != nil {
-		return false
+		return false, err
 	}
 	if affected == 1 {
-		return true
+		return true, nil
 	}
 	// MySQL 在时间字段未变化时可能报告零影响行，必须再次查询有效状态而不是误拒绝或直接放行。
 	valid, err := s.engine.ID(item.ID).
 		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
 		Exist(&models.ProtocolCredential{})
-	return err == nil && valid
+	return valid, err
 }
 
 func newProtocolCode() (string, error) {

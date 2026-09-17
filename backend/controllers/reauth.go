@@ -49,6 +49,9 @@ func ReauthenticateCurrentUser(ctx *appcontext.Context, w http.ResponseWriter, r
 
 	user, err := auth.AuthenticateUserByID(ctx.UserID, input.Password)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		reauthUserAttempts.recordFailure(userKey)
 		reauthIPAttempts.recordFailure(ipKey)
 		log.WithContext(ctx).Info("reauthentication failed")

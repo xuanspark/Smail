@@ -63,6 +63,7 @@ type Service struct {
 }
 
 type ticket struct {
+	Busy                    bool
 	UserID                  int
 	SessionVersion          int
 	Method                  string
@@ -249,6 +250,9 @@ func (s *Service) VerifyWithContext(challengeID, account, email, code, recoveryC
 			return "", ErrRecoveryDenied
 		}
 		if err := s.credentials.ConsumeRecoveryCode(user.ID, recoveryCode); err != nil {
+			if errors.Is(err, password.ErrBusy) {
+				return "", err
+			}
 			return "", ErrRecoveryDenied
 		}
 		method = "email_admin"
@@ -297,17 +301,26 @@ func (s *Service) VerifyOfflineWithContext(identifier, question, answer, recover
 	}
 	user, err := s.loadRecoverableUser(identifier)
 	if err != nil {
-		password.VerifyDummy(answer)
-		password.VerifyDummy(recoveryCode)
+		if err := password.CheckDummy(answer); err != nil {
+			return "", err
+		}
+		if err := password.CheckDummy(recoveryCode); err != nil {
+			return "", err
+		}
 		return "", ErrRecoveryDenied
 	}
 	storedQuestion, configured, questionErr := s.credentials.GetSecurityQuestion(user.ID)
 	answerVerified, answerErr := s.credentials.VerifySecurityQuestion(user.ID, answer)
+	if errors.Is(answerErr, password.ErrBusy) {
+		return "", answerErr
+	}
 	providedQuestionDigest := sha256.Sum256([]byte(strings.TrimSpace(question)))
 	storedQuestionDigest := sha256.Sum256([]byte(strings.TrimSpace(storedQuestion)))
 	questionVerified := configured && subtle.ConstantTimeCompare(providedQuestionDigest[:], storedQuestionDigest[:]) == 1
 	if questionErr != nil || answerErr != nil || !questionVerified || !answerVerified {
-		password.VerifyDummy(recoveryCode)
+		if err := password.CheckDummy(recoveryCode); err != nil {
+			return "", err
+		}
 		return "", ErrRecoveryDenied
 	}
 	ticketID, err := s.issueTicketFor(user.ID, user.SessionVersion, "offline", 0, 0, browserContext)
@@ -316,6 +329,9 @@ func (s *Service) VerifyOfflineWithContext(identifier, question, answer, recover
 	}
 	if err := s.credentials.ConsumeRecoveryCode(user.ID, recoveryCode); err != nil {
 		s.invalidateTicket(ticketID)
+		if errors.Is(err, password.ErrBusy) {
+			return "", err
+		}
 		return "", ErrRecoveryDenied
 	}
 	return ticketID, nil
@@ -342,6 +358,10 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 		s.mu.Unlock()
 		return ErrRecoveryExpired
 	}
+	if item.Busy {
+		s.mu.Unlock()
+		return ErrRecoveryDenied
+	}
 	if item.HasBrowserContextDigest {
 		providedDigest := sha256.Sum256([]byte(strings.TrimSpace(browserContext)))
 		if strings.TrimSpace(browserContext) == "" || subtle.ConstantTimeCompare(providedDigest[:], item.BrowserContextDigest[:]) != 1 {
@@ -349,11 +369,28 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 			return ErrRecoveryDenied
 		}
 	}
-	delete(s.tickets, ticketDigest)
+	item.Busy = true
+	s.tickets[ticketDigest] = item
 	s.mu.Unlock()
+
+	// 过载时保留同一张有效票据，已失效或已被撤销的票据不得恢复。
+	retry := false
+	defer func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if current, exists := s.tickets[ticketDigest]; exists && current == item {
+			if retry && s.now().Before(item.ExpiresAt) {
+				item.Busy = false
+				s.tickets[ticketDigest] = item
+			} else {
+				delete(s.tickets, ticketDigest)
+			}
+		}
+	}()
 
 	hash, err := auth.HashPassword(newPassword)
 	if err != nil {
+		retry = errors.Is(err, password.ErrBusy)
 		return err
 	}
 	defer clearString(&hash)

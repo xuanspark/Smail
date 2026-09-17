@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
 const (
@@ -81,7 +82,14 @@ func AuthenticateProtocol(protocol string, remoteAddress string, account string,
 	}
 
 	service, err := credentials.NewService(db.Instance)
-	if err != nil || !service.VerifyClientOrProtocolCode(userID, normalizedProtocol, plain) {
+	if err != nil {
+		return fail()
+	}
+	matched, err := service.CheckClientOrProtocolCode(userID, normalizedProtocol, plain)
+	if errors.Is(err, password.ErrBusy) {
+		return nil, err
+	}
+	if err != nil || !matched {
 		return fail()
 	}
 	var user models.User

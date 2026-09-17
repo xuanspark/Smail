@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -203,6 +204,9 @@ func (s *Service) CompletePublicLink(token, newPassword, recoveryCode string) er
 	}()
 	if user.EffectiveRole() == access.RoleAdmin {
 		if err := s.credentials.ConsumeRecoveryCodeWithSession(session, user.ID, recoveryCode); err != nil {
+			if errors.Is(err, password.ErrBusy) {
+				return err
+			}
 			if s.recordPublicRecoveryCodeFailure(key, item) {
 				consume = true
 			}

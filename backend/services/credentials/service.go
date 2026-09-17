@@ -133,10 +133,9 @@ func (s *Service) VerifySecurityQuestion(userID int, answer string) (bool, error
 		return false, fmt.Errorf("load security question: %w", err)
 	}
 	if !has {
-		password.VerifyDummy(answer)
-		return false, nil
+		return false, password.CheckDummy(answer)
 	}
-	return password.Verify(item.AnswerHash, answer), nil
+	return password.Check(item.AnswerHash, answer)
 }
 
 // GenerateRecoveryCodes 撤销旧码并生成一组只返回一次的离线恢复码。
@@ -241,7 +240,11 @@ func (s *Service) consumeRecoveryCode(session recoveryCodeSession, userID int, c
 		return fmt.Errorf("load recovery codes: %w", err)
 	}
 	for _, item := range items {
-		if !password.Verify(item.CodeHash, code) {
+		matched, err := password.Check(item.CodeHash, code)
+		if err != nil {
+			return err
+		}
+		if !matched {
 			continue
 		}
 		now := s.now()

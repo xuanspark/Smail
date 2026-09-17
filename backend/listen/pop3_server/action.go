@@ -16,6 +16,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/errors"
 	"git.pcux.cn/xuans/Smail/utils/id"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 	"strconv"
@@ -105,6 +106,9 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 	}
 	user, err := auth.AuthenticateProtocol("pop3", remoteAddress, session.User, pwd)
 	if err != nil {
+		if errors2.Is(err, password.ErrBusy) {
+			return errors2.New("[SYS/TEMP] Authentication temporarily unavailable")
+		}
 		log.WithContext(session.Ctx).WithFields(log.Fields{
 			"action": "POP3 客户端登录",
 			"result": "failure",

@@ -1,4 +1,4 @@
-﻿package controllers
+package controllers
 
 import (
 	"net/http"
@@ -38,6 +38,9 @@ func CreateClientCredential(ctx *context.Context, w http.ResponseWriter, req *ht
 	}
 	code, item, err := service.CreateClientCredential(ctx.UserID, input.ClientName)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, err.Error())
 		return
 	}
@@ -59,6 +62,9 @@ func RegenerateClientCredential(ctx *context.Context, w http.ResponseWriter, req
 	}
 	code, err := service.RegenerateClientCredential(ctx.UserID, input.ClientID)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, err.Error())
 		return
 	}
@@ -99,6 +105,9 @@ func RevealClientCredentials(ctx *context.Context, w http.ResponseWriter, req *h
 		return
 	}
 	if _, err := auth.AuthenticateUserByID(ctx.UserID, input.Password); err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		writeSecurityError(w, response.ParamsError, "密码验证失败")
 		return
 	}

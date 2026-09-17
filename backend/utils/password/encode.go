@@ -43,6 +43,11 @@ func Hash(plain string) (string, error) {
 	if plainSize < minSecretSize {
 		return "", ErrInvalidLength
 	}
+	release, err := acquireComputation()
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	salt := make([]byte, saltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("generate password salt: %w", err)
@@ -82,28 +87,54 @@ func HashUserPassword(plain string) (string, error) {
 
 // Verify 校验 Argon2id 密码哈希，不接受旧算法格式。
 func Verify(encoded, plain string) bool {
+	matched, _ := Check(encoded, plain)
+	return matched
+}
+
+// Check 区分密码不匹配与计算资源繁忙，业务入口必须保留错误信息。
+func Check(encoded, plain string) (bool, error) {
 	if len([]byte(plain)) < minSecretSize {
-		return false
+		return false, nil
+	}
+	if len(encoded) > maxHashSize {
+		return false, nil
 	}
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != format || parts[2] != fmt.Sprintf("v=%d", version) || parts[3] != fmt.Sprintf("m=%d,t=%d,p=%d", memory, iterations, parallelism) {
-		return false
+		return false, nil
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil || len(salt) != saltLength {
-		return false
+		return false, nil
 	}
 	expected, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil || len(expected) != keyLength {
-		return false
+		return false, nil
 	}
+	release, err := acquireComputation()
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	actual := argon2.IDKey([]byte(plain), salt, iterations, memory, parallelism, keyLength)
-	return subtle.ConstantTimeCompare(actual, expected) == 1
+	return subtle.ConstantTimeCompare(actual, expected) == 1, nil
 }
 
 func VerifyDummy(plain string) bool {
+	_ = CheckDummy(plain)
+	return false
+}
+
+// CheckDummy 为不存在的凭据执行同等强度计算，并传递过载状态。
+func CheckDummy(plain string) error {
+	release, err := acquireComputation()
+	if err != nil {
+		return err
+	}
+	defer release()
 	salt := [saltLength]byte{0x53, 0x6d, 0x61, 0x69, 0x6c, 0x2d, 0x61, 0x75, 0x74, 0x68, 0x2d, 0x64, 0x75, 0x6d, 0x6d, 0x79}
 	expected := [keyLength]byte{0x91, 0xa4, 0x65, 0x82, 0x31, 0x07, 0x44, 0xc8, 0x7a, 0x22, 0xe1, 0x59, 0x3c, 0x5b, 0x8d, 0xf1, 0xd4, 0x3a, 0x68, 0x9c, 0xee, 0x20, 0x57, 0x61, 0x45, 0x3a, 0x71, 0x10, 0x5b, 0x26, 0xb6, 0xa0}
 	actual := argon2.IDKey([]byte(plain), salt[:], iterations, memory, parallelism, keyLength)
-	return subtle.ConstantTimeCompare(actual, expected[:]) == 1
+	_ = subtle.ConstantTimeCompare(actual, expected[:])
+	return nil
 }

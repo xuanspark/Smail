@@ -6,6 +6,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/id"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	log "github.com/sirupsen/logrus"
@@ -64,6 +65,9 @@ func (s *Session) Auth(mech string) (sasl.Server, error) {
 func (s *Session) AuthPlain(username, pwd string) error {
 	user, err := auth.AuthenticateProtocol("smtp", s.RemoteAddress.String(), username, pwd)
 	if err != nil {
+		if errors.Is(err, password.ErrBusy) {
+			return &smtp.SMTPError{Code: 454, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "Temporary authentication failure"}
+		}
 		log.WithContext(s.Ctx).WithFields(log.Fields{
 			"action": "SMTP 客户端认证",
 			"result": "failure",
