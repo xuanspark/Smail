@@ -1,0 +1,20 @@
+[Unit]
+Description=Smail certificate renewal
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/smail-acme/renew_certificate.py
+ExecStopPost=/usr/bin/systemctl start nginx.service
+TimeoutStartSec=240
+MemoryHigh=96M
+MemoryMax=128M
+MemorySwapMax=0
+CPUQuota=100%
+TasksMax=64
+Environment=GOMEMLIMIT=64MiB
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
