@@ -136,7 +136,7 @@ def main():
         (target / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(result, ensure_ascii=False, indent=2))
     assert result['live_unchanged'] and result['oom_events'] == 0
-    assert result['integrity'] == {'smail.db': [['ok']], 'smail-state.db': [['ok']]}
+    assert result['integrity'] == {'smail.db': [('ok',)], 'smail-state.db': [('ok',)]}
 
 
 if __name__ == '__main__':
