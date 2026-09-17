@@ -46,7 +46,10 @@ export const buildFinalURL = (sslData, webDomain, location = currentLocation()) 
   const proxyMode = isProxyTLSMode(sslData)
   const configuredPort = target.port
   const targetPort = Number(sslData?.httpsPort)
-  if (!proxyMode) {
+  const publicPort = Number(sslData?.publicHttpsPort)
+  if (Number.isInteger(publicPort) && publicPort > 0 && publicPort <= 65535) {
+    target.port = publicPort === DEFAULT_HTTPS_PORT ? '' : String(publicPort)
+  } else if (!proxyMode) {
     target.port = targetPort > 0 && targetPort !== DEFAULT_HTTPS_PORT ? String(targetPort) : ''
   } else if (!isNonDefaultPort(target.protocol, configuredPort)) {
     target.port = ''

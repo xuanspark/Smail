@@ -31,16 +31,12 @@ func ResolveWebAuthnSecurity(root RootConfig) (SecurityConfig, error) {
 	}
 	if len(security.WebAuthnRPOrigins) == 0 {
 		origin := "https://" + web
-		httpConfig := ResolveHTTPPortDefaults(root.HTTP, 0)
-		// 反代的外部端口不等于内部 HTTP 端口，非标准外部端口需显式配置。
-		if httpConfig.TLSMode != HTTPSTLSModeProxy {
-			port := httpConfig.HTTPSPort
-			if !validServicePort(port) {
-				return SecurityConfig{}, fmt.Errorf("安全密钥站点 HTTPS 端口无效")
-			}
-			if port != 443 {
-				origin += ":" + strconv.Itoa(port)
-			}
+		port := ResolvePublicHTTPSPort(root.HTTP)
+		if !validServicePort(port) {
+			return SecurityConfig{}, fmt.Errorf("安全密钥站点 HTTPS 端口无效")
+		}
+		if port != 443 {
+			origin += ":" + strconv.Itoa(port)
 		}
 		security.WebAuthnRPOrigins = []string{origin}
 	}

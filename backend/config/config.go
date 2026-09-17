@@ -44,6 +44,7 @@ type Config struct {
 	HttpPort                int               `json:"httpPort"`        //http服务端口设置，默认80
 	HttpsPort               int               `json:"httpsPort"`       //https服务端口，默认443
 	TLSMode                 string            `json:"tlsMode,omitempty"`
+	PublicHTTPSPort         int               `json:"publicHttpsPort,omitempty"`
 	TrustedProxyCIDRs       []string          `json:"trustedProxyCidrs,omitempty"`
 	WeChatPushAppId         string            `json:"weChatPushAppId"`
 	WeChatPushSecret        string            `json:"weChatPushSecret"`

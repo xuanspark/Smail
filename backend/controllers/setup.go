@@ -40,14 +40,15 @@ func AcmeChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 type sslResponse struct {
-	Port         int    `json:"port"`
-	HTTPPort     int    `json:"httpPort"`
-	HTTPSPort    int    `json:"httpsPort"`
-	TLSMode      string `json:"tlsMode"`
-	HTTPSEnabled bool   `json:"httpsEnabled"`
-	WebDomain    string `json:"webDomain"`
-	Type         string `json:"type"`
-	Ready        bool   `json:"ready"`
+	Port            int    `json:"port"`
+	HTTPPort        int    `json:"httpPort"`
+	HTTPSPort       int    `json:"httpsPort"`
+	PublicHTTPSPort int    `json:"publicHttpsPort"`
+	TLSMode         string `json:"tlsMode"`
+	HTTPSEnabled    bool   `json:"httpsEnabled"`
+	WebDomain       string `json:"webDomain"`
+	Type            string `json:"type"`
+	Ready           bool   `json:"ready"`
 }
 
 func buildSetupSSLResponse(sslType string, cfg *config.Config, httpConfig config.HTTPConfig, webDomain string, ready bool) sslResponse {
@@ -60,14 +61,15 @@ func buildSetupSSLResponse(sslType string, cfg *config.Config, httpConfig config
 		httpsPort = 443
 	}
 	return sslResponse{
-		Port:         httpPort,
-		HTTPPort:     httpPort,
-		HTTPSPort:    httpsPort,
-		TLSMode:      httpConfig.TLSMode,
-		HTTPSEnabled: httpConfig.HTTPSEnabled,
-		WebDomain:    webDomain,
-		Type:         sslType,
-		Ready:        ready,
+		Port:            httpPort,
+		HTTPPort:        httpPort,
+		HTTPSPort:       httpsPort,
+		PublicHTTPSPort: config.ResolvePublicHTTPSPort(httpConfig),
+		TLSMode:         httpConfig.TLSMode,
+		HTTPSEnabled:    httpConfig.HTTPSEnabled,
+		WebDomain:       webDomain,
+		Type:            sslType,
+		Ready:           ready,
 	}
 }
 

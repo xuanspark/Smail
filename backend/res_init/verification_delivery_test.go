@@ -87,3 +87,33 @@ func TestPublicRecoveryLinkUsesWebDomain(t *testing.T) {
 		t.Fatal("invalid web domain was accepted")
 	}
 }
+
+func TestPublicRecoveryMailLinkUsesPublicHTTPSPort(t *testing.T) {
+	oldConfig, oldManager := config.Instance, config.CurrentManager()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{HttpsPort: 8002}
+	t.Cleanup(func() {
+		config.Instance = oldConfig
+		config.SetRuntimeManager(oldManager)
+	})
+	for _, test := range []struct {
+		port int
+		want string
+	}{
+		{443, "https://web.example.com/rest/#/reset-password/one-time-token"},
+		{9443, "https://web.example.com:9443/rest/#/reset-password/one-time-token"},
+		{0, "https://web.example.com:8002/rest/#/reset-password/one-time-token"},
+	} {
+		config.Instance.PublicHTTPSPort = test.port
+		link, err := publicRecoveryLink("web.example.com", "one-time-token")
+		if err != nil || link != test.want {
+			t.Fatalf("恢复邮件公网链接不匹配：%q，%v", link, err)
+		}
+	}
+	for _, port := range []int{-1, 65536} {
+		config.Instance.PublicHTTPSPort = port
+		if _, err := publicRecoveryLink("web.example.com", "one-time-token"); err == nil {
+			t.Fatal("非法公网端口仍生成了邮件恢复链接")
+		}
+	}
+}

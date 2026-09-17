@@ -239,6 +239,9 @@ func validateHTTP(http HTTPConfig) error {
 	if http.HTTPSPort != 0 && !validPort(http.HTTPSPort) {
 		return ErrInvalidHTTP
 	}
+	if http.PublicHTTPSPort != 0 && !validPort(http.PublicHTTPSPort) {
+		return ErrInvalidHTTP
+	}
 	if http.TLSMode != "" && http.TLSMode != HTTPSTLSModeDirect && http.TLSMode != HTTPSTLSModeProxy {
 		return ErrInvalidHTTP
 	}

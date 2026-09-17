@@ -42,6 +42,7 @@ export function getRecommendedPort(config, path) {
     case 'http.port':
       return config.http?.tlsMode === 'proxy' ? 8080 : 80
     case 'http.httpsPort':
+    case 'http.publicHttpsPort':
       return 443
     case 'relay.relayPort':
       return smtpPorts.get(relaySecurityForMail(config))
@@ -113,7 +114,8 @@ const baseGroups = [
       min: 1,
       show: config => config.http?.tlsMode !== 'proxy' && !!config.http?.httpsEnabled,
       hint: '默认使用 443；需要避开端口占用时可手动修改。'
-    })
+    }),
+    port('http.publicHttpsPort', '公网 HTTPS 端口', { fallback: 0 })
   ])
 ]
 

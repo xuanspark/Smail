@@ -13,6 +13,26 @@ const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } =
     '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
 )()
 
+test('公网 HTTPS 端口独立编辑且保留内部监听与模式切换', () => {
+  const config = {
+    domains: { primary: 'example.com', web: 'mail.example.com', accepted: ['example.com'] },
+    http: { port: 8001, httpsPort: 8002, httpsEnabled: true, tlsMode: 'direct' }
+  }
+  const updated = readFormConfig(updateFormConfig(JSON.stringify(config), 'base', ['http', 'publicHttpsPort'], 443))
+  assert.equal(updated.http.publicHttpsPort, 443)
+  assert.equal(updated.http.httpsPort, 8002)
+  assert.equal(updated.http.port, 8001)
+  assert.deepEqual(validateFormConfig('base', updated), {})
+  const proxy = readFormConfig(updateFormConfig(JSON.stringify(updated), 'base', ['http', 'tlsMode'], 'proxy'))
+  assert.equal(proxy.http.publicHttpsPort, 443)
+  for (const value of [-1, 65536, 1.5, '443']) {
+    updated.http.publicHttpsPort = value
+    assert.ok(validateFormConfig('base', updated)['http.publicHttpsPort'])
+  }
+  updated.http.publicHttpsPort = 0
+  assert.deepEqual(validateFormConfig('base', updated), {})
+})
+
 test('基础配置不再展示冗余安全选项与开关，通行密钥由系统默认解析，用户权限仍由账号设置管理', () => {
   const config = { domains: { web: 'mail.old.com' }, security: { webAuthnEnabled: false, externalEmailEnabled: false, webAuthnRpId: 'mail.old.com' } }
   const groups = getFieldGroups('base', config)

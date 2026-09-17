@@ -68,6 +68,7 @@ func CurrentHTTPConfig() HTTPConfig {
 	return ResolveHTTPPortDefaults(HTTPConfig{
 		Port:              cfg.HttpPort,
 		HTTPSPort:         cfg.HttpsPort,
+		PublicHTTPSPort:   cfg.PublicHTTPSPort,
 		HTTPSEnabled:      cfg.HttpsEnabled != 2,
 		TLSMode:           mode,
 		TrustedProxyCIDRs: append([]string(nil), cfg.TrustedProxyCIDRs...),

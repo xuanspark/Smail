@@ -59,6 +59,7 @@ func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 		"dbType": "sqlite", "dbDSN": "./config/existing.db", "isInit": true,
 		"sslType": "1", "SSLPublicKeyPath": "./config/ssl/site.crt", "SSLPrivateKeyPath": "./config/ssl/site.key",
 		"httpPort": 80, "httpsPort": 443, "httpsEnabled": 1,
+		"publicHttpsPort": 9443,
 	})
 	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); err != nil {
 		t.Fatal(err)
@@ -73,6 +74,9 @@ func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := CurrentConfig()
+		if cfg.PublicHTTPSPort != 9443 || cfg.HttpsPort != 443 {
+			t.Fatal("分区启动兼容快照丢失公网或内部端口")
+		}
 		if !cfg.IsSetupReady() || cfg.DbType != DBTypeSQLite || cfg.DbDSN != filepath.Join(root, "data", "existing.db") {
 			t.Fatal("partitioned startup lost initialization or database identity")
 		}

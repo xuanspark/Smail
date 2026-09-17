@@ -3,7 +3,9 @@ package res_init
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -175,8 +177,12 @@ func publicRecoveryLink(webDomain, token string) (string, error) {
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", fmt.Errorf("invalid web domain")
 	}
-	if port := config.CurrentHTTPConfig().HTTPSPort; port > 0 && port != 443 && parsed.Port() == "" {
-		parsed.Host = parsed.Hostname() + fmt.Sprintf(":%d", port)
+	port := config.ResolvePublicHTTPSPort(config.CurrentHTTPConfig())
+	if port < 1 || port > 65535 {
+		return "", fmt.Errorf("invalid public HTTPS port")
+	}
+	if port != 443 && parsed.Port() == "" {
+		parsed.Host = net.JoinHostPort(parsed.Hostname(), strconv.Itoa(port))
 	}
 	parsed.Path = "/rest/"
 	parsed.Fragment = "/reset-password/" + token

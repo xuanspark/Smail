@@ -61,6 +61,7 @@ type legacyMigrationConfig struct {
 	SpamFilterLevel         int        `json:"spamFilterLevel"`
 	HttpPort                int        `json:"httpPort"`
 	HttpsPort               int        `json:"httpsPort"`
+	PublicHTTPSPort         int        `json:"publicHttpsPort"`
 	TLSMode                 string     `json:"tlsMode"`
 	TrustedProxyCIDRs       []string   `json:"trustedProxyCidrs"`
 	WeChatPushAppID         string     `json:"weChatPushAppId"`
@@ -92,6 +93,7 @@ var legacyMigrationKnownFields = map[string]struct{}{
 	"logLevel": {}, "domain": {}, "domains": {}, "webDomain": {}, "adminRecoveryDomain": {}, "accessHosts": {},
 	"dkimPrivateKeyPath": {}, "sslType": {}, "SSLPrivateKeyPath": {}, "SSLPublicKeyPath": {},
 	"dbDSN": {}, "dbType": {}, "httpsEnabled": {}, "spamFilterLevel": {}, "httpPort": {}, "httpsPort": {}, "tlsMode": {}, "trustedProxyCidrs": {},
+	"publicHttpsPort": {},
 	"weChatPushAppId": {}, "weChatPushSecret": {}, "weChatPushTemplateId": {}, "weChatPushUserId": {},
 	"tgBotToken": {}, "tgChatId": {}, "isInit": {}, "setupState": {}, "webPushUrl": {}, "webPushToken": {},
 	"smtpHost": {}, "smtpPort": {}, "smtpUsername": {}, "smtpPassword": {}, "smtpSecurity": {}, "smtpFrom": {},
@@ -517,6 +519,7 @@ func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConf
 		HTTP: HTTPConfig{
 			Port:              legacy.HttpPort,
 			HTTPSPort:         httpsPort,
+			PublicHTTPSPort:   legacy.PublicHTTPSPort,
 			HTTPSEnabled:      httpsEnabled,
 			TLSMode:           tlsMode,
 			TrustedProxyCIDRs: append([]string(nil), legacy.TrustedProxyCIDRs...),

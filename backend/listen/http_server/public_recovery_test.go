@@ -119,6 +119,67 @@ func TestPublicRecoveryPageRequiresConfiguredHTTPSPort(t *testing.T) {
 	}
 }
 
+func TestPublicRecoveryUsesPublicPortBehindTLSProxy(t *testing.T) {
+	configurePublicRecoveryRouteTest(t)
+	config.Instance.HttpsPort = 8002
+	config.Instance.PublicHTTPSPort = 443
+	handler, err := newPublicRecoveryHandler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name      string
+		authority string
+		port      int
+	}{
+		{"standard public port", "web.example.com", 443},
+		{"custom public port", "web.example.com:9443", 9443},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			config.Instance.PublicHTTPSPort = test.port
+			origin := "https://" + test.authority
+			request := publicRecoveryRequest(http.MethodGet, origin+"/rest/")
+			request.RemoteAddr = "127.0.0.1:1234"
+			request.Header.Set("Forwarded", "host=evil.example:8002;proto=https")
+			request.Header.Set("X-Forwarded-Host", "evil.example")
+			request.Header.Set("X-Forwarded-Port", "8002")
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `data-login-url="`+origin+`/#/login"`) {
+				t.Fatalf("恢复页未使用公网登录地址，状态 %d", recorder.Code)
+			}
+			recorder = httptest.NewRecorder()
+			handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, origin+"/public-password-recovery"))
+			if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != origin+"/rest/" {
+				t.Fatal("恢复入口跳转携带了内部端口")
+			}
+			if !isPublicRecoveryOrigin(origin) || isPublicRecoveryOrigin("https://web.example.com:8002") || isPublicRecoveryOrigin("https://evil.example") {
+				t.Fatal("恢复接口的来源校验没有使用公网端口")
+			}
+			for _, target := range []string{"https://web.example.com:8002/rest/", "https://evil.example/rest/"} {
+				recorder = httptest.NewRecorder()
+				handler.ServeHTTP(recorder, publicRecoveryRequest(http.MethodGet, target))
+				if recorder.Code != http.StatusNotFound {
+					t.Fatal("接受了内部端口或非本站域名")
+				}
+			}
+		})
+	}
+}
+
+func TestPublicRecoveryRejectsInvalidPublicPort(t *testing.T) {
+	configurePublicRecoveryRouteTest(t)
+	for _, port := range []int{-1, 65536} {
+		config.Instance.PublicHTTPSPort = port
+		if _, ok := publicRecoveryBaseURL(); ok {
+			t.Fatal("非法公网端口仍生成了恢复链接")
+		}
+		if isPublicRecoveryOrigin("https://web.example.com") {
+			t.Fatal("非法公网端口回退为可信来源")
+		}
+	}
+}
+
 func TestPublicRecoveryLoginEntryRedirectsOnlyFromWebDomain(t *testing.T) {
 	configurePublicRecoveryRouteTest(t)
 	handler, err := newPublicRecoveryHandler()

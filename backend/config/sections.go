@@ -45,6 +45,7 @@ type DomainConfig struct {
 type HTTPConfig struct {
 	Port              int      `json:"port,omitempty"`
 	HTTPSPort         int      `json:"httpsPort,omitempty"`
+	PublicHTTPSPort   int      `json:"publicHttpsPort,omitempty"`
 	HTTPSEnabled      bool     `json:"httpsEnabled"`
 	TLSMode           string   `json:"tlsMode,omitempty"`
 	TrustedProxyCIDRs []string `json:"trustedProxyCidrs,omitempty"`

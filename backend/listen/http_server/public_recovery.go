@@ -242,16 +242,16 @@ func requestMatchesHTTPSAuthority(r *http.Request, configured string) bool {
 }
 
 func configuredHTTPSAuthority(value string) (string, string, bool) {
-	defaultPort := strconv.Itoa(currentHTTPSPort())
+	port := currentPublicHTTPSPort()
+	if port < 1 || port > 65535 {
+		return "", "", false
+	}
+	defaultPort := strconv.Itoa(port)
 	return normalizeAuthority(value, defaultPort)
 }
 
-func currentHTTPSPort() int {
-	port := config.CurrentHTTPConfig().HTTPSPort
-	if port < 1 || port > 65535 {
-		return 443
-	}
-	return port
+func currentPublicHTTPSPort() int {
+	return config.ResolvePublicHTTPSPort(config.CurrentHTTPConfig())
 }
 
 func publicRecoveryBaseURL() (string, bool) {
@@ -263,6 +263,10 @@ func publicRecoveryLoginURL() (string, bool) {
 }
 
 func configuredHTTPSURL(value, path, fragment string) (string, bool) {
+	publicPort := currentPublicHTTPSPort()
+	if publicPort < 1 || publicPort > 65535 {
+		return "", false
+	}
 	parsed, err := url.Parse("//" + strings.TrimSpace(value))
 	if err != nil || parsed.User != nil || parsed.Hostname() == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", false
@@ -272,8 +276,8 @@ func configuredHTTPSURL(value, path, fragment string) (string, bool) {
 		return "", false
 	}
 	port := parsed.Port()
-	if port == "" && currentHTTPSPort() != 443 {
-		port = strconv.Itoa(currentHTTPSPort())
+	if port == "" && publicPort != 443 {
+		port = strconv.Itoa(publicPort)
 	}
 	if port != "" {
 		portNumber, err := strconv.Atoi(port)

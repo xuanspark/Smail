@@ -43,6 +43,7 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 		"httpsEnabled":         1,
 		"httpPort":             80,
 		"httpsPort":            443,
+		"publicHttpsPort":      9443,
 		"weChatPushAppId":      "app-id",
 		"weChatPushSecret":     "wechat-secret",
 		"weChatPushTemplateId": "template-id",
@@ -78,6 +79,9 @@ func TestMigrateLegacyConfigPreservesBackupAndLoadsPartitions(t *testing.T) {
 	}
 	if runtime.Root.Database.LocalRef != "smail.db" || runtime.Plugins.Plugins["wechat_push"].Secret.Ciphertext == "" {
 		t.Fatalf("unexpected migrated runtime: %+v", runtime)
+	}
+	if runtime.Root.HTTP.PublicHTTPSPort != 9443 || runtime.Root.HTTP.HTTPSPort != 443 {
+		t.Fatal("旧配置迁移丢失公网端口或修改了内部监听端口")
 	}
 	manager, err := NewConfigManager(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}})
 	if err != nil {

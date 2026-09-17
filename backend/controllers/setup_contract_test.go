@@ -60,6 +60,15 @@ func TestBuildSetupSSLResponseUsesConfiguredProxyPorts(t *testing.T) {
 	}
 }
 
+func TestBuildSetupSSLResponseSeparatesPublicPort(t *testing.T) {
+	response := buildSetupSSLResponse("1", nil, config.HTTPConfig{
+		Port: 8001, HTTPSPort: 8002, HTTPSEnabled: true, PublicHTTPSPort: 443,
+	}, "mail.example.com", true)
+	if response.HTTPSPort != 8002 || response.HTTPPort != 8001 || response.PublicHTTPSPort != 443 {
+		t.Fatalf("初始化响应混淆公网与内部端口：%+v", response)
+	}
+}
+
 func TestBuildSetupSSLResponseDefaultsHTTPSPort(t *testing.T) {
 	response := buildSetupSSLResponse(
 		config.SSLTypeAutoHTTP,

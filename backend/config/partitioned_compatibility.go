@@ -58,6 +58,7 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 		IsInit:   runtime.SetupState == SetupStateReady,
 		HttpPort: root.HTTP.Port, HttpsPort: root.HTTP.HTTPSPort,
 		HttpsEnabled: 2, TLSMode: root.HTTP.TLSMode,
+		PublicHTTPSPort:         root.HTTP.PublicHTTPSPort,
 		TrustedProxyCIDRs:       append([]string(nil), root.HTTP.TrustedProxyCIDRs...),
 		DkimPrivateKeyPath:      filepath.Join(runtimepath.DKIMDirectory(ROOT_PATH), "dkim.priv"),
 		SSLType:                 SSLTypeUser,
