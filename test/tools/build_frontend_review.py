@@ -13,6 +13,9 @@ from run_frontend_review import dependency_bindings
 
 PAUSED = ('Scert.service', 'mysql.service')
 PROTECTED = ('smail.service', 'nginx.service')
+BUILD_MEMORY_MIB = 896
+NODE_HEAP_MIB = 640
+SYSTEM_RESERVE_MIB = 128
 
 
 def run(*args):
@@ -27,14 +30,36 @@ def states():
 
 def restore_services(build_unit):
     assert re.fullmatch(r'smail-frontend-build-[0-9]{8}-[0-9]{6}', build_unit)
-    subprocess.run(['systemctl', 'stop', build_unit], timeout=90, check=False)
     errors = []
+    try:
+        subprocess.run(['systemctl', 'stop', build_unit], timeout=90, check=True)
+    except Exception as error:
+        # 预检拒绝时构建单元尚不存在；其他停止失败必须记录并尝试终止残留进程。
+        missing = False
+        if isinstance(error, subprocess.CalledProcessError):
+            try:
+                missing = run('systemctl', 'show', build_unit, '--property=LoadState', '--value') == 'not-found'
+            except Exception:
+                pass
+        if not missing:
+            errors.append({'service': build_unit, 'error': type(error).__name__})
+            try:
+                subprocess.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', build_unit],
+                               timeout=30, check=True)
+            except Exception as kill_error:
+                errors.append({'service': build_unit, 'error': type(kill_error).__name__, 'action': 'kill'})
     for name in reversed(PAUSED):
         try:
             subprocess.run(['systemctl', 'start', name], check=True, timeout=90)
         except Exception as error:
             errors.append({'service': name, 'error': type(error).__name__})
     return errors
+
+
+def check_memory_budget(available_kib):
+    required_kib = (BUILD_MEMORY_MIB + SYSTEM_RESERVE_MIB) * 1024
+    if available_kib < required_kib:
+        raise RuntimeError('暂停服务后仍不足以保留 128 MiB 系统预算')
 
 
 def main():
@@ -68,7 +93,7 @@ def main():
         # 由独立 systemd 单元负责恢复，SSH 断开或工作进程被终止也不会取消恢复钩子。
         return subprocess.run([
             'systemd-run', '--wait', '--pipe', '--unit=' + unit,
-            '-p', 'RuntimeMaxSec=900s', '-p', 'TimeoutStopSec=180s',
+            '-p', 'RuntimeMaxSec=900s', '-p', 'TimeoutStopSec=480s',
             '-p', 'KillMode=control-group', '-p', 'UMask=0077', '-p', 'LimitCORE=0',
             '-p', 'ExecStopPost=/usr/bin/python3 ' + str(script) + ' ' + str(root)
                   + ' --restore-unit ' + build_unit,
@@ -79,17 +104,19 @@ def main():
     stamp = time.strftime('%Y%m%d-%H%M%S')
     unit = args.build_unit
     assert unit and re.fullmatch(r'smail-frontend-build-[0-9]{8}-[0-9]{6}', unit)
-    result = {'before': before, 'unit': unit, 'started': time.strftime('%Y-%m-%dT%H:%M:%S%z')}
+    result = {'before': before, 'unit': unit, 'started': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+              'build_memory_mib': BUILD_MEMORY_MIB, 'node_heap_mib': NODE_HEAP_MIB,
+              'system_reserve_mib': SYSTEM_RESERVE_MIB}
     try:
         for name in PAUSED:
             subprocess.run(['systemctl', 'stop', name], check=True, timeout=90)
         memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
         result['available_kib'] = int(memory['MemAvailable'].split()[0])
-        assert result['available_kib'] >= 1088 * 1024, '暂停服务后仍不足以保留 128 MiB 系统预算'
+        check_memory_budget(result['available_kib'])
         node = root / 'node-v22.23.2-linux-x64/bin/node'
         command = [
             'systemd-run', '--wait', '--pipe', '--unit=' + unit,
-            '-p', 'User=smail', '-p', 'Group=smail', '-p', 'MemoryMax=960M', '-p', 'MemorySwapMax=0',
+            '-p', 'User=smail', '-p', 'Group=smail', '-p', f'MemoryMax={BUILD_MEMORY_MIB}M', '-p', 'MemorySwapMax=0',
             '-p', 'CPUQuota=75%', '-p', 'TasksMax=128', '-p', 'RuntimeMaxSec=600s',
             '-p', 'TimeoutStopSec=10s', '-p', 'KillMode=control-group', '-p', 'OOMPolicy=stop',
             '-p', 'PrivateTmp=yes', '-p', 'PrivateNetwork=yes', '-p', 'ProtectSystem=strict',
@@ -97,7 +124,7 @@ def main():
             '-p', 'InaccessiblePaths=/opt/smail /run/smail', '-p', 'BindPaths=' + str(root),
             '-p', 'ReadWritePaths=' + str(root), '-p', 'WorkingDirectory=' + str(root / 'frontend'),
             *[argument for target in bindings for argument in ('-p', 'BindReadOnlyPaths=' + target)],
-            '--setenv=NODE_OPTIONS=--max-old-space-size=768', '--setenv=HOME=' + str(root / 'build-home'),
+            f'--setenv=NODE_OPTIONS=--max-old-space-size={NODE_HEAP_MIB}', '--setenv=HOME=' + str(root / 'build-home'),
             '/bin/sh', '-c',
             'set -eu\n' + str(node) + ' node_modules/vite/bin/vite.js build\n'
             + str(node) + ' ../deploy/prepare-frontend.mjs\n',
@@ -108,6 +135,9 @@ def main():
         result['resources'] = run('systemctl', 'show', unit,
                                   '--property=Result,ExecMainStatus,MemoryPeak,MemorySwapPeak')
         assert result['build_code'] == 0, '前端构建失败，保留日志并恢复服务'
+    except Exception as error:
+        result['error'] = type(error).__name__
+        raise
     finally:
         # 先恢复数据库，再恢复依赖数据库的站点；构建成功与否均执行。
         result['restore_errors'] = restore_services(unit)
