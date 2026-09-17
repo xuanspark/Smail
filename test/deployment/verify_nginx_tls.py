@@ -28,6 +28,20 @@ def request(port, path='/', host=HOST, tls=True):
         stream.close()
 
 
+def check_redirects(results):
+    expected = 'https://' + HOST + '/acceptance?x=1'
+    failures = []
+    for port in (80, 8001):
+        status, headers, _ = request(port, '/acceptance?x=1', tls=False)
+        location = headers.get('Location')
+        results['checks'].append({'port': port, 'redirect': location, 'status': status})
+        if status != 308 or location != expected:
+            failures.append({'port': port, 'check': 'public_redirect',
+                             'expectedStatus': 308, 'actualStatus': status,
+                             'expectedLocation': expected, 'actualLocation': location})
+    return failures
+
+
 def main():
     results = {'time': datetime.now(timezone.utc).isoformat(), 'checks': []}
     leaf = subprocess.run(['openssl', 'x509', '-in', '/opt/smail/ssl/custom.crt', '-outform', 'DER'],
@@ -60,13 +74,7 @@ def main():
         results['checks'].append({'port': port, 'pageStatus': status, 'pageBytes': len(body)})
         status, _, body = request(port, '/api/ping')
         assert status == 200
-    for port in (80, 8001):
-        status, headers, _ = request(port, '/acceptance?x=1', tls=False)
-        assert status == 308
-        location = headers['Location']
-        if port == 80:
-            assert location == 'https://mail.solit.cn/acceptance?x=1'
-        results['checks'].append({'port': port, 'redirect': location})
+    results['failures'] = check_redirects(results)
     assert request(80, host='untrusted.invalid', tls=False)[0] == 404
     results['checks'].append({'unknownHttpHost': 'rejected'})
     try:
@@ -80,9 +88,10 @@ def main():
     assert root['http']['port'] == 8001 and root['http']['httpsPort'] == 8002
     assert root['security']['webAuthnRpOrigins'] == ['https://mail.solit.cn']
     results['fingerprintSHA256'] = expected
-    results['status'] = 'passed'
+    results['status'] = 'failed' if results['failures'] else 'passed'
     print(json.dumps(results, ensure_ascii=False, indent=2))
+    return int(bool(results['failures']))
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
