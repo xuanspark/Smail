@@ -1,8 +1,9 @@
 ﻿import paramiko
 
 ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("47.108.78.12", port=22, username="root", password="10102442Lb!")
+ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+from remote_ssh import connect_remote
+connect_remote(ssh)
 
 sftp = ssh.open_sftp()
 with sftp.open("/tmp/test_api.py", "w") as f:

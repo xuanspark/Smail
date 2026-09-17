@@ -45,6 +45,22 @@ var EOFError = errors.New("EOF")
 var ErrUnsafeRemoteAddress = errors.New("smtp: remote address is not public")
 var ErrUnsafePlaintextTarget = errors.New("smtp: plaintext delivery is restricted to localhost")
 
+// DeliveryUncertainError 表示 DATA 已开始，但未取得明确接收或拒绝响应，禁止自动重投。
+type DeliveryUncertainError struct {
+	Cause error
+}
+
+func (e *DeliveryUncertainError) Error() string {
+	return "投递结果不确定，请核对收件结果后再操作: " + e.Cause.Error()
+}
+
+func (e *DeliveryUncertainError) Unwrap() error { return e.Cause }
+
+func IsDeliveryUncertain(err error) bool {
+	var uncertain *DeliveryUncertainError
+	return errors.As(err, &uncertain)
+}
+
 const (
 	outboundSMTPDialTimeout         = 2 * time.Second
 	outboundSMTPTLSHandshakeTimeout = 2 * time.Second
@@ -554,10 +570,14 @@ func (c *Client) Data() (io.WriteCloser, error) {
 
 func finishDelivery(c *Client, w io.WriteCloser, msg []byte) error {
 	if _, err := w.Write(msg); err != nil {
-		return err
+		return &DeliveryUncertainError{Cause: err}
 	}
 	if err := w.Close(); err != nil {
-		return err
+		var rejection *textproto.Error
+		if errors.As(err, &rejection) && rejection.Code >= 400 && rejection.Code <= 599 {
+			return err
+		}
+		return &DeliveryUncertainError{Cause: err}
 	}
 
 	// The final 250 response to DATA transfers responsibility for the message.

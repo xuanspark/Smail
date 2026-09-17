@@ -10,17 +10,14 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/hooks"
-	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/i18n"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/outbox"
 
-	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/context"
-	"git.pcux.cn/xuans/Smail/utils/send"
 	"git.pcux.cn/xuans/Smail/utils/validation"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cast"
 	"mime"
 	"net/http"
 	"strings"
@@ -274,61 +271,12 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	RecordUserContacts(ctx.UserID, contactList)
 
-	e.MessageId = cast.ToInt64(modelEmail.Id)
-	e.MsgID = modelEmail.MsgID
-
-	async.New(ctx).Process(func(p any) {
-		errMsg := ""
-		err, sendErr := send.SendTriggered(ctx, e, "网页写信")
-
-		log.WithContext(ctx).Debugf("插件执行--SendAfter")
-
-		as2 := async.New(ctx)
-		for _, hook := range hooks.Snapshot() {
-			if hook == nil {
-				continue
-			}
-			as2.WaitProcess(func(hk any) {
-				hk.(framework.EmailHook).SendAfter(ctx, e, sendErr)
-			}, hook)
-		}
-		as2.Wait()
-		log.WithContext(ctx).Debugf("插件执行--SendAfter")
-
-		if err != nil {
-			errMsg = err.Error()
-			_ = db.Transaction(db.Instance, func(session *xorm.Session) error {
-				if _, updateErr := session.Exec(db.WithContext(ctx, "update email set status = ?, error = ? where id = ?"), consts.EmailStatusFail, errMsg, modelEmail.Id); updateErr != nil {
-					log.WithContext(ctx).Errorf("update email status failed: %+v", updateErr)
-					return updateErr
-				}
-				if _, updateErr := session.Exec(db.WithContext(ctx, "update user_email set status = ? where email_id = ? and user_id = ?"), consts.EmailStatusFail, modelEmail.Id, ctx.UserID); updateErr != nil {
-					log.WithContext(ctx).Errorf("update user_email status failed: %+v", updateErr)
-					return updateErr
-				}
-				return nil
-			})
-		} else {
-			_ = db.Transaction(db.Instance, func(session *xorm.Session) error {
-				if _, updateErr := session.Exec(db.WithContext(ctx, "update email set status = ?, error = '' where id = ?"), consts.EmailStatusSent, modelEmail.Id); updateErr != nil {
-					log.WithContext(ctx).Errorf("update email status failed: %+v", updateErr)
-					return updateErr
-				}
-				if _, updateErr := session.Exec(db.WithContext(ctx, "update user_email set status = ? where email_id = ? and user_id = ?"), consts.EmailStatusSent, modelEmail.Id, ctx.UserID); updateErr != nil {
-					log.WithContext(ctx).Errorf("update user_email status failed: %+v", updateErr)
-					return updateErr
-				}
-				return nil
-			})
-		}
-
-	}, nil)
-
 	response.NewSuccessResponse(i18n.GetText(ctx.Lang, "succ")).FPrint(w)
 }
 
 func persistOutgoingEmail(engine *xorm.Engine, userID int, email *models.Email) error {
-	return db.Transaction(engine, func(session *xorm.Session) error {
+	var saved models.Email
+	err := db.Transaction(engine, func(session *xorm.Session) error {
 		candidate := *email
 		candidate.Id = 0
 		candidate.Status = consts.EmailStatusDeliveryPending
@@ -347,9 +295,16 @@ func persistOutgoingEmail(engine *xorm.Engine, userID int, email *models.Email) 
 		if _, err := session.Insert(&relation); err != nil {
 			return err
 		}
-		*email = candidate
+		if err := outbox.Enqueue(session, candidate); err != nil {
+			return err
+		}
+		saved = candidate
 		return nil
 	})
+	if err == nil {
+		*email = saved
+	}
+	return err
 }
 
 func decodeAttachment(data string) (string, []byte, error) {

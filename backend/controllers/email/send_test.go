@@ -20,7 +20,7 @@ func TestSendTransactionalPersistenceConsistency(t *testing.T) {
 		t.Fatalf("create test engine: %v", err)
 	}
 	engine.SetMaxOpenConns(1)
-	if err := engine.Sync2(&models.Email{}, &models.UserEmail{}); err != nil {
+	if err := engine.Sync2(&models.Email{}, &models.UserEmail{}, &models.OutboundDelivery{}); err != nil {
 		t.Fatalf("sync test database: %v", err)
 	}
 	defer engine.Close()
@@ -43,6 +43,7 @@ func TestSendTransactionalPersistenceConsistency(t *testing.T) {
 		Status:       consts.EmailStatusDeliveryPending,
 		CreateTime:   now,
 		MsgID:        "msg-123@example.com",
+		To:           `[{"EmailAddress":"recipient@example.com"}]`,
 	}
 
 	err = persistOutgoingEmail(engine, ctx.UserID, &modelEmail)
@@ -120,18 +121,18 @@ func TestOutboxExposesDeliveryStatus(t *testing.T) {
 	}
 	defer engine.Close()
 	engine.SetMaxOpenConns(1)
-	if err := engine.Sync2(&models.Email{}, &models.UserEmail{}, &models.UserTrustedSender{}); err != nil {
+	if err := engine.Sync2(&models.Email{}, &models.UserEmail{}, &models.UserTrustedSender{}, &models.OutboundDelivery{}); err != nil {
 		t.Fatal(err)
 	}
 	previous := db.Instance
 	db.Instance = engine
 	defer func() { db.Instance = previous }()
 	ctx := &context.Context{UserID: 1}
-	email := models.Email{Subject: "pending", Type: consts.EmailTypeSend, Status: consts.EmailStatusSent}
+	email := models.Email{Subject: "pending", Type: consts.EmailTypeSend, Status: consts.EmailStatusSent, To: `[{"EmailAddress":"recipient@example.com"}]`}
 	if err := persistOutgoingEmail(engine, ctx.UserID, &email); err != nil {
 		t.Fatal(err)
 	}
-	for _, status := range []int8{consts.EmailStatusDeliveryPending, consts.EmailStatusSent, consts.EmailStatusFail} {
+	for _, status := range []int8{consts.EmailStatusDeliveryPending, consts.EmailStatusSent, consts.EmailStatusFail, consts.EmailStatusDeliveryUncertain} {
 		if _, err := engine.ID(email.Id).Cols("status").Update(&models.Email{Status: status}); err != nil {
 			t.Fatal(err)
 		}
@@ -147,6 +148,31 @@ func TestOutboxExposesDeliveryStatus(t *testing.T) {
 		}
 		if response.ErrorNo != 0 || len(response.Data.List) != 1 || response.Data.List[0].Status != status {
 			t.Fatalf("outbox status %d: %s", status, writer.Body.String())
+		}
+	}
+}
+
+func TestPersistOutgoingEmailRollsBackQueueFailure(t *testing.T) {
+	engine, err := xorm.NewEngine("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	engine.SetMaxOpenConns(1)
+	if err := engine.Sync2(&models.Email{}, &models.UserEmail{}, &models.OutboundDelivery{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Exec("CREATE TRIGGER reject_queue BEFORE INSERT ON outbound_delivery BEGIN SELECT RAISE(ABORT, 'injected queue failure'); END"); err != nil {
+		t.Fatal(err)
+	}
+	email := models.Email{To: `[{"EmailAddress":"recipient@example.com"}]`}
+	if err := persistOutgoingEmail(engine, 1, &email); err == nil {
+		t.Fatal("queue failure ignored")
+	}
+	for _, model := range []any{&models.Email{}, &models.UserEmail{}, &models.OutboundDelivery{}} {
+		count, err := engine.Count(model)
+		if err != nil || count != 0 || email.Id != 0 {
+			t.Fatalf("rollback failed for %T: count=%d id=%d error=%v", model, count, email.Id, err)
 		}
 	}
 }

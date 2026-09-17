@@ -1,10 +1,11 @@
 from email.mime.text import MIMEText
 import smtplib
+import os
 msg = MIMEText('hello, send by Python...', 'plain', 'utf-8')
 
 
 from_addr = "admin@domain.com"
-password = "admin"
+password = os.environ["SMAIL_TEST_SMTP_PASSWORD"]
 to_addr = "admin@domain.com"
 smtp_server = "127.0.0.1"
 

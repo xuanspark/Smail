@@ -26,4 +26,7 @@ const (
 
 	// EmailStatusDeliveryPending marks an outbound audit whose delivery result is not final.
 	EmailStatusDeliveryPending int8 = 6
+
+	// EmailStatusDeliveryUncertain 禁止自动重投，需人工核对接收结果。
+	EmailStatusDeliveryUncertain int8 = 7
 )

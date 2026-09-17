@@ -104,3 +104,40 @@ func TestMaintenanceGuardDrainsRequestsAndKeepsRestartRoute(t *testing.T) {
 		t.Fatal("cleanup wrote to frozen source")
 	}
 }
+
+func TestMaintenanceDrainsBackgroundDeliveryBeforeFreeze(t *testing.T) {
+	executor := &PortableExecutor{}
+	service := NewService(&DatabaseExecutor{portable: executor})
+	previous := Current()
+	SetCurrent(service)
+	t.Cleanup(func() { SetCurrent(previous) })
+	entered, finish, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = WhileWritable(func() error {
+			close(entered)
+			<-finish
+			return nil
+		})
+	}()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	release, err := service.drainRequests(ctx)
+	release()
+	close(finish)
+	<-done
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("migration did not wait for delivery: %v", err)
+	}
+	release, err = service.drainRequests(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.paused.Store(true)
+	release()
+	called := false
+	if err := WhileWritable(func() error { called = true; return nil }); err != nil || called {
+		t.Fatal("delivery started after source freeze")
+	}
+}

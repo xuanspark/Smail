@@ -1,7 +1,8 @@
 import paramiko, time
 ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect("47.108.78.12", port=22, username="root", password="10102442Lb!", timeout=10)
+ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+from remote_ssh import connect_remote
+connect_remote(ssh)
 s_in, s_out, s_err = ssh.exec_command("chmod +x /opt/smail/smail_new && pkill -9 -f smail || true")
 s_out.channel.recv_exit_status()
 time.sleep(1)

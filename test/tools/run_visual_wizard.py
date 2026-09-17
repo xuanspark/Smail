@@ -38,7 +38,7 @@ with sync_playwright() as p:
     inputs = page.locator('.database-form input, .ctn input')
     print('找到输入框数量:', inputs.count())
     for i in range(inputs.count()):
-        inputs.nth(i).fill('10102442Lb!')
+        inputs.nth(i).fill(os.environ["SMAIL_TEST_ADMIN_PASSWORD"])
     
     time.sleep(1)
     page.screenshot(path=os.path.join(test_log_dir, 'step2_password_filled.png'))

@@ -1,4 +1,4 @@
-﻿package migration
+package migration
 
 import (
 	"regexp"
@@ -32,6 +32,7 @@ func DefaultMigrations() []Migration {
 		DefineCustom(20, "expand_protocol_credential_ciphertext", "expand_protocol_credential_ciphertext_v1", applyProtocolCredentialCiphertextSchema),
 		DefineCustom(21, "expand_trusted_sender_blacklist", "expand_trusted_sender_blacklist_v1", applyTrustedSenderBlacklistSchema),
 		DefineForDialects(22, "create_client_credentials", clientCredentialStatements()),
+		DefineForDialects(23, "create_outbound_delivery", outboundDeliveryStatements()),
 	}
 }
 

@@ -219,6 +219,10 @@ func startSMTPTransactionServer(t *testing.T, dataResponse string, holdWithoutQu
 			done <- fmt.Errorf("message body was not received: %q", body)
 			return
 		}
+		if dataResponse == "" {
+			done <- nil
+			return
+		}
 		if err := text.PrintfLine("%s", dataResponse); err != nil {
 			done <- err
 			return
@@ -242,6 +246,17 @@ func startSMTPTransactionServer(t *testing.T, dataResponse string, holdWithoutQu
 	}()
 
 	return listener.Addr().String(), done
+}
+
+func TestLostFinalDATAResponseIsUncertain(t *testing.T) {
+	addr, done := startSMTPTransactionServer(t, "", false)
+	err := SendMailUnsafe("localhost", addr, nil, "sender@example.com", "example.com", []string{"recipient@example.net"}, []byte("Subject: test\r\n\r\nbody\r\n"))
+	if !IsDeliveryUncertain(err) {
+		t.Fatalf("error=%v, want uncertain delivery", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }
 
 func expectSMTPCommand(conn *textproto.Conn, prefix string) error {

@@ -32,11 +32,11 @@ with sync_playwright() as p:
     page.screenshot(path=os.path.join(test_log_dir, 'step2_admin_password.png'))
 
     # Step 2: 输入管理员密码
-    print('输入管理员密码 10102442Lb!...')
+    print('输入管理员密码 [redacted]...')
     pwd_inputs = page.locator('.form input')
     print('密码页输入框数量:', pwd_inputs.count())
     for i in range(pwd_inputs.count()):
-        pwd_inputs.nth(i).fill('10102442Lb!')
+        pwd_inputs.nth(i).fill(os.environ["SMAIL_TEST_ADMIN_PASSWORD"])
     
     time.sleep(1)
     page.screenshot(path=os.path.join(test_log_dir, 'step2_password_filled.png'))

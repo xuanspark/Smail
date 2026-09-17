@@ -81,6 +81,11 @@
                     <el-tag type="warning" effect="light" size="small" v-if="scope.row.status === 6">
                       待投递
                     </el-tag>
+                    <el-tooltip :content="scope.row.error" placement="top" v-else-if="scope.row.status === 7">
+                      <el-tag type="warning" effect="light" size="small" class="clickable-tag" @click.stop="showError(scope.row)">
+                        <el-icon><Warning /></el-icon> 投递结果待核对
+                      </el-tag>
+                    </el-tooltip>
                     <el-tag type="success" effect="light" size="small" v-else-if="scope.row.status === 1 && !scope.row.error">
                       <el-icon><Check /></el-icon> 发送成功
                     </el-tag>
@@ -115,7 +120,7 @@
     </div>
 
     <!-- 错误详情对话框 -->
-    <el-dialog v-model="errorDialogVisible" title="邮件发送失败详情" width="500px">
+    <el-dialog v-model="errorDialogVisible" title="邮件投递详情" width="500px">
       <div class="error-dialog-body">
         <p class="error-label">错误原因：</p>
         <el-alert :title="currentErrorMsg" type="error" :closable="false" show-icon />

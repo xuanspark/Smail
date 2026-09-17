@@ -1,7 +1,8 @@
 ﻿import paramiko
 client = paramiko.SSHClient()
-client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-client.connect('47.108.78.12', port=22, username='root', password='10102442Lb!', timeout=8)
+client.set_missing_host_key_policy(paramiko.RejectPolicy())
+from remote_ssh import connect_remote
+connect_remote(client)
 client.exec_command('systemctl stop smail-init; pkill -9 smail')
 
 setup_script = '''#!/bin/bash

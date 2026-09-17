@@ -25,6 +25,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/dbmigration"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/logstore"
+	"git.pcux.cn/xuans/Smail/services/outbox"
 	pluginservice "git.pcux.cn/xuans/Smail/services/plugin"
 	"git.pcux.cn/xuans/Smail/services/recovery"
 	"git.pcux.cn/xuans/Smail/services/restart"
@@ -47,6 +48,7 @@ var verificationRuntime *verification.Runtime
 var credentialService *credentials.Service
 var webAuthnRuntimeService *webauthnservice.Service
 var logRuntime *logstore.Runtime
+var outboxRuntime *outbox.Runtime
 
 func startConfigManager() error {
 	root := filepath.Join(config.ROOT_PATH, "config")
@@ -215,6 +217,11 @@ func Init(serverVersion string) error {
 			}()
 		}
 		hooks.Init(serverVersion)
+		outboxRuntime, err = outbox.Start(db.Instance)
+		if err != nil {
+			stopServices()
+			return fmt.Errorf("start persistent outbox: %w", err)
+		}
 		httpRun, httpsRun, err := http_server.PrepareWebServers()
 		if err != nil {
 			stopServices()
@@ -294,6 +301,14 @@ func stopServices() error {
 	http_server.HttpStop()
 	pop3_server.Stop()
 	imap_server.Stop()
+	// 停止接收新请求后等待正在投递的任务写回，超时则保留数据库，避免提前关闭连接池。
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 25*time.Second)
+	err := outboxRuntime.Stop(drainCtx)
+	drainCancel()
+	if err != nil {
+		return fmt.Errorf("outbox did not drain; database retained: %w", err)
+	}
+	outboxRuntime = nil
 	hooks.Stop()
 	// 先关闭业务入口，再撤下安全服务及会话清理器，避免新请求读取停止中的依赖。
 	stopVerificationRuntime()
