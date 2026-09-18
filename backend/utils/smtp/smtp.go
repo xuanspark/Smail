@@ -63,6 +63,7 @@ func IsDeliveryUncertain(err error) bool {
 
 const (
 	outboundSMTPDialTimeout         = 2 * time.Second
+	outboundSMTPGreetingTimeout     = 5 * time.Second
 	outboundSMTPTLSHandshakeTimeout = 2 * time.Second
 	outboundSMTPTransactionTimeout  = 2 * time.Minute
 	outboundSMTPQuitWriteTimeout    = 250 * time.Millisecond
@@ -89,6 +90,8 @@ type Client struct {
 	localName  string // the name to use in HELO/EHLO
 	didHello   bool   // whether we've said HELO/EHLO
 	helloError error  // the error from the hello
+	ctx        context.Context
+	stopCancel func() bool
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -98,7 +101,11 @@ func Dial(addr, fromDomain string) (*Client, error) {
 }
 
 func dial(addr, fromDomain string, publicOnly bool) (*Client, error) {
-	conn, err := dialTCP(addr, publicOnly)
+	return dialContext(context.Background(), addr, fromDomain, publicOnly)
+}
+
+func dialContext(ctx context.Context, addr, fromDomain string, publicOnly bool) (*Client, error) {
+	conn, err := dialTCPContext(ctx, addr, publicOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +114,7 @@ func dial(addr, fromDomain string, publicOnly bool) (*Client, error) {
 		_ = conn.Close()
 		return nil, err
 	}
-	return newClientWithTimeout(conn, host, fromDomain, outboundSMTPTransactionTimeout)
+	return newClientWithContext(ctx, conn, host, fromDomain)
 }
 
 // with tls
@@ -116,6 +123,10 @@ func DialTls(addr, domain, fromDomain string) (*Client, error) {
 }
 
 func dialTLS(addr, domain, fromDomain string, publicOnly bool) (*Client, error) {
+	return dialTLSContext(context.Background(), addr, domain, fromDomain, publicOnly)
+}
+
+func dialTLSContext(ctx context.Context, addr, domain, fromDomain string, publicOnly bool) (*Client, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -129,16 +140,50 @@ func dialTLS(addr, domain, fromDomain string, publicOnly bool) (*Client, error) 
 		ServerName: domain,
 	}
 
-	conn, err := dialTCP(addr, publicOnly)
+	conn, err := dialTCPContext(ctx, addr, publicOnly)
 	if err != nil {
 		return nil, err
 	}
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
 	tlsConn, err := handshakeTLS(conn, tlsconfig, outboundSMTPTLSHandshakeTimeout)
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
-	return newClientWithTimeout(tlsConn, host, fromDomain, outboundSMTPTransactionTimeout)
+	return newClientWithContext(ctx, tlsConn, host, fromDomain)
+}
+
+// newClientWithContext 将欢迎响应、命令和 TLS 升级限制在同一次投递时限内。
+func newClientWithContext(ctx context.Context, conn net.Conn, host, fromDomain string) (*Client, error) {
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	if err := conn.SetDeadline(smtpDeadline(ctx, outboundSMTPGreetingTimeout)); err != nil {
+		stopCancel()
+		_ = conn.Close()
+		return nil, err
+	}
+	client, err := NewClient(conn, host, fromDomain)
+	if err != nil {
+		stopCancel()
+		return nil, err
+	}
+	client.ctx = ctx
+	client.stopCancel = stopCancel
+	if err := conn.SetDeadline(smtpDeadline(ctx, outboundSMTPTransactionTimeout)); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func smtpDeadline(ctx context.Context, timeout time.Duration) time.Time {
+	deadline := time.Now().Add(timeout)
+	if ctx != nil {
+		if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
+			return limit
+		}
+	}
+	return deadline
 }
 
 func handshakeTLS(conn net.Conn, config *tls.Config, timeout time.Duration) (*tls.Conn, error) {
@@ -161,12 +206,16 @@ func newClientWithTimeout(conn net.Conn, host, fromDomain string, timeout time.D
 }
 
 func dialTCP(addr string, publicOnly bool) (net.Conn, error) {
+	return dialTCPContext(context.Background(), addr, publicOnly)
+}
+
+func dialTCPContext(parent context.Context, addr string, publicOnly bool) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil || host == "" || port == "" {
 		return nil, errors.New("smtp: invalid remote address")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), outboundSMTPDialTimeout)
+	ctx, cancel := context.WithTimeout(parent, outboundSMTPDialTimeout)
 	defer cancel()
 	addresses, err := resolveRemoteAddresses(ctx, host)
 	if err != nil {
@@ -326,6 +375,9 @@ func NewClient(conn net.Conn, host, fromDomain string) (*Client, error) {
 
 // Close closes the connection.
 func (c *Client) Close() error {
+	if c.stopCancel != nil {
+		c.stopCancel()
+	}
 	return c.Text.Close()
 }
 
@@ -426,7 +478,7 @@ func (c *Client) StartTLS(config *tls.Config) error {
 	if err != nil {
 		return err
 	}
-	if err = tlsConn.SetDeadline(time.Now().Add(outboundSMTPTransactionTimeout)); err != nil {
+	if err = tlsConn.SetDeadline(smtpDeadline(c.ctx, outboundSMTPTransactionTimeout)); err != nil {
 		return err
 	}
 	c.conn = tlsConn
@@ -593,6 +645,10 @@ func finishDelivery(c *Client, w io.WriteCloser, msg []byte) error {
 }
 
 func SendMailWithTls(domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
+	return SendMailWithTLSContext(context.Background(), domain, addr, a, from, fromDomain, to, msg)
+}
+
+func SendMailWithTLSContext(ctx context.Context, domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
 	if err := validateLine(from); err != nil {
 		return err
 	}
@@ -601,7 +657,7 @@ func SendMailWithTls(domain string, addr string, a smtp.Auth, from string, fromD
 			return err
 		}
 	}
-	c, err := DialTls(addr, domain, fromDomain)
+	c, err := dialTLSContext(ctx, addr, domain, fromDomain, true)
 	if err != nil {
 		return err
 	}
@@ -654,6 +710,10 @@ func SendMailWithTls(domain string, addr string, a smtp.Auth, from string, fromD
 // library.
 // 修复TSL验证问题
 func SendMail(domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
+	return SendMailContext(context.Background(), domain, addr, a, from, fromDomain, to, msg)
+}
+
+func SendMailContext(ctx context.Context, domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
 
 	log.Debugf("SMTP delivery started: recipient_count=%d", len(to))
 
@@ -665,7 +725,7 @@ func SendMail(domain string, addr string, a smtp.Auth, from string, fromDomain s
 			return err
 		}
 	}
-	c, err := Dial(addr, fromDomain)
+	c, err := dialContext(ctx, addr, fromDomain, true)
 	if err != nil {
 		return err
 	}
@@ -713,6 +773,10 @@ func SendMail(domain string, addr string, a smtp.Auth, from string, fromDomain s
 
 // SendMailUnsafe 无TLS加密的邮件发送方式
 func SendMailUnsafe(domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
+	return SendMailUnsafeContext(context.Background(), domain, addr, a, from, fromDomain, to, msg)
+}
+
+func SendMailUnsafeContext(ctx context.Context, domain string, addr string, a smtp.Auth, from string, fromDomain string, to []string, msg []byte) error {
 	if err := validateUnsafePlaintextTarget(domain, addr); err != nil {
 		return err
 	}
@@ -724,7 +788,7 @@ func SendMailUnsafe(domain string, addr string, a smtp.Auth, from string, fromDo
 			return err
 		}
 	}
-	c, err := dial(addr, fromDomain, false)
+	c, err := dialContext(ctx, addr, fromDomain, false)
 	if err != nil {
 		return err
 	}

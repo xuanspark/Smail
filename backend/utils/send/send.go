@@ -1,6 +1,7 @@
 package send
 
 import (
+	stdcontext "context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -152,6 +153,10 @@ func parseRecipientAddress(user *parsemail.User) (string, string, error) {
 }
 
 func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemail.User, from string, triggers ...string) (sendErr error, recipientErrors map[string]error) {
+	deliveryContext := stdcontext.Background()
+	if ctx != nil && ctx.Context != nil {
+		deliveryContext = ctx.Context
+	}
 	var accepted atomic.Int64
 	trigger := "邮件发送"
 	if len(triggers) > 0 {
@@ -243,7 +248,7 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			}()
 
 			if domain == consts.TEST_DOMAIN {
-				err := smtp.SendMailUnsafe("localhost", "127.0.0.1:25", nil, from, fromDomain, buildAddress(tos), data)
+				err := smtp.SendMailUnsafeContext(deliveryContext, "localhost", "127.0.0.1:25", nil, from, fromDomain, buildAddress(tos), data)
 				if err != nil {
 					recordFailure(err)
 				} else {
@@ -252,17 +257,17 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				return
 			}
 
-			hosts, err := resolveMX(domain, net.DefaultResolver.LookupMX)
+			hosts, err := resolveMXContext(deliveryContext, domain, net.DefaultResolver.LookupMX)
 			if err != nil {
 				recordFailure(err)
 				return
 			}
-			err = deliverMX(hosts, func(host, port string) error {
+			err = deliverMXContext(deliveryContext, hosts, func(host, port string) error {
 				address := net.JoinHostPort(host, port)
 				if port == "465" {
-					return smtp.SendMailWithTls(host, address, nil, from, fromDomain, buildAddress(tos), data)
+					return smtp.SendMailWithTLSContext(deliveryContext, host, address, nil, from, fromDomain, buildAddress(tos), data)
 				}
-				return smtp.SendMail(host, address, nil, from, fromDomain, buildAddress(tos), data)
+				return smtp.SendMailContext(deliveryContext, host, address, nil, from, fromDomain, buildAddress(tos), data)
 			})
 			if err != nil {
 				recordFailure(err)

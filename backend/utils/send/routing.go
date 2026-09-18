@@ -18,7 +18,11 @@ var errNullMX = errors.New("收件域名声明不接收邮件")
 type mxLookup func(stdcontext.Context, string) ([]*net.MX, error)
 
 func resolveMX(domain string, lookup mxLookup) ([]string, error) {
-	ctx, cancel := stdcontext.WithTimeout(stdcontext.Background(), 10*time.Second)
+	return resolveMXContext(stdcontext.Background(), domain, lookup)
+}
+
+func resolveMXContext(parent stdcontext.Context, domain string, lookup mxLookup) ([]string, error) {
+	ctx, cancel := stdcontext.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	records, err := lookup(ctx, domain)
 	if err != nil {
@@ -60,9 +64,16 @@ func stopFallback(err error) bool {
 
 // deliverMX 只在确认本次未接收时切换安全通道，DATA 不确定结果不进入下一条路由。
 func deliverMX(hosts []string, attempt func(host, port string) error) error {
+	return deliverMXContext(stdcontext.Background(), hosts, attempt)
+}
+
+func deliverMXContext(ctx stdcontext.Context, hosts []string, attempt func(host, port string) error) error {
 	var lastErr error
 	for _, host := range hosts {
 		for _, port := range []string{"25", "587", "465"} {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			lastErr = attempt(host, port)
 			if lastErr == nil || stopFallback(lastErr) {
 				return lastErr

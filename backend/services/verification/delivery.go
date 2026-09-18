@@ -1,6 +1,7 @@
 package verification
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"mime"
@@ -9,6 +10,7 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	smailsmtp "git.pcux.cn/xuans/Smail/utils/smtp"
@@ -17,6 +19,7 @@ import (
 type SecurityMode string
 
 const (
+	MailDeliveryTimeout = 45 * time.Second
 	SecurityStartTLS    SecurityMode = "starttls"
 	SecurityImplicitTLS SecurityMode = "tls"
 	SecurityPlain       SecurityMode = "plain"
@@ -166,6 +169,13 @@ func isValidSMTPHost(host string) bool {
 }
 
 func sendSMTPMessage(settings SMTPSettings, recipient string, message []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), MailDeliveryTimeout)
+	defer cancel()
+	return SendSMTPMessageContext(ctx, settings, recipient, message)
+}
+
+// SendSMTPMessageContext 允许验证码中继与后备投递共享同一总时限。
+func SendSMTPMessageContext(ctx context.Context, settings SMTPSettings, recipient string, message []byte) error {
 	addr := net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port))
 	var auth smtp.Auth
 	if settings.Username != "" {
@@ -180,11 +190,11 @@ func sendSMTPMessage(settings SMTPSettings, recipient string, message []byte) er
 	}
 	switch settings.Security {
 	case SecurityStartTLS:
-		return smailsmtp.SendMail(settings.Host, addr, auth, settings.From, fromDomain, []string{recipient}, message)
+		return smailsmtp.SendMailContext(ctx, settings.Host, addr, auth, settings.From, fromDomain, []string{recipient}, message)
 	case SecurityImplicitTLS:
-		return smailsmtp.SendMailWithTls(settings.Host, addr, auth, settings.From, fromDomain, []string{recipient}, message)
+		return smailsmtp.SendMailWithTLSContext(ctx, settings.Host, addr, auth, settings.From, fromDomain, []string{recipient}, message)
 	case SecurityPlain:
-		return smailsmtp.SendMailUnsafe(settings.Host, addr, auth, settings.From, fromDomain, []string{recipient}, message)
+		return smailsmtp.SendMailUnsafeContext(ctx, settings.Host, addr, auth, settings.From, fromDomain, []string{recipient}, message)
 	default:
 		return ErrUnsupportedSMTP
 	}
