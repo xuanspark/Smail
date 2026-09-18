@@ -42,6 +42,7 @@
             @click="logout"
           >
             <el-icon><SwitchButton /></el-icon>
+            <span>{{ lang.logout }}</span>
           </button>
         </el-tooltip>
         <strong class="account-name" :title="currentAccount">{{ currentAccount }}</strong>

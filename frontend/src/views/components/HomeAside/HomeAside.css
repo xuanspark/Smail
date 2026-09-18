@@ -142,15 +142,24 @@
   align-items: center;
   justify-content: center;
   justify-self: end;
-  width: 32px;
+  gap: 6px;
+  min-width: 76px;
   height: 32px;
-  padding: 0;
+  padding: 0 6px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--pm-text-secondary);
-  font-size: 18px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.logout-btn .el-icon {
+  flex-shrink: 0;
+  font-size: 18px;
 }
 
 .logout-btn:hover:not(:disabled) {
