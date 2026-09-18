@@ -11,6 +11,7 @@ import (
 )
 
 const userSessionKey = "user"
+const SecuritySetupDismissedKey = "security_setup_dismissed"
 const recentAuthenticationLifetime = 10 * time.Minute
 
 type UserIdentity struct {
@@ -55,6 +56,7 @@ func PutUser(ctx context.Context, user *models.User) error {
 		return err
 	}
 	Instance.Put(ctx, userSessionKey, string(encoded))
+	Instance.Remove(ctx, SecuritySetupDismissedKey)
 	return nil
 }
 

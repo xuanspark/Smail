@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/i18n"
 	"git.pcux.cn/xuans/Smail/models"
@@ -104,19 +105,28 @@ func loginSecurityFields(user *models.User) map[string]any {
 	fields := map[string]any{
 		"recoveryCodesConfigured": false,
 		"showRecoverySetupPrompt": false,
-		"showSecuritySetupPrompt": user != nil && user.SecuritySetupAcknowledged == 0,
+		"showSecuritySetupPrompt": user != nil,
+		"externalEmailConfigured": false,
 		"webAuthnEnabled":         webAuthnRuntime() != nil,
 	}
-	if user == nil || user.EffectiveRole() == access.RoleSuperAdmin {
+	if user == nil {
 		return fields
 	}
-
-	configured := false
-	if service := credentialRuntime(); service != nil {
-		configured, _ = service.HasValidRecoveryCode(user.ID)
+	if db.Instance != nil && user.ID > 0 {
+		emailConfigured, err := db.Instance.Where("user_id = ? AND status = ?", user.ID, models.ExternalEmailStatusVerified).Exist(&models.ExternalEmail{})
+		if err == nil {
+			fields["externalEmailConfigured"] = emailConfigured
+		}
 	}
-	fields["recoveryCodesConfigured"] = configured
-	fields["showRecoverySetupPrompt"] = !configured
+	configured := user.EffectiveRole() == access.RoleSuperAdmin
+	if !configured {
+		if service := credentialRuntime(); service != nil {
+			configured, _ = service.HasValidRecoveryCode(user.ID)
+		}
+		fields["recoveryCodesConfigured"] = configured
+		fields["showRecoverySetupPrompt"] = !configured
+	}
+	fields["showSecuritySetupPrompt"] = !configured || fields["externalEmailConfigured"] != true
 	return fields
 }
 

@@ -22,7 +22,7 @@ export function usePage() {
     options.push({ value: 'password', label: lang.modify_pwd })
     options.push({ value: 'question', label: '密保问题' })
     if (!isSuperAdmin.value) {
-      options.push({ value: 'recovery', label: '离线恢复码' })
+      options.push({ value: 'recovery', label: '安全码' })
     }
     options.push({ value: 'external-email', label: '外部安全邮箱' })
     options.push({ value: 'totp', label: '手机动态码' })

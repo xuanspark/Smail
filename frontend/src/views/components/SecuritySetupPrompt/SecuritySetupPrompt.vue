@@ -8,7 +8,7 @@
     :show-close="false"
     class="security-setup-dialog"
   >
-    <p class="setup-description">欢迎使用 Smail！首次登录请了解并设置以下安全选项，确认后不再自动弹出此引导。</p>
+    <p class="setup-description">{{ isSuperAdmin ? '请绑定外部邮箱。未完成前，每次登录都会提醒。' : '请设置安全码并绑定外部邮箱。未完成前，每次登录都会提醒。' }}</p>
     <div class="setup-options">
       <section v-for="item in options" :key="item.key" class="setup-option">
         <div>
@@ -18,24 +18,10 @@
         <el-button :disabled="saving" @click="acknowledge(item.key)">前往设置</el-button>
       </section>
     </div>
-    <el-alert
-      v-if="isSuperAdmin"
-      title="超级管理员密码仍只能通过部署端受保护的本机通道重置，上述选项不会开放网页密码恢复。"
-      type="info"
-      :closable="false"
-      show-icon
-    />
-    <el-alert
-      v-else
-      title="普通账号还可在安全设置中生成离线恢复码。恢复码只显示一次，请妥善保存。"
-      type="info"
-      :closable="false"
-      show-icon
-    />
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <template #footer>
-      <el-button :loading="saving" @click="acknowledge()">我已了解，稍后设置</el-button>
-      <el-button type="primary" :loading="saving" @click="acknowledge('question')">开始设置</el-button>
+      <el-button :loading="saving" @click="acknowledge()">我知道了</el-button>
+      <el-button type="primary" :loading="saving" @click="acknowledge(options[0]?.key)">去设置</el-button>
     </template>
   </el-dialog>
 </template>

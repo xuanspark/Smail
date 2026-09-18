@@ -1,12 +1,14 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
@@ -51,7 +53,8 @@ func TestLogoutDestroysSessionAndCSRFCookies(t *testing.T) {
 	}
 }
 
-func TestSecuritySetupAcknowledgementIsPersistentAndAccountScoped(t *testing.T) {
+func setupSecurityPromptTest(t *testing.T) *xorm.Engine {
+	t.Helper()
 	engine, err := xorm.NewEngine("sqlite", filepath.Join(t.TempDir(), "onboarding.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -59,9 +62,25 @@ func TestSecuritySetupAcknowledgementIsPersistentAndAccountScoped(t *testing.T) 
 	previous := db.Instance
 	db.Instance = engine
 	t.Cleanup(func() { db.Instance = previous; _ = engine.Close() })
-	if err := engine.Sync2(&models.User{}); err != nil {
+	if err := engine.Sync2(&models.User{}, &models.ExternalEmail{}, &models.RecoveryCode{}); err != nil {
 		t.Fatal(err)
 	}
+	previousRuntime := securityRuntime
+	securityRuntime.credentials = nil
+	t.Cleanup(func() { securityRuntime = previousRuntime })
+	return engine
+}
+
+func TestSecuritySetupAcknowledgementIsSessionScoped(t *testing.T) {
+	engine := setupSecurityPromptTest(t)
+	previousSession, previousConfig, previousManager := session.Instance, config.Instance, config.CurrentManager()
+	session.Instance = scs.New()
+	config.SetRuntimeManager(nil)
+	config.Instance = &config.Config{Domain: "example.com"}
+	t.Cleanup(func() {
+		session.Instance, config.Instance = previousSession, previousConfig
+		config.SetRuntimeManager(previousManager)
+	})
 	first := models.User{Account: "root", Name: "Root", Role: string(access.RoleSuperAdmin)}
 	second := models.User{Account: "alice", Name: "Alice", Role: string(access.RoleUser)}
 	if _, err := engine.Insert(&first, &second); err != nil {
@@ -70,10 +89,18 @@ func TestSecuritySetupAcknowledgementIsPersistentAndAccountScoped(t *testing.T) 
 	if loginSecurityFields(&first)["showSecuritySetupPrompt"] != true {
 		t.Fatal("first super administrator login must show security setup")
 	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/security/setup/acknowledge", strings.NewReader(`{"user_id":2}`))
+	loadedSession, err := session.Instance.Load(request.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request = request.WithContext(loadedSession)
+	if err := session.PutUser(loadedSession, &first); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 2; i++ {
 		recorder := httptest.NewRecorder()
-		AcknowledgeSecuritySetup(&appcontext.Context{UserID: first.ID}, recorder,
-			httptest.NewRequest(http.MethodPost, "/api/v1/security/setup/acknowledge", strings.NewReader(`{"user_id":2}`)))
+		AcknowledgeSecuritySetup(&appcontext.Context{UserID: first.ID}, recorder, request)
 		var payload struct {
 			ErrorNo int `json:"errorNo"`
 		}
@@ -88,15 +115,86 @@ func TestSecuritySetupAcknowledgementIsPersistentAndAccountScoped(t *testing.T) 
 	if _, err := engine.ID(second.ID).Get(&untouched); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.SecuritySetupAcknowledged != 1 || untouched.SecuritySetupAcknowledged != 0 {
-		t.Fatal("acknowledgement changed the wrong account")
+	if loaded.SecuritySetupAcknowledged != 0 || untouched.SecuritySetupAcknowledged != 0 {
+		t.Fatal("dismissal must not persist on either account")
 	}
 	fields := loginSecurityFields(&loaded)
-	if fields["showSecuritySetupPrompt"] != false || fields["showRecoverySetupPrompt"] != false {
-		t.Fatal("acknowledged super administrator must not receive either prompt")
+	if fields["showSecuritySetupPrompt"] != true || fields["showRecoverySetupPrompt"] != false {
+		t.Fatal("incomplete setup must be reported again on login")
 	}
 	if untouched.Password != second.Password || loaded.SecurityVersion != first.SecurityVersion {
 		t.Fatal("acknowledgement changed security credentials")
+	}
+	otherSession, err := session.Instance.Load(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Instance.GetBool(otherSession, session.SecuritySetupDismissedKey) {
+		t.Fatal("dismissal leaked to another session")
+	}
+	token, _, err := session.Instance.Commit(loadedSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshed, err := session.Instance.Load(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInfoPrompt := func(want bool) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		Info(&appcontext.Context{UserID: first.ID, Role: access.RoleSuperAdmin}, recorder, request.WithContext(refreshed))
+		var payload struct {
+			ErrorNo int `json:"errorNo"`
+			Data    struct {
+				Show bool `json:"showSecuritySetupPrompt"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil || payload.ErrorNo != 0 || payload.Data.Show != want {
+			t.Fatalf("unexpected refreshed prompt: %s", recorder.Body.String())
+		}
+	}
+	assertInfoPrompt(false)
+	if err := session.PutUser(refreshed, &first); err != nil {
+		t.Fatal(err)
+	}
+	assertInfoPrompt(true)
+}
+
+func TestSecuritySetupRequiresUsableCredentials(t *testing.T) {
+	for _, role := range []access.Role{access.RoleUser, access.RoleAdmin, access.RoleSuperAdmin} {
+		for _, emailStatus := range []string{"", models.ExternalEmailStatusPending, models.ExternalEmailStatusVerified, models.ExternalEmailStatusDisabled} {
+			for _, codeStatus := range []string{"missing", "valid", "used"} {
+				t.Run(string(role)+"/"+emailStatus+"/"+codeStatus, func(t *testing.T) {
+					engine := setupSecurityPromptTest(t)
+					user := models.User{Account: "alice", Role: string(role), SecuritySetupAcknowledged: 1}
+					if _, err := engine.Insert(&user); err != nil {
+						t.Fatal(err)
+					}
+					if emailStatus != "" {
+						if _, err := engine.Insert(&models.ExternalEmail{UserID: user.ID, Status: emailStatus, EmailFingerprint: "fixture"}); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if codeStatus != "missing" {
+						code := models.RecoveryCode{UserID: user.ID, CodeHash: "fixture"}
+						if codeStatus == "used" {
+							now := time.Now()
+							code.UsedAt = &now
+						}
+						if _, err := engine.Insert(&code); err != nil {
+							t.Fatal(err)
+						}
+					}
+					fields := loginSecurityFields(&user)
+					emailReady := emailStatus == models.ExternalEmailStatusVerified
+					codeReady := codeStatus == "valid" || role == access.RoleSuperAdmin
+					if fields["externalEmailConfigured"] != emailReady || fields["showSecuritySetupPrompt"] != (!emailReady || !codeReady) {
+						t.Fatalf("unexpected security state: %#v", fields)
+					}
+				})
+			}
+		}
 	}
 }
 

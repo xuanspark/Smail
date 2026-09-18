@@ -19,8 +19,19 @@ func TestUserIdentityRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	user := &models.User{ID: 7, Account: "admin", Name: "Admin", IsAdmin: 1, SessionVersion: 4, SecurityVersion: 3, MustChangePassword: 1}
+	Instance.Put(loaded, SecuritySetupDismissedKey, true)
 	if err := PutUser(loaded, user); err != nil {
 		t.Fatal(err)
+	}
+	if Instance.GetBool(loaded, SecuritySetupDismissedKey) {
+		t.Fatal("new login retained the previous dismissal")
+	}
+	Instance.Put(loaded, SecuritySetupDismissedKey, true)
+	if err := RefreshRecentAuthentication(loaded, user); err != nil {
+		t.Fatal(err)
+	}
+	if !Instance.GetBool(loaded, SecuritySetupDismissedKey) {
+		t.Fatal("recent authentication cleared the current dismissal")
 	}
 	identity, err := GetUser(loaded)
 	if err != nil {

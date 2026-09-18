@@ -10,16 +10,16 @@ export function usePage() {
     && globalStatus.userInfos.showSecuritySetupPrompt === true
     && !globalStatus.userInfos.must_change_password)
   const isSuperAdmin = computed(() => globalStatus.role === 'super_admin')
-  const options = computed(() => [
-    { key: 'question', title: '密保问题', description: '设置只有自己知道的答案，避免使用容易猜到的个人信息。' },
-    { key: 'external-email', title: '外部安全邮箱', description: '绑定可正常接收验证码的外部邮箱，并完成验证。' },
-    {
-      key: 'webauthn', title: '安全密钥',
-      description: globalStatus.userInfos.webAuthnEnabled === true
-        ? '使用支持 WebAuthn 的设备或浏览器注册安全密钥。'
-        : '服务器尚未启用，需由部署管理员配置 WebAuthn 后才能注册。'
+  const options = computed(() => {
+    const items = []
+    if (!isSuperAdmin.value && !globalStatus.userInfos.recoveryCodesConfigured) {
+      items.push({ key: 'recovery', title: '安全码', description: '生成安全码并妥善保存。' })
     }
-  ])
+    if (!globalStatus.userInfos.externalEmailConfigured) {
+      items.push({ key: 'external-email', title: '外部邮箱', description: '绑定邮箱并完成验证。' })
+    }
+    return items
+  })
 
   const acknowledge = async section => {
     if (saving.value) return

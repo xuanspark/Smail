@@ -21,17 +21,17 @@ function fixture(post = async () => ({ errorNo: 0 })) {
   return { store, page: createPage(computed, ref, { post }, () => store) }
 }
 
-test('初始化超级管理员首次登录显示三项引导，强制改密时延后', () => {
+test('超级管理员只提醒邮箱，强制改密时延后', () => {
   const { store, page } = fixture()
   assert.equal(page.visible.value, true)
-  assert.deepEqual(Array.from(page.options.value, item => item.key), ['question', 'external-email', 'webauthn'])
+  assert.deepEqual(Array.from(page.options.value, item => item.key), ['external-email'])
   store.userInfos.must_change_password = 1
   assert.equal(page.visible.value, false)
   store.userInfos.must_change_password = 0
   assert.equal(page.visible.value, true)
 })
 
-test('确认成功后关闭并打开目标设置，刷新后的持久化状态不再弹出', async () => {
+test('确认仅关闭本次提醒，下次登录未完成设置仍提醒', async () => {
   const requests = []
   const { store, page } = fixture(async path => { requests.push(path); return { errorNo: 0 } })
   await page.acknowledge('external-email')
@@ -42,6 +42,38 @@ test('确认成功后关闭并打开目标设置，刷新后的持久化状态�
   assert.deepEqual(requests, ['/api/v1/security/setup/acknowledge'])
   store.userInfos = { account: 'root', showSecuritySetupPrompt: false }
   assert.equal(page.visible.value, false)
+  store.settingsDrawerVisible = false
+  store.userInfos = { account: 'root', showSecuritySetupPrompt: true }
+  assert.equal(page.visible.value, true)
+})
+
+test('管理员和普通用户只显示尚未完成的安全码与邮箱', () => {
+  for (const role of ['admin', 'user']) {
+    const { store, page } = fixture()
+    store.role = role
+    assert.deepEqual(Array.from(page.options.value, item => item.key), ['recovery', 'external-email'])
+    store.userInfos.recoveryCodesConfigured = true
+    assert.deepEqual(Array.from(page.options.value, item => item.key), ['external-email'])
+    store.userInfos.externalEmailConfigured = true
+    store.userInfos.recoveryCodesConfigured = false
+    assert.deepEqual(Array.from(page.options.value, item => item.key), ['recovery'])
+    store.userInfos.recoveryCodesConfigured = true
+    store.userInfos.showSecuritySetupPrompt = false
+    assert.deepEqual(Array.from(page.options.value, item => item.key), [])
+    assert.equal(page.visible.value, false)
+  }
+})
+
+test('我知道了只关闭弹窗，去设置打开第一个未完成项', async () => {
+  const { store, page } = fixture()
+  store.role = 'user'
+  await page.acknowledge()
+  assert.equal(page.visible.value, false)
+  assert.equal(store.settingsDrawerVisible, false)
+  store.userInfos.showSecuritySetupPrompt = true
+  await page.acknowledge(page.options.value[0].key)
+  assert.equal(store.securityActiveSection, 'recovery')
+  assert.equal(store.settingsDrawerVisible, true)
 })
 
 test('保存失败保留引导，可重试且不将查看状态误记为设置完成', async () => {
@@ -58,8 +90,8 @@ test('并发点击只提交一次，切换账号后不修改新账号状态', as
   let finish
   let calls = 0
   const { store, page } = fixture(() => { calls++; return new Promise(resolve => { finish = resolve }) })
-  const pending = page.acknowledge('question')
-  await page.acknowledge('webauthn')
+  const pending = page.acknowledge('recovery')
+  await page.acknowledge('external-email')
   assert.equal(calls, 1)
   store.userInfos = { account: 'alice', showSecuritySetupPrompt: true }
   finish({ errorNo: 0 })

@@ -9,6 +9,7 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/csrf"
@@ -226,22 +227,20 @@ func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	domains := array.Difference(mailDomains.Accepted, []string{mailDomains.Primary})
 	domains = append([]string{mailDomains.Primary}, domains...)
 	result := map[string]any{
-		"id":                      ctx.UserID,
-		"account":                 ctx.UserAccount,
-		"name":                    ctx.UserName,
-		"role":                    ctx.EffectiveRole(),
-		"capabilities":            access.Capabilities(ctx.EffectiveRole()),
-		"is_admin":                ctx.IsAdmin,
-		"must_change_password":    ctx.MustChangePassword,
-		"showSecuritySetupPrompt": ctx.SecuritySetupAcknowledged == 0,
-		"webAuthnEnabled":         webAuthnRuntime() != nil,
-		"domains":                 domains,
+		"id":                   ctx.UserID,
+		"account":              ctx.UserAccount,
+		"name":                 ctx.UserName,
+		"role":                 ctx.EffectiveRole(),
+		"capabilities":         access.Capabilities(ctx.EffectiveRole()),
+		"is_admin":             ctx.IsAdmin,
+		"must_change_password": ctx.MustChangePassword,
+		"domains":              domains,
 	}
-	if ctx.EffectiveRole() != access.RoleSuperAdmin {
-		result["recoveryCodesConfigured"] = ctx.RecoveryCodeConfigured
-		result["showRecoverySetupPrompt"] = !ctx.RecoveryCodeConfigured
-	} else {
-		result["recoveryCodesConfigured"] = false
+	for key, value := range loginSecurityFields(&models.User{ID: ctx.UserID, Role: string(ctx.EffectiveRole())}) {
+		result[key] = value
+	}
+	if session.Instance != nil && session.Instance.GetBool(req.Context(), session.SecuritySetupDismissedKey) {
+		result["showSecuritySetupPrompt"] = false
 		result["showRecoverySetupPrompt"] = false
 	}
 	response.NewSuccessResponse(result).FPrint(w)
