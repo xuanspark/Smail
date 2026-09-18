@@ -8,18 +8,45 @@
   line-height: 1.7;
 }
 
+.totp-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.totp-heading h3 {
+  margin: 0;
+}
+
 .totp-settings .el-alert {
   margin-bottom: 16px;
 }
 
-.totp-enrollment img,
-.totp-enrollment label,
-.totp-enrollment code {
+.totp-enrollment img {
   display: block;
-  margin: 12px 0;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 0 16px;
+}
+
+.totp-manual {
+  margin-bottom: 20px;
+}
+
+.totp-manual summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--pm-text-secondary);
+  font-size: 14px;
 }
 
 .totp-enrollment code {
+  display: block;
+  margin-top: 12px;
   padding: 12px;
   border: 1px solid var(--pm-border-color);
   border-radius: 8px;
@@ -29,6 +56,16 @@
 
 .totp-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 16px;
+}
+
+.totp-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.totp-enrollment .el-form,
+.totp-disable {
+  max-width: 360px;
 }
