@@ -305,6 +305,11 @@ func TestEmailLoginAfterAsyncDelivery(t *testing.T) {
 	if code, _ := callLoginHandler(t, CompleteLoginVerification, verify); code == 0 {
 		t.Fatal("consumed code accepted again")
 	}
+	if _, err := currentSecurityRuntime().verification.Issue(verification.IssueRequest{
+		Purpose: verification.PurposePasswordChange, Account: user.Account, Email: "owner@example.net",
+	}, "127.0.0.1"); err != nil {
+		t.Fatalf("登录完成后其他业务无法发送验证码：%v", err)
+	}
 }
 
 func TestLoginMethodsRejectInvalidState(t *testing.T) {

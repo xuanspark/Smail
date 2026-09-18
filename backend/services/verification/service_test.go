@@ -29,7 +29,7 @@ func TestServiceIssuesVerifiesAndAppliesMultiDimensionCooldown(t *testing.T) {
 	if err := service.Verify(challenge.ID, "smail", "user@example.com", code, PurposeLogin, "127.0.0.1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Issue(IssueRequest{Purpose: PurposeLogin, Account: "smail", Email: "user@example.com"}, "127.0.0.1"); !errors.Is(err, ErrRateLimited) {
+	if _, err := service.Issue(IssueRequest{Purpose: PurposeLogin, Account: "smail", Email: "user@example.com"}, "127.0.0.1"); err != nil {
 		t.Fatalf("second issue error = %v", err)
 	}
 }

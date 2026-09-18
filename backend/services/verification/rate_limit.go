@@ -64,8 +64,13 @@ func NewPersistentRateLimiter(engine *xorm.Engine) (*PersistentRateLimiter, erro
 }
 
 func (r *PersistentRateLimiter) Allow(ctx context.Context, request RateLimitRequest, now time.Time) (bool, error) {
+	allowed, _, err := r.allowWithRelease(ctx, request, now)
+	return allowed, err
+}
+
+func (r *PersistentRateLimiter) allowWithRelease(ctx context.Context, request RateLimitRequest, now time.Time) (bool, func() error, error) {
 	if r == nil || r.engine == nil {
-		return false, ErrRateLimitStoreUnavailable
+		return false, nil, ErrRateLimitStoreUnavailable
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -75,19 +80,20 @@ func (r *PersistentRateLimiter) Allow(ctx context.Context, request RateLimitRequ
 	}
 	dimensions := buildRateLimitDimensions(request)
 	if len(dimensions) == 0 {
-		return false, ErrRateLimitStoreUnavailable
+		return false, nil, ErrRateLimitStoreUnavailable
 	}
 
 	// SQLite 使用单连接和数据库锁，MySQL/PostgreSQL 通过行锁保证跨进程原子更新。
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	session := r.engine.NewSession().Context(ctx)
+	defer session.Close()
 	if err := session.Begin(); err != nil {
-		return false, fmt.Errorf("begin verification rate limit transaction: %w", err)
+		return false, nil, fmt.Errorf("begin verification rate limit transaction: %w", err)
 	}
-	rollback := func(err error) (bool, error) {
+	rollback := func(err error) (bool, func() error, error) {
 		_ = session.Rollback()
-		return false, err
+		return false, nil, err
 	}
 	rows := make([]models.VerificationRateLimit, 0, len(dimensions))
 	for _, dimension := range dimensions {
@@ -128,14 +134,49 @@ func (r *PersistentRateLimiter) Allow(ctx context.Context, request RateLimitRequ
 		row.LastIssuedAt = timePtr(now)
 		row.ExpiresAt = updated.Add(PersistentRateLimitStateRetention)
 		row.UpdatedAt = updated
+		rows[i] = row
 		if _, err := session.ID(row.ID).Cols("hour_started_at", "hour_count", "day_started_at", "day_count", "last_issued_at", "expires_at", "updated_at").Update(&row); err != nil {
 			return rollback(fmt.Errorf("update verification rate limit %s: %w", dimension.typ, err))
 		}
 	}
 	if err := session.Commit(); err != nil {
-		return false, fmt.Errorf("commit verification rate limit transaction: %w", err)
+		return false, nil, fmt.Errorf("commit verification rate limit transaction: %w", err)
 	}
-	return true, nil
+	return true, func() error { return r.releaseCooldown(rows) }, nil
+}
+
+func (r *PersistentRateLimiter) releaseCooldown(rows []models.VerificationRateLimit) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	session := r.engine.NewSession().Context(ctx)
+	defer session.Close()
+	if err := session.Begin(); err != nil {
+		return err
+	}
+	defer session.Rollback()
+	for _, row := range rows {
+		// 同一维度已有新发送时，不清理新请求的冷却，也不重置小时和每日计数。
+		var current models.VerificationRateLimit
+		query := session.ID(row.ID)
+		if r.engine.DriverName() != "sqlite3" && r.engine.DriverName() != "sqlite" {
+			query = query.ForUpdate()
+		}
+		has, err := query.Get(&current)
+		if err != nil {
+			return err
+		}
+		if !has || current.LastIssuedAt == nil || current.HourCount != row.HourCount || current.DayCount != row.DayCount || current.LastIssuedAt.Unix() != row.LastIssuedAt.Unix() {
+			continue
+		}
+		_, err = session.Table(new(models.VerificationRateLimit)).ID(row.ID).
+			Update(map[string]interface{}{"last_issued_at": nil})
+		if err != nil {
+			return err
+		}
+	}
+	return session.Commit()
 }
 
 func (r *PersistentRateLimiter) Cleanup(ctx context.Context, now time.Time) (int, error) {

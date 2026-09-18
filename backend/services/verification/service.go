@@ -67,7 +67,7 @@ func (s *Service) Issue(request IssueRequest, remoteIP string) (Challenge, error
 	if request.Account == "" || request.Email == "" {
 		return Challenge{}, ErrInvalidChallenge
 	}
-	allowed, limitErr := s.allow(request, remoteIP)
+	allowed, release, limitErr := s.allow(request, remoteIP)
 	if limitErr != nil {
 		s.record(EventInput{Purpose: request.Purpose, Action: models.VerificationActionIssue, Outcome: models.VerificationOutcomeFailure, Account: request.Account, Email: request.Email, RemoteIP: remoteIP})
 		return Challenge{}, ErrServiceDown
@@ -76,7 +76,7 @@ func (s *Service) Issue(request IssueRequest, remoteIP string) (Challenge, error
 		s.record(EventInput{Purpose: request.Purpose, Action: models.VerificationActionIssue, Outcome: models.VerificationOutcomeBlocked, Account: request.Account, Email: request.Email, RemoteIP: remoteIP})
 		return Challenge{}, ErrRateLimited
 	}
-	challenge, err := s.Store.Issue(request, s.Send)
+	challenge, err := s.Store.issue(request, s.Send, release)
 	if err != nil {
 		s.record(EventInput{Purpose: request.Purpose, Action: models.VerificationActionIssue, Outcome: models.VerificationOutcomeFailure, Account: request.Account, Email: request.Email, RemoteIP: remoteIP})
 		return Challenge{}, err
@@ -122,21 +122,15 @@ func (s *Service) record(input EventInput) {
 	_ = s.Events.Record(input)
 }
 
-func (s *Service) allow(request IssueRequest, remoteIP string) (bool, error) {
+func (s *Service) allow(request IssueRequest, remoteIP string) (bool, func() error, error) {
 	now := s.now()
 	if s.RateLimits != nil {
-		allowed, err := s.RateLimits.Allow(context.Background(), RateLimitRequest{
+		return s.RateLimits.allowWithRelease(context.Background(), RateLimitRequest{
 			Account: request.Account, Email: request.Email, RemoteIP: remoteIP,
 			UserID: request.UserID, Purpose: request.Purpose,
 			BrowserTransaction: request.BrowserTransaction,
 			Environment:        request.Environment, CredentialVersion: request.CredentialVersion,
 		}, now)
-		if err != nil {
-			return false, err
-		}
-		if !allowed {
-			return false, nil
-		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,7 +140,7 @@ func (s *Service) allow(request IssueRequest, remoteIP string) (bool, error) {
 	}
 	if len(s.limits) > 10000 {
 		for key, value := range s.limits {
-			if now.Sub(value.last) > issueDaily {
+			if now.Sub(value.day) >= issueDaily {
 				delete(s.limits, key)
 			}
 		}
@@ -154,9 +148,10 @@ func (s *Service) allow(request IssueRequest, remoteIP string) (bool, error) {
 	for _, key := range keys {
 		hourLimit, dayLimit := keyLimit(key)
 		if !counterAllowed(s.limits[key], now, hourLimit, dayLimit) {
-			return false, nil
+			return false, nil, nil
 		}
 	}
+	reserved := make(map[string]issueCounter, len(keys))
 	for _, key := range keys {
 		item := s.limits[key]
 		if item.hour.IsZero() || now.Sub(item.hour) >= issueWindow {
@@ -171,8 +166,20 @@ func (s *Service) allow(request IssueRequest, remoteIP string) (bool, error) {
 		item.hourN++
 		item.dayN++
 		s.limits[key] = item
+		reserved[key] = item
 	}
-	return true, nil
+	return true, func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		// 只释放本次发送的冷却，保留累计配额及后续发送的状态。
+		for key, expected := range reserved {
+			if item := s.limits[key]; item == expected {
+				item.last = time.Time{}
+				s.limits[key] = item
+			}
+		}
+		return nil
+	}, nil
 }
 
 func keyLimit(key string) (int, int) {

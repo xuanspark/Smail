@@ -67,6 +67,7 @@ type IssueRequest struct {
 type Delivery func(challenge Challenge, code string) error
 
 type entry struct {
+	onVerified              func() error
 	challenge               Challenge
 	mac                     [32]byte
 	browserContextDigest    [32]byte
@@ -107,6 +108,10 @@ func NewStore(maxEntries int) (*Store, error) {
 }
 
 func (s *Store) Issue(request IssueRequest, delivery Delivery) (Challenge, error) {
+	return s.issue(request, delivery, nil)
+}
+
+func (s *Store) issue(request IssueRequest, delivery Delivery, onVerified func() error) (Challenge, error) {
 	if s == nil || delivery == nil || !IsSupportedPurpose(request.Purpose) || strings.TrimSpace(request.Account) == "" || strings.TrimSpace(request.Email) == "" {
 		return Challenge{}, ErrInvalidChallenge
 	}
@@ -169,7 +174,7 @@ func (s *Store) Issue(request IssueRequest, delivery Delivery) (Challenge, error
 	_, _ = mac.Write([]byte(code))
 	var digest [32]byte
 	copy(digest[:], mac.Sum(nil))
-	s.entries[challenge.ID] = entry{challenge: challenge, mac: digest, browserContextDigest: browserContextDigest, hasBrowserContextDigest: browserContext != ""}
+	s.entries[challenge.ID] = entry{challenge: challenge, mac: digest, browserContextDigest: browserContextDigest, hasBrowserContextDigest: browserContext != "", onVerified: onVerified}
 	s.active[activeKey] = challenge.ID
 	s.perUser[account]++
 	s.mu.Unlock()
@@ -251,6 +256,11 @@ func (s *Store) VerifyBoundWithContext(id, account, email, code string, purpose 
 		}
 		s.entries[id] = item
 		return ErrInvalidChallenge
+	}
+	if item.onVerified != nil {
+		if err := item.onVerified(); err != nil {
+			return ErrServiceDown
+		}
 	}
 	s.deleteLocked(id)
 	return nil
