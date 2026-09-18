@@ -1,8 +1,12 @@
 package http_server
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -201,6 +205,7 @@ func TestFrontendV1RoutesAreRegistered(t *testing.T) {
 		"/api/v1/security/login/resend",
 		"/api/v1/security/login/status",
 		"/api/v1/security/login/verify",
+		"/api/v1/security/totp",
 		"/api/v1/security/recovery/begin",
 		"/api/v1/security/recovery/complete",
 		"/api/v1/security/recovery/verify",
@@ -233,5 +238,74 @@ func TestFrontendV1RoutesAreRegistered(t *testing.T) {
 		if handler == nil || pattern == "" || pattern == "/" {
 			t.Errorf("V1 route %s fell through to pattern %q", path, pattern)
 		}
+	}
+}
+
+func TestFrontendSourceV1RoutesAreRegistered(t *testing.T) {
+	mux := http.NewServeMux()
+	setupMux := http.NewServeMux()
+	registerSetupAPIRoutes(setupMux, withSetupSecurity(t, "0123456789abcdefghijklmnop"), func(http.ResponseWriter, *http.Request) {})
+	if err := router(mux); err != nil {
+		t.Fatal(err)
+	}
+	pattern := regexp.MustCompile("[\x22\x27\x60](/api/v1/[a-zA-Z0-9_/-]+)[\x22\x27\x60]")
+	count := 0
+	err := filepath.WalkDir("../../../frontend/src", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || (filepath.Ext(path) != ".js" && filepath.Ext(path) != ".vue" && filepath.Ext(path) != ".mjs") {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, match := range pattern.FindAllSubmatch(content, -1) {
+			endpoint := string(match[1])
+			_, route := mux.Handler(httptest.NewRequest(http.MethodGet, endpoint, nil))
+			if endpoint == "/api/v1/setup" {
+				_, route = setupMux.Handler(httptest.NewRequest(http.MethodGet, endpoint, nil))
+			}
+			if route == "" || route == "/" {
+				t.Errorf("%s: endpoint %s is not registered", path, endpoint)
+			}
+			count++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count == 0 {
+		t.Fatal("no frontend API calls inspected")
+	}
+}
+
+func TestV1TOTPRouteMethods(t *testing.T) {
+	oldInit := config.IsInit
+	t.Cleanup(func() { config.SetInitState(oldInit) })
+	config.SetInitState(false)
+	mux := http.NewServeMux()
+	registerV1TOTPRoute(mux)
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPut} {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(method, "/api/v1/security/totp", nil))
+		want := http.StatusOK
+		if method == http.MethodDelete || method == http.MethodPut {
+			want = http.StatusMethodNotAllowed
+			if recorder.Header().Get("Allow") != "GET, POST" {
+				t.Fatal("incorrect allowed methods")
+			}
+		}
+		if recorder.Code != want {
+			t.Errorf("%s returned %d, want %d", method, recorder.Code, want)
+		}
+		if recorder.Header().Get("Deprecation") != "" {
+			t.Fatal("versioned TOTP route marked as legacy")
+		}
+	}
+	if publicSecurityPath("/api/v1/security/totp") {
+		t.Fatal("TOTP settings must require a session")
 	}
 }

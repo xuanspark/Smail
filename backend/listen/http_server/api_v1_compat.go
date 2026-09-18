@@ -32,6 +32,7 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/security/recovery/verify", "/api/security/recovery/verify", http.MethodPost, 16<<10, controllers.VerifyPasswordRecovery)
 	registerV1MethodRoute(mux, "/api/v1/security/recovery/complete", "/api/security/recovery/complete", http.MethodPost, 16<<10, controllers.CompletePasswordRecovery)
 	registerV1CredentialsQuestionRoute(mux)
+	registerV1TOTPRoute(mux)
 	registerV1MethodRoute(mux, "/api/v1/security/credentials/recovery-codes", "/api/security/credentials/recovery-codes", http.MethodGet, 0, controllers.GetRecoveryCodeStatus)
 	registerV1MethodRoute(mux, "/api/v1/security/credentials/recovery-codes/generate", "/api/security/credentials/recovery-codes/generate", http.MethodPost, 16<<10, controllers.GenerateRecoveryCodes)
 	registerV1MethodRoute(mux, "/api/v1/security/credentials/recovery-codes/revoke", "/api/security/credentials/recovery-codes/revoke", http.MethodPost, 4<<10, controllers.RevokeRecoveryCodes)
@@ -126,6 +127,19 @@ func registerV1CredentialsQuestionRoute(mux *http.ServeMux) {
 			get.ServeHTTP(w, r)
 		case http.MethodPost:
 			post.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+func registerV1TOTPRoute(mux *http.ServeMux) {
+	handler := limitBody(4<<10, contextIterceptor(rewriteV1Path("/api/security/totp", controllers.TOTPSettings)))
+	mux.HandleFunc("/api/v1/security/totp", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodPost:
+			handler.ServeHTTP(w, r)
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
