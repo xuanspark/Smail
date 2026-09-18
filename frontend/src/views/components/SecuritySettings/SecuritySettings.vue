@@ -124,8 +124,6 @@
     </section>
     <el-alert v-if="selectedSection === 'webauthn' && !supported" title="当前浏览器不支持 WebAuthn，请使用 HTTPS 和受支持的浏览器。" type="warning" :closable="false" show-icon />
 
-    <el-divider v-if="selectedSection === 'logout'" class="settings-divider" />
-    <section v-if="selectedSection === 'logout'" class="security-section"><div class="settings-header"><h3 class="danger-text">{{ lang.logout }}</h3><p class="settings-desc">{{ lang.logout_desc }}</p></div><el-button type="danger" plain @click="logout" class="logout-btn">{{ lang.logout }}</el-button></section>
 
     <ExternalEmailBindingDialog
       v-model="externalDialogVisible"
@@ -152,7 +150,7 @@ const {
   externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
   saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
   handleExternalEmailBound,
-  disableExternalEmail, formatTime, logout,
+  disableExternalEmail, formatTime,
 } = usePage()
 </script>
 

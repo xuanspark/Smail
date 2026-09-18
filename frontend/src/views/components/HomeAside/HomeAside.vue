@@ -32,6 +32,18 @@
     <div class="sidebar-footer" v-if="isLogin">
       <div class="account-identity" aria-label="当前登录账号" aria-live="polite">
         <span class="account-caption">当前账号</span>
+        <el-tooltip :content="lang.logout" placement="top">
+          <button
+            type="button"
+            class="logout-btn"
+            :aria-label="lang.logout"
+            :aria-busy="loggingOut"
+            :disabled="loggingOut"
+            @click="logout"
+          >
+            <el-icon><SwitchButton /></el-icon>
+          </button>
+        </el-tooltip>
         <strong class="account-name" :title="currentAccount">{{ currentAccount }}</strong>
         <el-tag :type="currentRole.type" size="small" effect="light" class="account-role">
           {{ currentRole.label }}
@@ -46,7 +58,7 @@
 </template>
 
 <script setup>
-import { usePage, BrandLogo, Setting } from './HomeAside.js'
+import { usePage, BrandLogo, Setting, SwitchButton } from './HomeAside.js'
 
 const {
   searchQuery,
@@ -57,6 +69,8 @@ const {
   isLogin,
   currentAccount,
   currentRole,
+  loggingOut,
+  logout,
   openSettings
 } = usePage()
 </script>

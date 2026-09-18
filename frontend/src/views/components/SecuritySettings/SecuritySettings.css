@@ -21,7 +21,7 @@
 .premium-input :deep(.el-input__wrapper) { box-shadow: none; border-radius: var(--pm-radius-sm); border: 1px solid var(--pm-border-color); background-color: var(--pm-bg-secondary); transition: all 0.2s; }
 .premium-input :deep(.el-input__wrapper:hover), .premium-input :deep(.el-input__wrapper.is-focus) { border-color: var(--pm-primary-color); background-color: var(--pm-bg-primary); }
 .form-actions { margin-top: 24px; }
-.submit-btn, .logout-btn { border-radius: var(--pm-radius-sm); font-weight: 500; }
+.submit-btn { border-radius: var(--pm-radius-sm); font-weight: 500; }
 .submit-btn { padding: 10px 24px; }
 .settings-divider { margin: 32px 0; border-color: var(--pm-border-color); }
 .security-key-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }

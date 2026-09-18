@@ -8,7 +8,8 @@ import lang from "../../../i18n/i18n";
 
 import { http } from "@/utils/axios";
 
-import { Setting } from "@element-plus/icons-vue";
+import { Setting, SwitchButton } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
 
 import { useGlobalStatusStore } from "../../../stores/useGlobalStatusStore";
 
@@ -25,6 +26,22 @@ export function usePage() {
   const currentAccount = computed(() => globalStatus.userInfos.account || '账号未加载');
 
   const currentRole = computed(() => roleMeta(globalStatus.role));
+
+  const loggingOut = ref(false);
+  const logout = async () => {
+    if (loggingOut.value) return;
+    loggingOut.value = true;
+    try {
+      const result = await http.post('/api/v1/logout', {});
+      if (result.errorNo !== 0) {
+        throw new Error(result.errorMsg || '注销失败，请重试');
+      }
+      location.reload();
+    } catch (error) {
+      ElMessage.error(error.message || '注销失败，请重试');
+      loggingOut.value = false;
+    }
+  };
   
   const router = useRouter();
   
@@ -89,6 +106,8 @@ export function usePage() {
     isLogin,
     currentAccount,
     currentRole,
+    loggingOut,
+    logout,
     router,
     data,
     searchQuery,
@@ -100,5 +119,6 @@ export function usePage() {
 
 export {
   BrandLogo,
-  Setting
+  Setting,
+  SwitchButton
 }

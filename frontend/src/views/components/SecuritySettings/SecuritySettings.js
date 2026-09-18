@@ -26,7 +26,6 @@ export function usePage() {
     }
     options.push({ value: 'external-email', label: '外部安全邮箱' })
     options.push({ value: 'webauthn', label: '安全密钥' })
-    options.push({ value: 'logout', label: lang.logout })
     return options
   })
   const selectedSection = computed({
@@ -259,7 +258,6 @@ export function usePage() {
   }
 
   const formatTime = value => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-'
-  const logout = () => http.post('/api/v1/logout', {}).then(() => location.reload())
 
   const submit = async () => {
     if (passwordSubmitting.value || passwordSending.value) return
@@ -348,6 +346,6 @@ export function usePage() {
     externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
     saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
     handleExternalEmailBound,
-    disableExternalEmail, formatTime, logout,
+    disableExternalEmail, formatTime,
   }
 }
