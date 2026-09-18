@@ -46,7 +46,7 @@ func maintainSSL() {
 		sslCheck()
 		return
 	}
-	if cfg.SSLType == config.SSLTypeAutoHTTP && !waitHTTPReady() {
+	if cfg.EffectiveSSLType() == config.SSLTypeAutoHTTP && !waitHTTPReady() {
 		return
 	}
 	ssl.Update(true)

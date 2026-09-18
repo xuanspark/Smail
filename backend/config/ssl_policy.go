@@ -7,7 +7,30 @@ func (c *Config) UsesProxyHTTPS() bool {
 	return c != nil && strings.EqualFold(strings.TrimSpace(c.TLSMode), HTTPSTLSModeProxy)
 }
 
-// AutomaticSSLEnabled 保留原证书策略，但反代模式下禁止 Smail 自动签发和续期。
+// EffectiveSSLType 以证书管理责任为准，仅在旧配置未记录管理方式时兼容旧类型。
+func (c *Config) EffectiveSSLType() string {
+	if c == nil || c.UsesProxyHTTPS() {
+		return SSLTypeUser
+	}
+	management := c.SSL.Management
+	if management == "" && c.SSL.Mode != "" {
+		management = EffectiveSSLManagement(c.SSL)
+	}
+	switch management {
+	case SSLManagementProject:
+		if c.SSL.Challenge == SSLChallengeDNS || (c.SSL.Challenge == "" && c.SSLType == SSLTypeAutoDNS) {
+			return SSLTypeAutoDNS
+		}
+		return SSLTypeAutoHTTP
+	case "":
+		if c.SSLType == SSLTypeAutoHTTP || c.SSLType == SSLTypeAutoDNS {
+			return c.SSLType
+		}
+	}
+	return SSLTypeUser
+}
+
+// AutomaticSSLEnabled 仅允许项目自托管证书自动签发和续期。
 func (c *Config) AutomaticSSLEnabled() bool {
-	return c != nil && !c.UsesProxyHTTPS() && (c.SSLType == SSLTypeAutoHTTP || c.SSLType == SSLTypeAutoDNS)
+	return c.EffectiveSSLType() != SSLTypeUser
 }

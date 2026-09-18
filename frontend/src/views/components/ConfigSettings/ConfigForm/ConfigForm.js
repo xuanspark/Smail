@@ -169,9 +169,9 @@ const sslGroups = [
       wide: true,
       fallback: 'custom',
       options: options([
-        ['web_server', 'Web 服务器管理'],
-        ['project', '项目自身管理'],
-        ['custom', '自定义']
+        ['web_server', '代理服务器托管（不自动续期）'],
+        ['project', '项目自身托管（自动续期）'],
+        ['custom', '手动配置（不自动续期）']
       ])
     }),
     field('tls.challenge', '证书验证方式', 'select', {

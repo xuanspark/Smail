@@ -89,11 +89,11 @@ func GetSSL() (string, error) {
 	if cfg.UsesProxyHTTPS() {
 		return config.SSLTypeUser, nil
 	}
-	if cfg.SSLType == "" {
+	if cfg.SSLType == "" && cfg.SSL.Management == "" && cfg.SSL.Mode == "" {
 		return config.SSLTypeAutoHTTP, nil
 	}
 
-	return cfg.SSLType, nil
+	return cfg.EffectiveSSLType(), nil
 }
 
 func SetSSL(sslType, priKey, crtKey string) error {
@@ -173,6 +173,7 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 		return
 	}
 	clearLegacySSLPaths(cfg)
+	sslType := cfg.EffectiveSSLType()
 	management := cfg.SSL.Management
 	if reference.Mode == config.ManagedSSLModeDefault {
 		management = config.SSLManagementProject
@@ -188,7 +189,7 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
 		cfg.SSL.CustomDirectory = "ssl"
-	} else if cfg.SSLType == config.SSLTypeAutoDNS {
+	} else if sslType == config.SSLTypeAutoDNS {
 		cfg.SSL.Challenge = config.SSLChallengeDNS
 	} else {
 		cfg.SSL.Challenge = config.SSLChallengeHTTP
@@ -330,7 +331,7 @@ func certificateMatchesConfiguredDomains(cert *x509.Certificate, cfg *config.Con
 
 // 自动 DNS 只申请主域泛域名；不覆盖的服务地址是配置错误，不能靠重复续期修复。
 func validateWildcardConfiguration(cfg *config.Config) error {
-	if cfg == nil || cfg.SSLType != config.SSLTypeAutoDNS {
+	if cfg == nil || cfg.EffectiveSSLType() != config.SSLTypeAutoDNS {
 		return nil
 	}
 	domains := wildcardCertificateDomains(cfg)
@@ -370,7 +371,7 @@ func wildcardCertificateDomains(cfg *config.Config) []string {
 }
 
 func certificateDomains(cfg *config.Config) []string {
-	if cfg != nil && cfg.SSLType == config.SSLTypeAutoDNS {
+	if cfg != nil && cfg.EffectiveSSLType() == config.SSLTypeAutoDNS {
 		return wildcardCertificateDomains(cfg)
 	}
 	return sslDomains(cfg)
@@ -393,12 +394,12 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 		return errors.Wrap(err)
 	}
 
-	if cfg.SSLType == config.SSLTypeAutoHTTP {
+	if cfg.EffectiveSSLType() == config.SSLTypeAutoHTTP {
 		err = client.Challenge.SetHTTP01Provider(GetHttpChallengeInstance())
 		if err != nil {
 			return errors.Wrap(err)
 		}
-	} else if cfg.SSLType == config.SSLTypeAutoDNS {
+	} else if cfg.EffectiveSSLType() == config.SSLTypeAutoDNS {
 		err = client.Challenge.SetDNS01Provider(GetDnsChallengeInstance(), dns01.AddDNSTimeout(60*time.Minute))
 		if err != nil {
 			return errors.Wrap(err)
@@ -456,12 +457,12 @@ func generateCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config, newAc
 		return errors.Wrap(err)
 	}
 
-	if cfg.SSLType == config.SSLTypeAutoHTTP {
+	if cfg.EffectiveSSLType() == config.SSLTypeAutoHTTP {
 		err = client.Challenge.SetHTTP01Provider(GetHttpChallengeInstance())
 		if err != nil {
 			return errors.Wrap(err)
 		}
-	} else if cfg.SSLType == config.SSLTypeAutoDNS {
+	} else if cfg.EffectiveSSLType() == config.SSLTypeAutoDNS {
 		err = client.Challenge.SetDNS01Provider(GetDnsChallengeInstance(), dns01.AddDNSTimeout(60*time.Minute))
 		if err != nil {
 			return errors.Wrap(err)

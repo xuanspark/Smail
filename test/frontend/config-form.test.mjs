@@ -343,9 +343,9 @@ test('证书管理方式只展示三种业务模式并同步底层托管配置',
   assert.deepEqual(validateFormConfig('ssl', { tls }), {})
   const management = getFieldGroups('ssl', { tls }).flatMap(group => group.fields).find(field => field.path.join('.') === 'tls.management')
   assert.deepEqual(management.options.map(option => [option.value, option.label]), [
-    ['web_server', 'Web 服务器管理'],
-    ['project', '项目自身管理'],
-    ['custom', '自定义']
+    ['web_server', '代理服务器托管（不自动续期）'],
+    ['project', '项目自身托管（自动续期）'],
+    ['custom', '手动配置（不自动续期）']
   ])
   for (const customDirectory of ['C:/certs', '/etc/ssl', '../certs', 'config/../certs', 'config\\ssl', 'config//ssl']) {
     assert.ok(validateFormConfig('ssl', { tls: { ...tls, customDirectory } })['tls.customDirectory'])
