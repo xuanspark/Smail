@@ -18,10 +18,7 @@ export function recoveryCodeMeta(configured) {
     : { label: '未开启', type: 'info' }
 }
 
-export function externalEmailMeta(enabled, configured) {
-  if (!enabled) {
-    return { label: '已关闭', type: 'warning' }
-  }
+export function externalEmailMeta(configured) {
   return configured
     ? { label: '已绑定', type: 'success' }
     : { label: '未绑定', type: 'info' }

@@ -37,12 +37,12 @@
         <el-table-column label="外部邮箱" width="76">
           <template #default="scope">
             <el-tag
-              :type="externalEmailMeta(scope.row.ExternalEmailEnabled, scope.row.ExternalEmailConfigured).type"
+              :type="externalEmailMeta(scope.row.ExternalEmailConfigured).type"
               size="small"
               effect="plain"
               class="status-tag"
             >
-              {{ externalEmailMeta(scope.row.ExternalEmailEnabled, scope.row.ExternalEmailConfigured).label }}
+              {{ externalEmailMeta(scope.row.ExternalEmailConfigured).label }}
             </el-tag>
           </template>
         </el-table-column>
@@ -165,7 +165,6 @@
                 <strong>外部邮箱</strong>
                 <span>
                   {{ externalEmailMeta(
-                    selectedUser?.ExternalEmailEnabled,
                     selectedUser?.ExternalEmailConfigured
                   ).label }}
                 </span>
