@@ -108,17 +108,10 @@
 
 .account-identity {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 4px 8px;
   padding: 0 4px 12px;
-}
-
-.account-caption {
-  grid-column: 1;
-  color: var(--pm-text-secondary);
-  font-size: 11px;
-  line-height: 1.4;
 }
 
 .account-name {
@@ -143,9 +136,9 @@
   justify-content: center;
   justify-self: end;
   gap: 6px;
-  min-width: 76px;
+  min-width: 62px;
   height: 32px;
-  padding: 0 6px;
+  padding: 0 4px;
   border: 0;
   border-radius: 6px;
   background: transparent;

@@ -31,7 +31,10 @@
     </div>
     <div class="sidebar-footer" v-if="isLogin">
       <div class="account-identity" aria-label="当前登录账号" aria-live="polite">
-        <span class="account-caption">当前账号</span>
+        <strong class="account-name" :title="currentAccount">{{ currentAccount }}</strong>
+        <el-tag :type="currentRole.type" size="small" effect="light" class="account-role">
+          {{ currentRole.label }}
+        </el-tag>
         <el-tooltip :content="lang.logout" placement="top">
           <button
             type="button"
@@ -45,10 +48,6 @@
             <span>{{ lang.logout }}</span>
           </button>
         </el-tooltip>
-        <strong class="account-name" :title="currentAccount">{{ currentAccount }}</strong>
-        <el-tag :type="currentRole.type" size="small" effect="light" class="account-role">
-          {{ currentRole.label }}
-        </el-tag>
       </div>
       <button type="button" class="settings-btn" @click="openSettings">
         <el-icon><Setting /></el-icon>
