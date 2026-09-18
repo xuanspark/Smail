@@ -27,7 +27,7 @@ export function usePage() {
     }
     loading.value = true
     try {
-      const res = await http.post("/api/v1/login", form)
+      const res = await http.post("/api/v1/login", form, { timeout: 4500 })
       if (res.errorNo !== 0) {
         ElMessage.error(res.errorMsg)
         return

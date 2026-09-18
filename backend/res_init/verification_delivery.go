@@ -14,14 +14,23 @@ import (
 	"git.pcux.cn/xuans/Smail/services/verification"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/send"
+	smailsmtp "git.pcux.cn/xuans/Smail/utils/smtp"
 )
 
 func newVerificationDelivery() verification.Delivery {
-	return newVerificationDeliveryWithDependencies(
-		config.CurrentSMTPRuntimeSettings,
-		deliverVerificationWithSMTPRelay,
-		deliverVerificationWithProjectMail,
-	)
+	return func(challenge verification.Challenge, code string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), verification.MailDeliveryTimeout)
+		defer cancel()
+		return newVerificationDeliveryWithDependencies(
+			config.CurrentSMTPRuntimeSettings,
+			func(settings config.SMTPRuntimeSettings, challenge verification.Challenge, code string) error {
+				return deliverVerificationWithSMTPRelayContext(ctx, settings, challenge, code)
+			},
+			func(challenge verification.Challenge, code string) error {
+				return deliverVerificationWithProjectMailContext(ctx, challenge, code)
+			},
+		)(challenge, code)
+	}
 }
 
 func newVerificationDeliveryWithDependencies(
@@ -45,6 +54,9 @@ func newVerificationDeliveryWithDependencies(
 			relayErr := deliverRelay(runtimeSettings, challenge, code)
 			if relayErr == nil {
 				return nil
+			}
+			if smailsmtp.IsDeliveryUncertain(relayErr) {
+				return relayErr
 			}
 			if !smtpRelayComplete(runtimeSettings) {
 				return relayErr
@@ -93,21 +105,36 @@ func verificationSMTPSettings(settings config.SMTPRuntimeSettings) (verification
 }
 
 func deliverVerificationWithSMTPRelay(runtimeSettings config.SMTPRuntimeSettings, challenge verification.Challenge, code string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), verification.MailDeliveryTimeout)
+	defer cancel()
+	return deliverVerificationWithSMTPRelayContext(ctx, runtimeSettings, challenge, code)
+}
+
+func deliverVerificationWithSMTPRelayContext(ctx context.Context, runtimeSettings config.SMTPRuntimeSettings, challenge verification.Challenge, code string) error {
 	settings, err := verificationSMTPSettings(runtimeSettings)
 	if err != nil {
 		return err
 	}
-	delivery, err := verification.NewSMTPDelivery(settings)
+	delivery, err := verification.NewSMTPDeliveryContext(ctx, settings)
 	if err != nil {
 		return fmt.Errorf("SMTP relay is unavailable: %w", err)
 	}
 	if err = delivery.Delivery()(challenge, code); err != nil {
-		return fmt.Errorf("%w: SMTP relay rejected delivery", verification.ErrMailDeliveryFailed)
+		return fmt.Errorf("%w: %w", verification.ErrMailDeliveryFailed, err)
 	}
 	return nil
 }
 
 func deliverVerificationWithProjectMail(challenge verification.Challenge, code string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), verification.MailDeliveryTimeout)
+	defer cancel()
+	return deliverVerificationWithProjectMailContext(ctx, challenge, code)
+}
+
+func deliverVerificationWithProjectMailContext(deliveryContext context.Context, challenge verification.Challenge, code string) error {
+	if err := deliveryContext.Err(); err != nil {
+		return err
+	}
 	domain := strings.TrimSpace(config.CurrentMailDomains().Primary)
 	if domain == "" {
 		return fmt.Errorf("%w: primary mail domain is not configured", verification.ErrProjectMailUnavailable)
@@ -132,7 +159,7 @@ func deliverVerificationWithProjectMail(challenge verification.Challenge, code s
 		MsgID:   messageID,
 	}
 	ctx := &appcontext.Context{
-		Context: context.Background(),
+		Context: deliveryContext,
 		Values:  make(map[string]any),
 	}
 	if deliveryErr, _ := send.SendTriggered(ctx, message, "系统安全验证邮件"); deliveryErr != nil {

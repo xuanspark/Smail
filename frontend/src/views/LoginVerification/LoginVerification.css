@@ -44,6 +44,27 @@
   overflow-wrap: anywhere;
 }
 
+.verification-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.verification-methods .el-button {
+  flex: 1;
+  min-height: 48px;
+  margin: 0;
+}
+
+.verification-hint,
+.verification-delivery {
+  color: var(--pm-text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+
 .verification-input :deep(.el-input__wrapper) {
   min-height: 48px;
   border-radius: 12px;

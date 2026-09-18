@@ -19,7 +19,7 @@ import (
 type SecurityMode string
 
 const (
-	MailDeliveryTimeout = 45 * time.Second
+	MailDeliveryTimeout              = 45 * time.Second
 	SecurityStartTLS    SecurityMode = "starttls"
 	SecurityImplicitTLS SecurityMode = "tls"
 	SecurityPlain       SecurityMode = "plain"
@@ -53,6 +53,18 @@ func NewSMTPDelivery(settings SMTPSettings) (*SMTPDelivery, error) {
 		return nil, err
 	}
 	return &SMTPDelivery{settings: settings, send: sendSMTPMessage}, nil
+}
+
+// NewSMTPDeliveryContext 将中继投递纳入调用方的总时限。
+func NewSMTPDeliveryContext(ctx context.Context, settings SMTPSettings) (*SMTPDelivery, error) {
+	delivery, err := NewSMTPDelivery(settings)
+	if err != nil {
+		return nil, err
+	}
+	delivery.send = func(settings SMTPSettings, recipient string, message []byte) error {
+		return SendSMTPMessageContext(ctx, settings, recipient, message)
+	}
+	return delivery, nil
 }
 
 func (d *SMTPDelivery) Delivery() Delivery {

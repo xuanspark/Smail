@@ -20,6 +20,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/recovery"
+	"git.pcux.cn/xuans/Smail/services/totp"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
 	"git.pcux.cn/xuans/Smail/utils/clientip"
@@ -87,6 +88,7 @@ type securityRuntimeState struct {
 	recovery     *recovery.Service
 	credentials  *credentials.Service
 	webauthn     *webauthnservice.Service
+	totp         *totp.Service
 }
 
 var securityRuntime securityRuntimeState
@@ -118,6 +120,12 @@ func ConfigureWebAuthnRuntime(service *webauthnservice.Service) {
 	securityRuntime.webauthn = service
 }
 
+func ConfigureTOTPRuntime(service *totp.Service) {
+	securityRuntimeMu.Lock()
+	defer securityRuntimeMu.Unlock()
+	securityRuntime.totp = service
+}
+
 // ClearSecurityRuntime 在停止入口后一次撤下全部安全服务，避免保留已停止的旧库依赖。
 func ClearSecurityRuntime() {
 	securityRuntimeMu.Lock()
@@ -134,6 +142,9 @@ func InvalidateSecurityRuntimeUser(userID int, account string) {
 		return
 	}
 	runtime := currentSecurityRuntime()
+	if runtime.totp != nil {
+		runtime.totp.InvalidateUser(userID)
+	}
 	if runtime.recovery != nil {
 		runtime.recovery.InvalidateUser(userID)
 	}

@@ -55,6 +55,14 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/security/verification/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.VerifyVerification))))
 	mux.HandleFunc("/api/security/login/verify", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.CompleteLoginVerification))))
 	mux.HandleFunc("/api/security/login/resend", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.ResendLoginVerification))))
+	mux.HandleFunc("/api/security/login/status", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.LoginVerificationStatus))))
+	mux.HandleFunc("/api/security/totp", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		limitBody(4<<10, contextIterceptor(controllers.TOTPSettings))(w, r)
+	})
 	mux.HandleFunc("/api/security/webauthn/registration/begin", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.BeginWebAuthnRegistration))))
 	mux.HandleFunc("/api/security/webauthn/registration/finish", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(controllers.FinishWebAuthnRegistration))))
 	mux.HandleFunc("/api/security/webauthn/credentials", onlyMethod(http.MethodGet, contextIterceptor(controllers.ListWebAuthnCredentials)))

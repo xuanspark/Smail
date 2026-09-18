@@ -219,7 +219,7 @@ func Login(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 
 		log.WithContext(ctx).WithError(err).Info("登录二次验证未就绪")
 
-		response.NewErrorResponse(response.ParamsError, "请先配置可用的外部安全邮箱", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, "登录验证服务暂不可用，请稍后重试", "").FPrint(w)
 
 		return
 

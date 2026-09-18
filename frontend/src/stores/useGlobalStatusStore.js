@@ -148,6 +148,10 @@ const useGlobalStatusStore = defineStore("useGlobalStatusStore", {
                 challengeId: payload?.challenge_id || "",
                 account: payload?.account || "",
                 email: payload?.email || "",
+				methods: Array.isArray(payload?.methods) ? payload.methods : ["email"],
+				deliveryStatus: payload?.delivery_status || "idle",
+				deliveryError: payload?.delivery_error || "",
+				retryAt: payload?.retry_at || "",
                 expiresAt: payload?.expires_at || "",
                 redirect: getSafeLoginRedirect(payload?.redirect)
             };

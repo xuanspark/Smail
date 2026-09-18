@@ -112,6 +112,7 @@ func (s *Service) BeginEnrollment(userID int, account string) (*Enrollment, erro
 	}
 	id := base64.RawURLEncoding.EncodeToString(idBytes)
 	expiresAt := s.now().UTC().Add(EnrollmentTTL)
+	encodedSecret := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret)
 
 	s.mu.Lock()
 	s.cleanupEnrollmentsLocked(s.now().UTC())
@@ -129,7 +130,6 @@ func (s *Service) BeginEnrollment(userID int, account string) (*Enrollment, erro
 	s.enrollments[id] = enrollmentItem{userID: userID, secret: secret, expiresAt: expiresAt}
 	s.mu.Unlock()
 
-	encodedSecret := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret)
 	return &Enrollment{
 		ID:        id,
 		Secret:    encodedSecret,

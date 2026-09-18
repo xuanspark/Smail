@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
@@ -40,7 +42,17 @@ type loginVerificationItem struct {
 	Email          string
 	SessionVersion int
 	ExpiresAt      time.Time
+	TOTPEnabled    bool
+	EmailChallenge string
+	DeliveryStatus string
+	DeliveryError  string
+	RetryAt        time.Time
+	Attempts       int
+	Verifying      bool
 }
+
+var loginDeliverySlots = make(chan struct{}, 16)
+var loginSecondFactorAttempts = newLoginLimiter(20)
 
 type resendLoginVerificationRequest struct {
 	ID      string `json:"id"`
@@ -52,6 +64,7 @@ type loginVerificationRequest struct {
 	Identifier string `json:"identifier"`
 	Email      string `json:"email"`
 	Code       string `json:"code"`
+	Method     string `json:"method"`
 }
 
 func loginVerificationEnabled() bool {
@@ -84,54 +97,70 @@ func loginVerificationPolicyEnabled(enabled bool, policy string) bool {
 
 func beginLoginVerification(user *models.User, remoteIP string) (map[string]any, error) {
 	runtime := currentSecurityRuntime()
-	if !loginVerificationEnabled() {
+	if user == nil || user.ID <= 0 {
+		return nil, errLoginVerificationUnavailable
+	}
+	item := loginVerificationItem{
+		UserID: user.ID, Account: user.Account, SessionVersion: user.SessionVersion,
+		ExpiresAt: time.Now().Add(loginVerificationTTL), DeliveryStatus: "idle",
+	}
+	if runtime.totp != nil {
+		var err error
+		item.TOTPEnabled, err = runtime.totp.IsEnabled(user.ID)
+		if err != nil {
+			return nil, errLoginVerificationUnavailable
+		}
+	}
+	if loginVerificationEnabled() || item.TOTPEnabled {
+		if runtime.external == nil || runtime.verification == nil {
+			return nil, errLoginVerificationUnavailable
+		}
+		binding, err := runtime.external.FindVerifiedPrimaryByUser(user.ID)
+		if err != nil && !errors.Is(err, externalemail.ErrBindingNotFound) {
+			return nil, errLoginVerificationUnavailable
+		}
+		if err == nil {
+			item.Email, err = runtime.external.Decrypt(*binding)
+			if err != nil {
+				return nil, errLoginVerificationUnavailable
+			}
+		}
+	}
+	if item.Email == "" && !item.TOTPEnabled {
 		return nil, nil
 	}
-	if user == nil || user.ID <= 0 || runtime.verification == nil || runtime.external == nil {
+	var token [32]byte
+	if _, err := rand.Read(token[:]); err != nil {
 		return nil, errLoginVerificationUnavailable
 	}
-	binding, err := runtime.external.FindVerifiedPrimaryByUser(user.ID)
-	if err != nil {
-		if errors.Is(err, externalemail.ErrBindingNotFound) {
-			return nil, nil
-		}
-		return nil, errLoginVerificationUnavailable
-	}
-	email, err := runtime.external.Decrypt(*binding)
-	if err != nil {
-		return nil, errLoginVerificationUnavailable
-	}
-	challenge, err := runtime.verification.Issue(verification.IssueRequest{
-		Purpose: verification.PurposeLogin,
-		Account: user.Account,
-		Email:   email,
-		TTL:     loginVerificationTTL,
-	}, remoteIP)
-	if err != nil {
-		return nil, err
-	}
+	id := hex.EncodeToString(token[:])
 	loginVerificationState.Lock()
+	defer loginVerificationState.Unlock()
 	cleanupLoginVerificationLocked(time.Now())
 	if len(loginVerificationState.items) >= loginVerificationMaxEntries {
-		loginVerificationState.Unlock()
-		runtime.verification.Store.InvalidateChallenge(challenge.ID)
 		return nil, errLoginVerificationUnavailable
 	}
-	loginVerificationState.items[challenge.ID] = loginVerificationItem{
-		UserID: user.ID, Account: user.Account, Email: email,
-		SessionVersion: user.SessionVersion, ExpiresAt: challenge.ExpiresAt,
-	}
-	loginVerificationState.Unlock()
-	return map[string]any{
-		"pending":      true,
-		"challenge_id": challenge.ID,
-		"expires_at":   challenge.ExpiresAt.UTC(),
-		"email":        maskEmail(email),
-		"account":      user.Account,
-	}, nil
+	loginVerificationState.items[id] = item
+	return loginVerificationResponse(id, item), nil
 }
 
-// ResendLoginVerification 使旧登录验证码失效后重新发送新验证码。
+func loginVerificationResponse(id string, item loginVerificationItem) map[string]any {
+	methods := []string{}
+	if item.Email != "" {
+		methods = append(methods, "email")
+	}
+	if item.TOTPEnabled {
+		methods = append(methods, "totp")
+	}
+	return map[string]any{
+		"pending": true, "challenge_id": id, "account": item.Account,
+		"expires_at": item.ExpiresAt.UTC(), "email": maskEmail(item.Email),
+		"methods": methods, "delivery_status": item.DeliveryStatus,
+		"delivery_error": item.DeliveryError, "retry_at": item.RetryAt.UTC(),
+	}
+}
+
+// ResendLoginVerification 只启动有并发上限的后台投递，HTTP 请求不等待邮件服务器。
 func ResendLoginVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	runtime := currentSecurityRuntime()
 	var input resendLoginVerificationRequest
@@ -140,70 +169,153 @@ func ResendLoginVerification(ctx *context.Context, w http.ResponseWriter, req *h
 		return
 	}
 
-	loginVerificationState.Lock()
-	cleanupLoginVerificationLocked(time.Now())
-	item, ok := loginVerificationState.items[input.ID]
-	if ok {
-		delete(loginVerificationState.items, input.ID)
-	}
-	loginVerificationState.Unlock()
-	if !ok || !strings.EqualFold(strings.TrimSpace(input.Account), item.Account) {
+	item, ok := pendingLoginVerification(input.ID, input.Account)
+	if !ok || !loginVerificationUserValid(item) {
 		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
 		return
 	}
-	if runtime.verification == nil || runtime.verification.Store == nil {
+	if runtime.verification == nil || runtime.verification.Store == nil || item.Email == "" {
 		writeSecurityError(w, response.ParamsError, "验证码服务暂不可用")
 		return
 	}
-	runtime.verification.Store.InvalidateChallenge(input.ID)
-	challenge, err := runtime.verification.Issue(verification.IssueRequest{
-		Purpose: verification.PurposeLogin,
-		UserID:  item.UserID,
-		Account: item.Account,
-		Email:   item.Email,
-		TTL:     loginVerificationTTL,
-	}, remoteIP(req))
-	if err != nil {
-		writeSecurityError(w, response.ParamsError, "验证码发送失败，请稍后重试")
+	loginVerificationState.Lock()
+	item, ok = loginVerificationState.items[input.ID]
+	if !ok || !time.Now().Before(item.ExpiresAt) {
+		loginVerificationState.Unlock()
+		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
 		return
 	}
-
-	loginVerificationState.Lock()
-	cleanupLoginVerificationLocked(time.Now())
-	loginVerificationState.items[challenge.ID] = loginVerificationItem{
-		UserID: item.UserID, Account: item.Account, Email: item.Email,
-		SessionVersion: item.SessionVersion, ExpiresAt: challenge.ExpiresAt,
+	if item.DeliveryStatus == "sending" || time.Now().Before(item.RetryAt) {
+		loginVerificationState.Unlock()
+		response.NewSuccessResponse(loginVerificationResponse(input.ID, item)).FPrint(w)
+		return
 	}
+	select {
+	case loginDeliverySlots <- struct{}{}:
+	default:
+		loginVerificationState.Unlock()
+		writeSecurityError(w, response.ParamsError, "邮件发送繁忙，请稍后重试或使用动态码")
+		return
+	}
+	previousChallenge := item.EmailChallenge
+	item.EmailChallenge = ""
+	item.DeliveryStatus, item.DeliveryError = "sending", ""
+	item.RetryAt = time.Now().Add(time.Minute)
+	loginVerificationState.items[input.ID] = item
 	loginVerificationState.Unlock()
-	response.NewSuccessResponse(map[string]any{
-		"pending":      true,
-		"challenge_id": challenge.ID,
-		"expires_at":   challenge.ExpiresAt.UTC(),
-		"email":        maskEmail(item.Email),
-		"account":      item.Account,
-	}).FPrint(w)
+	ip := remoteIP(req)
+	go func() {
+		defer func() { <-loginDeliverySlots }()
+		if previousChallenge != "" {
+			runtime.verification.Store.InvalidateChallenge(previousChallenge)
+		}
+		challenge, err := runtime.verification.Issue(verification.IssueRequest{
+			Purpose: verification.PurposeLogin, UserID: item.UserID, Account: item.Account,
+			Email: item.Email, TTL: time.Until(item.ExpiresAt),
+		}, ip)
+		loginVerificationState.Lock()
+		current, exists := loginVerificationState.items[input.ID]
+		if exists && time.Now().Before(current.ExpiresAt) {
+			if err != nil {
+				current.DeliveryStatus = "failed"
+				current.DeliveryError = externalEmailVerificationIssueMessage(err)
+			} else {
+				current.DeliveryStatus, current.EmailChallenge = "sent", challenge.ID
+			}
+			loginVerificationState.items[input.ID] = current
+		}
+		loginVerificationState.Unlock()
+		if !exists || !time.Now().Before(current.ExpiresAt) {
+			runtime.verification.Store.InvalidateChallenge(challenge.ID)
+		}
+	}()
+	response.NewSuccessResponse(loginVerificationResponse(input.ID, item)).FPrint(w)
+}
+
+func LoginVerificationStatus(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	var input resendLoginVerificationRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil {
+		writeSecurityError(w, response.ParamsError, "登录验证请求无效")
+		return
+	}
+	item, ok := pendingLoginVerification(input.ID, input.Account)
+	if !ok || !loginVerificationUserValid(item) {
+		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
+		return
+	}
+	response.NewSuccessResponse(loginVerificationResponse(input.ID, item)).FPrint(w)
+}
+
+func loginVerificationUserValid(item loginVerificationItem) bool {
+	if db.Instance == nil {
+		return false
+	}
+	var user models.User
+	has, err := db.Instance.ID(item.UserID).Get(&user)
+	return err == nil && has && user.Disabled == 0 && user.Account == item.Account && user.SessionVersion == item.SessionVersion
 }
 
 // CompleteLoginVerification 只有验证码成功后才创建完整 Session。
 func CompleteLoginVerification(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	runtime := currentSecurityRuntime()
 	var input loginVerificationRequest
-	if err := decodeJSONRequest(w, req, &input); err != nil || runtime.verification == nil {
+	if err := decodeJSONRequest(w, req, &input); err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
 	if input.Account == "" {
 		input.Account = input.Identifier
 	}
-	loginVerificationState.Lock()
-	cleanupLoginVerificationLocked(time.Now())
-	item, ok := loginVerificationState.items[input.ID]
-	loginVerificationState.Unlock()
-	if !ok || !strings.EqualFold(strings.TrimSpace(input.Account), item.Account) {
+	item, ok := pendingLoginVerification(input.ID, input.Account)
+	if !ok || !loginVerificationUserValid(item) {
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
-	if err := runtime.verification.Verify(input.ID, item.Account, item.Email, input.Code, verification.PurposeLogin, remoteIP(req)); err != nil {
+	limitKey := loginSecondFactorAttempts.accountKey(item.Account)
+	if loginSecondFactorAttempts.blocked(limitKey) {
+		writeSecurityError(w, response.ParamsError, "验证失败次数过多，请十五分钟后重试")
+		return
+	}
+	loginVerificationState.Lock()
+	item, ok = loginVerificationState.items[input.ID]
+	if !ok || item.Verifying || item.Attempts >= 5 || !time.Now().Before(item.ExpiresAt) {
+		loginVerificationState.Unlock()
+		writeSecurityError(w, response.ParamsError, "登录验证已失效或正在验证，请重新登录")
+		return
+	}
+	item.Attempts++
+	item.Verifying = true
+	loginVerificationState.items[input.ID] = item
+	loginVerificationState.Unlock()
+	var verifyErr error
+	switch input.Method {
+	case "totp":
+		if !item.TOTPEnabled || runtime.totp == nil {
+			verifyErr = errLoginVerificationUnavailable
+		} else {
+			verifyErr = runtime.totp.Verify(item.UserID, input.Code)
+		}
+	case "", "email":
+		if item.EmailChallenge == "" || runtime.verification == nil {
+			verifyErr = errLoginVerificationUnavailable
+		} else {
+			verifyErr = runtime.verification.Verify(item.EmailChallenge, item.Account, item.Email, input.Code, verification.PurposeLogin, remoteIP(req))
+		}
+	default:
+		verifyErr = errLoginVerificationUnavailable
+	}
+	if verifyErr != nil {
+		loginSecondFactorAttempts.recordFailure(limitKey)
+		loginVerificationState.Lock()
+		if current, exists := loginVerificationState.items[input.ID]; exists {
+			current.Verifying = false
+			if current.Attempts >= 5 {
+				delete(loginVerificationState.items, input.ID)
+			} else {
+				loginVerificationState.items[input.ID] = current
+			}
+		}
+		loginVerificationState.Unlock()
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
@@ -216,9 +328,14 @@ func CompleteLoginVerification(ctx *context.Context, w http.ResponseWriter, req 
 		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
 		return
 	}
-	loginVerificationState.Lock()
-	delete(loginVerificationState.items, input.ID)
-	loginVerificationState.Unlock()
+	if !consumePendingLoginVerification(input.ID, item) {
+		writeSecurityError(w, response.ParamsError, "登录验证已失效，请重新登录")
+		return
+	}
+	loginSecondFactorAttempts.clear(limitKey)
+	if runtime.verification != nil && item.EmailChallenge != "" {
+		runtime.verification.Store.InvalidateChallenge(item.EmailChallenge)
+	}
 	completeLoginSession(ctx, w, req, &user)
 }
 
@@ -306,7 +423,7 @@ func consumePendingLoginVerification(challengeID string, expected loginVerificat
 	loginVerificationState.Lock()
 	defer loginVerificationState.Unlock()
 	item, ok := loginVerificationState.items[strings.TrimSpace(challengeID)]
-	if !ok || item.UserID != expected.UserID || item.SessionVersion != expected.SessionVersion || !strings.EqualFold(item.Account, expected.Account) {
+	if !ok || !time.Now().Before(item.ExpiresAt) || item.UserID != expected.UserID || item.SessionVersion != expected.SessionVersion || !strings.EqualFold(item.Account, expected.Account) {
 		return false
 	}
 	delete(loginVerificationState.items, strings.TrimSpace(challengeID))

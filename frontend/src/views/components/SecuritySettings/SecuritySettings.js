@@ -25,6 +25,7 @@ export function usePage() {
       options.push({ value: 'recovery', label: '离线恢复码' })
     }
     options.push({ value: 'external-email', label: '外部安全邮箱' })
+    options.push({ value: 'totp', label: '手机动态码' })
     options.push({ value: 'webauthn', label: '安全密钥' })
     return options
   })

@@ -110,6 +110,8 @@
       <el-empty v-else v-loading="externalListLoading" description="暂无外部安全邮箱" />
     </section>
 
+    <TOTPSettings v-if="selectedSection === 'totp'" />
+
     <el-divider v-if="selectedSection === 'webauthn'" class="settings-divider" />
     <el-alert
       v-if="selectedSection === 'webauthn' && !webAuthnEnabled"
@@ -137,6 +139,7 @@
 <script setup>
 import { usePage } from './SecuritySettings.js'
 import ProfileSettings from './ProfileSettings/ProfileSettings.vue'
+import TOTPSettings from './TOTPSettings/TOTPSettings.vue'
 import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
 import GlobalSecurityPolicy from './GlobalSecurityPolicy/GlobalSecurityPolicy.vue'
 import ExternalEmailBindingDialog from './ExternalEmailBindingDialog/ExternalEmailBindingDialog.vue'

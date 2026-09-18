@@ -30,6 +30,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/recovery"
 	"git.pcux.cn/xuans/Smail/services/restart"
 	"git.pcux.cn/xuans/Smail/services/setup/ssl"
+	"git.pcux.cn/xuans/Smail/services/totp"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	webauthnservice "git.pcux.cn/xuans/Smail/services/webauthn"
 	"git.pcux.cn/xuans/Smail/session"
@@ -366,6 +367,12 @@ func startVerificationRuntime() error {
 	}
 	recover.SetWebAuthnVerifier(webAuthnRuntimeService)
 	recover.SetPublicLinkDelivery(newPublicRecoveryLinkDelivery())
+	totpService, err := totp.NewService(db.Instance, config.ROOT_PATH)
+	if err != nil {
+		runtime.Stop()
+		return fmt.Errorf("start TOTP service: %w", err)
+	}
+	controllers.ConfigureTOTPRuntime(totpService)
 	controllers.ConfigureSecurityRuntime(service, external, recover, credential)
 	credentialService = credential
 	verificationRuntime = runtime

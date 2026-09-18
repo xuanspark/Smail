@@ -1,0 +1,34 @@
+.totp-settings {
+  max-width: 640px;
+  padding: 20px 0;
+}
+
+.totp-settings p {
+  color: var(--pm-text-secondary);
+  line-height: 1.7;
+}
+
+.totp-settings .el-alert {
+  margin-bottom: 16px;
+}
+
+.totp-enrollment img,
+.totp-enrollment label,
+.totp-enrollment code {
+  display: block;
+  margin: 12px 0;
+}
+
+.totp-enrollment code {
+  padding: 12px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.totp-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}

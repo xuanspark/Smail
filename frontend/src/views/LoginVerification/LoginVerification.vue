@@ -2,24 +2,53 @@
   <AuthLayout
     brand-caption="安全、简洁的邮件管理"
     intro-title="完成安全验证"
-    intro-description="密码验证通过后，还需要确认已绑定的外部安全邮箱或安全密钥。"
+    intro-description="账号密码已通过验证。选择邮箱验证码或手机动态码，完成其中一种验证即可登录。"
   >
     <section class="verification-content">
       <div class="verification-card">
         <div class="verification-heading">
           <span class="verification-eyebrow">登录保护</span>
-          <h2>输入邮箱验证码</h2>
-          <p>
-            验证码已发送至
-            <strong>{{ pending?.email || "已绑定邮箱" }}</strong>
-          </p>
+          <h2>选择验证方式</h2>
+          <p>当前账号：<strong>{{ pending?.account }}</strong></p>
         </div>
 
-        <el-form class="verification-form" @submit.prevent="verifyCode">
-          <el-form-item label="邮箱验证码">
+        <div class="verification-methods">
+          <el-button
+            :type="method === 'email' ? 'primary' : 'default'"
+            :disabled="!methods.includes('email') || loading"
+            @click="chooseMethod('email')"
+          >邮箱验证码</el-button>
+          <el-button
+            :type="method === 'totp' ? 'primary' : 'default'"
+            :disabled="!methods.includes('totp') || loading"
+            @click="chooseMethod('totp')"
+          >手机动态码（TOTP）</el-button>
+        </div>
+        <p v-if="!methods.includes('totp')" class="verification-hint">
+          尚未启用手机动态码，可在登录后的安全中心自行开启。
+        </p>
+        <p v-if="!methods.includes('email')" class="verification-hint">
+          尚未绑定可用的安全邮箱，请使用手机动态码。
+        </p>
+
+        <div v-if="method === 'email'" class="verification-delivery" aria-live="polite">
+          <p>绑定邮箱：<strong>{{ pending?.email }}</strong></p>
+          <p>{{ deliveryMessage }}</p>
+          <el-button
+            :loading="resending"
+            :disabled="sending || retrySeconds > 0 || remainingSeconds <= 0"
+            @click="resendCode"
+          >{{ sending ? '正在发送' : retrySeconds > 0 ? `${retrySeconds} 秒后可重发` : '发送邮箱验证码' }}</el-button>
+        </div>
+        <p v-if="method === 'totp'" class="verification-hint">
+          打开已绑定的手机验证器，输入当前六位动态码。已使用的动态码请等待更新。
+        </p>
+
+        <el-form v-if="method" class="verification-form" @submit.prevent="verifyCode">
+          <el-form-item :label="method === 'totp' ? '六位手机动态码' : '八位邮箱验证码'">
             <el-input
               v-model="code"
-              maxlength="8"
+              :maxlength="method === 'totp' ? 6 : 8"
               inputmode="numeric"
               autocomplete="one-time-code"
               placeholder="请输入验证码"
@@ -38,8 +67,8 @@
 
           <p class="verification-expiry">
             {{ remainingSeconds > 0
-              ? `验证码将在 ${remainingSeconds} 秒后过期`
-              : "验证码已过期，请重新登录" }}
+              ? `请在 ${remainingSeconds} 秒内完成登录验证`
+              : "登录验证已过期，请重新登录" }}
           </p>
 
           <el-button
@@ -47,41 +76,16 @@
             size="large"
             class="verification-submit"
             :loading="loading"
-            :disabled="remainingSeconds <= 0"
+            :disabled="remainingSeconds <= 0 || (method === 'email' && pending?.deliveryStatus !== 'sent')"
             @click="verifyCode"
           >
             验证并登录
           </el-button>
 
-          <div class="verification-actions">
-            <el-button
-              link
-              type="primary"
-              :loading="resending"
-              :disabled="remainingSeconds > 540"
-              @click="resendCode"
-            >
-              重新发送验证码
-            </el-button>
-            <el-button link @click="goBackToLogin">返回登录</el-button>
-          </div>
         </el-form>
-
-        <el-divider>或</el-divider>
-
-        <el-button
-          v-if="webAuthnAvailable"
-          plain
-          size="large"
-          class="webauthn-login-button"
-          :loading="webAuthnLoading"
-          @click="verifyWithWebAuthn"
-        >
-          使用安全密钥验证
-        </el-button>
-        <p v-else class="webauthn-unavailable">
-          当前浏览器不支持安全密钥验证，请使用邮箱验证码。
-        </p>
+        <div class="verification-actions">
+          <el-button link :disabled="loading" @click="goBackToLogin">返回登录</el-button>
+        </div>
       </div>
     </section>
   </AuthLayout>
@@ -96,13 +100,16 @@ const {
   code,
   loading,
   resending,
-  webAuthnLoading,
+  method,
+  methods,
+  sending,
+  retrySeconds,
+  deliveryMessage,
+  chooseMethod,
   remainingSeconds,
   errorMessage,
-  webAuthnAvailable,
   verifyCode,
   resendCode,
-  verifyWithWebAuthn,
   goBackToLogin
 } = usePage()
 </script>
