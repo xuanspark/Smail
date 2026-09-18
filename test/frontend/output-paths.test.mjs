@@ -13,7 +13,7 @@ test('跨平台构建输出不得越过项目 out 目录', async () => {
   const content = await read('Makefile')
   assert.match(content, /GO_VERSION \?= \$\(shell cd backend && go version\)/)
   const commands = [...content.matchAll(/cd ([^\s]+) && [^\n]*go build [^\n]* -o ([^\s]+) /g)]
-  assert.equal(commands.length, 12)
+  assert.equal(commands.length, 18)
   for (const [, directory, output] of commands) {
     const relative = path.relative(path.join(root, 'out'), path.resolve(root, directory, output))
     assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative), output)
@@ -84,9 +84,9 @@ test('六个平台默认包含三个插件，构建和发布名称与后端目�
       assert.ok(catalog.includes(`"${path.basename(item.output)}"`))
     }
     const files = packagePlan(target)
-    assert.equal(files.length, 2)
+    assert.equal(files.length, 3)
     assert.equal(files.filter(file => path.basename(path.dirname(file.target)) === 'plugins').length, 0)
-    assert.ok(files.every(file => file.target.startsWith(path.join(root, 'out', 'package', target))))
+    assert.ok(files.every(file => path.dirname(file.target) === path.join(root, 'out', 'package', `Smail_${target}`, 'smail')))
   }
   assert.ok(buildPlan({ development: true }).every(item => path.dirname(item.output) === path.join(root, 'out', 'plugins')))
   assert.throws(() => buildPlan({ target: '../invalid' }))
@@ -96,7 +96,8 @@ test('六个平台默认包含三个插件，构建和发布名称与后端目�
   assert.match(await read('Makefile'), /package: build_server plugin/)
   assert.match(await read('.github/workflows/release.yml'), /node deploy\/build-plugins\.mjs --target=/)
   assert.match(await read('deploy/package.mjs'), /sha256: createHash\('sha256'\)/)
-  assert.match(await read('deploy/package.mjs'), /files,\r?\n      createdAt/)
+  assert.match(await read('.github/workflows/release.yml'), /node deploy\/package\.mjs/)
+  assert.match(await read('.github/workflows/release.yml'), /\.\/cmd\/smail-config/)
 })
 
 test('安全工作流必须先构建嵌入资源再执行 Go 测试', async () => {

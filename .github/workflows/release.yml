@@ -40,25 +40,15 @@ jobs:
           go-version: '1.26.6'
       - name: Gen output name
         run: |
-          echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
-          echo "ADMINFILENAME=smail-admin_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
-          echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
-          echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
-          echo "TELEGRAMFILENAME=pmail_telegram_push_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
-          echo "ZIPNAME=${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
-      - name: Rename Windows File
-        if: matrix.goos == 'windows'
-        run: |
-          echo "FILENAME=smail_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
-          echo "ADMINFILENAME=smail-admin_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
-          echo "WCFILENAME=wechat_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
-          echo "SPAMBLOCKFILENAME=spam_block_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
-          echo "TELEGRAMFILENAME=pmail_telegram_push_${{ matrix.goos }}_${{ matrix.goarch }}.exe" >> ${GITHUB_ENV}
+          archive_extension="tar.gz"
+          if [ "${{ matrix.goos }}" = "windows" ]; then archive_extension="zip"; fi
+          echo "PACKAGENAME=Smail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
+          echo "ARCHIVENAME=Smail_${{ matrix.goos }}_${{ matrix.goarch }}.$archive_extension" >> ${GITHUB_ENV}
       - name: FE Build
         run: cd frontend && yarn install --frozen-lockfile && yarn build
       - name: BE Build
         run: |
-          mkdir -p out/release/config out/release/ssl out/release/data out/release/log
+          mkdir -p out/backend
           cd plugins/pmail_telegram_push
           npm ci
           npm run type-check
@@ -67,25 +57,27 @@ jobs:
           node deploy/bundle-plugins.mjs ${{ matrix.goos }}_${{ matrix.goarch }}
           extension=""
           if [ "${{ matrix.goos }}" = "windows" ]; then extension=".exe"; fi
+          platform="${{ matrix.goos }}"
+          if [ "$platform" = "darwin" ]; then platform="mac"; fi
+          suffix="${platform}_${{ matrix.goarch }}${extension}"
           cd backend
           BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-          go build -tags bundled -trimpath -ldflags "$BUILD_FLAGS" -o ../out/release/smail$extension ./cmd/smail
-          go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/release/smail-admin$extension ./cmd/smail-admin
-      - name: Zip
+          go build -tags bundled -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail_$suffix ./cmd/smail
+          go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail-admin_$suffix ./cmd/smail-admin
+          go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail-config_$suffix ./cmd/smail-config
+      - name: Package release
         run: |
-          cd ./out/release
-          zip -r ${{ env.ZIPNAME }}.zip smail* config ssl data log
-          ls
+          SMAIL_VERSION="${{ env.VERSION }}" GIT_HASH="$(git show -s --format=%H)" node deploy/package.mjs ${{ matrix.goos }}_${{ matrix.goarch }}
       - name: Upload files to Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ env.ZIPNAME }}
-          path: out/release/${{ env.ZIPNAME }}.zip
+          name: ${{ env.PACKAGENAME }}
+          path: out/release/${{ env.ARCHIVENAME }}
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: out/release/${{ env.ZIPNAME }}.zip
+          file: out/release/${{ env.ARCHIVENAME }}
           tag: ${{ github.ref }}
           file_glob: true
 

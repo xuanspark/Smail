@@ -37,6 +37,12 @@ build_server: build_fe plugin
 	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-admin_windows_arm64.exe ./cmd/smail-admin
 	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-admin_mac_amd64 ./cmd/smail-admin
 	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-admin_mac_arm64 ./cmd/smail-admin
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-config_linux_amd64 ./cmd/smail-config
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-config_linux_arm64 ./cmd/smail-config
+	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-config_windows_amd64.exe ./cmd/smail-config
+	cd backend && CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-config_windows_arm64.exe ./cmd/smail-config
+	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-config_mac_amd64 ./cmd/smail-config
+	cd backend && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(BUILD_LDFLAGS)" -o ../out/backend/smail-config_mac_arm64 ./cmd/smail-config
 
 wechat_push:
 	node deploy/build-plugins.mjs --all --plugin=wechat_push
