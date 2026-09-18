@@ -20,6 +20,10 @@ type PublicLinkDelivery func(email, token string) error
 
 // publicTicket 只保存在进程内存中，map key 为令牌摘要而非令牌明文。
 type publicTicket struct {
+	Flow              bool
+	Verified          bool
+	Method            string
+	ChallengeID       string
 	UserID            int
 	Account           string
 	Role              access.Role
@@ -115,6 +119,14 @@ func (s *Service) PublicLinkRequiresRecoveryCode(token string) (bool, error) {
 
 // CompletePublicLink 在同一数据库事务中完成管理员恢复码核销、密码更新和旧凭据撤销。
 func (s *Service) CompletePublicLink(token, newPassword, recoveryCode string) error {
+	return s.completePublicLink(token, newPassword, recoveryCode, false)
+}
+
+func (s *Service) CompletePublicFlow(token, newPassword string) error {
+	return s.completePublicLink(token, newPassword, "", true)
+}
+
+func (s *Service) completePublicLink(token, newPassword, recoveryCode string, flow bool) error {
 	defer clearString(&newPassword)
 	defer clearString(&recoveryCode)
 	if s == nil || s.engine == nil || s.external == nil || s.credentials == nil || strings.TrimSpace(token) == "" {
@@ -132,6 +144,10 @@ func (s *Service) CompletePublicLink(token, newPassword, recoveryCode string) er
 		return ErrRecoveryExpired
 	}
 	if item.Busy {
+		s.mu.Unlock()
+		return ErrRecoveryDenied
+	}
+	if item.Flow != flow || (flow && (!item.Verified || (item.Role == access.RoleAdmin && item.Method != "email"))) {
 		s.mu.Unlock()
 		return ErrRecoveryDenied
 	}
@@ -159,13 +175,15 @@ func (s *Service) CompletePublicLink(token, newPassword, recoveryCode string) er
 		consume = true
 		return ErrRecoveryDenied
 	}
-	binding, err := s.external.FindVerifiedByID(item.UserID, item.CredentialID)
-	if err != nil || binding.CredentialVersion != item.CredentialVersion {
-		consume = true
-		return ErrRecoveryDenied
+	if !flow || item.Method == "email" {
+		binding, err := s.external.FindVerifiedByID(item.UserID, item.CredentialID)
+		if err != nil || binding.CredentialVersion != item.CredentialVersion {
+			consume = true
+			return ErrRecoveryDenied
+		}
 	}
 
-	if user.EffectiveRole() == access.RoleAdmin {
+	if !flow && user.EffectiveRole() == access.RoleAdmin {
 		if strings.TrimSpace(recoveryCode) == "" {
 			if s.recordPublicRecoveryCodeFailure(key, item) {
 				consume = true
@@ -202,7 +220,7 @@ func (s *Service) CompletePublicLink(token, newPassword, recoveryCode string) er
 			_ = session.Rollback()
 		}
 	}()
-	if user.EffectiveRole() == access.RoleAdmin {
+	if !flow && user.EffectiveRole() == access.RoleAdmin {
 		if err := s.credentials.ConsumeRecoveryCodeWithSession(session, user.ID, recoveryCode); err != nil {
 			if errors.Is(err, password.ErrBusy) {
 				return err

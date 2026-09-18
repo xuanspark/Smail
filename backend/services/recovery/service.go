@@ -399,6 +399,9 @@ func (s *Service) CompleteWithContext(ticketID, newPassword, browserContext stri
 	if err != nil || !has || user.Disabled != 0 || user.EffectiveRole() == access.RoleSuperAdmin || user.SessionVersion != item.SessionVersion {
 		return ErrRecoveryDenied
 	}
+	if user.EffectiveRole() == access.RoleAdmin && item.Method != "email_admin" {
+		return ErrRecoveryDenied
+	}
 	if item.Method == "email" || item.Method == "email_admin" {
 		if user.EffectiveRole() == access.RoleAdmin && item.Method != "email_admin" {
 			return ErrRecoveryDenied

@@ -2,11 +2,11 @@
   <AuthLayout
     brand-caption="超级管理员密码重置"
     intro-title="重置超级管理员密码"
-    intro-description="超级管理员密码不支持通过网页恢复，只能由部署端本机安全通道完成。"
+    intro-description="超级管理员无法通过登录页通道重置密码。已登录时可在安全中心重置，无法登录时请使用部署端本机重置。"
   >
     <template #intro-extra>
       <el-alert
-        title="为避免远程接管风险，网页端不会收集或验证超级管理员重置凭据。"
+        title="登录页找回通道不收集或验证超级管理员重置凭据。"
         type="warning"
         :closable="false"
         show-icon
@@ -18,10 +18,10 @@
       <div class="security-notice">
         <span class="notice-icon" aria-hidden="true">!</span>
         <div>
-          <h2 id="recovery-title">请使用本机部署端工具</h2>
+          <h2 id="recovery-title">安全中心或本机部署重置</h2>
           <p>
-            超级管理员重置必须在部署服务器本机发起，并由部署管理员进行交互式确认。
-            普通登录页、忘记密码页和其他 Web API 均不能开启或完成该流程。
+            已登录时，请在安全中心通过已绑定安全邮箱验证后设置新密码。
+            无法登录时，请在部署服务器本机发起重置，并进行交互式确认。
           </p>
         </div>
       </div>

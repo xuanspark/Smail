@@ -48,6 +48,10 @@ const router = createRouter({
         {
             path: "/forgot-password",
             name: "forgot-password",
+            beforeEnter: () => {
+                window.location.assign('/public-password-recovery');
+                return false;
+            },
             component: () => import("../views/PasswordRecovery/PasswordRecovery.vue")
         },
         {

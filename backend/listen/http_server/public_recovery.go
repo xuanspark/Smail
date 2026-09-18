@@ -62,11 +62,13 @@ func (h *publicRecoveryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	case "/rest", "/rest/":
 		h.servePage(w, r)
 	case "/rest/api/recovery/begin":
-		h.serveAPI(w, r, controllers.BeginPublicLinkPasswordRecovery)
+		h.serveAPI(w, r, controllers.PublicPasswordRecoveryFlow)
+	case "/rest/api/recovery/send-code", "/rest/api/recovery/verify", "/rest/api/recovery/reset":
+		h.serveAPI(w, r, controllers.PublicPasswordRecoveryFlow)
 	case "/rest/api/recovery/requirements":
 		h.serveAPI(w, r, controllers.PublicLinkPasswordRecoveryRequirements)
 	case "/rest/api/recovery/complete":
-		h.serveAPI(w, r, controllers.CompletePublicLinkPasswordRecovery)
+		http.NotFound(w, r)
 	default:
 		if isPublicRecoveryAssetPath(path) {
 			h.serveStatic(w, r)

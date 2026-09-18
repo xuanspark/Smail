@@ -7,10 +7,10 @@ import { computed, reactive, ref } from './vue.mjs'
 const script = readFileSync(new URL('../../frontend/src/views/PublicPasswordReset/PublicPasswordReset.js', import.meta.url), 'utf8')
 const template = readFileSync(new URL('../../frontend/src/views/PublicPasswordReset/PublicPasswordReset.vue', import.meta.url), 'utf8')
 
-test('匿名恢复页仅在后端明确确认链接可用时显示密码表单', () => {
+test('旧链接模块保留兼容代码，公开页面改用分步验证入口', () => {
   assert.match(script, /!result\.ok \|\| result\.data\?\.available !== true/)
-  assert.match(template, /v-else-if="available"/)
-  assert.match(template, /恢复链接无效或已失效，请重新申请。/)
+  assert.match(template, /useRecoveryFlow\.js/)
+  assert.match(template, /page === 'verify'/)
 })
 
 const createPage = compileFunction(
