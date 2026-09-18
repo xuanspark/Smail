@@ -18,6 +18,7 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/security/verification/verify", "/api/security/verification/verify", http.MethodPost, 16<<10, controllers.VerifyVerification)
 	registerV1MethodRoute(mux, "/api/v1/security/login/verify", "/api/security/login/verify", http.MethodPost, 16<<10, controllers.CompleteLoginVerification)
 	registerV1MethodRoute(mux, "/api/v1/security/login/resend", "/api/security/login/resend", http.MethodPost, 16<<10, controllers.ResendLoginVerification)
+	registerV1MethodRoute(mux, "/api/v1/security/login/status", "/api/security/login/status", http.MethodPost, 4<<10, controllers.LoginVerificationStatus)
 	registerV1MethodRoute(mux, "/api/v1/security/webauthn/registration/begin", "/api/security/webauthn/registration/begin", http.MethodPost, 16<<10, controllers.BeginWebAuthnRegistration)
 	registerV1MethodRoute(mux, "/api/v1/security/webauthn/registration/finish", "/api/security/webauthn/registration/finish", http.MethodPost, 64<<10, controllers.FinishWebAuthnRegistration)
 	registerV1MethodRoute(mux, "/api/v1/security/webauthn/credentials", "/api/security/webauthn/credentials", http.MethodGet, 0, controllers.ListWebAuthnCredentials)

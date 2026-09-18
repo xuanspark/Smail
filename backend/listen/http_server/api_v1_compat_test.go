@@ -58,6 +58,7 @@ func TestV1PostOnlyRoutesRejectGet(t *testing.T) {
 		"/api/v1/user/info",
 		"/api/v1/user/list",
 		"/api/v1/rule/get",
+		"/api/v1/security/login/status",
 	} {
 		recorder := httptest.NewRecorder()
 		mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, endpoint, nil))
@@ -198,6 +199,7 @@ func TestFrontendV1RoutesAreRegistered(t *testing.T) {
 		"/api/v1/security/external-email/list",
 		"/api/v1/security/external-email/verify",
 		"/api/v1/security/login/resend",
+		"/api/v1/security/login/status",
 		"/api/v1/security/login/verify",
 		"/api/v1/security/recovery/begin",
 		"/api/v1/security/recovery/complete",

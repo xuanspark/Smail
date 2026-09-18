@@ -26,6 +26,9 @@ export function usePage() {
   const expiresAt = computed(() => pending.value?.expiresAt || "")
   const methods = computed(() => pending.value?.methods || [])
   const sending = computed(() => pending.value?.deliveryStatus === "sending")
+  const canSubmit = computed(() => !loading.value && remainingSeconds.value > 0
+    && methods.value.includes(method.value)
+    && (method.value === "totp" ? /^\d{6}$/ : /^\d{8}$/).test(code.value.trim()))
   const deliveryMessage = computed(() => {
     switch (pending.value?.deliveryStatus) {
       case "sending": return "正在发送邮件，您可以等待，也可以切换到手机动态码。"
@@ -186,6 +189,7 @@ export function usePage() {
     method,
     methods,
     sending,
+    canSubmit,
     retrySeconds,
     deliveryMessage,
     chooseMethod,

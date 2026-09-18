@@ -94,7 +94,7 @@
             size="large"
             class="verification-submit"
             :loading="loading"
-            :disabled="remainingSeconds <= 0 || (method === 'email' && pending?.deliveryStatus !== 'sent')"
+            :disabled="!canSubmit"
             @click="verifyCode"
           >
             验证并登录
@@ -125,6 +125,7 @@ const {
   method,
   methods,
   sending,
+  canSubmit,
   retrySeconds,
   deliveryMessage,
   chooseMethod,

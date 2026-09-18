@@ -263,6 +263,50 @@ func TestLoginMethodsRolesAndSingleConsumption(t *testing.T) {
 	}
 }
 
+func TestEmailLoginAfterAsyncDelivery(t *testing.T) {
+	codes := make(chan string, 1)
+	user, _ := setupLoginMethods(t, func(_ verification.Challenge, code string) error {
+		codes <- code
+		return nil
+	})
+	pending, err := beginLoginVerification(user, "127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := pending["challenge_id"].(string)
+	input := resendLoginVerificationRequest{ID: id, Account: user.Account}
+	if code, _ := callLoginHandler(t, ResendLoginVerification, input); code != 0 {
+		t.Fatal("failed to start delivery")
+	}
+	var emailCode string
+	select {
+	case emailCode = <-codes:
+	case <-time.After(3 * time.Second):
+		t.Fatal("delivery did not run")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		code, data := callLoginHandler(t, LoginVerificationStatus, input)
+		if code != 0 {
+			t.Fatal("status failed")
+		}
+		if data["delivery_status"] == "sent" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("delivery status never became sent")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	verify := loginVerificationRequest{ID: id, Account: user.Account, Method: "email", Code: emailCode}
+	if code, _ := callLoginHandler(t, CompleteLoginVerification, verify); code != 0 {
+		t.Fatal("delivered email code did not complete login")
+	}
+	if code, _ := callLoginHandler(t, CompleteLoginVerification, verify); code == 0 {
+		t.Fatal("consumed code accepted again")
+	}
+}
+
 func TestLoginMethodsRejectInvalidState(t *testing.T) {
 	user, _ := setupLoginMethods(t, func(verification.Challenge, string) error { return nil })
 	pending, _ := beginLoginVerification(user, "127.0.0.1")
