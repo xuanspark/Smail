@@ -106,7 +106,7 @@ func loadValidatedRuntimeCertificate(cfg *Config) (tls.Certificate, error) {
 		AdminRecovery: cfg.AdminRecoveryDomain,
 	}}}
 	runtime.SSL.TLS = cfg.SSL
-	if cfg.SSLType == SSLTypeAutoDNS {
+	if cfg.EffectiveSSLType() == SSLTypeAutoDNS {
 		runtime.SSL.TLS.Management = SSLManagementProject
 		runtime.SSL.TLS.Challenge = SSLChallengeDNS
 	}

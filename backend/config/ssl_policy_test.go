@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestSSLPolicyFollowsManagement(t *testing.T) {
 	for _, test := range []struct {
@@ -32,5 +35,27 @@ func TestSSLPolicyFollowsManagement(t *testing.T) {
 				t.Fatal("自动续期开关与托管策略不一致")
 			}
 		})
+	}
+}
+
+func TestExternalCertificateReloadIgnoresLegacyDNSMode(t *testing.T) {
+	previousRoot := ROOT_PATH
+	ROOT_PATH = t.TempDir()
+	t.Cleanup(func() { ROOT_PATH = previousRoot })
+	key, cert := testManagedCertificate(t, "mail.example.com", time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour), 2048)
+	reference, err := ImportManagedSSL(ManagedSSLModeUpload, key, cert, nil, []string{"mail.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseStagedSSL(reference)
+	for _, management := range []string{SSLManagementCustom, SSLManagementWebServer} {
+		cfg := &Config{
+			Domain: "mail.example.com", WebDomain: "mail.example.com", SSLType: SSLTypeAutoDNS,
+			SSL: SSLConfig{Management: management, Mode: reference.Mode,
+				CertificateRef: reference.CertificateRef, PrivateKeyRef: reference.PrivateKeyRef},
+		}
+		if _, err := loadValidatedRuntimeCertificate(cfg); err != nil {
+			t.Fatalf("外部证书被旧 DNS 类型错误拒绝：management=%s err=%v", management, err)
+		}
 	}
 }
