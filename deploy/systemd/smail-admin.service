@@ -30,5 +30,5 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-TimeoutStartSec=180s
+TimeoutStartSec=330s
 TimeoutStopSec=5s

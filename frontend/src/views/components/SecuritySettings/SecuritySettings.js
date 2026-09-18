@@ -4,6 +4,7 @@ import { ElMessageBox, ElNotification } from 'element-plus'
 
 import lang from '../../../i18n/i18n'
 import { http } from '@/utils/axios'
+import { requestWithRecentAuthentication } from '@/utils/recentAuthentication'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { normalizeCreationOptions, serializeCredential, webAuthnSupported } from '@/utils/webauthn'
 
@@ -21,13 +22,13 @@ export function usePage() {
     }
     options.push({ value: 'password', label: lang.modify_pwd })
     options.push({ value: 'question', label: '密保问题' })
-    if (!isSuperAdmin.value) {
-      options.push({ value: 'recovery', label: '安全码' })
-    }
+    options.push({ value: 'recovery', label: '安全码' })
     options.push({ value: 'external-email', label: '外部安全邮箱' })
     options.push({ value: 'totp', label: '手机动态码' })
     options.push({ value: 'webauthn', label: '安全密钥' })
-    return options
+    return globalStatus.userInfos.securitySetupRequired
+      ? options.filter(item => ['recovery', 'external-email', 'totp'].includes(item.value))
+      : options
   })
   const selectedSection = computed({
     get: () => globalStatus.securityActiveSection,
@@ -87,6 +88,7 @@ export function usePage() {
   }
 
   const loadCredentials = async () => {
+    if (globalStatus.userInfos.securitySetupRequired) return
     if (!supported || !webAuthnEnabled.value) return
     credentialsLoading.value = true
     try {
@@ -107,9 +109,7 @@ export function usePage() {
         http.get('/api/v1/security/credentials/question'),
         http.get('/api/v1/security/external-email/list'),
       ]
-      if (!isSuperAdmin.value) {
-        requests.push(http.get('/api/v1/security/credentials/recovery-codes'))
-      }
+      requests.push(http.get('/api/v1/security/credentials/recovery-codes'))
       const [question, external, recovery] = await Promise.all(requests)
       if (question.errorNo === 0 && question.data) {
         securityQuestion.configured = Boolean(question.data.configured)
@@ -131,6 +131,7 @@ export function usePage() {
       const response = await http.get('/api/v1/security/external-email/list')
       if (response.errorNo !== 0) throw new Error(response.errorMsg || '读取外部邮箱失败')
       externalEmails.value = Array.isArray(response.data) ? response.data : []
+      await globalStatus.refresh()
       return true
     } catch (error) {
       notify(error?.message || '读取外部邮箱失败')
@@ -214,10 +215,11 @@ export function usePage() {
   const generateRecoveryCodes = async () => {
     try {
       await ElMessageBox.confirm('生成新恢复码会撤销当前仍有效的恢复码，请确认已准备好安全保存。', '生成离线恢复码', { type: 'warning' })
-      const res = await http.post('/api/v1/security/credentials/recovery-codes/generate', { count: 10 })
+      const res = await requestWithRecentAuthentication(() => http.post('/api/v1/security/credentials/recovery-codes/generate', { count: 10 }))
       if (res.errorNo !== 0 || !Array.isArray(res.data?.codes)) throw new Error(res.errorMsg || '离线恢复码生成失败')
       generatedCodes.value = res.data.codes
       recoveryConfigured.value = true
+      await globalStatus.refresh()
       notify('恢复码已生成，请仅保存这一次显示的内容', 'success')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '离线恢复码生成失败')
@@ -227,10 +229,11 @@ export function usePage() {
   const revokeRecoveryCodes = async () => {
     try {
       await ElMessageBox.confirm('撤销后现有离线恢复码将立即失效，是否继续？', '撤销离线恢复码', { type: 'warning' })
-      const res = await http.post('/api/v1/security/credentials/recovery-codes/revoke', {})
+      const res = await requestWithRecentAuthentication(() => http.post('/api/v1/security/credentials/recovery-codes/revoke', {}))
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '撤销恢复码失败')
       recoveryConfigured.value = false
       generatedCodes.value = []
+      await globalStatus.refresh()
       notify('离线恢复码已撤销', 'success')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '撤销恢复码失败')
@@ -252,6 +255,7 @@ export function usePage() {
       const res = await http.post('/api/v1/security/external-email/disable', { id: item.id })
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '外部邮箱停用失败')
       await loadSecurityData()
+      await globalStatus.refresh()
       notify('外部邮箱已停用', 'success')
     } catch (error) {
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '外部邮箱停用失败')

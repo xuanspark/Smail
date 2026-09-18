@@ -56,7 +56,7 @@ func TestSecurityHandlersRejectUnauthenticatedRequests(t *testing.T) {
 	}
 }
 
-func TestSuperAdminCannotManageRecoveryCodesThroughWeb(t *testing.T) {
+func TestSuperAdminRecoveryCodesRequireRecentAuthentication(t *testing.T) {
 	ctx := &appcontext.Context{UserID: 1, Role: access.RoleSuperAdmin}
 	request := httptest.NewRequest(http.MethodPost, "/api/security/credentials/recovery-codes", strings.NewReader(`{"count":5}`))
 	recorder := httptest.NewRecorder()
@@ -246,7 +246,6 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	if revealedMap["smtp"] != generated["code"] {
 		t.Fatalf("expected revealed smtp code %v, got %v", generated["code"], revealedMap["smtp"])
 	}
-
 
 	revokeRecorder := httptest.NewRecorder()
 	revokeRequest := httptest.NewRequest(

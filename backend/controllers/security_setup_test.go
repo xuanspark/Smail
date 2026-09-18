@@ -62,7 +62,7 @@ func setupSecurityPromptTest(t *testing.T) *xorm.Engine {
 	previous := db.Instance
 	db.Instance = engine
 	t.Cleanup(func() { db.Instance = previous; _ = engine.Close() })
-	if err := engine.Sync2(&models.User{}, &models.ExternalEmail{}, &models.RecoveryCode{}); err != nil {
+	if err := engine.Sync2(&models.User{}, &models.ExternalEmail{}, &models.RecoveryCode{}, &models.TOTPAuthenticator{}); err != nil {
 		t.Fatal(err)
 	}
 	previousRuntime := securityRuntime
@@ -81,7 +81,7 @@ func TestSecuritySetupAcknowledgementIsSessionScoped(t *testing.T) {
 		session.Instance, config.Instance = previousSession, previousConfig
 		config.SetRuntimeManager(previousManager)
 	})
-	first := models.User{Account: "root", Name: "Root", Role: string(access.RoleSuperAdmin)}
+	first := models.User{Account: "admin", Name: "Admin", Role: string(access.RoleAdmin)}
 	second := models.User{Account: "alice", Name: "Alice", Role: string(access.RoleUser)}
 	if _, err := engine.Insert(&first, &second); err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestSecuritySetupAcknowledgementIsSessionScoped(t *testing.T) {
 		t.Fatal("dismissal must not persist on either account")
 	}
 	fields := loginSecurityFields(&loaded)
-	if fields["showSecuritySetupPrompt"] != true || fields["showRecoverySetupPrompt"] != false {
+	if fields["showSecuritySetupPrompt"] != true || fields["showRecoverySetupPrompt"] != true {
 		t.Fatal("incomplete setup must be reported again on login")
 	}
 	if untouched.Password != second.Password || loaded.SecurityVersion != first.SecurityVersion {
@@ -143,7 +143,7 @@ func TestSecuritySetupAcknowledgementIsSessionScoped(t *testing.T) {
 	assertInfoPrompt := func(want bool) {
 		t.Helper()
 		recorder := httptest.NewRecorder()
-		Info(&appcontext.Context{UserID: first.ID, Role: access.RoleSuperAdmin}, recorder, request.WithContext(refreshed))
+		Info(&appcontext.Context{UserID: first.ID, Role: access.RoleAdmin}, recorder, request.WithContext(refreshed))
 		var payload struct {
 			ErrorNo int `json:"errorNo"`
 			Data    struct {
@@ -188,8 +188,12 @@ func TestSecuritySetupRequiresUsableCredentials(t *testing.T) {
 					}
 					fields := loginSecurityFields(&user)
 					emailReady := emailStatus == models.ExternalEmailStatusVerified
-					codeReady := codeStatus == "valid" || role == access.RoleSuperAdmin
-					if fields["externalEmailConfigured"] != emailReady || fields["showSecuritySetupPrompt"] != (!emailReady || !codeReady) {
+					codeReady := codeStatus == "valid"
+					wantPrompt := !emailReady || !codeReady
+					if role == access.RoleSuperAdmin {
+						wantPrompt = !emailReady && !codeReady
+					}
+					if fields["externalEmailConfigured"] != emailReady || fields["showSecuritySetupPrompt"] != wantPrompt {
 						t.Fatalf("unexpected security state: %#v", fields)
 					}
 				})
@@ -206,6 +210,46 @@ func TestSecuritySetupRejectsAnonymous(t *testing.T) {
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil || payload.ErrorNo == 0 {
 		t.Fatal("anonymous acknowledgement was accepted")
+	}
+}
+
+func TestSuperAdminCannotDismissRequiredSetupAndTOTPQualifies(t *testing.T) {
+	engine := setupSecurityPromptTest(t)
+	previous := session.Instance
+	session.Instance = scs.New()
+	t.Cleanup(func() { session.Instance = previous })
+	user := models.User{Account: "root", Role: string(access.RoleSuperAdmin)}
+	if _, err := engine.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := session.Instance.Load(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/security/setup/acknowledge", nil).WithContext(loaded)
+	recorder := httptest.NewRecorder()
+	AcknowledgeSecuritySetup(&appcontext.Context{UserID: user.ID, Role: access.RoleSuperAdmin}, recorder, request)
+	var payload struct {
+		ErrorNo int `json:"errorNo"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil || payload.ErrorNo == 0 {
+		t.Fatal("required setup was dismissed")
+	}
+	if session.Instance.GetBool(loaded, session.SecuritySetupDismissedKey) {
+		t.Fatal("dismissal persisted")
+	}
+	if _, err := engine.Insert(&models.TOTPAuthenticator{UserID: user.ID, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if RequiresSecuritySetup(user.ID, user.EffectiveRole()) {
+		t.Fatal("enabled TOTP did not qualify")
+	}
+	now := time.Now()
+	if _, err := engine.Where("user_id = ?", user.ID).Cols("revoked_at").Update(&models.TOTPAuthenticator{RevokedAt: &now}); err != nil {
+		t.Fatal(err)
+	}
+	if !RequiresSecuritySetup(user.ID, user.EffectiveRole()) {
+		t.Fatal("revoked TOTP still qualifies")
 	}
 }
 

@@ -46,6 +46,7 @@ var adminResetControl adminreset.ControlServer
 var adminResetCancel context.CancelFunc
 var adminResetServeErrors chan error
 var verificationRuntime *verification.Runtime
+var adminResetVerification *adminreset.VerificationService
 var credentialService *credentials.Service
 var webAuthnRuntimeService *webauthnservice.Service
 var logRuntime *logstore.Runtime
@@ -373,6 +374,7 @@ func startVerificationRuntime() error {
 		return fmt.Errorf("start TOTP service: %w", err)
 	}
 	controllers.ConfigureTOTPRuntime(totpService)
+	adminResetVerification = adminreset.NewVerificationService(db.Instance, external, credential, totpService, service, controllers.InvalidateSecurityRuntimeUser)
 	controllers.ConfigureSecurityRuntime(service, external, recover, credential)
 	credentialService = credential
 	verificationRuntime = runtime
@@ -462,9 +464,9 @@ func startAdminResetControlWithListener(development bool, path string, listen fu
 	serveErrors := make(chan error, 1)
 	adminResetServeErrors = serveErrors
 	go func() {
-		err := control.Serve(ctx, func(password string) error {
-			return adminreset.ResetSuperAdmin(db.Instance, password, controllers.InvalidateSecurityRuntimeUser)
-		}, adminreset.NewSessionGuard(2*time.Minute))
+		err := control.Serve(ctx, func() (adminreset.ResetSession, error) {
+			return adminResetVerification.Begin()
+		}, adminreset.NewSessionGuard(5*time.Minute))
 		serveErrors <- err
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{"action": "运行管理员恢复通道", "result": "failure"}).Error("管理员恢复通道运行失败")

@@ -58,6 +58,7 @@ export function usePage() {
     { key: 'sender-filter', label: '黑白名单', hint: '发件人信任与拦截', icon: Checked, component: SenderFilterManagement, capability: 'user.read' },
     { key: 'logs', label: '日志', hint: '操作、收发信与运行记录', icon: Document, component: LogSettings, capability: 'audit.read' },
   ].filter(item => {
+    if (globalStatus.userInfos?.securitySetupRequired && item.key !== 'security') return false
     // 日志数据范围由服务端强制过滤；菜单只决定入口是否可见。
     return globalStatus.hasCapability(item.capability) ||
       (item.key === 'plugins' && globalStatus.hasCapability('plugin.read_global'))

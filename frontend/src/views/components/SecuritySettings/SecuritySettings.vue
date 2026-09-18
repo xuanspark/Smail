@@ -82,7 +82,7 @@
     </section>
 
     <el-divider v-if="selectedSection === 'recovery'" class="settings-divider" />
-    <section v-if="selectedSection === 'recovery' && !isSuperAdmin" class="security-section">
+    <section v-if="selectedSection === 'recovery'" class="security-section">
       <div class="settings-header security-key-header">
         <div><h3>安全码</h3><p class="settings-desc">安全码只在生成时显示一次，请妥善保存。</p></div>
         <div class="section-actions"><el-button type="primary" @click="generateRecoveryCodes">生成新恢复码</el-button><el-button v-if="recoveryConfigured" type="danger" plain @click="revokeRecoveryCodes">撤销</el-button></div>

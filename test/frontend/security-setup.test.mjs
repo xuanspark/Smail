@@ -21,14 +21,31 @@ function fixture(post = async () => ({ errorNo: 0 })) {
   return { store, page: createPage(computed, ref, { post }, () => store) }
 }
 
-test('超级管理员只提醒邮箱，强制改密时延后', () => {
+test('超级管理员三种方式任选其一，强制改密时延后', () => {
   const { store, page } = fixture()
   assert.equal(page.visible.value, true)
-  assert.deepEqual(Array.from(page.options.value, item => item.key), ['external-email'])
+  assert.deepEqual(Array.from(page.options.value, item => item.key), ['recovery', 'external-email', 'totp'])
   store.userInfos.must_change_password = 1
   assert.equal(page.visible.value, false)
   store.userInfos.must_change_password = 0
   assert.equal(page.visible.value, true)
+})
+
+test('强制设置不可跳过，关闭设置窗口后继续要求完成', async () => {
+  let calls = 0
+  const { store, page } = fixture(async () => { calls++; return { errorNo: 0 } })
+  store.userInfos.securitySetupRequired = true
+  await page.acknowledge()
+  assert.equal(page.visible.value, true)
+  await page.acknowledge('totp')
+  assert.equal(calls, 0)
+  assert.equal(page.visible.value, false)
+  assert.equal(store.securityActiveSection, 'totp')
+  store.settingsDrawerVisible = false
+  assert.equal(page.visible.value, true)
+  store.userInfos.securitySetupRequired = false
+  store.userInfos.showSecuritySetupPrompt = false
+  assert.equal(page.visible.value, false)
 })
 
 test('确认仅关闭本次提醒，下次登录未完成设置仍提醒', async () => {

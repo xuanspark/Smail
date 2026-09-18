@@ -30,6 +30,17 @@ func ReadProtectedPassword() (string, error) {
 }
 
 func askPassword(prompt string) (string, error) {
+	value, err := ReadProtectedInput(prompt)
+	if err != nil {
+		return "", err
+	}
+	if password.ValidateUserPassword(value) != nil {
+		return "", errors.New("密码长度无效")
+	}
+	return value, nil
+}
+
+func ReadProtectedInput(prompt string) (string, error) {
 	command := exec.Command("systemd-ask-password", "--no-tty", prompt)
 	command.Stderr = io.Discard
 	output, err := command.Output()
@@ -39,9 +50,6 @@ func askPassword(prompt string) (string, error) {
 	output = stripPasswordLineEnding(output)
 	value := string(output)
 	defer clearBytes(output)
-	if password.ValidateUserPassword(value) != nil {
-		return "", errors.New("密码长度无效")
-	}
 	return value, nil
 }
 

@@ -24,7 +24,9 @@ func TestUnixResetRoundTrip(t *testing.T) {
 	defer cancel()
 	guard := NewSessionGuard(time.Minute)
 	called := make(chan string, 1)
-	go func() { _ = server.Serve(ctx, func(password string) error { called <- password; return nil }, guard) }()
+	go func() {
+		_ = server.Serve(ctx, testResetHandler(func(password string) error { called <- password; return nil }), guard)
+	}()
 	var conn net.Conn
 	for i := 0; i < 20; i++ {
 		conn, err = DialControl(context.Background(), path)
@@ -75,7 +77,10 @@ func TestUnixEmptyAllowedUIDsRejectConnection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		_ = server.Serve(ctx, func(string) error { t.Error("unauthorized handler was called"); return nil }, NewSessionGuard(time.Minute))
+		_ = server.Serve(ctx, func() (ResetSession, error) {
+			t.Error("unauthorized handler was called")
+			return nil, ErrInvalidRequest
+		}, NewSessionGuard(time.Minute))
 	}()
 
 	conn, err := DialControl(context.Background(), path)
@@ -139,7 +144,7 @@ func TestUnixServerStopsWhenContextIsCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- server.Serve(ctx, func(string) error { return nil }, NewSessionGuard(time.Minute))
+		done <- server.Serve(ctx, testResetHandler(func(string) error { return nil }), NewSessionGuard(time.Minute))
 	}()
 
 	cancel()

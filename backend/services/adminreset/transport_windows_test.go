@@ -21,7 +21,7 @@ func testPipePath(t *testing.T) string {
 	return fmt.Sprintf(`\\.\pipe\smail-admin-control-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
 }
 
-func startWindowsTestServer(t *testing.T, handler ResetHandler) (string, context.CancelFunc, <-chan error) {
+func startWindowsTestServer(t *testing.T, handler func(string) error) (string, context.CancelFunc, <-chan error) {
 	t.Helper()
 	if err := authorizeCurrentWindowsProcess(); err != nil {
 		t.Skip("Windows IPC tests require an elevated local administrator or SYSTEM token")
@@ -33,7 +33,7 @@ func startWindowsTestServer(t *testing.T, handler ResetHandler) (string, context
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(ctx, handler, NewSessionGuard(time.Minute)) }()
+	go func() { done <- server.Serve(ctx, testResetHandler(handler), NewSessionGuard(time.Minute)) }()
 	t.Cleanup(func() {
 		cancel()
 		_ = server.Close()
@@ -165,7 +165,9 @@ func TestWindowsServerStopsWhenContextIsCancelled(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(ctx, func(string) error { return nil }, NewSessionGuard(time.Minute)) }()
+	go func() {
+		done <- server.Serve(ctx, testResetHandler(func(string) error { return nil }), NewSessionGuard(time.Minute))
+	}()
 	cancel()
 	select {
 	case err := <-done:

@@ -87,6 +87,9 @@ func TestSuperAdminCannotChangeOwnPasswordWithoutEmailVerification(t *testing.T)
 	if _, err := db.Instance.Insert(&superAdmin); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Instance.Insert(&models.RecoveryCode{UserID: superAdmin.ID, CodeHash: "fixture"}); err != nil {
+		t.Fatal(err)
+	}
 
 	manager := scs.New()
 	session.Instance = manager

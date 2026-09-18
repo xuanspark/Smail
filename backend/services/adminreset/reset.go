@@ -20,6 +20,10 @@ var (
 // ResetSuperAdmin 在主程序内完成超级管理员密码重置事务。
 // smail-admin 只负责通过本机 IPC 传递一次性请求，不直接访问数据库。
 func ResetSuperAdmin(engine *xorm.Engine, newPassword string, invalidators ...func(userID int, account string)) error {
+	return resetSuperAdmin(engine, newPassword, nil, invalidators...)
+}
+
+func resetSuperAdmin(engine *xorm.Engine, newPassword string, authorize func(*xorm.Session, models.User) error, invalidators ...func(userID int, account string)) error {
 	if engine == nil || newPassword == "" {
 		return ErrInvalidRequest
 	}
@@ -65,6 +69,11 @@ func ResetSuperAdmin(engine *xorm.Engine, newPassword string, invalidators ...fu
 		return ErrSuperAdminAmbiguous
 	}
 	target := targets[0]
+	if authorize != nil {
+		if err := authorize(session, target); err != nil {
+			return err
+		}
+	}
 	version := target.SessionVersion + 1
 	if version <= 0 {
 		version = 1
@@ -81,7 +90,7 @@ func ResetSuperAdmin(engine *xorm.Engine, newPassword string, invalidators ...fu
 		MustChangePassword: 0,
 		PasswordChangedAt:  &now,
 	}
-	affected, err := session.ID(target.ID).Where("session_version = ?", target.SessionVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(updated)
+	affected, err := session.ID(target.ID).Where("session_version = ? AND security_version = ?", target.SessionVersion, target.SecurityVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(updated)
 	if err != nil {
 		return fmt.Errorf("update super administrator: %w", err)
 	}

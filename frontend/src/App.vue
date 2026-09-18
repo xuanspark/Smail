@@ -29,11 +29,11 @@ watch(
   <div v-else id="main">
     <HomeHeader v-if="!standalonePages.includes(pageName)"/>
     <div id="content">
-      <div id="aside" v-if="!standalonePages.includes(pageName)">
+      <div id="aside" v-if="!standalonePages.includes(pageName) && !globalStatus.userInfos.securitySetupRequired">
         <HomeAside/>
       </div>
       <el-drawer
-          v-if="!standalonePages.includes(pageName)"
+          v-if="!standalonePages.includes(pageName) && !globalStatus.userInfos.securitySetupRequired"
           v-model="globalStatus.mobileDrawerVisible"
           direction="ltr"
           size="243px"
@@ -49,7 +49,7 @@ watch(
           'recovery-fit': pageName === 'forgot-password'
         }"
       >
-        <RouterView v-slot="{ Component }">
+        <RouterView v-if="!globalStatus.userInfos.securitySetupRequired || standalonePages.includes(pageName)" v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
             <component :is="Component" />
           </transition>

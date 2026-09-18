@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	ProtocolVersion        = 1
+	ProtocolVersion        = 2
 	maxControlMessageSize  = 16 << 10
-	controlRequestTimeout  = 15 * time.Second
+	controlRequestTimeout  = 5 * time.Minute
 	defaultSessionCapacity = 128
 )
 
@@ -36,16 +36,33 @@ type Request struct {
 	Version     int    `json:"version"`
 	Nonce       string `json:"nonce"`
 	NewPassword string `json:"new_password"`
+	Action      string `json:"action"`
+	Method      string `json:"method,omitempty"`
+	Code        string `json:"code,omitempty"`
 }
 
 type Response struct {
-	OK      bool   `json:"ok"`
-	Code    string `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
-	Nonce   string `json:"nonce,omitempty"`
+	OK      bool     `json:"ok"`
+	Code    string   `json:"code,omitempty"`
+	Message string   `json:"message,omitempty"`
+	Nonce   string   `json:"nonce,omitempty"`
+	Methods []Method `json:"methods,omitempty"`
 }
 
-type ResetHandler func(newPassword string) error
+type Method struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type ResetSession interface {
+	Methods() []Method
+	Start(string) error
+	Verify(string) error
+	Reset(string) error
+	Close()
+}
+
+type ResetHandler func() (ResetSession, error)
 
 type SessionGuard struct {
 	mu       sync.Mutex
@@ -154,7 +171,23 @@ func DecodeRequest(r io.Reader) (Request, error) {
 	if err := decodeControlJSON(data, &request); err != nil {
 		return Request{}, ErrInvalidRequest
 	}
-	if request.Version != ProtocolVersion || strings.TrimSpace(request.Nonce) == "" || password.ValidateUserPassword(request.NewPassword) != nil {
+	if request.Version != ProtocolVersion || strings.TrimSpace(request.Nonce) == "" {
+		return Request{}, ErrInvalidRequest
+	}
+	switch request.Action {
+	case "select":
+		if request.Method == "" || request.Code != "" || request.NewPassword != "" {
+			return Request{}, ErrInvalidRequest
+		}
+	case "verify":
+		if request.Code == "" || len(request.Code) > 128 || request.Method != "" || request.NewPassword != "" {
+			return Request{}, ErrInvalidRequest
+		}
+	case "reset":
+		if request.Code != "" || request.Method != "" || password.ValidateUserPassword(request.NewPassword) != nil {
+			return Request{}, ErrInvalidRequest
+		}
+	default:
 		return Request{}, ErrInvalidRequest
 	}
 	return request, nil
@@ -221,11 +254,37 @@ func handleResetConnection(conn io.ReadWriter, setDeadline func(time.Time) error
 		return
 	}
 	defer guard.Discard(nonce)
-	if err := EncodeResponse(conn, Response{OK: true, Code: "CHALLENGE", Nonce: nonce}); err != nil {
+	flow, err := handler()
+	if err != nil || flow == nil {
+		_ = EncodeResponse(conn, Response{Code: "VERIFICATION_UNAVAILABLE", Message: "暂无可用安全验证，请先登录安全中心配置邮箱、手机动态码或安全码"})
 		return
 	}
+	defer flow.Close()
+	if err := EncodeResponse(conn, Response{OK: true, Code: "CHALLENGE", Nonce: nonce, Methods: flow.Methods()}); err != nil {
+		return
+	}
+	for _, action := range []string{"select", "verify"} {
+		request, err := DecodeRequest(conn)
+		if err != nil || request.Nonce != nonce || request.Action != action {
+			_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "验证步骤无效，请重新启动重置"})
+			return
+		}
+		if action == "select" {
+			err = flow.Start(request.Method)
+		} else {
+			err = flow.Verify(request.Code)
+		}
+		clearPassword(&request.Code)
+		if err != nil {
+			_ = EncodeResponse(conn, Response{Code: "VERIFICATION_FAILED", Message: "安全验证失败、已过期或请求过于频繁，请稍后重试"})
+			return
+		}
+		if err := EncodeResponse(conn, Response{OK: true, Code: action}); err != nil {
+			return
+		}
+	}
 	request, err := DecodeRequest(conn)
-	if err != nil || request.Nonce != nonce {
+	if err != nil || request.Nonce != nonce || request.Action != "reset" {
 		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "重置请求无效"})
 		return
 	}
@@ -235,7 +294,7 @@ func handleResetConnection(conn io.ReadWriter, setDeadline func(time.Time) error
 	}
 	password := request.NewPassword
 	defer clearPassword(&password)
-	if err := handler(password); err != nil {
+	if err := flow.Reset(password); err != nil {
 		_ = EncodeResponse(conn, Response{Code: "RESET_FAILED", Message: "超级管理员密码重置失败"})
 		return
 	}

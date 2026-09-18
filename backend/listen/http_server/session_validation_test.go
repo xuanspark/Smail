@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,48 @@ func TestContextInterceptorValidatesCurrentUserState(t *testing.T) {
 		handler.ServeHTTP(recorder, request)
 		if !called {
 			t.Fatalf("current user session was not accepted: %s", recorder.Body.String())
+		}
+	})
+
+	t.Run("required security setup blocks business routes", func(t *testing.T) {
+		manager, loaded := sessionContext(t, &user)
+		session.Instance = manager
+		called := false
+		handler := contextIterceptor(controllers.HandlerFunc(func(_ *appcontext.Context, w http.ResponseWriter, _ *http.Request) {
+			called = true
+			response.NewSuccessResponse(nil).FPrint(w)
+		}))
+		for _, path := range []string{"/api/config/status", "/api/v1/config/status", "/api/v1/user/list"} {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil).WithContext(loaded))
+			if called || !strings.Contains(recorder.Body.String(), "SECURITY_SETUP_REQUIRED") {
+				t.Fatalf("business route escaped gate: %s", recorder.Body.String())
+			}
+		}
+		for _, path := range []string{"/api/v1/security/totp", "/api/v1/security/external-email/list", "/api/v1/security/credentials/recovery-codes"} {
+			called = false
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil).WithContext(loaded))
+			if !called {
+				t.Fatalf("setup route blocked: %s", path)
+			}
+		}
+		code := models.RecoveryCode{UserID: user.ID, CodeHash: "fixture"}
+		if _, err := db.Instance.Insert(&code); err != nil {
+			t.Fatal(err)
+		}
+		called = false
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/config/status", nil).WithContext(loaded))
+		if !called {
+			t.Fatal("configured account blocked")
+		}
+		now := time.Now()
+		if _, err := db.Instance.ID(code.ID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+			t.Fatal(err)
+		}
+		called = false
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/config/status", nil).WithContext(loaded))
+		if called {
+			t.Fatal("revoked last method did not restore gate")
 		}
 	})
 

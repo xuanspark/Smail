@@ -205,6 +205,10 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 					response.NewErrorResponse(response.NoAccessPrivileges, "请先修改临时密码", "PASSWORD_CHANGE_REQUIRED").FPrint(w)
 					return
 				}
+				if ctx.UserID > 0 && ctx.MustChangePassword == 0 && ctx.EffectiveRole() == access.RoleSuperAdmin && !securitySetupAllowedPath(r.URL.Path, r.Method) && controllers.RequiresSecuritySetup(ctx.UserID, ctx.EffectiveRole()) {
+					response.NewErrorResponse(response.NoAccessPrivileges, "请先启用至少一种安全验证", response.ConfigErrorData{Code: "SECURITY_SETUP_REQUIRED"}).FPrint(w)
+					return
+				}
 			} else if normalizedAPIPath(r.URL.Path) != "/api/setup" {
 				response.NewErrorResponse(response.NeedSetup, "", "").FPrint(w)
 				return
@@ -231,6 +235,19 @@ func publicSecurityPath(path string) bool {
 		return true
 	case "/api/ping", "/api/login", "/api/security/login/verify", "/api/security/login/resend", "/api/security/recovery/begin", "/api/security/recovery/verify", "/api/security/recovery/complete", "/api/security/recovery/webauthn/begin", "/api/security/recovery/webauthn/verify", "/api/security/webauthn/login/begin", "/api/security/webauthn/login/finish":
 		return true
+	default:
+		return false
+	}
+}
+
+func securitySetupAllowedPath(path, method string) bool {
+	switch normalizedAPIPath(path) {
+	case "/api/user/info", "/api/logout", "/api/security/reauth", "/api/security/setup/acknowledge",
+		"/api/security/totp", "/api/security/credentials/recovery-codes/generate",
+		"/api/security/external-email/bind", "/api/security/external-email/verify":
+		return true
+	case "/api/security/credentials/recovery-codes", "/api/security/external-email/list", "/api/security/credentials/question":
+		return method == http.MethodGet
 	default:
 		return false
 	}

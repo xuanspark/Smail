@@ -30,6 +30,10 @@ func AcknowledgeSecuritySetup(ctx *context.Context, w http.ResponseWriter, req *
 		writeSecurityError(w, response.ServerError, "保存提醒状态失败，请重试")
 		return
 	}
+	if RequiresSecuritySetup(user.ID, user.EffectiveRole()) {
+		writeSecurityError(w, response.NoAccessPrivileges, "请先启用至少一种安全验证")
+		return
+	}
 	session.Instance.Put(req.Context(), session.SecuritySetupDismissedKey, true)
 	response.NewSuccessResponse(map[string]any{"showSecuritySetupPrompt": false}).FPrint(w)
 }

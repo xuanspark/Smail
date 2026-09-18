@@ -239,7 +239,7 @@ func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	for key, value := range loginSecurityFields(&models.User{ID: ctx.UserID, Role: string(ctx.EffectiveRole())}) {
 		result[key] = value
 	}
-	if session.Instance != nil && session.Instance.GetBool(req.Context(), session.SecuritySetupDismissedKey) {
+	if result["securitySetupRequired"] != true && session.Instance != nil && session.Instance.GetBool(req.Context(), session.SecuritySetupDismissedKey) {
 		result["showSecuritySetupPrompt"] = false
 		result["showRecoverySetupPrompt"] = false
 	}

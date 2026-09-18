@@ -35,6 +35,7 @@ const (
 	PurposeLogin               Purpose = "login"
 	PurposePasswordRecover     Purpose = "password_recover"
 	PurposePasswordChange      Purpose = "password_change"
+	PurposeAdminLocalReset     Purpose = "admin_local_reset"
 	PurposeExternalEmailBind   Purpose = "external_email_bind"
 	PurposeExternalEmailChange Purpose = "external_email_change"
 )
@@ -191,7 +192,7 @@ func (s *Store) issue(request IssueRequest, delivery Delivery, onVerified func()
 // IsSupportedPurpose 保证验证码只能用于已确认的业务流程。
 func IsSupportedPurpose(purpose Purpose) bool {
 	switch purpose {
-	case PurposeLogin, PurposePasswordRecover, PurposePasswordChange, PurposeExternalEmailBind, PurposeExternalEmailChange:
+	case PurposeLogin, PurposePasswordRecover, PurposePasswordChange, PurposeExternalEmailBind, PurposeExternalEmailChange, PurposeAdminLocalReset:
 		return true
 	default:
 		return false

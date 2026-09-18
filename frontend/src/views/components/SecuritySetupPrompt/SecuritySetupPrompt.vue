@@ -8,7 +8,7 @@
     :show-close="false"
     class="security-setup-dialog"
   >
-    <p class="setup-description">{{ isSuperAdmin ? '请绑定外部邮箱。未完成前，每次登录都会提醒。' : '请设置安全码并绑定外部邮箱。未完成前，每次登录都会提醒。' }}</p>
+    <p class="setup-description">{{ isSuperAdmin ? '请至少启用一种安全验证后继续。' : '请设置安全码并绑定外部邮箱。未完成前，每次登录都会提醒。' }}</p>
     <div class="setup-options">
       <section v-for="item in options" :key="item.key" class="setup-option">
         <div>
@@ -20,7 +20,8 @@
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <template #footer>
-      <el-button :loading="saving" @click="acknowledge()">我知道了</el-button>
+      <el-button v-if="required" :icon="SwitchButton" :loading="saving" @click="logout">注销</el-button>
+      <el-button v-if="!required" :loading="saving" @click="acknowledge()">我知道了</el-button>
       <el-button type="primary" :loading="saving" @click="acknowledge(options[0]?.key)">去设置</el-button>
     </template>
   </el-dialog>
@@ -28,8 +29,9 @@
 
 <script setup>
 import { usePage } from './SecuritySetupPrompt.js'
+import { SwitchButton } from '@element-plus/icons-vue'
 
-const { visible, isSuperAdmin, options, saving, error, acknowledge } = usePage()
+const { visible, isSuperAdmin, required, options, saving, error, acknowledge, logout } = usePage()
 </script>
 
 <style scoped src="./SecuritySetupPrompt.css"></style>

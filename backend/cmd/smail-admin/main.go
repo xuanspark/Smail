@@ -35,13 +35,7 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "超级管理员重置已拒绝：当前进程不是受信任的部署管理员")
 		return 1
 	}
-	password, err := adminreset.ReadProtectedPassword()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "超级管理员重置已拒绝：", err)
-		return 1
-	}
-	defer clearString(&password)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	conn, err := adminreset.DialControl(ctx, adminreset.DefaultControlPath)
 	if err != nil {
@@ -49,7 +43,7 @@ func run(args []string) int {
 		return 1
 	}
 	defer conn.Close()
-	if err := adminreset.SendReset(ctx, conn, password); err != nil {
+	if err := adminreset.SendVerifiedReset(ctx, conn, adminreset.ReadProtectedInput, adminreset.ReadProtectedPassword); err != nil {
 		fmt.Fprintln(os.Stderr, "超级管理员重置失败：", safeError(err))
 		return 1
 	}
@@ -90,6 +84,15 @@ func hasPasswordArgument(args []string) bool {
 func safeError(err error) string {
 	if err == nil {
 		return ""
+	}
+	if errors.Is(err, adminreset.ErrVerificationUnavailable) {
+		return "没有可用的安全验证方式，请先登录安全中心配置邮箱、手机动态码或安全码"
+	}
+	if errors.Is(err, adminreset.ErrVerificationFailed) {
+		return "安全验证失败、已过期或请求过于频繁，请稍后重新启动重置"
+	}
+	if errors.Is(err, adminreset.ErrExpiredSession) {
+		return "重置会话已过期，请重新启动重置"
 	}
 	if errors.Is(err, adminreset.ErrInvalidRequest) || errors.Is(err, adminreset.ErrUnsupported) {
 		return "请求无效或当前平台不支持"

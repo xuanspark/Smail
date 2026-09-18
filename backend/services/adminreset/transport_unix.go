@@ -116,37 +116,7 @@ func (s *UnixServer) handle(conn net.Conn, handler ResetHandler, guard *SessionG
 		_ = EncodeResponse(conn, Response{Code: "UNAUTHORIZED", Message: "本机调用者身份不受信任"})
 		return
 	}
-	_ = conn.SetDeadline(time.Now().Add(controlRequestTimeout))
-	defer conn.SetDeadline(time.Time{})
-	nonce, err := guard.Issue()
-	if err != nil {
-		_ = EncodeResponse(conn, Response{Code: "CHANNEL_UNAVAILABLE", Message: "重置通道不可用"})
-		return
-	}
-	defer guard.Discard(nonce)
-	if err := EncodeResponse(conn, Response{OK: true, Code: "CHALLENGE", Nonce: nonce}); err != nil {
-		return
-	}
-	request, err := DecodeRequest(conn)
-	if err != nil {
-		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "重置请求无效"})
-		return
-	}
-	if request.Nonce != nonce {
-		_ = EncodeResponse(conn, Response{Code: "INVALID_REQUEST", Message: "重置请求无效"})
-		return
-	}
-	if err := guard.Consume(request.Nonce); err != nil {
-		_ = EncodeResponse(conn, Response{Code: "REPLAY_OR_EXPIRED", Message: "重置会话已失效或已使用"})
-		return
-	}
-	password := request.NewPassword
-	defer clearPassword(&password)
-	if err := handler(password); err != nil {
-		_ = EncodeResponse(conn, Response{Code: "RESET_FAILED", Message: "超级管理员密码重置失败"})
-		return
-	}
-	_ = EncodeResponse(conn, Response{OK: true, Message: "超级管理员密码已重置"})
+	handleResetConnection(conn, conn.SetDeadline, handler, guard)
 }
 
 func (s *UnixServer) authorize(conn net.Conn) error {

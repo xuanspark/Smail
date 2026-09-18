@@ -35,6 +35,20 @@ func ReadProtectedPassword() (string, error) {
 }
 
 func readWindowsPassword(prompt string) (string, error) {
+	value, err := ReadProtectedInput(prompt)
+	if err != nil {
+		return "", err
+	}
+	if password.ValidateUserPassword(value) != nil {
+		return "", errors.New("密码长度必须为 8 到 12 个字符")
+	}
+	return value, nil
+}
+
+func ReadProtectedInput(prompt string) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", errors.New("安全验证需要交互式控制台")
+	}
 	fmt.Fprint(os.Stderr, prompt+": ")
 	value, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(os.Stderr)
@@ -44,9 +58,6 @@ func readWindowsPassword(prompt string) (string, error) {
 	normalized := string(value)
 	for i := range value {
 		value[i] = 0
-	}
-	if password.ValidateUserPassword(normalized) != nil {
-		return "", errors.New("密码长度必须为 8 到 12 个字符")
 	}
 	return normalized, nil
 }

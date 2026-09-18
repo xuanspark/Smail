@@ -2,6 +2,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import QRCode from 'qrcode'
 import { ElMessage } from 'element-plus'
 import { http } from '@/utils/axios'
+import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { isRecentAuthenticationCancelled, requestWithRecentAuthentication } from '@/utils/recentAuthentication'
 
 export function useTOTPSettings() {
@@ -49,6 +50,7 @@ export function useTOTPSettings() {
       } else {
         clearEnrollment()
         await load()
+        if (action !== 'cancel') await useGlobalStatusStore().refresh()
         if (action !== 'cancel') ElMessage.success(action === 'confirm' ? '手机动态码已启用' : '手机动态码已关闭')
       }
     } catch (error) {

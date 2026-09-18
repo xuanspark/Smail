@@ -108,6 +108,8 @@ func loginSecurityFields(user *models.User) map[string]any {
 		"showSecuritySetupPrompt": user != nil,
 		"externalEmailConfigured": false,
 		"webAuthnEnabled":         webAuthnRuntime() != nil,
+		"totpConfigured":          false,
+		"securitySetupRequired":   false,
 	}
 	if user == nil {
 		return fields
@@ -118,16 +120,27 @@ func loginSecurityFields(user *models.User) map[string]any {
 			fields["externalEmailConfigured"] = emailConfigured
 		}
 	}
-	configured := user.EffectiveRole() == access.RoleSuperAdmin
-	if !configured {
-		if service := credentialRuntime(); service != nil {
-			configured, _ = service.HasValidRecoveryCode(user.ID)
-		}
-		fields["recoveryCodesConfigured"] = configured
-		fields["showRecoverySetupPrompt"] = !configured
+	configured := false
+	if db.Instance != nil && user.ID > 0 {
+		configured, _ = db.Instance.Where("user_id = ? AND used_at IS NULL", user.ID).Exist(&models.RecoveryCode{})
+		enabled, _ := db.Instance.Where("user_id = ? AND enabled = ? AND revoked_at IS NULL", user.ID, true).Exist(&models.TOTPAuthenticator{})
+		fields["totpConfigured"] = enabled
 	}
+	fields["recoveryCodesConfigured"] = configured
+	fields["showRecoverySetupPrompt"] = !configured
 	fields["showSecuritySetupPrompt"] = !configured || fields["externalEmailConfigured"] != true
+	if user.EffectiveRole() == access.RoleSuperAdmin {
+		required := !configured && fields["externalEmailConfigured"] != true && fields["totpConfigured"] != true
+		fields["securitySetupRequired"] = required
+		fields["showSecuritySetupPrompt"] = required
+		fields["showRecoverySetupPrompt"] = false
+	}
 	return fields
+}
+
+// RequiresSecuritySetup 每次请求按当前凭据状态判断，撤销最后一种验证后立即恢复限制。
+func RequiresSecuritySetup(userID int, role access.Role) bool {
+	return loginSecurityFields(&models.User{ID: userID, Role: string(role)})["securitySetupRequired"] == true
 }
 
 func (limiter *loginLimiter) blocked(key string) bool {

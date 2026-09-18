@@ -123,14 +123,14 @@ func TestUnixResetCommitsPasswordAndRevokesAllProtocolCodes(t *testing.T) {
 	done := make(chan error, 1)
 	invalidated := make(chan bool, 1)
 	go func() {
-		done <- server.Serve(ctx, func(value string) error {
+		done <- server.Serve(ctx, testResetHandler(func(value string) error {
 			return ResetSuperAdmin(engine, value, func(id int, account string) {
 				var committed models.User
 				found, err := engine.ID(id).Get(&committed)
 				invalidated <- err == nil && found && id == users[0].ID && account == users[0].Account &&
 					committed.SessionVersion == users[0].SessionVersion+1
 			})
-		}, NewSessionGuard(time.Minute))
+		}), NewSessionGuard(time.Minute))
 	}()
 	t.Cleanup(func() {
 		cancel()

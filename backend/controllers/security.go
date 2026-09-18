@@ -246,9 +246,9 @@ type recoveryCodeRequest struct {
 	Count int    `json:"count"`
 }
 
-func rejectSuperAdminRecoveryCodes(ctx *context.Context, w http.ResponseWriter) bool {
-	if ctx != nil && ctx.EffectiveRole() == access.RoleSuperAdmin {
-		writeSecurityError(w, response.NoAccessPrivileges, "超级管理员恢复码只能通过部署端专用通道管理")
+func requireSuperAdminRecoveryCodeAuth(ctx *context.Context, w http.ResponseWriter) bool {
+	if ctx != nil && ctx.EffectiveRole() == access.RoleSuperAdmin && !ctx.RecentAuth {
+		writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "请先重新验证当前密码", string(access.CodeRecentAuthRequired))
 		return true
 	}
 	return false
@@ -306,7 +306,7 @@ func GenerateRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *htt
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
-	if rejectSuperAdminRecoveryCodes(ctx, w) {
+	if requireSuperAdminRecoveryCodeAuth(ctx, w) {
 		return
 	}
 	var input recoveryCodeRequest
@@ -339,9 +339,6 @@ func GetRecoveryCodeStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
-	if rejectSuperAdminRecoveryCodes(ctx, w) {
-		return
-	}
 	service := credentialRuntime()
 	if service == nil {
 		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
@@ -361,7 +358,7 @@ func RevokeRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return
 	}
-	if rejectSuperAdminRecoveryCodes(ctx, w) {
+	if requireSuperAdminRecoveryCodeAuth(ctx, w) {
 		return
 	}
 	service := credentialRuntime()
@@ -512,6 +509,10 @@ func RequestVerification(ctx *context.Context, w http.ResponseWriter, req *http.
 	if input.Account == "" {
 		input.Account = input.Identifier
 	}
+	if input.Purpose == verification.PurposeAdminLocalReset {
+		writeSecurityError(w, response.NoAccessPrivileges, "请使用本机部署重置通道")
+		return
+	}
 	if !strings.EqualFold(strings.TrimSpace(input.Account), strings.TrimSpace(ctx.UserAccount)) {
 		writeSecurityError(w, response.ParamsError, "请求无效")
 		return
@@ -546,6 +547,10 @@ func VerifyVerification(ctx *context.Context, w http.ResponseWriter, req *http.R
 	}
 	if input.Account == "" {
 		input.Account = input.Identifier
+	}
+	if input.Purpose == verification.PurposeAdminLocalReset {
+		writeSecurityError(w, response.NoAccessPrivileges, "请使用本机部署重置通道")
+		return
 	}
 	if !strings.EqualFold(strings.TrimSpace(input.Account), strings.TrimSpace(ctx.UserAccount)) {
 		writeSecurityError(w, response.ParamsError, "验证失败")
