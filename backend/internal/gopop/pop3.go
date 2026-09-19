@@ -329,11 +329,11 @@ func (s *Server) handleClient(conn net.Conn) {
 			if session.Status == TRANSACTION {
 				if err := s.Action.Quit(session); err != nil {
 					fmt.Fprintf(conn, "-ERR mailbox update failed %s", eol)
-				} else {
-					fmt.Fprintf(conn, "+OK Bye %s", eol)
+					return
 				}
-				return
 			}
+			fmt.Fprintf(conn, "+OK Bye %s", eol)
+			return
 		case "NOOP":
 			fmt.Fprintf(conn, "+OK%s", eol)
 		case "STLS":

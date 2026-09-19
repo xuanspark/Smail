@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 type securityTestAction struct {
 	quitErr    error
+	quitCalls  int
 	passErrors []error
 }
 
@@ -59,7 +61,10 @@ func (a *securityTestAction) Top(session *Session, id int64, n int) (string, err
 	return "", nil
 }
 func (a *securityTestAction) Noop(session *Session) error { return nil }
-func (a *securityTestAction) Quit(session *Session) error { return a.quitErr }
+func (a *securityTestAction) Quit(session *Session) error {
+	a.quitCalls++
+	return a.quitErr
+}
 func (a *securityTestAction) Capa(session *Session) ([]string, error) {
 	return nil, nil
 }
@@ -83,7 +88,8 @@ func TestQuitReportsMailboxUpdateResult(t *testing.T) {
 			if err := clientConn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 				t.Fatal(err)
 			}
-			server := &Server{Domain: "test", Action: &securityTestAction{quitErr: test.quitErr}}
+			action := &securityTestAction{quitErr: test.quitErr}
+			server := &Server{Domain: "test", Action: action}
 			done := make(chan struct{})
 			go func() {
 				server.handleClient(serverConn)
@@ -103,6 +109,61 @@ func TestQuitReportsMailboxUpdateResult(t *testing.T) {
 			case <-done:
 			case <-time.After(2 * time.Second):
 				t.Fatal("server did not close the connection after QUIT")
+			}
+			if action.quitCalls != 1 {
+				t.Fatalf("邮箱更新次数错误：%d", action.quitCalls)
+			}
+		})
+	}
+}
+
+func TestQuitBeforeAuthenticationClosesWithoutMailboxUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		commands []string
+		passErr  error
+	}{
+		{name: "initial"},
+		{name: "after_user", commands: []string{"USER user"}},
+		{name: "failed_password", commands: []string{"USER user", "PASS incorrect"}, passErr: errors.New("invalid password")},
+		{name: "temporary_failure", commands: []string{"USER user", "PASS password"}, passErr: ErrAuthenticationTemporary},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			serverConn, clientConn := net.Pipe()
+			t.Cleanup(func() { _ = clientConn.Close() })
+			if err := clientConn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			action := &securityTestAction{passErrors: []error{test.passErr}}
+			server := &Server{Domain: "test", Action: action}
+			done := make(chan struct{})
+			go func() {
+				server.handleClient(serverConn)
+				close(done)
+			}()
+			reader := bufio.NewReader(clientConn)
+			readResponseLine(t, reader, "+OK")
+			for _, command := range test.commands {
+				writeCommand(t, clientConn, command)
+				if strings.HasPrefix(command, "PASS ") {
+					readResponseLine(t, reader, "-ERR")
+				} else {
+					readResponseLine(t, reader, "+OK")
+				}
+			}
+			writeCommand(t, clientConn, "QUIT")
+			readResponseLine(t, reader, "+OK Bye")
+			if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
+				t.Fatalf("退出后连接未关闭：%v", err)
+			}
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("未认证连接退出超时")
+			}
+			if action.quitCalls != 0 {
+				t.Fatalf("未认证退出不应提交邮箱更新：%d", action.quitCalls)
 			}
 		})
 	}
