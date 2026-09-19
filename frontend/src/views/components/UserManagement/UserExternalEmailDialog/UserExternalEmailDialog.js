@@ -190,7 +190,7 @@ export function useUserExternalEmailDialog(props, emit) {
     verifying.value = true
     clearMessages()
     try {
-      const response = await requestWithRecentAuthentication(async () => {
+      await requestWithRecentAuthentication(async () => {
         const payload = {
           binding_id: challenge.bindingId,
           email: form.email,

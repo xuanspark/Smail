@@ -131,8 +131,15 @@ func auditMigratedSSL(t *testing.T, mode string) (*config.Config, []byte) {
 	t.Cleanup(func() { config.SetRuntimeManager(oldManager) })
 	auditSSLRoot(t)
 	resource := auditCertificateChain(t, "imap.example.test", "smtp.imap.example.test", "pop.imap.example.test", "imap.imap.example.test")
-	reference, err := config.ImportManagedSSL(config.ManagedSSLModeDefault, resource.PrivateKey, resource.Certificate, nil, nil)
-	if err != nil {
+	// 旧配置的证书位于 data/ssl；新导入接口已改用平铺文件，不能混合作为旧版夹具。
+	certificateDirectory := filepath.Join(config.ROOT_PATH, "data", "ssl", "managed", "default", "current")
+	if err := os.MkdirAll(certificateDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(certificateDirectory, "public.crt"), resource.Certificate, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(certificateDirectory, "private.key"), resource.PrivateKey, 0600); err != nil {
 		t.Fatal(err)
 	}
 	legacy := map[string]any{
@@ -143,14 +150,17 @@ func auditMigratedSSL(t *testing.T, mode string) (*config.Config, []byte) {
 		"dbDSN":             "./config/review.db",
 		"isInit":            true,
 		"sslType":           mode,
-		"SSLPublicKeyPath":  reference.CertificateRef,
-		"SSLPrivateKeyPath": reference.PrivateKeyRef,
+		"SSLPublicKeyPath":  "data/ssl/managed/default/current/public.crt",
+		"SSLPrivateKeyPath": "data/ssl/managed/default/current/private.key",
 		"httpPort":          80,
 		"httpsPort":         443,
 		"httpsEnabled":      1,
 	}
 	data, err := json.Marshal(legacy)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(config.ROOT_PATH, "config"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(config.ROOT_PATH, "config", "config.json"), data, 0600); err != nil {

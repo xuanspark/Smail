@@ -27,8 +27,10 @@ test('规则编辑取消后，新建按钮必须创建独立规则且不能污�
   }
   const lang = { cancel: '取消', submit: '提交', new_rule: '新建规则' }
   const usePage = compileFunction(source + '\nreturn usePage', [
-    'reactive', 'ref', 'lang', 'http', 'ElNotification', 'Delete', 'Edit', 'InfoFilled', 'Plus'
-  ])(Vue.reactive, Vue.ref, lang, transport, () => {}, {}, {}, {}, {})
+    'reactive', 'ref', 'lang', 'http', 'ElNotification', 'Delete', 'Edit', 'InfoFilled', 'Plus',
+    'computed', 'useGlobalStatusStore'
+  ])(Vue.reactive, Vue.ref, lang, transport, () => {}, {}, {}, {}, {},
+    Vue.computed, () => ({ hasCapability: () => true }))
   const { descriptor, errors } = parse(read('vue'))
   assert.deepEqual(errors, [])
   const compiled = compileScript(descriptor, { id: 'audit-rules', inlineTemplate: true })
@@ -36,8 +38,11 @@ test('规则编辑取消后，新建按钮必须创建独立规则且不能污�
     .replace(/import \{([^}]+)\} from ["']vue["']/g, (_, fields) => `const {${fields.replace(/\bas\b/g, ':')}} = Vue`)
     .replace(/^import .*$/gm, '').replace('export default', 'return')
   let page
-  const component = compileFunction(script, ['Vue', 'usePage', 'Plus'])(
-    Vue, () => { page = usePage(); return page }, {}
+  const paginationSource = readFileSync(new URL('../../frontend/src/views/components/ConfigSettings/ConfigPagination/ConfigPagination.js', import.meta.url), 'utf8')
+  const usePagination = compileFunction(paginationSource.replace(/^import .*$/gm, '').replace('export function', 'function')
+    + '\nreturn usePagination', ['computed', 'ref', 'watch'])(Vue.computed, Vue.ref, Vue.watch)
+  const component = compileFunction(script, ['Vue', 'usePage', 'Plus', 'usePagination', 'ConfigPagination', 'MailPolicySettings'])(
+    Vue, () => { page = usePage(); return page }, {}, usePagination, { render: () => null }, { render: () => null }
   )
   const node = tag => ({ tag, children: [] })
   const renderer = Vue.createRenderer({

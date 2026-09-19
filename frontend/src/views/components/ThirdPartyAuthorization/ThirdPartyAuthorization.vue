@@ -335,7 +335,6 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import { usePage } from './ThirdPartyAuthorization.js'
 
 const {
@@ -367,9 +366,6 @@ const {
   submitVerifyAndReveal,
 } = usePage()
 
-const hasClients = computed(() =>
-  Array.isArray(clientList.value) && clientList.value.length > 0
-)
 </script>
 
 <style scoped src="./ThirdPartyAuthorization.css"></style>

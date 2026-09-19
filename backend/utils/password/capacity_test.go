@@ -11,7 +11,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
-func TestCapacityRejectsBurstAndReleasesAfterPanic(t *testing.T) {
+func TestCapacityRejectsBurstAndAllowsRetry(t *testing.T) {
 	encoded, err := password.Hash("StrongPass12")
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestCapacityRejectsBurstAndReleasesAfterPanic(t *testing.T) {
 	wg.Wait()
 	release()
 	if matched, err := password.Check(encoded, "StrongPass12"); !matched || err != nil {
-		t.Fatalf("异常释放后不能继续认证：%v %v", matched, err)
+		t.Fatalf("名额释放后不能继续认证：%v %v", matched, err)
 	}
 	if matched, err := password.Check(encoded, "WrongPass12"); matched || err != nil {
 		t.Fatalf("密码错误与服务繁忙未区分：%v %v", matched, err)

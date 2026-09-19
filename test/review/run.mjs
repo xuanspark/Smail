@@ -58,6 +58,7 @@ const packages = frameworkOnly ? ['./hooks/framework'] : asyncOnly ? ['./utils/a
   './dto/parsemail', './listen/smtp_server'
 ] : [
   './res_init',
+  './utils/async', './utils/address',
   './listen/cron_server',
   './hooks/wechat_push',
   './services/dbmigration', './listen/http_server', './services/list', './services/recovery',

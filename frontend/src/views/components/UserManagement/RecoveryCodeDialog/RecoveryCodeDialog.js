@@ -96,7 +96,7 @@ export function useRecoveryCodeDialog(props, emit) {
     revoking.value = true
     errorMessage.value = ''
     try {
-      const response = await requestWithRecentAuthentication(async () => {
+      await requestWithRecentAuthentication(async () => {
         const result = await http.post('/api/v1/user/security/recovery-codes/revoke', {
           user_id: props.user.ID,
         })

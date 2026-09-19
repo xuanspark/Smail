@@ -39,6 +39,10 @@ func ValidateUserPassword(plain string) error {
 
 // Hash 生成 Argon2id 密码哈希。
 func Hash(plain string) (string, error) {
+	return hashWithRandom(plain, rand.Read)
+}
+
+func hashWithRandom(plain string, readRandom func([]byte) (int, error)) (string, error) {
 	plainSize := len([]byte(plain))
 	if plainSize < minSecretSize {
 		return "", ErrInvalidLength
@@ -49,7 +53,7 @@ func Hash(plain string) (string, error) {
 	}
 	defer release()
 	salt := make([]byte, saltLength)
-	if _, err := rand.Read(salt); err != nil {
+	if _, err := readRandom(salt); err != nil {
 		return "", fmt.Errorf("generate password salt: %w", err)
 	}
 	hash := argon2.IDKey([]byte(plain), salt, iterations, memory, parallelism, keyLength)

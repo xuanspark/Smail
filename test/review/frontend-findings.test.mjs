@@ -3,7 +3,8 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { compileFunction } from 'node:vm'
 import { createRequire } from 'node:module'
-import { readFormConfig, updateFormConfig, validateFormConfig } from '../../frontend/src/views/components/ConfigSettings/ConfigForm/ConfigForm.js'
+import { readFormConfig, updateFormConfig, validateFormConfig, relayConfigured, relaySecurityForMail } from '../../frontend/src/views/components/ConfigSettings/ConfigForm/ConfigForm.js'
+import { decodeBlobAPIError } from '../../frontend/src/utils/apiResponse.mjs'
 
 const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
 const Vue = require('vue')
@@ -13,7 +14,7 @@ const read = name => readFileSync(new URL(`../../frontend/${name}`, import.meta.
 test('邮件列表挂载后，表格选中项必须用于全选和批量操作', async () => {
   const source = read('src/views/List/List.js').replace(/^import .*$/gm, '')
     .replace('export function usePage', 'function usePage').replace(/export \{[^}]+\}\s*$/, '')
-  const icons = ['CircleCheck', 'Switch', 'Delete', 'View', 'Folder', 'EpArrowDownBold', 'EditPen', 'Warning']
+  const icons = ['CircleCheck', 'Switch', 'Delete', 'View', 'Folder', 'EpArrowDownBold', 'EditPen', 'Warning', 'Check', 'Refresh']
   const messages = []
   const requests = []
   const rows = [{ id: 1 }, { id: 2 }]
@@ -25,10 +26,12 @@ test('邮件列表挂载后，表格选中项必须用于全选和批量操作',
     get: async () => ({ errorNo: 0, data: [] })
   }
   const usePage = compileFunction(source + '\nreturn usePage', [
-    'Vue', 'ref', 'watch', 'useRouter', 'useGroupStore', 'lang', 'http', 'ElMessage', 'ElMessageBox', ...icons
+    'Vue', 'ref', 'watch', 'useRouter', 'useGroupStore', 'lang', 'http', 'ElMessage', 'ElMessageBox',
+    'computed', 'onMounted', 'onUnmounted', 'useGlobalStatusStore', ...icons
   ])(
     Vue, Vue.ref, Vue.watch, () => ({ push() {} }), () => Vue.reactive({ tag: '', name: '收件箱' }), {}, transport,
     { warning: value => messages.push(value), success() {}, error() {} }, { confirm: async () => true },
+    Vue.computed, Vue.onMounted, Vue.onUnmounted, () => Vue.reactive({ isLogin: true }),
     ...icons.map(() => ({}))
   )
   let page
@@ -150,12 +153,13 @@ for (const action of ['edit', 'refresh']) {
     const page = compileFunction(source + '\nreturn usePage("mail")', [
       'computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'ElMessageBox',
       'http', 'useGlobalStatusStore', 'isRecentAuthenticationCancelled',
-      'requestWithRecentAuthentication', 'readFormConfig', 'updateFormConfig', 'validateFormConfig'
+      'requestWithRecentAuthentication', 'readFormConfig', 'updateFormConfig', 'validateFormConfig',
+      'relayConfigured', 'relaySecurityForMail'
     ])(
       Vue.computed, () => {}, () => {}, Vue.reactive, Vue.ref,
       { success() {}, warning() {}, error: message => errors.push(message) }, { confirm: async () => true },
       transport, () => ({ hasCapability: () => true }), () => false, request => request(),
-      readFormConfig, updateFormConfig, validateFormConfig
+      readFormConfig, updateFormConfig, validateFormConfig, relayConfigured, relaySecurityForMail
     )
     await page.loadAll()
     page.updateField(['policy', 'maxMessageBytes'], 8 << 20)
@@ -239,86 +243,39 @@ test('近期认证要求由 Axios 异常返回时必须确认密码并重试原�
   assert.equal(result.data.challenge_id, 'retry-success')
 })
 
-// 使用真实响应拦截器和页面函数；仅隔离网络、消息提示以及下载所需的浏览器对象。
-test('审计导出必须保存服务端返回的 Blob 内容', async () => {
+// 审计导出页面已经移除，保留共享下载响应处理的独立回归。
+test('下载响应拦截器必须保留真实 Blob 内容', async () => {
   let interceptor
   const transport = { interceptors: { response: { use: success => { interceptor = success } } } }
   const axiosSource = read('src/utils/axios.js')
     .replace(/^import .*$/gm, '')
     .replace('import.meta.env.VITE_APP_URL', 'undefined')
     .replace('export {http};', '')
-  compileFunction(axiosSource, ['axios', 'lang', 'router', 'createLoginRedirectHandler'])(
-    { create: () => transport }, { lang: 'zhCn' }, {}, () => () => {}
+  compileFunction(axiosSource, ['axios', 'lang', 'router', 'createLoginRedirectHandler', 'decodeBlobAPIError'])(
+    { create: () => transport }, { lang: 'zhCn' }, {}, () => () => {}, decodeBlobAPIError
   )
   assert.equal(typeof interceptor, 'function')
-  const source = read('src/views/components/ConfigSettings/ConfigSettings.js')
-    .replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
-  const results = []
   for (const format of ['csv', 'json']) {
     const payload = format === 'csv' ? 'id,operation\n1,update\n' : '[{"id":1,"operation":"update"}]'
-    let downloaded
-    let clicked = false
-    const errors = []
-    const page = compileFunction(source + '\nreturn usePage("audit")', [
-      'computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'ElMessageBox',
-      'http', 'useGlobalStatusStore', 'readFormConfig', 'updateFormConfig', 'validateFormConfig', 'URL', 'document'
-    ])(
-      Vue.computed, () => {}, () => {}, Vue.reactive, Vue.ref,
-      { success() {}, error: message => errors.push(message) }, {},
-      { post: async (url, body, config) => {
-        assert.equal(url, '/api/v1/audits/config')
-        assert.equal(config.responseType, 'blob')
-        assert.equal(body.format, format)
-        return interceptor({ data: new Blob([payload]), config: { url } })
-      } },
-      () => ({ hasCapability: () => true }), () => ({}), () => '', () => ({}),
-      { createObjectURL: blob => { downloaded = blob; return 'blob:audit' }, revokeObjectURL() {} },
-      { createElement: () => ({ click: () => { clicked = true } }) }
-    )
-    await page.exportAudit(format)
-    assert.deepEqual(errors, [])
-    assert.equal(clicked, true)
-    assert.ok(downloaded instanceof Blob)
-    const actual = await downloaded.text()
-    console.log(`format=${format} downloaded=${JSON.stringify(actual)}`)
-    results.push({ format, actual, payload })
+    const original = new Blob([payload], { type: format === 'csv' ? 'text/csv' : 'application/json' })
+    const downloaded = await interceptor({ data: original, config: { url: '/api/v1/download' } })
+    assert.equal(downloaded, original)
+    assert.equal(await downloaded.text(), payload)
   }
-  for (const { actual, payload } of results) assert.equal(actual, payload, '下载文件必须保留真实审计记录，而不是 undefined')
 })
 
 for (const format of ['csv', 'json']) {
-  test(`审计 ${format} 导出的错误 Blob 不应下载，失败后允许重试`, async () => {
-    const source = read('src/views/components/ConfigSettings/ConfigSettings.js')
-      .replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage')
-    const errors = []
-    const downloads = []
-    let clicked = 0
-    let requests = 0
+  test(`${format} 下载的错误 Blob 必须解码，后续正常响应保持原样`, async () => {
     const payload = format === 'csv' ? 'id,operation\n1,update\n' : '[{"id":1}]'
-    const page = compileFunction(source + '\nreturn usePage("audit")', [
-      'computed', 'onMounted', 'onBeforeUnmount', 'reactive', 'ref', 'ElMessage', 'ElMessageBox',
-      'http', 'useGlobalStatusStore', 'readFormConfig', 'updateFormConfig', 'validateFormConfig', 'URL', 'document'
-    ])(
-      Vue.computed, () => {}, () => {}, Vue.reactive, Vue.ref,
-      { success() {}, error: message => errors.push(message) }, {},
-      { post: async () => ++requests === 1
-        ? new Blob([JSON.stringify({ errorNo: 403, errorMsg: '无权导出审计记录' })], { type: 'application/json' })
-        : new Blob([payload], { type: format === 'csv' ? 'text/csv' : 'application/json' }) },
-      () => ({ hasCapability: () => true }), () => ({}), () => '', () => ({}),
-      { createObjectURL: blob => { downloads.push(blob); return 'blob:audit' }, revokeObjectURL() {} },
-      { createElement: () => ({ click: () => { clicked++ } }) }
-    )
-    await page.exportAudit(format)
-    assert.deepEqual(errors, ['无权导出审计记录'])
-    assert.equal(downloads.length, 0)
-    assert.equal(clicked, 0)
-    assert.equal(page.working.value, '')
-    await page.exportAudit(format)
-    assert.equal(requests, 2)
-    assert.equal(downloads.length, 1)
-    assert.equal(clicked, 1)
-    assert.equal(await downloads[0].text(), payload)
-    assert.equal(page.working.value, '')
+    const error = { errorNo: 403, errorMsg: '无权下载' }
+    const failure = { data: new Blob([JSON.stringify(error)], { type: 'application/json' }) }
+    await decodeBlobAPIError(failure)
+    assert.deepEqual(failure.data, error)
+    const original = new Blob([payload], { type: format === 'csv' ? 'text/csv' : 'application/json' })
+    const success = { data: original }
+    await decodeBlobAPIError(success)
+    assert.equal(success.data, original)
+    assert.equal(await success.data.text(), payload)
   })
 }
 
@@ -328,11 +285,11 @@ test('写信页挂载后，附件按钮必须连接到文件输入框', async ()
     .replace('export function usePage', 'function usePage').replace(/export \{[^}]+\}\s*$/, '')
   const names = ['onBeforeUnmount', 'reactive', 'ref', 'shallowRef', 'ElMessage', 'Close', 'Paperclip',
     'Position', 'ArrowDown', 'Document', 'lang', 'Editor', 'Toolbar', 'i18nChangeLanguage', 'useRouter',
-    'http', 'useGroupStore', 'useGlobalStatusStore', 'MouseEvent']
+    'http', 'useGroupStore', 'useGlobalStatusStore', 'MouseEvent', 'Delete']
   const values = [Vue.onBeforeUnmount, Vue.reactive, Vue.ref, Vue.shallowRef, {}, {}, {}, {}, {}, {},
-    { lang: 'zhCn' }, {}, {}, () => {}, () => ({}), {}, () => ({}),
+    { lang: 'zhCn' }, {}, {}, () => {}, () => ({}), { get: async () => ({ errorNo: 0, data: [] }) }, () => ({}),
     () => ({ userInfos: { account: 'audit', name: 'audit', domains: ['example.test'], is_admin: false } }),
-    class { constructor(type) { this.type = type } }]
+    class { constructor(type) { this.type = type } }, {}]
   const usePage = compileFunction(source + '\nreturn usePage', names)(...values)
   let page
   const { descriptor, errors } = parse(read('src/views/Editer/Editer.vue'))

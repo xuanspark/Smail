@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	_ "modernc.org/sqlite"
 )
 
@@ -319,12 +320,12 @@ func TestAuditPendingConfigBlocksFurtherUpdates(t *testing.T) {
 	}
 }
 
-func TestAuditLegacyMigrationMustPreserveSQLiteLocation(t *testing.T) {
+func TestAuditLegacyMigrationMustPreserveSQLiteData(t *testing.T) {
 	root := t.TempDir()
 	oldRoot := ROOT_PATH
 	ROOT_PATH = root
 	t.Cleanup(func() { ROOT_PATH = oldRoot })
-	sourcePath := filepath.Join(root, "config", "archive", "review.db")
+	sourcePath := filepath.Join(root, "config", "review.db")
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -336,15 +337,24 @@ func TestAuditLegacyMigrationMustPreserveSQLiteLocation(t *testing.T) {
 	if _, err := database.Exec("CREATE TABLE audit_marker (value TEXT); INSERT INTO audit_marker VALUES ('original')"); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
 	writeLegacyMigrationFixture(t, root, map[string]any{
 		"logLevel": "info", "domain": "mail.example.test", "webDomain": "mail.example.test",
-		"dbType": "sqlite", "dbDSN": "./config/archive/review.db", "isInit": true,
+		"dbType": "sqlite", "dbDSN": "./config/review.db", "isInit": true,
 		"sslType": "1", "SSLPublicKeyPath": "./config/ssl/public.crt", "SSLPrivateKeyPath": "./config/ssl/private.key",
 		"httpPort": 80, "httpsPort": 443, "httpsEnabled": 1,
 	})
 	before, err := ReadConfig()
 	if err != nil || before.DbDSN != sourcePath {
 		t.Fatalf("原配置读取路径前提不成立: %v", err)
+	}
+	if err := runtimepath.CheckReady(root); !errors.Is(err, runtimepath.ErrMigrationRequired) {
+		t.Fatalf("未迁移旧账号库时必须拒绝启动: %v", err)
+	}
+	if _, err := runtimepath.Migrate(root); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := MigrateLegacyConfig(root, RuntimeValidationOptions{HasSuperAdmin: true, Production: true}); err != nil {
 		t.Fatal(err)
@@ -364,7 +374,7 @@ func TestAuditLegacyMigrationMustPreserveSQLiteLocation(t *testing.T) {
 	queryErr := target.QueryRow("SELECT value FROM audit_marker").Scan(&marker)
 	t.Logf("source_exists=%t target_missing_before_open=%t same_path=%t marker=%q query_error=%v",
 		sourceErr == nil, os.IsNotExist(targetErr), before.DbDSN == after.DbDSN, marker, queryErr)
-	if before.DbDSN != after.DbDSN || queryErr != nil || marker != "original" {
-		t.Fatal("仅迁移配置不应把已有 SQLite 指向一个新建的空库")
+	if after.DbDSN != filepath.Join(root, "data", "review.db") || queryErr != nil || marker != "original" {
+		t.Fatal("运行数据与配置迁移必须保留已有 SQLite 记录")
 	}
 }
