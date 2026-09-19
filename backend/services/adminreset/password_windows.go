@@ -40,7 +40,7 @@ func readWindowsPassword(prompt string) (string, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return "", errors.New("受保护的密码输入需要交互式控制台")
 	}
-	fmt.Fprint(os.Stderr, prompt+": ")
+	fmt.Fprint(os.Stderr, strings.TrimRight(prompt, ":： ")+"： ")
 	valueBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(os.Stderr)
 	if err != nil {

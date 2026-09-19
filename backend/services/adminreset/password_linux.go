@@ -46,6 +46,7 @@ func ReadVisibleInput(prompt string) (string, error) {
 }
 
 func readSystemdInput(prompt, echo string) (string, error) {
+	prompt = strings.TrimRight(prompt, ":： ") + "："
 	// systemd 代理把提示保存在单行配置中，用终端换行控制显示列表，避免配置被拆行。
 	prompt = strings.ReplaceAll(strings.ReplaceAll(prompt, "\r\n", "\n"), "\n", "\x1bE")
 	command := exec.Command("systemd-ask-password", "--no-tty", "--echo="+echo, prompt)
