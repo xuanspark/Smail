@@ -14,6 +14,9 @@ func AuthorizeCurrentProcess() error {
 	if !authorizeLinuxProcess(os.Geteuid(), os.Getpid(), os.Getppid(), os.Getenv("INVOCATION_ID"), os.Getenv("SYSTEMD_EXEC_PID")) || !authorizedSystemdStartJob() {
 		return ErrUnauthorizedPeer
 	}
+	if _, err := findStartCaller(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -62,12 +65,13 @@ func validInvocationID(value string) bool {
 func CheckEnvironment() EnvironmentReport {
 	_, err := exec.LookPath("systemd-ask-password")
 	serviceManaged := os.Getppid() == 1 && validInvocationID(os.Getenv("INVOCATION_ID")) && authorizedSystemdStartJob()
+	_, callerErr := findStartCaller()
 	return EnvironmentReport{
 		Platform:               "linux",
 		Supported:              true,
 		Privileged:             os.Geteuid() == 0,
-		ServiceManaged:         serviceManaged,
-		PasswordAgentAvailable: err == nil,
+		ServiceManaged:         serviceManaged && callerErr == nil,
+		PasswordAgentAvailable: callerErr == nil || err == nil,
 		ControlPath:            DefaultControlPath,
 	}
 }

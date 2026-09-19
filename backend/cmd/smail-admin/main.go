@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/internal/buildinfo"
@@ -31,26 +33,42 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "smail-admin 只允许由 systemctl start smail-admin 无参数启动")
 		return 2
 	}
-	if err := adminreset.AuthorizeCurrentProcess(); err != nil {
-		fmt.Fprintln(os.Stderr, "超级管理员重置已拒绝：当前进程不是受信任的部署管理员")
+	signalContext, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	invocationContext, closeInvocation, err := adminreset.OpenInvocation(signalContext)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "超级管理员重置已拒绝：请在本机管理员终端使用 systemctl start smail-admin，停止请使用 systemctl stop smail-admin")
 		return 1
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer closeInvocation()
+	ctx, cancel := context.WithTimeout(invocationContext, 5*time.Minute)
 	defer cancel()
 	conn, err := adminreset.DialControl(ctx, adminreset.DefaultControlPath)
 	if err != nil {
-		return finishReset("超级管理员重置通道不可用", 1)
+		return finishResetContext(ctx, "超级管理员重置通道不可用", 1)
 	}
 	defer conn.Close()
-	if err := adminreset.SendVerifiedResetWithInput(ctx, conn, adminreset.ReadVisibleInputContext, adminreset.ReadProtectedPassword); err != nil {
-		return finishReset("超级管理员重置失败："+safeError(err), 1)
+	stopClosing := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopClosing()
+	if err := adminreset.SendVerifiedResetWithInput(ctx, conn, adminreset.ReadVisibleInputContext, func() (string, error) {
+		return adminreset.ReadProtectedPasswordContext(ctx)
+	}); err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(os.Stderr, "超级管理员重置已取消")
+			return 0
+		}
+		return finishResetContext(ctx, "超级管理员重置失败："+safeError(err), 1)
 	}
-	return finishReset("超级管理员密码重置成功，请使用新密码登录", 0)
+	return finishResetContext(ctx, "超级管理员密码重置成功，请使用新密码登录", 0)
 }
 
 func finishReset(message string, code int) int {
+	return finishResetContext(context.Background(), message, code)
+}
+
+func finishResetContext(ctx context.Context, message string, code int) int {
 	fmt.Fprintln(os.Stderr, message)
-	adminreset.ShowResult(message)
+	adminreset.ShowResultContext(ctx, message)
 	return code
 }
 

@@ -22,6 +22,7 @@ func TestSystemdUnitIsManualStartOnly(t *testing.T) {
 		"Restart=always",
 		"Restart=on-failure",
 		"ExecReload=",
+		"ReadWritePaths=/run/systemd/ask-password",
 		"PartOf=",
 		"BindsTo=",
 		"Wants=",
@@ -41,6 +42,7 @@ func TestSystemdUnitIsManualStartOnly(t *testing.T) {
 		"Restart=no",
 		"PrivateNetwork=true",
 		"RestrictAddressFamilies=AF_UNIX",
+		"KillMode=mixed",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("smail-admin unit is missing %q", required)
