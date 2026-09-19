@@ -113,6 +113,10 @@ type SSLConfig struct {
 	PrivateKeyRef          string `json:"privateKeyRef,omitempty"`
 	PreviousCertificateRef string `json:"previousCertificateRef,omitempty"`
 	PreviousPrivateKeyRef  string `json:"previousPrivateKeyRef,omitempty"`
+	DNSProvider            string       `json:"dnsProvider,omitempty"`
+	DNSZone                string       `json:"dnsZone,omitempty"`
+	DNSAccessKey           StoredSecret `json:"dnsAccessKey,omitempty"`
+	DNSSecretKey           StoredSecret `json:"dnsSecretKey,omitempty"`
 }
 
 type PluginConfig struct {

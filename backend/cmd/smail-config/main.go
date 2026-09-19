@@ -24,6 +24,7 @@ func run(args []string) error {
 	apply := flags.Bool("apply", false, "确认已停止后端，备份并执行迁移；默认只检查")
 	runtimeData := flags.Bool("runtime-data", false, "将运行数据迁到 data，保留当前五个配置文件")
 	historySource := flags.String("deployment-history", "", "停服复制完成后，从原部署导入配置历史并转换证书引用")
+	exportTLS := flags.String("export-project-tls", "", "将项目托管证书导出为本机 TLS 入口使用的合并 PEM 文件")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -33,6 +34,16 @@ func run(args []string) error {
 	absolute, err := filepath.Abs(*root)
 	if err != nil {
 		return fmt.Errorf("服务根目录无效")
+	}
+	if *exportTLS != "" {
+		if *apply || *runtimeData || *historySource != "" || !filepath.IsAbs(*exportTLS) {
+			return fmt.Errorf("证书导出必须单独执行，目标必须是绝对路径")
+		}
+		if err := config.ExportProjectTLS(absolute, filepath.Clean(*exportTLS)); err != nil {
+			return fmt.Errorf("项目证书导出失败，原有入口证书保留：%w", err)
+		}
+		fmt.Println("项目证书同步检查完成。")
+		return nil
 	}
 	options := config.RuntimeValidationOptions{HasSuperAdmin: true, Production: true}
 	if *historySource != "" {

@@ -55,6 +55,12 @@ func ValidateRuntimeConfig(runtime RuntimeConfig, options RuntimeValidationOptio
 	if err := validateDomains(runtime.Root.Domains); err != nil {
 		return err
 	}
+	if tls := runtime.SSL.TLS; tls.DNSProvider != "" && tls.DNSZone != "" {
+		primary := runtime.Root.Domains.Primary
+		if primary != tls.DNSZone && !strings.HasSuffix(primary, "."+tls.DNSZone) {
+			return ErrInvalidSSL
+		}
+	}
 	if err := validateMailListeners(runtime.SMTP, runtime.Email); err != nil {
 		return err
 	}

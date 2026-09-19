@@ -97,7 +97,7 @@ func flattenAudit(result map[string]any, path string, value any) {
 
 func auditSensitive(path string) bool {
 	name := strings.ToLower(path[strings.LastIndex(path, ".")+1:])
-	for _, word := range []string{"password", "secret", "token", "apikey", "api_key", "credential", "ciphertext", "authorization", "cookie"} {
+	for _, word := range []string{"password", "secret", "token", "apikey", "api_key", "accesskey", "credential", "ciphertext", "authorization", "cookie"} {
 		if strings.Contains(name, word) {
 			return true
 		}

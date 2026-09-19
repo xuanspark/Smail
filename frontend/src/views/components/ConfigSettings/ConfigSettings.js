@@ -485,6 +485,15 @@ export function usePage(pageKey = 'base') {
       if (selectedSection.value === 'base') {
         delete payload.databasePasswordStatus
       }
+      if (apiSection() === 'ssl') {
+        for (const name of ['dnsAccessKey', 'dnsSecretKey']) {
+          delete payload[`${name}Status`]
+          if (payload.tls) {
+            delete payload.tls[`${name}Input`]
+            delete payload.tls[name]
+          }
+        }
+      }
       if (apiSection() === 'mail') {
         delete payload.relayPasswordStatus
         if (payload.relay && 'password' in payload.relay) {
@@ -520,6 +529,12 @@ export function usePage(pageKey = 'base') {
     const relayPassword = formConfig.value?.relay?.password
     if (relayPassword && selectedSection.value === 'mail') {
       secretChanges['relay.password'] = { operation: 'replace', value: { plaintext: relayPassword } }
+    }
+    if (selectedSection.value === 'ssl' && formConfig.value?.tls?.dnsProvider === 'alidns') {
+      for (const name of ['dnsAccessKey', 'dnsSecretKey']) {
+        const input = formConfig.value.tls[`${name}Input`]
+        if (input) secretChanges[`tls.${name}`] = { operation: 'replace', value: { plaintext: input } }
+      }
     }
     return {
       expectedGeneration: Number(status.activeGeneration),

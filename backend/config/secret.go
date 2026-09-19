@@ -145,7 +145,7 @@ func OpenStoredSecret(vault *credential.Vault, stored StoredSecret) (string, err
 
 // ValidateRuntimeSecrets 验证运行时配置中的持久化 Secret 可以由当前密钥解密。
 func ValidateRuntimeSecrets(vault *credential.Vault, runtime RuntimeConfig) error {
-	for _, stored := range []StoredSecret{runtime.Root.Database.Password, runtime.SMTP.Relay.Password} {
+	for _, stored := range []StoredSecret{runtime.Root.Database.Password, runtime.SMTP.Relay.Password, runtime.SSL.TLS.DNSAccessKey, runtime.SSL.TLS.DNSSecretKey} {
 		if !stored.Configured() {
 			continue
 		}

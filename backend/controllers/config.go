@@ -498,7 +498,13 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 	case config.SectionSSL:
 		value := runtime.SSL
 		value.TLS.Management = config.EffectiveSSLManagement(value.TLS)
-		return value, nil
+		accessStatus, secretStatus := value.TLS.DNSAccessKey.Status(), value.TLS.DNSSecretKey.Status()
+		value.TLS.DNSAccessKey, value.TLS.DNSSecretKey = config.StoredSecret{}, config.StoredSecret{}
+		return struct {
+			config.SSLSectionConfig
+			DNSAccessKeyStatus config.SecretStatus `json:"dnsAccessKeyStatus"`
+			DNSSecretKeyStatus config.SecretStatus `json:"dnsSecretKeyStatus"`
+		}{value, accessStatus, secretStatus}, nil
 	case config.SectionPlugins:
 		plugins := make(map[string]any, len(runtime.Plugins.Plugins))
 		for id, item := range runtime.Plugins.Plugins {

@@ -931,11 +931,20 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		}
 		candidate.Email.Policy.LoginVerificationPolicy = candidate.SMTP.Relay.LoginPolicy
 	case SectionSSL:
-		var value SSLSectionConfig
+		var value struct {
+			SSLSectionConfig
+			DNSAccessKeyStatus json.RawMessage `json:"dnsAccessKeyStatus"`
+			DNSSecretKeyStatus json.RawMessage `json:"dnsSecretKeyStatus"`
+		}
 		if err := ParseStrict(payload, &value); err != nil {
 			return RuntimeConfig{}, err
 		}
-		candidate.SSL = value
+		if storedSecretHasMaterial(value.TLS.DNSAccessKey) || storedSecretHasMaterial(value.TLS.DNSSecretKey) {
+			return RuntimeConfig{}, ErrInvalidSecretChange
+		}
+		value.TLS.DNSAccessKey = current.SSL.TLS.DNSAccessKey
+		value.TLS.DNSSecretKey = current.SSL.TLS.DNSSecretKey
+		candidate.SSL = value.SSLSectionConfig
 	case SectionPlugins:
 		var value PluginsSectionConfig
 		if err := ParseStrict(payload, &value); err != nil {
@@ -1018,6 +1027,17 @@ func applySecretChanges(candidate *RuntimeConfig, section Section, changes map[s
 				return err
 			}
 			candidate.SMTP.Relay.Password = stored
+		case section == SectionSSL && (name == "tls.dnsAccessKey" || name == "tls.dnsSecretKey"):
+			target := &candidate.SSL.TLS.DNSAccessKey
+			if name == "tls.dnsSecretKey" {
+				target = &candidate.SSL.TLS.DNSSecretKey
+			}
+			required := candidate.SSL.TLS.DNSProvider != ""
+			stored, err := ApplySecretChange(vault, *target, change, SecretPolicy{Required: required, AllowClear: !required, MaxLength: 4096}, now)
+			if err != nil {
+				return err
+			}
+			*target = stored
 		default:
 			return ErrInvalidSecretChange
 		}

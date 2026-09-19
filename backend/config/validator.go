@@ -173,6 +173,9 @@ func smtpRelayConfigured(smtp SMTPConfig) bool {
 }
 
 func validateSSL(ssl SSLConfig) error {
+	if err := validateDNSProvider(ssl); err != nil {
+		return err
+	}
 	if (ssl.PreviousCertificateRef == "") != (ssl.PreviousPrivateKeyRef == "") {
 		return ErrInvalidSSL
 	}

@@ -13,6 +13,21 @@ const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } =
     '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
 )()
 
+test('项目 DNS 自动续期需要凭据，已设置的凭据可留空且外部托管隐藏 DNS 字段', () => {
+  const config = { tls: { management: 'project', challenge: 'dns', mode: 'managed_default', defaultDirectory: 'ssl', dnsProvider: 'alidns' } }
+  assert.ok(validateFormConfig('ssl', config)['tls.dnsAccessKeyInput'])
+  assert.ok(validateFormConfig('ssl', config)['tls.dnsSecretKeyInput'])
+  config.dnsAccessKeyStatus = { configured: true }
+  config.tls.dnsSecretKeyInput = 'test-secret'
+  assert.deepEqual(validateFormConfig('ssl', config), {})
+  config.tls.dnsZone = 'https://example.com'
+  assert.ok(validateFormConfig('ssl', config)['tls.dnsZone'])
+  for (const management of ['custom', 'web_server']) {
+    config.tls.management = management
+    assert.ok(getFieldGroups('ssl', config).flatMap(group => group.fields).every(field => !field.path.join('.').includes('dns')))
+  }
+})
+
 test('公网 HTTPS 端口独立编辑且保留内部监听与模式切换', () => {
   const config = {
     database: { type: 'sqlite' },

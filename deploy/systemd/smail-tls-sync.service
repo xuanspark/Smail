@@ -1,0 +1,24 @@
+[Unit]
+Description=Smail 项目证书同步至 Nginx
+After=smail.service nginx.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/opt/smail/smail-config --root /opt/smail --export-project-tls /etc/nginx/smail/tls.pem
+ExecStart=/usr/sbin/nginx -t
+ExecStart=/usr/bin/systemctl reload nginx.service
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/nginx/smail /opt/smail/data /var/log/nginx
+TimeoutStartSec=30
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

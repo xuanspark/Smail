@@ -72,6 +72,8 @@ const certificateManagement = config => {
   return ['managed_default', 'default'].includes(config.tls?.mode) ? 'project' : 'custom'
 }
 const projectManagedCertificate = config => certificateManagement(config) === 'project'
+const projectDNSCertificate = config => projectManagedCertificate(config) && config.tls?.challenge === 'dns'
+const automaticDNSCertificate = config => projectDNSCertificate(config) && config.tls?.dnsProvider === 'alidns'
 const externalManagedCertificate = config => !projectManagedCertificate(config)
 const absoluteCertificatePath = value => typeof value === 'string'
   && value === value.trim()
@@ -180,6 +182,26 @@ const sslGroups = [
       fallback: 'http',
       options: options([['http', 'HTTP 验证'], ['dns', 'DNS 验证']])
     }),
+    field('tls.dnsProvider', 'DNS 记录管理', 'select', {
+      show: projectDNSCertificate,
+      fallback: '',
+      options: options([['', '手动设置 TXT'], ['alidns', '阿里云 DNS（自动续期）']]),
+      hint: '自动续期需配置 DNS 服务商；手动模式每次签发都需自行设置 TXT。'
+    }),
+    field('tls.dnsZone', 'DNS 托管域名', 'text', {
+      show: automaticDNSCertificate,
+      placeholder: '留空使用主邮件域名'
+    }),
+    field('tls.dnsAccessKeyInput', '访问密钥编号', 'password', {
+      show: automaticDNSCertificate,
+      placeholder: '留空保持原值',
+      dynamicHint: config => config.dnsAccessKeyStatus?.configured ? '已设置，输入新值后替换。' : '未设置，请填写阿里云 AccessKey ID。'
+    }),
+    field('tls.dnsSecretKeyInput', '访问密钥', 'password', {
+      show: automaticDNSCertificate,
+      placeholder: '留空保持原值',
+      dynamicHint: config => config.dnsSecretKeyStatus?.configured ? '已设置，输入新值后替换。' : '未设置，请填写阿里云 AccessKey Secret。'
+    }),
     field('tls.certificateRef', '证书文件', 'text', {
       wide: true,
       show: externalManagedCertificate,
@@ -227,6 +249,7 @@ export function getFieldGroups(section, config) {
           .map(input => ({
             ...input,
             label: input.dynamicLabel ? input.dynamicLabel(config) : input.label,
+            hint: input.dynamicHint ? input.dynamicHint(config) : input.hint,
             recommendedPort: getRecommendedPort(config, input.path)
           }))
       }))
@@ -367,6 +390,17 @@ export function validateFormConfig(section, config) {
   }
   if (section === 'ssl') {
     const tls = config.tls || {}
+    if (projectDNSCertificate(config)) {
+      if (!['', 'alidns'].includes(tls.dnsProvider || '')) errors['tls.dnsProvider'] = '请选择支持的 DNS 服务商'
+      if (automaticDNSCertificate(config)) {
+        if (tls.dnsZone && (!validDomain(tls.dnsZone) || normalizedDomain(tls.dnsZone) !== tls.dnsZone)) errors['tls.dnsZone'] = '请填写小写域名，不包含协议、路径或末尾点'
+        for (const name of ['dnsAccessKey', 'dnsSecretKey']) {
+          const value = tls[`${name}Input`]
+          if (!value && !config[`${name}Status`]?.configured) errors[`tls.${name}Input`] = '请填写 DNS 服务商凭据'
+          if (value && (typeof value !== 'string' || value !== value.trim() || value.length > 4096)) errors[`tls.${name}Input`] = '凭据不能包含首尾空格或超过 4096 个字符'
+        }
+      }
+    }
     const management = certificateManagement(config)
     if (!['web_server', 'project', 'custom'].includes(management)) errors['tls.management'] = '请选择证书管理方式'
     if (management === 'project' && !['http', 'dns'].includes(tls.challenge || 'http')) errors['tls.challenge'] = '请选择证书验证方式'

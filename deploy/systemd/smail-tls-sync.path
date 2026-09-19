@@ -1,0 +1,9 @@
+[Unit]
+Description=Smail 项目证书入口同步监听
+
+[Path]
+PathChanged=/opt/smail/config/config.json
+Unit=smail-tls-sync.service
+
+[Install]
+WantedBy=multi-user.target

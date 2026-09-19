@@ -112,11 +112,16 @@ func SetSSL(sslType, priKey, crtKey string) error {
 	}
 
 	if cfg.SSLType != config.SSLTypeUser {
+		previousSSL := cfg.SSL
 		clearLegacySSLPaths(cfg)
 		cfg.SSL = config.SSLConfig{
 			Management:       config.SSLManagementProject,
 			Mode:             config.ManagedSSLModeDefault,
 			DefaultDirectory: runtimepath.SSLReference(config.ROOT_PATH, "data/ssl"),
+			DNSProvider: previousSSL.DNSProvider,
+			DNSZone: previousSSL.DNSZone,
+			DNSAccessKey: previousSSL.DNSAccessKey,
+			DNSSecretKey: previousSSL.DNSSecretKey,
 		}
 		if cfg.SSLType == config.SSLTypeAutoDNS {
 			cfg.SSL.Challenge = config.SSLChallengeDNS
@@ -174,6 +179,7 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 	}
 	clearLegacySSLPaths(cfg)
 	sslType := cfg.EffectiveSSLType()
+	previousSSL := cfg.SSL
 	management := cfg.SSL.Management
 	if reference.Mode == config.ManagedSSLModeDefault {
 		management = config.SSLManagementProject
@@ -186,6 +192,10 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 		DefaultDirectory: "ssl",
 		CertificateRef:   reference.CertificateRef,
 		PrivateKeyRef:    reference.PrivateKeyRef,
+		DNSProvider: previousSSL.DNSProvider,
+		DNSZone: previousSSL.DNSZone,
+		DNSAccessKey: previousSSL.DNSAccessKey,
+		DNSSecretKey: previousSSL.DNSSecretKey,
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
 		cfg.SSL.CustomDirectory = "ssl"
@@ -403,14 +413,13 @@ func renewCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config) error {
 			return errors.Wrap(err)
 		}
 	} else if cfg.EffectiveSSLType() == config.SSLTypeAutoDNS {
-		err = client.Challenge.SetDNS01Provider(GetDnsChallengeInstance(), dns01.AddDNSTimeout(60*time.Minute))
+		provider, providerErr := automaticDNSProvider(cfg)
+		if providerErr != nil {
+			return providerErr
+		}
+		err = client.Challenge.SetDNS01Provider(provider, dns01.AddDNSTimeout(15*time.Second))
 		if err != nil {
 			return errors.Wrap(err)
-		}
-
-		log.Errorf("Please Set DNS Record/请将以下内容添加到DNS记录中:\n")
-		for _, item := range GetDnsChallengeInstance().GetDNSSettings(nil) {
-			log.Errorf("Type:%s\tHost:%s\tValue generated\n", item.Type, item.Host)
 		}
 
 	}
@@ -466,7 +475,11 @@ func generateCertificate(privateKey *ecdsa.PrivateKey, cfg *config.Config, newAc
 			return errors.Wrap(err)
 		}
 	} else if cfg.EffectiveSSLType() == config.SSLTypeAutoDNS {
-		err = client.Challenge.SetDNS01Provider(GetDnsChallengeInstance(), dns01.AddDNSTimeout(60*time.Minute))
+		provider, providerErr := automaticDNSProvider(cfg)
+		if providerErr != nil {
+			return providerErr
+		}
+		err = client.Challenge.SetDNS01Provider(provider, dns01.AddDNSTimeout(15*time.Second))
 		if err != nil {
 			return errors.Wrap(err)
 		}

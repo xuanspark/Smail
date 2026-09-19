@@ -66,6 +66,29 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+test('DNS 凭据只通过专用密钥变更提交，留空保持原值', async () => {
+  const sent = []
+  const current = {
+    tls: { management: 'project', mode: 'managed_default', defaultDirectory: 'ssl', challenge: 'dns', dnsProvider: 'alidns', dnsAccessKey: {}, dnsSecretKey: {} },
+    dnsAccessKeyStatus: { configured: true }, dnsSecretKeyStatus: { configured: true }
+  }
+  const { page } = fixture(async path => ({ errorNo: 0, data: path.endsWith('/status') ? { available: true, activeGeneration: 1 } : current }), 'ssl', {
+    http: { post: async (path, body) => { sent.push(body); return { errorNo: 0, data: { valid: true } } } }
+  })
+  await page.loadAll()
+  page.updateField(['tls', 'dnsSecretKeyInput'], 'new-test-secret')
+  await page.validateConfig()
+  assert.equal(sent.length, 1)
+  assert.deepEqual(sent[0].secretChanges, { 'tls.dnsSecretKey': { operation: 'replace', value: { plaintext: 'new-test-secret' } } })
+  assert.equal(sent[0].payload.dnsAccessKeyStatus, undefined)
+  assert.equal(sent[0].payload.dnsSecretKeyStatus, undefined)
+  assert.equal(sent[0].payload.tls.dnsSecretKeyInput, undefined)
+  assert.equal(sent[0].payload.tls.dnsSecretKey, undefined)
+  page.updateField(['tls', 'dnsSecretKeyInput'], '')
+  await page.validateConfig()
+  assert.deepEqual(sent[1].secretChanges, {})
+})
+
 for (const cancelled of [false, true]) {
   test(`共享身份确认保留单次重试，移除审计不影响其他操作：取消=${cancelled}`, async () => {
     const requests = []

@@ -39,7 +39,14 @@ func TestPublicConfigSectionsDoNotExposeSecretsAndRemainStrictlyDecodable(t *tes
 			},
 		},
 		Email: config.EmailSectionConfig{Meta: config.SectionMeta{Schema: config.CurrentSectionSchema, Generation: 7}},
-		SSL:   config.SSLSectionConfig{Meta: config.SectionMeta{Schema: config.CurrentSectionSchema, Generation: 7}},
+		SSL: config.SSLSectionConfig{
+			Meta: config.SectionMeta{Schema: config.CurrentSectionSchema, Generation: 7},
+			TLS: config.SSLConfig{
+				DNSProvider: config.DNSProviderAliDNS,
+				DNSAccessKey: config.StoredSecret{Ciphertext: "enc:v1:dns-access", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()},
+				DNSSecretKey: config.StoredSecret{Ciphertext: "enc:v1:dns-secret", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()},
+			},
+		},
 		Plugins: config.PluginsSectionConfig{
 			Meta: config.SectionMeta{Schema: config.CurrentSectionSchema, Generation: 7},
 			Plugins: map[string]config.PluginInstance{
@@ -103,6 +110,14 @@ func TestPublicConfigSectionsDoNotExposeSecretsAndRemainStrictlyDecodable(t *tes
 			}
 			delete(writableData, "databasePasswordStatus")
 			delete(writableData, "relayPasswordStatus")
+			if test.section == config.SectionSSL {
+				for _, name := range []string{"dnsAccessKeyStatus", "dnsSecretKeyStatus"} {
+					if !strings.Contains(string(writableData[name]), `"configured":true`) {
+						t.Fatalf("DNS secret status missing: %s", name)
+					}
+					delete(writableData, name)
+				}
+			}
 			if test.section == config.SectionMail {
 				var relay map[string]json.RawMessage
 				if err := json.Unmarshal(writableData["relay"], &relay); err != nil {
