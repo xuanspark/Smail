@@ -1,6 +1,4 @@
-import './EmailDetail.js'
-
-import {ref} from 'vue'
+import {onBeforeUnmount, ref, watch} from 'vue'
 
 import {useRoute, useRouter} from 'vue-router'
 
@@ -30,27 +28,69 @@ export function usePage() {
   const ccs = ref([])
   
   const showCC = ref(false)
-  
-  http.post("/api/v1/email/detail", {id: parseInt(route.params.id)}).then(res => {
-    detailData.value = res.data || {}
-    detailData.value.attachments = res.data.attachments || [];
-    
-    if (res.data.to && res.data.to !== "") {
-      try {
-        tos.value = JSON.parse(res.data.to)
-      } catch (error) {
-        tos.value = []
-      }
+
+  const loading = ref(false)
+  const loadError = ref('')
+  let requestSequence = 0
+
+  const parseAddresses = (value) => {
+    try {
+      const addresses = JSON.parse(value || '[]')
+      return Array.isArray(addresses) ? addresses : []
+    } catch {
+      return []
     }
-    if (res.data.cc && res.data.cc !== "") {
-      try {
-        ccs.value = JSON.parse(res.data.cc)
-      } catch (error) {
-        ccs.value = []
-      }
+  }
+
+  const loadDetail = async () => {
+    const sequence = ++requestSequence
+    detailData.value = {attachments: []}
+    tos.value = []
+    ccs.value = []
+    showCC.value = false
+    loadError.value = ''
+    loading.value = true
+
+    const rawId = String(route.params.id || '')
+    const id = Number(rawId)
+    if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
+      loadError.value = '邮件地址无效，请返回邮件列表'
+      loading.value = false
+      return
     }
-    showCC.value = ccs.value && ccs.value.length > 0
+
+    try {
+      const res = await http.post('/api/v1/email/detail', {id})
+      // 切换邮件或离开页面后，旧请求不得覆盖当前状态。
+      if (sequence !== requestSequence) return
+      if (res?.errorNo !== 0) {
+        loadError.value = res?.errorMsg || '读取邮件失败，请重试'
+        return
+      }
+      const data = res.data
+      if (!data || typeof data !== 'object' || Array.isArray(data) || Number(data.id) !== id) {
+        loadError.value = '邮件不可用，请返回邮件列表'
+        return
+      }
+      detailData.value = {...data, attachments: Array.isArray(data.attachments) ? data.attachments : []}
+      tos.value = parseAddresses(data.to)
+      ccs.value = parseAddresses(data.cc)
+      showCC.value = ccs.value.length > 0
+    } catch {
+      if (sequence === requestSequence) {
+        loadError.value = '网络连接失败，请稍后重试'
+      }
+    } finally {
+      if (sequence === requestSequence) loading.value = false
+    }
+  }
+
+  watch(() => route.params.id, loadDetail, {immediate: true})
+  onBeforeUnmount(() => {
+    requestSequence++
   })
+
+  const backToList = () => router.push({name: 'list'})
   
   const getInitial = (name) => {
     if (!name) return '?';
@@ -67,7 +107,8 @@ export function usePage() {
   }
   
   const handleDelete = () => {
-    const id = detailData.value.id || parseInt(route.params.id);
+    if (loading.value || loadError.value) return;
+    const id = detailData.value.id;
     if (!id) return;
   
     let tag = groupStore.tag;
@@ -119,6 +160,10 @@ export function usePage() {
     tos,
     ccs,
     showCC,
+    loading,
+    loadError,
+    loadDetail,
+    backToList,
     getInitial,
     formatDetailDate,
     handleDelete

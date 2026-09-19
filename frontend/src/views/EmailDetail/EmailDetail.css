@@ -47,6 +47,40 @@
   padding: 28px 30px;
 }
 
+.mail-detail-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--pm-text-secondary);
+}
+
+.mail-detail-state h1 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--pm-text-primary);
+}
+
+.mail-detail-state p {
+  margin: 0;
+}
+
+.mail-detail-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.mail-detail-state-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
 .mail-subject {
   font-size: 36px;
   font-weight: 600;

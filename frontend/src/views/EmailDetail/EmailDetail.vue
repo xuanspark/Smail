@@ -1,17 +1,28 @@
 <template>
 <div class="mail-detail-container">
     <div class="mail-detail-header">
-      <el-button @click="$router.back()" plain class="back-btn">
+      <el-button @click="backToList" plain class="back-btn" aria-label="返回邮件列表">
         <el-icon><Back /></el-icon>
       </el-button>
-      <div class="action-buttons">
-        <el-button plain @click="handleDelete">
+      <div v-if="!loading && !loadError" class="action-buttons">
+        <el-button plain @click="handleDelete" aria-label="删除邮件">
           <el-icon><Delete /></el-icon>
         </el-button>
       </div>
     </div>
 
-    <div class="mail-detail-content">
+    <div v-if="loading" class="mail-detail-state" role="status" aria-live="polite">
+      <p>正在读取邮件…</p>
+    </div>
+    <div v-else-if="loadError" class="mail-detail-state" role="alert">
+      <h1>邮件暂时无法查看</h1>
+      <p>{{ loadError }}</p>
+      <div class="mail-detail-state-actions">
+        <el-button type="primary" @click="loadDetail">重试</el-button>
+        <el-button @click="backToList">返回邮件列表</el-button>
+      </div>
+    </div>
+    <div v-else class="mail-detail-content">
       <h1 class="mail-subject">{{ detailData.subject }}</h1>
       
       <div class="mail-meta-card">
@@ -72,6 +83,10 @@ import { usePage, Back, Delete, Document, Download } from './EmailDetail.js'
 
 const {
   handleDelete,
+  loading,
+  loadError,
+  loadDetail,
+  backToList,
   detailData,
   getInitial,
   lang,
