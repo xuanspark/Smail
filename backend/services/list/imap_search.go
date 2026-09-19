@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
@@ -433,6 +434,17 @@ func matchesHeader(email *models.Email, key, value string) bool {
 	value = strings.ToLower(value)
 
 	switch key {
+	case "message-id":
+		messageID := strings.TrimSpace(email.MsgID)
+		if messageID == "" {
+			// 旧邮件使用与 IMAP FETCH 一致的备用标识。
+			cfg := config.CurrentConfig()
+			if cfg == nil || strings.TrimSpace(cfg.Domain) == "" || email.Id <= 0 {
+				return false
+			}
+			messageID = fmt.Sprintf("%d@%s", email.Id, strings.TrimSpace(cfg.Domain))
+		}
+		return strings.Contains(strings.ToLower("<"+messageID+">"), value)
 	case "subject":
 		return strings.Contains(strings.ToLower(email.Subject), value)
 	case "from":
