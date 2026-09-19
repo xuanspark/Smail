@@ -61,7 +61,7 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 		if sameAddress.UserID != request.UserID || sameAddress.Status == models.ExternalEmailStatusVerified {
 			return nil, ErrBindingExists
 		}
-		if sameAddress.EmailType != request.Type {
+		if sameAddress.Status != models.ExternalEmailStatusDisabled && sameAddress.EmailType != request.Type {
 			return nil, ErrBindingExists
 		}
 		if sameAddress.Status == models.ExternalEmailStatusPending {
@@ -71,12 +71,18 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 
 	now := r.now().UTC()
 	if hasSameAddress && sameAddress.Status == models.ExternalEmailStatusDisabled {
+		sameAddress.EmailType = request.Type
 		sameAddress.Status = models.ExternalEmailStatusPending
 		sameAddress.VerifiedAt = nil
 		sameAddress.CredentialVersion++
 		sameAddress.UpdatedAt = now
-		if _, err := r.engine.ID(sameAddress.ID).Cols("status", "verified_at", "credential_version", "updated_at").Update(&sameAddress); err != nil {
+		updated, err := r.engine.ID(sameAddress.ID).Where("status = ?", models.ExternalEmailStatusDisabled).
+			Cols("email_type", "status", "verified_at", "credential_version", "updated_at").Update(&sameAddress)
+		if err != nil {
 			return nil, fmt.Errorf("reuse disabled replacement external email: %w", err)
+		}
+		if updated != 1 {
+			return nil, ErrBindingExists
 		}
 		return &sameAddress, nil
 	}
@@ -145,11 +151,11 @@ func (r *Repository) Bind(request BindRequest) (*models.ExternalEmail, error) {
 		return nil, err
 	}
 	var existing models.ExternalEmail
-	has, err := r.engine.Where("user_id = ? AND email_fingerprint = ?", request.UserID, fingerprint).Get(&existing)
+	has, err := r.engine.Where("email_fingerprint = ?", fingerprint).Get(&existing)
 	if err != nil {
 		return nil, fmt.Errorf("check external email binding: %w", err)
 	}
-	if has {
+	if has && (existing.UserID != request.UserID || existing.Status != models.ExternalEmailStatusDisabled) {
 		return nil, ErrBindingExists
 	}
 	var count int64
@@ -164,6 +170,23 @@ func (r *Repository) Bind(request BindRequest) (*models.ExternalEmail, error) {
 		return nil, ErrBackupLimit
 	}
 	now := r.now().UTC()
+	if has {
+		// 停用记录可以重新绑定，但必须重新验证，不能沿用之前的验证状态。
+		existing.EmailType = request.Type
+		existing.Status = models.ExternalEmailStatusPending
+		existing.VerifiedAt = nil
+		existing.CredentialVersion++
+		existing.UpdatedAt = now
+		updated, err := r.engine.ID(existing.ID).Where("status = ?", models.ExternalEmailStatusDisabled).
+			Cols("email_type", "status", "verified_at", "credential_version", "updated_at").Update(&existing)
+		if err != nil {
+			return nil, fmt.Errorf("reuse disabled external email binding: %w", err)
+		}
+		if updated != 1 {
+			return nil, ErrBindingExists
+		}
+		return &existing, nil
+	}
 	item := &models.ExternalEmail{
 		UserID:            request.UserID,
 		EmailCiphertext:   ciphertext,

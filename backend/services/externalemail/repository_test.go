@@ -165,3 +165,83 @@ func TestRepositoryReplacesExternalEmailOnlyAfterVerification(t *testing.T) {
 		t.Fatalf("unexpected replacement statuses: %+v", statuses)
 	}
 }
+
+func TestRepositoryRebindsDisabledEmailWithFreshVerification(t *testing.T) {
+	for _, replacement := range []bool{false, true} {
+		name := "bind"
+		if replacement {
+			name = "replacement"
+		}
+		t.Run(name, func(t *testing.T) {
+			engine, err := xorm.NewEngine("sqlite", filepath.Join(t.TempDir(), "external.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer engine.Close()
+			if err := engine.Sync2(&models.ExternalEmail{}); err != nil {
+				t.Fatal(err)
+			}
+			vault := NewVaultWithKeys([]byte("01234567890123456789012345678901"), []byte("abcdefabcdefabcdefabcdefabcdefab"))
+			repo, err := NewRepository(engine, vault)
+			if err != nil {
+				t.Fatal(err)
+			}
+			item, err := repo.Bind(BindRequest{UserID: 1, Email: "owner@example.com", Type: models.ExternalEmailTypeBackup})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.Verify(1, item.ID); err != nil {
+				t.Fatal(err)
+			}
+			bind := repo.Bind
+			verify := repo.Verify
+			if replacement {
+				bind = repo.BeginReplacement
+				verify = repo.VerifyReplacement
+			}
+			request := BindRequest{UserID: 1, Email: "OWNER@example.com", Type: models.ExternalEmailTypePrimary}
+			if _, err := bind(request); err != ErrBindingExists {
+				t.Fatalf("已验证邮箱不应直接更改用途：%v", err)
+			}
+			if err := repo.Disable(1, item.ID); err != nil {
+				t.Fatal(err)
+			}
+			other := request
+			other.UserID = 2
+			if _, err := bind(other); err != ErrBindingExists {
+				t.Fatalf("不能复用其他用户的停用记录：%v", err)
+			}
+			pending, err := bind(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pending.ID != item.ID || pending.Status != models.ExternalEmailStatusPending || pending.VerifiedAt != nil || pending.EmailType != models.ExternalEmailTypePrimary || pending.CredentialVersion <= item.CredentialVersion {
+				t.Fatalf("重新绑定必须保留记录并重新验证：%+v", pending)
+			}
+			if _, err := repo.FindVerifiedPrimaryByUser(1); err != ErrBindingNotFound {
+				t.Fatalf("未验证邮箱不能参与登录：%v", err)
+			}
+			stored, err := repo.List(1)
+			if err != nil || len(stored) != 1 || stored[0].VerifiedAt != nil || stored[0].Status != models.ExternalEmailStatusPending {
+				t.Fatalf("旧验证状态未清除：%+v，%v", stored, err)
+			}
+			if err := verify(1, pending.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.FindVerifiedPrimaryByUser(1); err != nil {
+				t.Fatalf("重新验证后应可用于登录：%v", err)
+			}
+			if !replacement {
+				if err := repo.Disable(1, item.ID); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := repo.Bind(BindRequest{UserID: 1, Email: "other@example.com", Type: models.ExternalEmailTypePrimary}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := bind(request); err != ErrPrimaryLimit {
+					t.Fatalf("重新绑定不能绕过主要邮箱数量限制：%v", err)
+				}
+			}
+		})
+	}
+}

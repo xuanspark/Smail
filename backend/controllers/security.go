@@ -1076,6 +1076,7 @@ func DisableExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http
 	}
 	if runtime.verification != nil && runtime.verification.Store != nil {
 		runtime.verification.Store.InvalidateResource(input.ID, verification.PurposeExternalEmailBind)
+		runtime.verification.Store.InvalidateResource(input.ID, verification.PurposeExternalEmailChange)
 		runtime.verification.Store.InvalidateAccount(ctx.UserAccount)
 	}
 	if runtime.recovery != nil {
