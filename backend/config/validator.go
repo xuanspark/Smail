@@ -180,9 +180,15 @@ func validateSSL(ssl SSLConfig) error {
 		return ErrInvalidSSL
 	}
 	if ssl.PreviousCertificateRef != "" {
-		publicPath, err := resolveCustomSSLInput(".", ssl.PreviousCertificateRef)
-		privatePath, keyErr := resolveCustomSSLInput(".", ssl.PreviousPrivateKeyRef)
-		if err != nil || keyErr != nil || !isControlledRelativePath(ssl.PreviousCertificateRef) || !isControlledRelativePath(ssl.PreviousPrivateKeyRef) || !flatSSLPair(".", publicPath, privatePath) {
+		// 此处只校验受控引用，避免工作目录不可访问时误判有效配置。
+		// 实际文件仍由托管加载器按部署根目录校验路径、权限和密钥匹配。
+		certificate, privateKey := ssl.PreviousCertificateRef, ssl.PreviousPrivateKeyRef
+		name := strings.TrimSuffix(path.Base(certificate), ".crt")
+		if !isControlledRelativePath(certificate) || !isControlledRelativePath(privateKey) ||
+			path.Dir(certificate) != "ssl" || path.Dir(privateKey) != "ssl" ||
+			!strings.HasSuffix(certificate, ".crt") || !strings.HasPrefix(name, flatSSLPrefix) ||
+			!validSSLVersion("version-"+strings.TrimPrefix(name, flatSSLPrefix)) ||
+			path.Base(privateKey) != name+".key" {
 			return ErrInvalidSSL
 		}
 	}
