@@ -60,7 +60,7 @@ func ReadVisibleInput(prompt string) (string, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return "", errors.New("安全验证需要交互式控制台")
 	}
-	fmt.Fprint(os.Stderr, prompt+": ")
+	fmt.Fprint(os.Stderr, strings.TrimRight(prompt, ":： ")+"： ")
 	value, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		return "", errors.New("读取安全验证输入失败")

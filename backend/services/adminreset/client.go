@@ -52,10 +52,11 @@ func SendVerifiedReset(ctx context.Context, conn net.Conn, input func(string) (s
 		return ErrInvalidRequest
 	}
 	var prompt strings.Builder
-	prompt.WriteString("请选择安全验证方式（输入序号；选择邮箱即发送验证码）：")
+	prompt.WriteString("请选择安全验证方式\n\n")
 	for i, method := range challenge.Methods {
-		fmt.Fprintf(&prompt, " %d.%s", i+1, method.Label)
+		fmt.Fprintf(&prompt, "%d. %s\n", i+1, method.Label)
 	}
+	prompt.WriteString("\n选项：")
 	choice, err := input(prompt.String())
 	if err != nil {
 		return err
