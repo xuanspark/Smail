@@ -158,6 +158,16 @@ export function usePage(pageKey = 'base') {
     if (selectedSection.value === 'base' && ['mysql', 'postgresql'].includes(formConfig.value.database?.type)) {
       return { label: '数据库密码', description: '只在本次请求内传输，保存后仅保留密文状态。留空表示保持原值。', placeholder: '输入新数据库密码（可选）' }
     }
+    const pluginSecrets = { telegram_push: 'Telegram Bot Token', wechat_push: '微信 Secret' }
+    const label = pluginSecrets[selectedSection.value]
+    if (label && formConfig.value.plugins?.[selectedSection.value]) {
+      const configured = readFormConfig(loadedText.value).plugins?.[selectedSection.value]?.secretStatus?.configured
+      return {
+        label,
+        description: `${configured ? '已设置' : '未设置'}。保存后加密存储，不回显；留空保持原值。`,
+        placeholder: `输入新的 ${label}（可选）`
+      }
+    }
     return null
   })
   const sensitiveHint = computed(() => secretField.value ? '密码不会回填，修改请使用下方独立输入框，留空保持原值' : '')
@@ -525,6 +535,9 @@ export function usePage(pageKey = 'base') {
     const value = secretValue.value
     if (value && selectedSection.value === 'base' && secretField.value) {
       secretChanges['database.password'] = { operation: 'replace', value: { plaintext: value } }
+    }
+    if (value && ['telegram_push', 'wechat_push'].includes(selectedSection.value) && secretField.value) {
+      secretChanges[`plugins.${selectedSection.value}.secret`] = { operation: 'replace', value: { plaintext: value } }
     }
     const relayPassword = formConfig.value?.relay?.password
     if (relayPassword && selectedSection.value === 'mail') {

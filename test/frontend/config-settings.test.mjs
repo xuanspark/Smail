@@ -1147,6 +1147,76 @@ test('插件读取状态字段不传回严格解析接口，未展示字段和�
   assert.equal(page.formConfig.value.plugins.telegram_push.secretStatus.configured, true)
 })
 
+for (const key of ['telegram_push', 'wechat_push']) {
+  test(`${key} 密钥独立提交、留空保留，保存回读与离开后清空`, async () => {
+    let active = { meta: { generation: 1 }, plugins: {
+      telegram_push: { enabled: false, settings: { timeout: 30 }, secretStatus: { configured: false } },
+      wechat_push: { enabled: false, settings: { appId: 'test-only', future: 'preserved' }, secretStatus: { configured: false } }
+    } }
+    const original = structuredClone(active)
+    let pending = null
+    const requests = []
+    const http = {
+      get: async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: active.meta.generation }
+        : path.endsWith('/pending') ? pending : active }),
+      put: async (path, body) => {
+        requests.push({ path, body })
+        pending = { generation: 2, section: 'plugins', sameSession: true, candidateId: 'secret-test', payload: body.payload }
+        return { errorNo: 0, data: pending }
+      },
+      post: async (path, body) => {
+        requests.push({ path, body })
+        if (path.endsWith('/apply')) {
+          active = { ...pending.payload, meta: { generation: 2 } }
+          active.plugins[key].secretStatus = { configured: true }
+          pending = null
+        }
+        return { errorNo: 0, data: { valid: true } }
+      }
+    }
+    const { page, dispose } = fixture(() => {}, key, { http })
+    await page.loadAll()
+    assert.match(page.secretField.value.description, /^未设置/)
+    await page.validateConfig()
+    assert.deepEqual(requests.at(-1).body.secretChanges, {})
+    page.updateSecret(' test-only-plugin-secret ')
+    assert.equal(page.hasChanges.value, true)
+    assert.equal(page.editorText.value.includes('test-only-plugin-secret'), false)
+    await page.validateConfig()
+    assert.equal(requests.at(-1).path, '/api/v1/config/plugins/validate')
+    assert.deepEqual(requests.at(-1).body.secretChanges, {
+      [`plugins.${key}.secret`]: { operation: 'replace', value: { plaintext: ' test-only-plugin-secret ' } }
+    })
+    for (const id of Object.keys(original.plugins)) {
+      assert.deepEqual(requests.at(-1).body.payload.plugins[id].settings, original.plugins[id].settings)
+      assert.equal(requests.at(-1).body.payload.plugins[id].secretStatus, undefined)
+      assert.equal(requests.at(-1).body.payload.plugins[id].enabled, false)
+    }
+    assert.equal(await page.saveConfig(), true)
+    assert.equal(page.secretValue.value, '')
+    const saved = requests.find(item => item.path === '/api/v1/config/plugins')
+    assert.equal(saved.body.secretChanges[`plugins.${key}.secret`].value.plaintext, ' test-only-plugin-secret ')
+    page.updateSecret('blocked-pending-edit')
+    assert.equal(page.secretValue.value, '')
+    assert.equal(await page.applyConfig(), true)
+    assert.equal(page.secretValue.value, '')
+    assert.match(page.secretField.value.description, /^已设置/)
+    await page.validateConfig()
+    assert.deepEqual(requests.at(-1).body.secretChanges, {})
+    page.updateSecret('discard-on-leave')
+    dispose()
+    assert.equal(page.secretValue.value, '')
+
+    const readonly = fixture(() => {}, key, { http, hasCapability: () => false }).page
+    await readonly.loadAll()
+    const previousRequests = requests.length
+    readonly.updateSecret('forbidden')
+    await readonly.saveConfig()
+    assert.equal(readonly.secretValue.value, '')
+    assert.equal(requests.length, previousRequests)
+  })
+}
+
 test('SQLite 不显示或发送密码，网络数据库和中继密码留空保留且不裁剪空格', async () => {
   for (const type of ['sqlite', 'mysql', 'postgresql']) {
     let request
