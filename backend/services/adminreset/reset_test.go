@@ -19,7 +19,7 @@ func TestResetSuperAdminOnlyRevokesTargetSessionsAndCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	for _, table := range []any{&models.User{}, &models.Sessions{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}, &models.ProtocolCredential{}} {
+	for _, table := range []any{&models.User{}, &models.Sessions{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}, &models.ProtocolCredential{}, &models.ClientCredential{}} {
 		if err := engine.Sync2(table); err != nil {
 			t.Fatal(err)
 		}

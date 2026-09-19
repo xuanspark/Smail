@@ -30,7 +30,7 @@ func verificationFixture(t *testing.T) (*VerificationService, models.User, *stri
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	if err := engine.Sync2(&models.User{}, &models.ExternalEmail{}, &models.TOTPAuthenticator{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.ProtocolCredential{}, &models.WebAuthnCredential{}); err != nil {
+	if err := engine.Sync2(&models.User{}, &models.ExternalEmail{}, &models.TOTPAuthenticator{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.ProtocolCredential{}, &models.WebAuthnCredential{}, &models.ClientCredential{}); err != nil {
 		t.Fatal(err)
 	}
 	user := models.User{Account: "root", Role: "super_admin", SessionVersion: 2, SecurityVersion: 3}

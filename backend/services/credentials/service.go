@@ -292,7 +292,7 @@ func (s *Service) RevokeRecoveryCodes(userID int) error {
 	return nil
 }
 
-// RevokeAll 撤销用户所有恢复码和密保问题，供密码重置后的统一凭据失效使用。
+// RevokeAll 撤销用户的恢复码、密保问题、安全密钥及邮件授权码。
 func (s *Service) RevokeAll(userID int) error {
 	if s == nil || s.engine == nil {
 		return ErrUnavailable
@@ -305,7 +305,7 @@ func (s *Service) RevokeAll(userID int) error {
 	return revokeAllOnSession(s.engine.NewSession(), s.now, userID)
 }
 
-// RevokeAllWithSession 在调用方事务中撤销恢复码并删除密保问题。
+// RevokeAllWithSession 在调用方事务中撤销用户凭据，与密码更新共同提交或回滚。
 func (s *Service) RevokeAllWithSession(session *xorm.Session, userID int) error {
 	if s == nil || s.engine == nil || session == nil {
 		return ErrUnavailable
@@ -328,6 +328,9 @@ func (s *Service) RevokeAllWithSession(session *xorm.Session, userID int) error 
 	}
 	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at", "updated_at").Update(&models.ProtocolCredential{RevokedAt: &now}); err != nil {
 		return fmt.Errorf("revoke protocol credentials: %w", err)
+	}
+	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at", "updated_at").Update(&models.ClientCredential{RevokedAt: &now}); err != nil {
+		return fmt.Errorf("revoke client credentials: %w", err)
 	}
 	return nil
 }
@@ -357,6 +360,10 @@ func revokeAllOnSession(session *xorm.Session, now func() time.Time, userID int)
 	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at", "updated_at").Update(&models.ProtocolCredential{RevokedAt: &when}); err != nil {
 		_ = session.Rollback()
 		return fmt.Errorf("revoke protocol credentials: %w", err)
+	}
+	if _, err := session.Where("user_id = ? AND revoked_at IS NULL", userID).Cols("revoked_at", "updated_at").Update(&models.ClientCredential{RevokedAt: &when}); err != nil {
+		_ = session.Rollback()
+		return fmt.Errorf("revoke client credentials: %w", err)
 	}
 	if err := session.Commit(); err != nil {
 		return fmt.Errorf("commit credential revocation: %w", err)

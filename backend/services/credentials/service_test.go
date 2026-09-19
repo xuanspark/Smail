@@ -19,7 +19,7 @@ func newFixture(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	if err := engine.Sync2(&models.User{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}, &models.ProtocolCredential{}); err != nil {
+	if err := engine.Sync2(&models.User{}, &models.SecurityQuestion{}, &models.RecoveryCode{}, &models.WebAuthnCredential{}, &models.ProtocolCredential{}, &models.ClientCredential{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := engine.Insert(&models.User{Account: "alice", Name: "Alice", Password: "unused", Role: "user"}); err != nil {

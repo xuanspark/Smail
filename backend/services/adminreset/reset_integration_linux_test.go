@@ -28,10 +28,14 @@ func resetIntegrationDatabase(t *testing.T) (*xorm.Engine, []models.User) {
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	if err := engine.Sync2(&models.User{}, &models.SecurityQuestion{}, &models.RecoveryCode{},
-		&models.WebAuthnCredential{}, &models.ProtocolCredential{}); err != nil {
+		&models.WebAuthnCredential{}, &models.ProtocolCredential{}, &models.ClientCredential{}); err != nil {
 		t.Fatal(err)
 	}
 	hash, err := password.HashUserPassword(integrationOldPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientHash, err := password.Hash(credentials.CleanAuthCode(integrationOldPassword))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +53,7 @@ func resetIntegrationDatabase(t *testing.T) (*xorm.Engine, []models.User) {
 		if _, err := engine.Insert(
 			&models.SecurityQuestion{UserID: user.ID, Question: "测试问题", AnswerHash: hash, Version: 1},
 			&models.RecoveryCode{UserID: user.ID, CodeHash: hash, CodeVersion: 1},
+			&models.ClientCredential{UserID: user.ID, ClientName: "测试客户端", CodeHash: clientHash, CodeVersion: 1},
 			&models.WebAuthnCredential{UserID: user.ID, CredentialID: user.Account + "-key",
 				CredentialData: "test-data", DisplayName: "测试密钥", CreatedAt: time.Now()},
 		); err != nil {
@@ -79,6 +84,7 @@ func assertResetCredentialState(t *testing.T, engine *xorm.Engine, userID int, r
 		{&models.RecoveryCode{}, "user_id = ? AND used_at IS NULL", want},
 		{&models.WebAuthnCredential{}, "user_id = ? AND revoked_at IS NULL", want},
 		{&models.ProtocolCredential{}, "user_id = ? AND revoked_at IS NULL", 3 * want},
+		{&models.ClientCredential{}, "user_id = ? AND revoked_at IS NULL", want},
 	} {
 		count, err := engine.Where(query.where, userID).Count(query.bean)
 		if err != nil || count != query.count {
@@ -111,6 +117,9 @@ func TestUnixResetCommitsPasswordAndRevokesAllProtocolCodes(t *testing.T) {
 	for _, protocol := range credentials.SupportedProtocols() {
 		if matched, err := service.CheckProtocolCode(users[0].ID, protocol, integrationOldPassword); err != nil || !matched {
 			t.Fatalf("重置前协议 %s 的凭据不可用：%v", protocol, err)
+		}
+		if matched, err := service.CheckClientOrProtocolCode(users[0].ID, protocol, credentials.CleanAuthCode(integrationOldPassword)); err != nil || !matched {
+			t.Fatalf("重置前协议 %s 的客户端码不可用：%v", protocol, err)
 		}
 	}
 	path := filepath.Join(t.TempDir(), "control.sock")
@@ -178,6 +187,10 @@ func TestUnixResetCommitsPasswordAndRevokesAllProtocolCodes(t *testing.T) {
 			if err != nil || matched != (index == 1) {
 				t.Fatalf("重置后用户 %d 协议 %s 的凭据验证结果错误：%v", user.ID, protocol, err)
 			}
+			matched, err = service.CheckClientOrProtocolCode(user.ID, protocol, credentials.CleanAuthCode(integrationOldPassword))
+			if err != nil || matched != (index == 1) {
+				t.Fatalf("重置后用户 %d 协议 %s 的客户端码验证结果错误：%v", user.ID, protocol, err)
+			}
 		}
 	}
 }
@@ -186,6 +199,7 @@ func TestResetSuperAdminRollsBackEveryRevocationStage(t *testing.T) {
 	for _, stage := range []struct{ table, operation string }{
 		{"recovery_code", "UPDATE"}, {"security_question", "DELETE"},
 		{"webauthn_credential", "UPDATE"}, {"protocol_credential", "UPDATE"},
+		{"client_credential", "UPDATE"},
 	} {
 		t.Run(stage.table, func(t *testing.T) {
 			engine, users := resetIntegrationDatabase(t)

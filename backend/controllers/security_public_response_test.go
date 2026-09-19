@@ -38,7 +38,7 @@ func newPublicSecurityFixture(t *testing.T) (*recovery.Service, *webauthnservice
 		&models.Sessions{},
 		&models.SecurityQuestion{},
 		&models.RecoveryCode{},
-		&models.WebAuthnCredential{}, &models.ProtocolCredential{},
+		&models.WebAuthnCredential{}, &models.ProtocolCredential{}, &models.ClientCredential{},
 	} {
 		if err := engine.Sync2(table); err != nil {
 			t.Fatal(err)
