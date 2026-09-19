@@ -1,8 +1,16 @@
 # Nginx 反代与证书部署说明
 
-> 当前状态（2026-09-18）：按用户要求，服务器外部 Python/lego 续期程序及 timer 已移除。项目自身托管使用内置续期；手动与代理托管不由 Smail 自动续期。下文的外部脚本与定时任务是历史记录，不再作为部署步骤。最新实现和验收边界见《证书托管续期策略验收》。
+> 当前状态（2026-09-20）：外部 Python/lego 续期程序及 timer 已移除。项目自身托管使用内置 ACME 与 AliDNS，手动与代理托管不由 Smail 自动续期。下文 2026-09-17、18 的外部脚本与定时任务是历史记录，不作为部署步骤。最新实现和验收边界见《云端全项目测试报告》。
 
-## 最新整改状态
+## 当前证书同步方式
+
+Smail 项目托管证书由程序自行签发、续期和事务保存。需要 Nginx 终止公网 TLS 时，使用仓库原生 systemd 模板 `deploy/systemd/smail-tls-sync.path`、`smail-tls-sync.service` 监听根配置提交，调用编译后的 `smail-config --root /opt/smail --export-project-tls /etc/nginx/smail/tls.pem`，再检查并平滑重载 Nginx。它们只同步项目已生成的证书，不执行 ACME 签发，也不引入 Python 或 shell 脚本运行依赖。发布包仍只有三个程序与四个运行目录。
+
+同步目的目录由 root 管理，合并证书文件权限为 0600；Nginx 的 `ssl_certificate` 和 `ssl_certificate_key` 均引用该文件。后台为 `https://web.solit.cn`，上游仍为 `https://127.0.0.1:8002`，以 `web.solit.cn` SNI 和系统 CA 校验，不关闭 `proxy_ssl_verify`，不开放内部端口。
+
+2026-09-20 真实换证已自动触发同步，Nginx 主进程未停止或重启。自然到期长期调度和其他站点长连接连续性未因此计为通过。下面各节保留历史拓扑、证书和故障记录。
+
+## 2026-09-18 整改记录
 
 远程主机 2026-09-18 00:22 已将 Nginx 证书路径迁移为 `/opt/smail/ssl/custom.crt`、`custom.key`，不再直接使用签发目录。只对 Smail 站点执行路径迁移和平滑重载，正式证书、应用程序、其他站点配置未改动。58 次双站 HTTPS 探测和预先建立的下载连接通过，七个 TLS/STARTTLS 入口再次通过。
 
