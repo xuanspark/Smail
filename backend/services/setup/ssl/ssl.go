@@ -118,10 +118,10 @@ func SetSSL(sslType, priKey, crtKey string) error {
 			Management:       config.SSLManagementProject,
 			Mode:             config.ManagedSSLModeDefault,
 			DefaultDirectory: runtimepath.SSLReference(config.ROOT_PATH, "data/ssl"),
-			DNSProvider: previousSSL.DNSProvider,
-			DNSZone: previousSSL.DNSZone,
-			DNSAccessKey: previousSSL.DNSAccessKey,
-			DNSSecretKey: previousSSL.DNSSecretKey,
+			DNSProvider:      previousSSL.DNSProvider,
+			DNSZone:          previousSSL.DNSZone,
+			DNSAccessKey:     previousSSL.DNSAccessKey,
+			DNSSecretKey:     previousSSL.DNSSecretKey,
 		}
 		if cfg.SSLType == config.SSLTypeAutoDNS {
 			cfg.SSL.Challenge = config.SSLChallengeDNS
@@ -192,10 +192,10 @@ func applyManagedSSLReference(cfg *config.Config, reference config.ManagedSSLRef
 		DefaultDirectory: "ssl",
 		CertificateRef:   reference.CertificateRef,
 		PrivateKeyRef:    reference.PrivateKeyRef,
-		DNSProvider: previousSSL.DNSProvider,
-		DNSZone: previousSSL.DNSZone,
-		DNSAccessKey: previousSSL.DNSAccessKey,
-		DNSSecretKey: previousSSL.DNSSecretKey,
+		DNSProvider:      previousSSL.DNSProvider,
+		DNSZone:          previousSSL.DNSZone,
+		DNSAccessKey:     previousSSL.DNSAccessKey,
+		DNSSecretKey:     previousSSL.DNSSecretKey,
 	}
 	if reference.Mode == config.ManagedSSLModeUpload {
 		cfg.SSL.CustomDirectory = "ssl"

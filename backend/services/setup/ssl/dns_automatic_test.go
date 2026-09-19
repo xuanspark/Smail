@@ -35,10 +35,16 @@ func TestAutomaticDNSCleansOnlyOwnedUnchangedRecords(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"RecordId": id})
 		case "DescribeDomainRecordInfo":
 			record := records[id]
-			if tamper { record.Value = "changed-by-user" }
+			if tamper {
+				record.Value = "changed-by-user"
+			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"RecordId": id, "DomainName": "example.com", "RR": record.Name, "Type": "TXT", "Value": record.Value})
 		case "DeleteDomainRecord":
-			if failDelete { w.WriteHeader(503); _, _ = w.Write([]byte(`{"Code":"Busy"}`)); return }
+			if failDelete {
+				w.WriteHeader(503)
+				_, _ = w.Write([]byte(`{"Code":"Busy"}`))
+				return
+			}
 			deletes++
 			delete(records, id)
 			_ = json.NewEncoder(w).Encode(map[string]string{"RecordId": id})
@@ -55,23 +61,50 @@ func TestAutomaticDNSCleansOnlyOwnedUnchangedRecords(t *testing.T) {
 			workers.Add(1)
 			go func(domain string) {
 				defer workers.Done()
-				if err := provider.Present(domain, "token", "key-"+domain); err != nil { t.Error(err) }
+				if err := provider.Present(domain, "token", "key-"+domain); err != nil {
+					t.Error(err)
+				}
 			}(domain)
 		}
 	}
 	workers.Wait()
-	if adds != 2 || len(records) != 3 { t.Fatalf("same-name TXT records lost or duplicated: adds=%d records=%d", adds, len(records)) }
-	if err := provider.CleanUp("other.example.com", "token", "unknown"); err != nil || deletes != 0 { t.Fatal("unknown challenge must not touch DNS") }
-	mu.Lock(); tamper = true; mu.Unlock()
-	if err := provider.CleanUp("example.com", "token", "key-example.com"); err == nil || deletes != 0 { t.Fatal("modified record must be retained") }
-	mu.Lock(); tamper = false; failDelete = true; mu.Unlock()
-	if err := provider.CleanUp("example.com", "token", "key-example.com"); err == nil || len(provider.records) != 2 { t.Fatal("failed deletion must retain ownership for retry") }
-	mu.Lock(); failDelete = false; mu.Unlock()
-	if err := provider.CleanUp("example.com", "token", "key-example.com"); err != nil { t.Fatal(err) }
-	if len(records) != 2 { t.Fatal("cleaning root challenge removed wildcard or unrelated TXT") }
-	if err := provider.CleanUp("*.example.com", "token", "key-*.example.com"); err != nil { t.Fatal(err) }
-	if len(records) != 1 || records["existing"].Value != "unrelated-record" { t.Fatal("existing TXT must survive all challenge cleanup") }
-	if err := provider.CleanUp("*.example.com", "token", "key-*.example.com"); err != nil || deletes != 2 { t.Fatal("cleanup must be idempotent") }
+	if adds != 2 || len(records) != 3 {
+		t.Fatalf("same-name TXT records lost or duplicated: adds=%d records=%d", adds, len(records))
+	}
+	if err := provider.CleanUp("other.example.com", "token", "unknown"); err != nil || deletes != 0 {
+		t.Fatal("unknown challenge must not touch DNS")
+	}
+	mu.Lock()
+	tamper = true
+	mu.Unlock()
+	if err := provider.CleanUp("example.com", "token", "key-example.com"); err == nil || deletes != 0 {
+		t.Fatal("modified record must be retained")
+	}
+	mu.Lock()
+	tamper = false
+	failDelete = true
+	mu.Unlock()
+	if err := provider.CleanUp("example.com", "token", "key-example.com"); err == nil || len(provider.records) != 2 {
+		t.Fatal("failed deletion must retain ownership for retry")
+	}
+	mu.Lock()
+	failDelete = false
+	mu.Unlock()
+	if err := provider.CleanUp("example.com", "token", "key-example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatal("cleaning root challenge removed wildcard or unrelated TXT")
+	}
+	if err := provider.CleanUp("*.example.com", "token", "key-*.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records["existing"].Value != "unrelated-record" {
+		t.Fatal("existing TXT must survive all challenge cleanup")
+	}
+	if err := provider.CleanUp("*.example.com", "token", "key-*.example.com"); err != nil || deletes != 2 {
+		t.Fatal("cleanup must be idempotent")
+	}
 }
 
 func TestAutomaticDNSRejectsOutsideZoneAndRedactsErrors(t *testing.T) {
@@ -84,13 +117,21 @@ func TestAutomaticDNSRejectsOutsideZoneAndRedactsErrors(t *testing.T) {
 	}))
 	defer server.Close()
 	provider := &aliDNSChallenge{zone: "example.com", accessKey: "test-access", secretKey: "test-secret", endpoint: server.URL, client: server.Client(), records: map[string]aliDNSRecord{}}
-	if err := provider.Present("unrelated.com", "token", "key"); err == nil || calls != 0 { t.Fatal("out-of-zone write attempted") }
+	if err := provider.Present("unrelated.com", "token", "key"); err == nil || calls != 0 {
+		t.Fatal("out-of-zone write attempted")
+	}
 	err := provider.Present("example.com", "token", "key")
-	if err == nil || calls != 1 { t.Fatal("provider refusal not reported") }
+	if err == nil || calls != 1 {
+		t.Fatal("provider refusal not reported")
+	}
 	for _, secret := range []string{"test-access", "test-secret", "signature"} {
-		if strings.Contains(err.Error(), secret) { t.Fatal("error leaked provider response") }
+		if strings.Contains(err.Error(), secret) {
+			t.Fatal("error leaked provider response")
+		}
 	}
 	for _, management := range []string{config.SSLManagementCustom, config.SSLManagementWebServer} {
-		if _, err := automaticDNSProvider(&config.Config{SSL: config.SSLConfig{Management: management, Challenge: config.SSLChallengeDNS}}); err == nil { t.Fatal("external certificate mode allowed automatic DNS") }
+		if _, err := automaticDNSProvider(&config.Config{SSL: config.SSLConfig{Management: management, Challenge: config.SSLChallengeDNS}}); err == nil {
+			t.Fatal("external certificate mode allowed automatic DNS")
+		}
 	}
 }

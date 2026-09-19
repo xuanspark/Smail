@@ -42,7 +42,7 @@ func TestPublicConfigSectionsDoNotExposeSecretsAndRemainStrictlyDecodable(t *tes
 		SSL: config.SSLSectionConfig{
 			Meta: config.SectionMeta{Schema: config.CurrentSectionSchema, Generation: 7},
 			TLS: config.SSLConfig{
-				DNSProvider: config.DNSProviderAliDNS,
+				DNSProvider:  config.DNSProviderAliDNS,
 				DNSAccessKey: config.StoredSecret{Ciphertext: "enc:v1:dns-access", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()},
 				DNSSecretKey: config.StoredSecret{Ciphertext: "enc:v1:dns-secret", Version: credential.CurrentVersion, UpdatedAt: time.Now().UTC()},
 			},

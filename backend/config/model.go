@@ -104,15 +104,15 @@ type EmailConfig struct {
 }
 
 type SSLConfig struct {
-	Management             string `json:"management,omitempty"`
-	Mode                   string `json:"mode"`
-	DefaultDirectory       string `json:"defaultDirectory"`
-	CustomDirectory        string `json:"customDirectory,omitempty"`
-	Challenge              string `json:"challenge,omitempty"`
-	CertificateRef         string `json:"certificateRef,omitempty"`
-	PrivateKeyRef          string `json:"privateKeyRef,omitempty"`
-	PreviousCertificateRef string `json:"previousCertificateRef,omitempty"`
-	PreviousPrivateKeyRef  string `json:"previousPrivateKeyRef,omitempty"`
+	Management             string       `json:"management,omitempty"`
+	Mode                   string       `json:"mode"`
+	DefaultDirectory       string       `json:"defaultDirectory"`
+	CustomDirectory        string       `json:"customDirectory,omitempty"`
+	Challenge              string       `json:"challenge,omitempty"`
+	CertificateRef         string       `json:"certificateRef,omitempty"`
+	PrivateKeyRef          string       `json:"privateKeyRef,omitempty"`
+	PreviousCertificateRef string       `json:"previousCertificateRef,omitempty"`
+	PreviousPrivateKeyRef  string       `json:"previousPrivateKeyRef,omitempty"`
 	DNSProvider            string       `json:"dnsProvider,omitempty"`
 	DNSZone                string       `json:"dnsZone,omitempty"`
 	DNSAccessKey           StoredSecret `json:"dnsAccessKey,omitempty"`

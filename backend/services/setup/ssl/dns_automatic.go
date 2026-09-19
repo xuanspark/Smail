@@ -94,7 +94,9 @@ func (provider *aliDNSChallenge) Present(domain, token, keyAuth string) error {
 	if err != nil {
 		return err
 	}
-	var response struct{ RecordID string `json:"RecordId"` }
+	var response struct {
+		RecordID string `json:"RecordId"`
+	}
 	err = provider.call("AddDomainRecord", url.Values{
 		"DomainName": {provider.zone}, "RR": {record.Name}, "Type": {"TXT"},
 		"Value": {record.Value}, "TTL": {"600"},
@@ -174,7 +176,9 @@ func (provider *aliDNSChallenge) call(action string, values url.Values, target a
 	if err != nil || len(data) > 1<<20 {
 		return errors.New("DNS 服务商响应无效")
 	}
-	var status struct{ Code string `json:"Code"` }
+	var status struct {
+		Code string `json:"Code"`
+	}
 	if json.Unmarshal(data, &status) != nil || response.StatusCode != http.StatusOK || status.Code != "" {
 		// 服务商错误可能包含凭据、签名或请求原文，不能直接交给日志。
 		return errors.New("DNS 服务商拒绝请求，请检查凭据、区域和记录管理权限")
