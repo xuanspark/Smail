@@ -16,12 +16,17 @@ func TestWildcardCertificateDomains(t *testing.T) {
 		{
 			name:   "configured domain",
 			config: &config.Config{Domain: "xuans.com", WebDomain: "web.xuans.com", Domains: []string{"xuans.com", "other.example"}},
-			want:   []string{"*.xuans.com"},
+			want:   []string{"xuans.com", "*.xuans.com"},
 		},
 		{
 			name:   "trimmed wildcard domain",
 			config: &config.Config{Domain: "  *.xuans.com.  "},
-			want:   []string{"*.xuans.com"},
+			want:   []string{"xuans.com", "*.xuans.com"},
+		},
+		{
+			name:   "case normalized domain",
+			config: &config.Config{Domain: "Example.COM"},
+			want:   []string{"example.com", "*.example.com"},
 		},
 		{
 			name:   "empty domain",
@@ -68,8 +73,53 @@ func TestCertificateDomainsFollowChallengeMode(t *testing.T) {
 
 	cfg.SSLType = config.SSLTypeAutoDNS
 	dnsDomains := certificateDomains(cfg)
-	if len(dnsDomains) != 1 || dnsDomains[0] != "*.xuans.com" {
+	if len(dnsDomains) != 2 || dnsDomains[0] != "xuans.com" || dnsDomains[1] != "*.xuans.com" {
 		t.Fatalf("unexpected DNS domains: %v", dnsDomains)
+	}
+}
+
+func TestDNSWildcardConfigurationCoverage(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		webDomain string
+		domains   []string
+		valid     bool
+	}{
+		{name: "root", webDomain: "example.com", valid: true},
+		{name: "normalized root", webDomain: "Example.COM.", valid: true},
+		{name: "subdomain", webDomain: "web.example.com", domains: []string{"example.com"}, valid: true},
+		{name: "nested web", webDomain: "a.web.example.com"},
+		{name: "foreign web", webDomain: "other.example"},
+		{name: "nested mail services", webDomain: "web.example.com", domains: []string{"mail.example.com"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := &config.Config{Domain: "example.com", WebDomain: test.webDomain, Domains: test.domains, SSLType: config.SSLTypeAutoDNS}
+			if err := validateWildcardConfiguration(cfg); (err == nil) != test.valid {
+				t.Fatalf("证书域名覆盖校验结果不符：%v", err)
+			}
+		})
+	}
+}
+
+func TestDNSChallengeRootAndWildcardKeepBothRecords(t *testing.T) {
+	challenge := &DNSChallenge{authInfo: map[string]*authInfo{}}
+	for _, item := range []struct{ domain, token, key string }{
+		{"example.com", "root-token", "root-key"},
+		{"*.example.com", "wildcard-token", "wildcard-key"},
+	} {
+		if err := challenge.Present(item.domain, item.token, item.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records := challenge.GetDNSSettings(nil)
+	if len(records) != 2 || records[0].Host != records[1].Host || records[0].Value == records[1].Value {
+		t.Fatalf("根域名和泛域名必须保留同一主机名的两条独立 TXT 记录：%v", records)
+	}
+	if err := challenge.CleanUp("example.com", "root-token", "root-key"); err != nil {
+		t.Fatal(err)
+	}
+	if records = challenge.GetDNSSettings(nil); len(records) != 1 {
+		t.Fatal("清理根域名验证不能删除泛域名验证记录")
 	}
 }
 

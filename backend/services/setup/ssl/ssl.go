@@ -329,16 +329,16 @@ func certificateMatchesConfiguredDomains(cert *x509.Certificate, cfg *config.Con
 	return true
 }
 
-// 自动 DNS 只申请主域泛域名；不覆盖的服务地址是配置错误，不能靠重复续期修复。
+// 自动 DNS 同时申请主域名和泛域名；不覆盖的服务地址不能靠重复续期修复。
 func validateWildcardConfiguration(cfg *config.Config) error {
 	if cfg == nil || cfg.EffectiveSSLType() != config.SSLTypeAutoDNS {
 		return nil
 	}
 	domains := wildcardCertificateDomains(cfg)
-	if len(domains) != 1 {
+	if len(domains) != 2 {
 		return newUserCertificateError("自动 DNS 证书需要有效的主域名")
 	}
-	base := strings.TrimPrefix(domains[0], "*.")
+	base := domains[0]
 	covered := func(host string) bool {
 		host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
 		suffix := "." + strings.ToLower(base)
@@ -346,7 +346,10 @@ func validateWildcardConfiguration(cfg *config.Config) error {
 		return strings.HasSuffix(host, suffix) && label != "" && !strings.Contains(label, ".")
 	}
 	if cfg.WebDomain != "" && !covered(cfg.WebDomain) {
-		return newUserCertificateError("Web 域名必须是主域名的一级子域名，泛域名证书不覆盖根域名或多级子域名")
+		webDomain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(cfg.WebDomain), "."))
+		if webDomain != base {
+			return newUserCertificateError("Web 域名必须是主域名或其一级子域名，泛域名证书不覆盖多级子域名")
+		}
 	}
 	for _, domain := range cfg.Domains {
 		if !covered("smtp."+domain) || !covered("imap."+domain) || !covered("pop."+domain) {
@@ -360,14 +363,14 @@ func wildcardCertificateDomains(cfg *config.Config) []string {
 		return nil
 	}
 
-	domain := strings.TrimSpace(cfg.Domain)
+	domain := strings.ToLower(strings.TrimSpace(cfg.Domain))
 	domain = strings.TrimSuffix(domain, ".")
 	domain = strings.TrimPrefix(domain, "*.")
 	if domain == "" {
 		return nil
 	}
 
-	return []string{"*." + domain}
+	return []string{domain, "*." + domain}
 }
 
 func certificateDomains(cfg *config.Config) []string {

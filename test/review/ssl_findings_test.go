@@ -97,7 +97,7 @@ func TestAuditACMEBundledChainMustBeImportable(t *testing.T) {
 func TestAuditFreshWildcardCertificateMustNotRequireRenewal(t *testing.T) {
 	auditSSLRoot(t)
 	cfg := &config.Config{Domain: "example.test", WebDomain: "web.example.test", SSLType: config.SSLTypeAutoDNS}
-	resource := auditCertificateChain(t, "*.example.test")
+	resource := auditCertificateChain(t, "example.test", "*.example.test")
 	// 不再附加 issuer，以隔离完整链重复问题和续期判断问题。
 	if err := writeCertificateFiles(cfg, resource.PrivateKey, resource.Certificate, nil); err != nil {
 		t.Fatal(err)
