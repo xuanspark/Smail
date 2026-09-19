@@ -30,7 +30,7 @@ func ReadProtectedPassword() (string, error) {
 }
 
 func askPassword(prompt string) (string, error) {
-	value, err := ReadProtectedInput(prompt)
+	value, err := readSystemdInput(prompt, "no")
 	if err != nil {
 		return "", err
 	}
@@ -40,8 +40,12 @@ func askPassword(prompt string) (string, error) {
 	return value, nil
 }
 
-func ReadProtectedInput(prompt string) (string, error) {
-	command := exec.Command("systemd-ask-password", "--no-tty", prompt)
+func ReadVisibleInput(prompt string) (string, error) {
+	return readSystemdInput(prompt, "yes")
+}
+
+func readSystemdInput(prompt, echo string) (string, error) {
+	command := exec.Command("systemd-ask-password", "--no-tty", "--echo="+echo, prompt)
 	command.Stderr = io.Discard
 	output, err := command.Output()
 	if err != nil {

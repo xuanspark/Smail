@@ -18,7 +18,7 @@ PrivateNetwork=true
 PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
-# 密码代理只在本机临时目录收集无回显输入，不允许写入业务配置或数据库。
+# 密码代理在本机临时目录收集交互输入；验证内容可见，新密码不回显，且均不写入业务配置或数据库。
 ReadWritePaths=/run/systemd/ask-password
 ProtectKernelTunables=true
 ProtectKernelModules=true

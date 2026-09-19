@@ -43,7 +43,7 @@ func run(args []string) int {
 		return 1
 	}
 	defer conn.Close()
-	if err := adminreset.SendVerifiedReset(ctx, conn, adminreset.ReadProtectedInput, adminreset.ReadProtectedPassword); err != nil {
+	if err := adminreset.SendVerifiedReset(ctx, conn, adminreset.ReadVisibleInput, adminreset.ReadProtectedPassword); err != nil {
 		fmt.Fprintln(os.Stderr, "超级管理员重置失败：", safeError(err))
 		return 1
 	}

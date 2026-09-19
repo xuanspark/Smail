@@ -3,9 +3,11 @@
 package adminreset
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"git.pcux.cn/xuans/Smail/utils/password"
 
@@ -35,9 +37,18 @@ func ReadProtectedPassword() (string, error) {
 }
 
 func readWindowsPassword(prompt string) (string, error) {
-	value, err := ReadProtectedInput(prompt)
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", errors.New("受保护的密码输入需要交互式控制台")
+	}
+	fmt.Fprint(os.Stderr, prompt+": ")
+	valueBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
 	if err != nil {
-		return "", err
+		return "", errors.New("受保护的密码输入失败")
+	}
+	value := string(valueBytes)
+	for index := range valueBytes {
+		valueBytes[index] = 0
 	}
 	if password.ValidateUserPassword(value) != nil {
 		return "", errors.New("密码长度必须为 8 到 12 个字符")
@@ -45,19 +56,14 @@ func readWindowsPassword(prompt string) (string, error) {
 	return value, nil
 }
 
-func ReadProtectedInput(prompt string) (string, error) {
+func ReadVisibleInput(prompt string) (string, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return "", errors.New("安全验证需要交互式控制台")
 	}
 	fmt.Fprint(os.Stderr, prompt+": ")
-	value, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	value, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
-		return "", errors.New("受保护的密码输入失败")
+		return "", errors.New("读取安全验证输入失败")
 	}
-	normalized := string(value)
-	for i := range value {
-		value[i] = 0
-	}
-	return normalized, nil
+	return strings.TrimSuffix(strings.TrimSuffix(value, "\n"), "\r"), nil
 }
