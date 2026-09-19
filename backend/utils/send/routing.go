@@ -70,7 +70,8 @@ func deliverMX(hosts []string, attempt func(host, port string) error) error {
 func deliverMXContext(ctx stdcontext.Context, hosts []string, attempt func(host, port string) error) error {
 	var lastErr error
 	for _, host := range hosts {
-		for _, port := range []string{"25", "587", "465"} {
+		// 标准投递端口不可达时优先尝试隐式 TLS，避免先等待不提供欢迎响应的提交端口。
+		for _, port := range []string{"25", "465", "587"} {
 			if err := ctx.Err(); err != nil {
 				return err
 			}

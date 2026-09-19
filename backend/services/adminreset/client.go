@@ -14,6 +14,7 @@ import (
 var (
 	ErrVerificationUnavailable = errors.New("no verification method available")
 	ErrVerificationFailed      = errors.New("verification failed")
+	ErrEmailDeliveryFailed     = errors.New("verification email delivery failed")
 )
 
 func responseError(code string) error {
@@ -22,6 +23,8 @@ func responseError(code string) error {
 		return ErrVerificationUnavailable
 	case "VERIFICATION_FAILED":
 		return ErrVerificationFailed
+	case "EMAIL_DELIVERY_FAILED":
+		return ErrEmailDeliveryFailed
 	case "REPLAY_OR_EXPIRED":
 		return ErrExpiredSession
 	default:
@@ -30,6 +33,16 @@ func responseError(code string) error {
 }
 
 func SendVerifiedReset(ctx context.Context, conn net.Conn, input func(string) (string, error), readPassword func() (string, error)) error {
+	if input == nil {
+		return ErrInvalidRequest
+	}
+	return SendVerifiedResetWithInput(ctx, conn, func(_ context.Context, prompt string) (string, error) {
+		return input(prompt)
+	}, readPassword)
+}
+
+// SendVerifiedResetWithInput 允许邮件发送与验证码输入并行，发送失败会取消输入。
+func SendVerifiedResetWithInput(ctx context.Context, conn net.Conn, input func(context.Context, string) (string, error), readPassword func() (string, error)) error {
 	if conn == nil || input == nil || readPassword == nil {
 		return ErrInvalidRequest
 	}
@@ -57,7 +70,7 @@ func SendVerifiedReset(ctx context.Context, conn net.Conn, input func(string) (s
 		fmt.Fprintf(&prompt, "%d. %s\n", i+1, method.Label)
 	}
 	prompt.WriteString("\n选项：")
-	choice, err := input(prompt.String())
+	choice, err := input(ctx, prompt.String())
 	if err != nil {
 		return err
 	}
@@ -79,10 +92,17 @@ func SendVerifiedReset(ctx context.Context, conn net.Conn, input func(string) (s
 		}
 		return nil
 	}
-	if err := exchange(Request{Action: "select", Method: challenge.Methods[index-1].ID}); err != nil {
-		return err
+	method := challenge.Methods[index-1].ID
+	request := Request{Version: ProtocolVersion, Nonce: challenge.Nonce, Action: "select", Method: method}
+	var code string
+	if strings.HasPrefix(method, "email:") {
+		code, err = selectEmailAndReadCode(ctx, conn, request, input)
+	} else {
+		if err = exchange(request); err != nil {
+			return err
+		}
+		code, err = input(ctx, "请输入所选方式的验证码或安全码")
 	}
-	code, err := input("请输入所选方式的验证码或安全码")
 	if err != nil {
 		return err
 	}
@@ -107,4 +127,37 @@ func SendVerifiedReset(ctx context.Context, conn net.Conn, input func(string) (s
 		return responseError(response.Code)
 	}
 	return nil
+}
+
+func selectEmailAndReadCode(ctx context.Context, conn net.Conn, request Request, input func(context.Context, string) (string, error)) (string, error) {
+	if err := json.NewEncoder(conn).Encode(request); err != nil {
+		return "", err
+	}
+	inputContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		response, err := DecodeResponse(conn)
+		if err == nil && !response.OK {
+			err = responseError(response.Code)
+		}
+		if err != nil {
+			cancel()
+		}
+		result <- err
+	}()
+	code, inputErr := input(inputContext, "正在发送邮件验证码，收到后输入\n请输入邮件验证码")
+	if inputErr != nil {
+		// 取消输入时关闭本次连接，同时解除等待投递结果的读取。
+		_ = conn.Close()
+	}
+	deliveryErr := <-result
+	if deliveryErr != nil || inputErr != nil {
+		clearPassword(&code)
+		if deliveryErr != nil {
+			return "", deliveryErr
+		}
+		return "", inputErr
+	}
+	return code, nil
 }

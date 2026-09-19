@@ -93,3 +93,17 @@ func TestRetryable(t *testing.T) {
 		}
 	}
 }
+
+func TestDeliverMXUsesTLSFallbackBeforeSubmissionPort(t *testing.T) {
+	var calls []string
+	err := deliverMX([]string{"mx.example.com"}, func(host, port string) error {
+		calls = append(calls, port)
+		if port == "465" {
+			return nil
+		}
+		return &net.OpError{Op: "dial", Err: io.EOF}
+	})
+	if err != nil || !reflect.DeepEqual(calls, []string{"25", "465"}) {
+		t.Fatalf("加密路由可用时不应等待提交端口：calls=%v err=%v", calls, err)
+	}
+}

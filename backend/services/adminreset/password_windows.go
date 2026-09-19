@@ -4,6 +4,7 @@ package adminreset
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -67,3 +68,27 @@ func ReadVisibleInput(prompt string) (string, error) {
 	}
 	return strings.TrimSuffix(strings.TrimSuffix(value, "\n"), "\r"), nil
 }
+
+func ReadVisibleInputContext(ctx context.Context, prompt string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	type result struct {
+		value string
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		value, err := ReadVisibleInput(prompt)
+		done <- result{value: value, err: err}
+	}()
+	select {
+	case value := <-done:
+		return value.value, value.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// Windows 控制台直接显示标准输出，无需额外的密码代理确认。
+func ShowResult(string) {}

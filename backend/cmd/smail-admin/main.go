@@ -39,16 +39,19 @@ func run(args []string) int {
 	defer cancel()
 	conn, err := adminreset.DialControl(ctx, adminreset.DefaultControlPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "超级管理员重置通道不可用")
-		return 1
+		return finishReset("超级管理员重置通道不可用", 1)
 	}
 	defer conn.Close()
-	if err := adminreset.SendVerifiedReset(ctx, conn, adminreset.ReadVisibleInput, adminreset.ReadProtectedPassword); err != nil {
-		fmt.Fprintln(os.Stderr, "超级管理员重置失败：", safeError(err))
-		return 1
+	if err := adminreset.SendVerifiedResetWithInput(ctx, conn, adminreset.ReadVisibleInputContext, adminreset.ReadProtectedPassword); err != nil {
+		return finishReset("超级管理员重置失败："+safeError(err), 1)
 	}
-	fmt.Println("超级管理员密码重置成功")
-	return 0
+	return finishReset("超级管理员密码重置成功，请使用新密码登录", 0)
+}
+
+func finishReset(message string, code int) int {
+	fmt.Fprintln(os.Stderr, message)
+	adminreset.ShowResult(message)
+	return code
 }
 
 func runDoctor() int {
@@ -90,6 +93,9 @@ func safeError(err error) string {
 	}
 	if errors.Is(err, adminreset.ErrVerificationFailed) {
 		return "安全验证失败、已过期或请求过于频繁，请稍后重新启动重置"
+	}
+	if errors.Is(err, adminreset.ErrEmailDeliveryFailed) {
+		return "邮件验证码发送失败或请求过于频繁，请稍后重试或选择其他验证方式"
 	}
 	if errors.Is(err, adminreset.ErrExpiredSession) {
 		return "重置会话已过期，请重新启动重置"

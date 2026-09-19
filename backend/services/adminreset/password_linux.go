@@ -3,10 +3,13 @@
 package adminreset
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
@@ -42,14 +45,31 @@ func askPassword(prompt string) (string, error) {
 }
 
 func ReadVisibleInput(prompt string) (string, error) {
-	return readSystemdInput(prompt, "yes")
+	return ReadVisibleInputContext(context.Background(), prompt)
+}
+
+func ReadVisibleInputContext(ctx context.Context, prompt string) (string, error) {
+	return readSystemdInputContext(ctx, prompt, "yes")
+}
+
+// ShowResult 使用当前 systemctl 的密码代理显示结果，避免提示只进入系统日志。
+func ShowResult(message string) {
+	_, _ = readSystemdInputContext(context.Background(), message+"\n按回车结束", "yes", "--timeout=30")
 }
 
 func readSystemdInput(prompt, echo string) (string, error) {
+	return readSystemdInputContext(context.Background(), prompt, echo)
+}
+
+func readSystemdInputContext(ctx context.Context, prompt, echo string, options ...string) (string, error) {
 	prompt = strings.TrimRight(prompt, ":： ") + "："
 	// systemd 代理把提示保存在单行配置中，用终端换行控制显示列表，避免配置被拆行。
 	prompt = strings.ReplaceAll(strings.ReplaceAll(prompt, "\r\n", "\n"), "\n", "\x1bE")
-	command := exec.Command("systemd-ask-password", "--no-tty", "--echo="+echo, prompt)
+	args := append([]string{"--no-tty", "--echo=" + echo}, options...)
+	command := exec.CommandContext(ctx, "systemd-ask-password", append(args, prompt)...)
+	// 先允许代理清理请求文件，避免取消后继续弹出已经失效的输入提示。
+	command.Cancel = func() error { return command.Process.Signal(syscall.SIGTERM) }
+	command.WaitDelay = time.Second
 	command.Stderr = io.Discard
 	output, err := command.Output()
 	if err != nil {

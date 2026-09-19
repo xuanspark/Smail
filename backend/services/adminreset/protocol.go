@@ -276,6 +276,10 @@ func handleResetConnection(conn io.ReadWriter, setDeadline func(time.Time) error
 		}
 		clearPassword(&request.Code)
 		if err != nil {
+			if action == "select" && strings.HasPrefix(request.Method, "email:") {
+				_ = EncodeResponse(conn, Response{Code: "EMAIL_DELIVERY_FAILED", Message: "邮件验证码发送失败或请求过于频繁，请稍后重试或选择其他验证方式"})
+				return
+			}
 			_ = EncodeResponse(conn, Response{Code: "VERIFICATION_FAILED", Message: "安全验证失败、已过期或请求过于频繁，请稍后重试"})
 			return
 		}
