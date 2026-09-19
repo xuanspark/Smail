@@ -38,6 +38,10 @@ func ExportProjectTLS(root, destination string) error {
 	if err != nil || resolvedSource != sourceDirectory {
 		return ErrUnsafeSSLFile
 	}
+	sourceInfo, err := os.Stat(sourceDirectory)
+	if err != nil || !sourceInfo.IsDir() || sourceInfo.Mode().Perm()&0022 != 0 {
+		return ErrUnsafeSSLFile
+	}
 	storage, err := os.OpenRoot(sourceDirectory)
 	if err != nil {
 		return ErrUnsafeSSLFile
@@ -45,7 +49,7 @@ func ExportProjectTLS(root, destination string) error {
 	defer storage.Close()
 	read := func(name string) ([]byte, error) {
 		info, err := storage.Lstat(name)
-		if err != nil || !info.Mode().IsRegular() || info.Size() > maxManagedSSLFileSize || info.Mode().Perm()&0077 != 0 {
+		if err != nil || !info.Mode().IsRegular() || hasMultipleInfoLinks(info) || info.Size() > maxManagedSSLFileSize || info.Mode().Perm()&0077 != 0 {
 			return nil, ErrUnsafeSSLFile
 		}
 		file, err := storage.Open(name)
@@ -54,7 +58,7 @@ func ExportProjectTLS(root, destination string) error {
 		}
 		defer file.Close()
 		opened, err := file.Stat()
-		if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || opened.Mode().Perm()&0077 != 0 {
+		if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() || hasMultipleInfoLinks(opened) || opened.Mode().Perm()&0077 != 0 {
 			return nil, ErrUnsafeSSLFile
 		}
 		data, err := io.ReadAll(io.LimitReader(file, maxManagedSSLFileSize+1))
@@ -62,7 +66,7 @@ func ExportProjectTLS(root, destination string) error {
 			return nil, ErrUnsafeSSLFile
 		}
 		after, err := file.Stat()
-		if err != nil || !os.SameFile(opened, after) || after.Size() != int64(len(data)) || !opened.ModTime().Equal(after.ModTime()) || after.Mode().Perm()&0077 != 0 {
+		if err != nil || !os.SameFile(opened, after) || hasMultipleInfoLinks(after) || after.Size() != int64(len(data)) || !opened.ModTime().Equal(after.ModTime()) || after.Mode().Perm()&0077 != 0 {
 			return nil, ErrUnsafeSSLFile
 		}
 		return data, nil
@@ -96,7 +100,7 @@ func ExportProjectTLS(root, destination string) error {
 	defer output.Close()
 	name := filepath.Base(destination)
 	if info, err := output.Lstat(name); err == nil {
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		if !info.Mode().IsRegular() || hasMultipleInfoLinks(info) || info.Mode().Perm()&0077 != 0 {
 			return ErrUnsafeSSLFile
 		}
 		previous, err := output.ReadFile(name)

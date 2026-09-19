@@ -81,6 +81,16 @@ func TestExportProjectTLSKeepsOldBundleOnInvalidInput(t *testing.T) {
 	if err := ExportProjectTLS(root, filepath.Join(link, "tls.pem")); err == nil {
 		t.Fatal("linked output directory accepted")
 	}
+	hardLink := filepath.Join(t.TempDir(), "linked.key")
+	if err := os.Link(ref.PrivateKeyPath, hardLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := ExportProjectTLS(root, destination); err == nil {
+		t.Fatal("hard-linked private key accepted")
+	}
+	if err := os.Remove(hardLink); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(ref.PrivateKeyPath, []byte("invalid"), 0600); err != nil {
 		t.Fatal(err)
 	}

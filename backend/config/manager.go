@@ -329,8 +329,10 @@ func secureManagerConfigDirectory(root string) (string, error) {
 	}
 	// 目录权限 0700 是配置目录的最低要求；G302 将目录误判为文件。
 	// #nosec G302
-	if err := os.Chmod(directory, 0700); err != nil {
-		return "", err
+	if info.Mode().Perm() != 0700 {
+		if err := os.Chmod(directory, 0700); err != nil {
+			return "", err
+		}
 	}
 	return directory, nil
 }
