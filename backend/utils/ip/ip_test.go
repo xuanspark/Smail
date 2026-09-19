@@ -1,12 +1,57 @@
 package ip
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestPublicIPFallbackCancelsUnavailableService(t *testing.T) {
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/slow" {
+			close(started)
+			<-r.Context().Done()
+			close(cancelled)
+			return
+		}
+		<-started
+		_, _ = w.Write([]byte("8.8.4.4\n"))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	value, err := fetchPublicIPFromEndpoints(ctx, server.Client(), []string{server.URL + "/slow", server.URL + "/fallback"}, false)
+	if err != nil || value != "8.8.4.4" {
+		t.Fatalf("fallback address = %q, err = %v", value, err)
+	}
+	select {
+	case <-cancelled:
+	case <-ctx.Done():
+		t.Fatal("unused public IP request was not cancelled")
+	}
+}
+
+func TestPublicIPFallbackRejectsPrivateAddressAndHonorsDeadline(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/private" {
+			_, _ = w.Write([]byte("192.168.1.10"))
+			return
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	value, err := fetchPublicIPFromEndpoints(ctx, server.Client(), []string{server.URL + "/private", server.URL + "/slow"}, false)
+	if err == nil || value != "" {
+		t.Fatalf("invalid fallback address = %q, err = %v", value, err)
+	}
+}
 
 func TestFetchPublicIPAcceptsPublicAddress(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

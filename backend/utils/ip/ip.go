@@ -1,6 +1,7 @@
 package ip
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -14,6 +15,8 @@ import (
 const (
 	publicIPv4Endpoint = "https://api.ipify.org"
 	publicIPv6Endpoint = "https://api6.ipify.org"
+	publicIPv4Fallback = "https://ipv4.icanhazip.com"
+	publicIPv6Fallback = "https://ipv6.icanhazip.com"
 	maxIPResponseBytes = 64
 )
 
@@ -33,14 +36,14 @@ func GetIp() string {
 }
 
 func GetIPv4() string {
-	return getPublicIP(publicIPv4Endpoint, false)
+	return getPublicIP([]string{publicIPv4Endpoint, publicIPv4Fallback}, false)
 }
 
 func GetIPv6() string {
-	return getPublicIP(publicIPv6Endpoint, true)
+	return getPublicIP([]string{publicIPv6Endpoint, publicIPv6Fallback}, true)
 }
 
-func getPublicIP(endpoint string, wantIPv6 bool) string {
+func getPublicIP(endpoints []string, wantIPv6 bool) string {
 	cacheMu.Lock()
 	if wantIPv6 && cachedIPv6 != "" {
 		value := cachedIPv6
@@ -54,11 +57,9 @@ func getPublicIP(endpoint string, wantIPv6 bool) string {
 	}
 	cacheMu.Unlock()
 
-	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return ""
-	}
-	value, err := fetchPublicIPForFamily(publicIPClient, request, wantIPv6)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	value, err := fetchPublicIPFromEndpoints(ctx, publicIPClient, endpoints, wantIPv6)
 	if err != nil {
 		return ""
 	}
@@ -75,6 +76,34 @@ func getPublicIP(endpoint string, wantIPv6 bool) string {
 		cachedIPv4 = value
 	}
 	return cachedIPv4
+}
+
+// 多个 HTTPS 探测共享总超时，先返回有效公网地址，并取消其余请求。
+func fetchPublicIPFromEndpoints(ctx context.Context, client *http.Client, endpoints []string, wantIPv6 bool) (string, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan string, len(endpoints))
+	for _, endpoint := range endpoints {
+		go func(endpoint string) {
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			value := ""
+			if err == nil {
+				value, _ = fetchPublicIPForFamily(client, request, wantIPv6)
+			}
+			results <- value
+		}(endpoint)
+	}
+	for range endpoints {
+		select {
+		case value := <-results:
+			if value != "" {
+				return value, nil
+			}
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	return "", errors.New("public IP services are unavailable")
 }
 
 func fetchPublicIPForFamily(client *http.Client, request *http.Request, wantIPv6 bool) (string, error) {
