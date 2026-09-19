@@ -182,11 +182,17 @@ func copyPortableTables(ctx context.Context, source *sql.Conn, target *sql.DB, p
 			return err
 		}
 		if plan.Target.Type == config.DatabaseTypePostgreSQL && types["id"] != "" {
-			// 显式复制主键后必须推进序列，否则重启后的新增记录会冲突。
 			quoted := quotePostgreSQLIdentifier(table)
-			query := "SELECT setval(pg_get_serial_sequence($1, 'id'), COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM " + quoted
-			if _, err := transaction.ExecContext(ctx, query, quoted); err != nil {
+			var sequence sql.NullString
+			if err := transaction.QueryRowContext(ctx, "SELECT pg_get_serial_sequence($1, 'id')", quoted).Scan(&sequence); err != nil {
 				return ErrSQLDataVerification
+			}
+			// 只有绑定序列的主键需要推进；日志等文本主键不能参与数值聚合。
+			if sequence.Valid {
+				query := "SELECT setval($1::regclass, COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM " + quoted
+				if _, err := transaction.ExecContext(ctx, query, sequence.String); err != nil {
+					return ErrSQLDataVerification
+				}
 			}
 		}
 	}

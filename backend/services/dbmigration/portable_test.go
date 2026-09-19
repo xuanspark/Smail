@@ -34,6 +34,7 @@ func portableFixture(t *testing.T) (string, config.DatabaseConfig) {
 		`INSERT INTO "user" (id,account,name,password) VALUES (40,'review','测试','hash')`,
 		`INSERT INTO email (id,subject,text,create_time) VALUES (82,'中文主题','正文😀','2026-09-05 12:30:00.123456')`,
 		`INSERT INTO sessions (token,data,expiry) VALUES ('token',x'0001ff',julianday('2026-09-12 12:00:00'))`,
+		`INSERT INTO mail_log (id,created_at,kind,actor_id,action,section,result,payload) VALUES ('migration-log',1,'mail','40','迁移验证','','success','{"message":"中文日志"}')`,
 		`INSERT INTO plugin_user_setting (plugin_id,user_id,schema_version,settings_ciphertext,settings_hash,enabled,created_at,updated_at) VALUES ('test',40,1,'cipher','hash',1,'2026-09-05 12:00:00','2026-09-05 12:00:00')`,
 	} {
 		if _, err := database.Exec(query); err != nil {

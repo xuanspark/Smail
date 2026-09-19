@@ -94,9 +94,11 @@ func runPortableIntegrationChain(t *testing.T, inputs []TargetInput) {
 		}
 		var subject string
 		queryErr := connection.QueryRowContext(ctx, "SELECT subject FROM email WHERE id=82").Scan(&subject)
+		var logPayload string
+		logErr := connection.QueryRowContext(ctx, "SELECT payload FROM mail_log WHERE id='migration-log'").Scan(&logPayload)
 		_, insertErr := connection.ExecContext(ctx, "INSERT INTO "+quoteDatabaseIdentifier(target.Type, "user")+" (account,name,password) VALUES ('next_hop_"+string(rune('a'+index))+"','sequence','test-only')")
 		_ = connection.Close()
-		if queryErr != nil || subject != "中文主题" || insertErr != nil {
+		if queryErr != nil || subject != "中文主题" || logErr != nil || logPayload != `{"message":"中文日志"}` || insertErr != nil {
 			t.Fatal("target content or identity sequence was not preserved")
 		}
 		source = target

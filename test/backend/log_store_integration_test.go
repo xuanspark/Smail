@@ -73,7 +73,17 @@ func TestLogStoreServerDatabaseIntegration(t *testing.T) {
 				t.Fatal("dedicated test database is unavailable")
 			}
 			migrations := migration.DefaultMigrations()
-			for _, statement := range migrations[len(migrations)-2].StatementsFor(test.dialect) {
+			var logSchema []string
+			for _, item := range migrations {
+				if item.Name == "create_managed_logs" {
+					logSchema = item.StatementsFor(test.dialect)
+					break
+				}
+			}
+			if len(logSchema) == 0 {
+				t.Fatal("managed log schema migration is missing")
+			}
+			for _, statement := range logSchema {
 				if strings.HasPrefix(statement, "CREATE TABLE IF NOT EXISTS ") {
 					statement = strings.Replace(statement, "CREATE TABLE IF NOT EXISTS ", "CREATE TEMPORARY TABLE ", 1)
 				}
