@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,13 @@ type aliDNSRecord struct {
 	ID    string
 	Name  string
 	Value string
+}
+
+type aliDNSListedRecord struct {
+	ID    string `json:"RecordId"`
+	Name  string `json:"RR"`
+	Type  string `json:"Type"`
+	Value string `json:"Value"`
 }
 
 // 每次签发独立记录创建结果，清理时只删除本实例创建且内容未被修改的记录。
@@ -121,17 +129,11 @@ func (provider *aliDNSChallenge) CleanUp(domain, token, keyAuth string) error {
 	if !exists {
 		return nil
 	}
-	var current struct {
-		RecordID string `json:"RecordId"`
-		Domain   string `json:"DomainName"`
-		Name     string `json:"RR"`
-		Type     string `json:"Type"`
-		Value    string `json:"Value"`
-	}
-	if err := provider.call("DescribeDomainRecordInfo", url.Values{"RecordId": {created.ID}}, &current); err != nil {
+	current, err := provider.findCreatedRecord(created)
+	if err != nil {
 		return err
 	}
-	if current.RecordID != created.ID || current.Domain != provider.zone || current.Name != created.Name || current.Type != "TXT" || current.Value != created.Value {
+	if current.ID != created.ID || current.Name != created.Name || current.Type != "TXT" || current.Value != created.Value {
 		return errors.New("DNS 挑战记录已被修改，保留记录并停止自动清理")
 	}
 	if err := provider.call("DeleteDomainRecord", url.Values{"RecordId": {created.ID}}, nil); err != nil {
@@ -139,6 +141,34 @@ func (provider *aliDNSChallenge) CleanUp(domain, token, keyAuth string) error {
 	}
 	delete(provider.records, key)
 	return nil
+}
+
+// 使用指定托管区域的记录列表复核，不要求额外的跨区域单记录查询权限。
+func (provider *aliDNSChallenge) findCreatedRecord(created aliDNSRecord) (aliDNSListedRecord, error) {
+	const pageSize = 500
+	for page := 1; page <= 20; page++ {
+		var response struct {
+			Total   int `json:"TotalCount"`
+			Records struct {
+				Record []aliDNSListedRecord `json:"Record"`
+			} `json:"DomainRecords"`
+		}
+		if err := provider.call("DescribeDomainRecords", url.Values{
+			"DomainName": {provider.zone}, "RRKeyWord": {created.Name}, "Type": {"TXT"},
+			"PageSize": {strconv.Itoa(pageSize)}, "PageNumber": {strconv.Itoa(page)},
+		}, &response); err != nil {
+			return aliDNSListedRecord{}, err
+		}
+		for _, record := range response.Records.Record {
+			if record.ID == created.ID {
+				return record, nil
+			}
+		}
+		if page*pageSize >= response.Total || len(response.Records.Record) == 0 {
+			break
+		}
+	}
+	return aliDNSListedRecord{}, errors.New("无法核对本次 DNS 挑战记录，已停止自动清理")
 }
 
 func aliDNSPercentEncode(value string) string {

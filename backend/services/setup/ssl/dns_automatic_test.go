@@ -33,12 +33,18 @@ func TestAutomaticDNSCleansOnlyOwnedUnchangedRecords(t *testing.T) {
 			id = fmt.Sprint(adds)
 			records[id] = aliDNSRecord{ID: id, Name: r.Form.Get("RR"), Value: r.Form.Get("Value")}
 			_ = json.NewEncoder(w).Encode(map[string]string{"RecordId": id})
-		case "DescribeDomainRecordInfo":
-			record := records[id]
-			if tamper {
-				record.Value = "changed-by-user"
+		case "DescribeDomainRecords":
+			if r.Form.Get("DomainName") != "example.com" || r.Form.Get("Type") != "TXT" || r.Form.Get("PageNumber") == "" {
+				t.Error("record lookup must be scoped to the configured zone")
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"RecordId": id, "DomainName": "example.com", "RR": record.Name, "Type": "TXT", "Value": record.Value})
+			listed := make([]aliDNSListedRecord, 0, len(records))
+			for _, record := range records {
+				if tamper {
+					record.Value = "changed-by-user"
+				}
+				listed = append(listed, aliDNSListedRecord{ID: record.ID, Name: record.Name, Type: "TXT", Value: record.Value})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"TotalCount": len(listed), "DomainRecords": map[string]any{"Record": listed}})
 		case "DeleteDomainRecord":
 			if failDelete {
 				w.WriteHeader(503)
