@@ -1,5 +1,6 @@
 """SQL 迁移验收器权限、摘要和边界测试，不连接真实数据库。"""
 
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -9,9 +10,62 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import runtime_sql_migration as migration
+import runtime_review as review
 
 
 class RuntimeSQLMigrationTest(unittest.TestCase):
+    def test_cross_engine_requires_explicit_sql_migration(self):
+        for source, target in (('mysql', 'postgres'), ('postgres', 'mysql')):
+            self.assertEqual(review.migration_kind(source, target, True, False), target)
+        self.assertEqual(review.migration_kind('sqlite', None, True, False), 'sqlite')
+        for arguments in (('sqlite', 'mysql', True, False), ('mysql', 'postgres', False, False),
+                          ('mysql', 'postgres', True, True), ('mysql', 'sqlite', True, False)):
+            with self.assertRaises(ValueError):
+                review.migration_kind(*arguments)
+
+    def test_all_database_bridges_closed_even_when_one_fails(self):
+        first, second = Mock(), Mock()
+        second.close.side_effect = RuntimeError('bridge failure')
+        result = {}
+        review.stop_database_bridges({3306: first, 5432: second}, result)
+        first.close.assert_called_once_with()
+        second.close.assert_called_once_with()
+        self.assertFalse(result['database_bridge_stopped'])
+        self.assertEqual(result['database_bridge_ports_stopped'], [3306])
+        self.assertEqual(result['cleanup_errors'], [{'action': 'database_bridge', 'port': 5432, 'error': 'RuntimeError'}])
+
+    def test_both_database_bridges_reported_stopped(self):
+        result = {}
+        review.stop_database_bridges({3306: Mock(), 5432: Mock()}, result)
+        self.assertTrue(result['database_bridge_stopped'])
+        self.assertEqual(result['database_bridge_ports_stopped'], [3306, 5432])
+        self.assertFalse(result['cleanup_errors'])
+
+    def test_history_compares_complete_raw_bytes_across_engines(self):
+        payload = b'{"text":"\\u4e2d\\u6587","zero":"\\u0000"}'
+        digest = hashlib.sha256(payload).hexdigest().encode()
+        row = [value.hex() for value in (b'backup', b'identifier', payload, digest)]
+        records = []
+        for kind in ('mysql', 'postgres'):
+            database = migration.SQLFixture(kind)
+            with patch.object(database, 'query', return_value=json.dumps(row)) as query:
+                records.append(migration.history_rows(database))
+            for column in ('kind', 'id', 'payload', 'digest'):
+                self.assertIn(column, query.call_args.args[0])
+        self.assertEqual(records[0], records[1])
+
+    def test_invalid_history_fails_instead_of_skipping(self):
+        database = migration.SQLFixture('mysql')
+        valid = [value.hex() for value in (b'backup', b'id', b'{}', hashlib.sha256(b'{}').hexdigest().encode())]
+        invalid = [[], [None] * 4, ['xyz'] * 4, valid[:2] + [b'corrupt'.hex(), valid[3]]]
+        for row in invalid:
+            with patch.object(database, 'query', return_value=json.dumps(row)):
+                with self.assertRaises(AssertionError):
+                    migration.history_rows(database)
+        with patch.object(database, 'query', return_value=json.dumps(valid) + '\n' + json.dumps(valid)):
+            with self.assertRaises(AssertionError):
+                migration.history_rows(database)
+
     def test_target_creation_does_not_precreate_database(self):
         for kind in ('mysql', 'postgres'):
             target = migration.MigrationTarget(kind)

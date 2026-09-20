@@ -72,6 +72,27 @@ def collect_and_stop(result, unit, probe_unit, proxy_unit=None):
         result['cleanup_errors'] = stop_test_units(names)
 
 
+def migration_kind(source, target, enabled, interrupted):
+    if target is None:
+        return source
+    if not enabled or interrupted or source == 'sqlite' or target not in ('mysql', 'postgres'):
+        raise ValueError('跨引擎目标必须用于独立 SQL 迁移验收')
+    return target
+
+
+def stop_database_bridges(bridges, result):
+    errors = result.setdefault('cleanup_errors', [])
+    closed = []
+    for port, bridge in reversed(list(bridges.items())):
+        try:
+            bridge.close()
+            closed.append(port)
+        except Exception as error:
+            errors.append({'action': 'database_bridge', 'port': port, 'error': type(error).__name__})
+    result['database_bridge_ports_stopped'] = sorted(closed)
+    result['database_bridge_stopped'] = bool(bridges) and len(closed) == len(bridges)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--main-sha', required=True)
@@ -82,7 +103,12 @@ def main():
     parser.add_argument('--migration', action='store_true')
     parser.add_argument('--interruption', action='store_true')
     parser.add_argument('--database-type', choices=('sqlite', 'mysql', 'postgres'), default='sqlite')
+    parser.add_argument('--migration-target-type', choices=('mysql', 'postgres'))
     args = parser.parse_args()
+    try:
+        target_kind = migration_kind(args.database_type, args.migration_target_type, args.migration, args.interruption)
+    except ValueError as error:
+        parser.error(str(error))
     if args.interruption and (not args.migration or args.database_type != 'sqlite'):
         parser.error('中断验收必须选择 SQLite 迁移独立场景')
     if args.migration and (args.nginx_template or args.restore):
@@ -165,7 +191,7 @@ def main():
     sql_fixture = None
     migration_target = None
     network_unit = None
-    bridge = None
+    bridges = {}
     result['database_type'] = args.database_type
     if args.database_type != 'sqlite':
         from runtime_sql import SQLFixture
@@ -173,8 +199,9 @@ def main():
         result['sql_database'] = sql_fixture.settings['name']
         if args.migration:
             from runtime_sql_migration import MigrationTarget
-            migration_target = MigrationTarget(args.database_type)
+            migration_target = MigrationTarget(target_kind)
             result['sql_target_database'] = migration_target.settings['name']
+            result['migration_target_type'] = target_kind
     if args.nginx_template:
         from runtime_proxy import prepare_nginx
         prepare_nginx(target, root, args.nginx_template)
@@ -230,7 +257,12 @@ def main():
         assert (root / 'smail').stat().st_ino != (live / 'smail').stat().st_ino
         if sql_fixture:
             from runtime_sql_bridge import DatabaseBridge
-            bridge = DatabaseBridge(int(pid), sql_fixture.port)
+            ports = {sql_fixture.port}
+            if migration_target:
+                ports.add(migration_target.port)
+            for port in sorted(ports):
+                bridges[port] = DatabaseBridge(int(pid), port)
+            result['database_bridge_ports'] = sorted(bridges)
         if args.nginx_template:
             subprocess.run([
                 'systemd-run', '--unit=' + proxy_unit, '--property=Type=exec',
@@ -304,12 +336,8 @@ def main():
                 result['integrity'] = {'error': type(error).__name__}
         finally:
             result.setdefault('cleanup_errors', [])
-            if bridge:
-                try:
-                    bridge.close()
-                    result['database_bridge_stopped'] = True
-                except Exception as error:
-                    result['cleanup_errors'].append({'action': 'database_bridge', 'error': type(error).__name__})
+            if bridges:
+                stop_database_bridges(bridges, result)
             if sql_fixture:
                 try:
                     sql_fixture.lock()

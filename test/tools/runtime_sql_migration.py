@@ -99,6 +99,27 @@ def fingerprint(database):
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 
+def history_rows(database):
+    # 两个引擎统一比较四列原始字节，不能直接比较各自的 BLOB JSON 表示。
+    if database.kind == 'mysql':
+        values = ','.join('LOWER(HEX(`' + column + '`))' for column in ('kind', 'id', 'payload', 'digest'))
+        query = 'SELECT JSON_ARRAY(' + values + ') FROM config_records'
+    else:
+        values = ["encode(convert_to(" + column + ",'UTF8'),'hex')" for column in ('kind', 'id')]
+        values += ["encode(payload,'hex')", "encode(convert_to(digest,'UTF8'),'hex')"]
+        query = 'SELECT json_build_array(' + ','.join(values) + ') FROM config_records'
+    rows = []
+    for line in database.query(query).splitlines():
+        values = json.loads(line)
+        assert isinstance(values, list) and len(values) == 4
+        assert all(isinstance(value, str) and re.fullmatch(r'(?:[0-9a-f]{2})+', value) for value in values)
+        payload, digest = bytes.fromhex(values[2]), bytes.fromhex(values[3]).decode('ascii')
+        assert hashlib.sha256(payload).hexdigest() == digest, '配置历史载荷与摘要不一致'
+        rows.append(json.dumps(values, separators=(',', ':')))
+    assert len(rows) == len(set(rows)), '配置历史出现重复完整行'
+    return sorted(rows)
+
+
 def assert_connections(source, target):
     counts = []
     for database in (source, target):
@@ -166,6 +187,7 @@ def verify_migration(root, unit, password, result, source, target):
     assert root.parent.parent == Path('/var/tmp') and re.fullmatch(r'smail-review-runtime-\d{8}-\d{6}', root.parent.name)
     assert root.name == 'instance' and not root.is_symlink() and root.resolve(strict=True) == root
     details = result['migration'] = {'passed': False, 'database_type': source.kind,
+                                     'target_type': target.kind, 'cross_engine': source.kind != target.kind,
                                      'source_database': source.settings['name'], 'target_database': target.settings['name']}
     settings = {'source': source.settings, 'target': target.settings}
     before = service_state(unit)
@@ -177,7 +199,7 @@ def verify_migration(root, unit, password, result, source, target):
     details['internal_restart_same_process'] = True
     details['connections_after_internal'] = assert_connections(source, target)
     source_digest = fingerprint(source)
-    history = table_rows(source, 'config_records')
+    history = history_rows(source)
     assert history
     details['internal'] = run_probe(root, unit, password, 'internal', settings)
     subprocess.run(['systemctl', 'restart', unit], check=True, timeout=55)
@@ -209,7 +231,7 @@ def verify_migration(root, unit, password, result, source, target):
     assert final['MainPID'] not in (before['MainPID'], restarted['MainPID'])
     details['connections_after_recovery'] = assert_connections(source, target)
     assert fingerprint(source) == source_digest
-    current = table_rows(target, 'config_records')
+    current = history_rows(target)
     assert set(history).issubset(current)
     details['history'] = {'source_records': len(history), 'target_records': len(current), 'all_source_records_equal': True}
     details.update(source_unchanged=True, target_account_restored=True, final_state=final, passed=True)
@@ -227,7 +249,7 @@ def main():
     settings = json.loads(sys.stdin.readline())
     assert set(settings) == {'source', 'target'}
     source, target = (SQLDatabase(settings[key]) for key in ('source', 'target'))
-    assert source.kind == target.kind and source.settings['name'] != target.settings['name']
+    assert source.settings['name'] != target.settings['name']
     result = (prepare(args.root, password, source, target) if args.phase == 'prepare' else
               verify_mail(args.root, password, args.phase, source, target))
     result['passed'] = True
