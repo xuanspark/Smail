@@ -106,6 +106,26 @@ def verify_message_content(raw, message_id, body, attachment):
     assert files[0].get_payload(decode=True) == attachment
 
 
+def verify_config_history(client):
+    # 首次安装不一定产生历史，必须通过正式变更接口写入并读回，不能只检查空表存在。
+    status = client.success('/api/v1/config/status', method='GET')
+    assert status['available']
+    payload = client.success('/api/v1/config/base', method='GET')
+    payload.pop('databasePasswordStatus', None)
+    payload['logLevel'] = 'warn' if payload.get('logLevel') != 'warn' else 'info'
+    request = {'expectedGeneration': status['activeGeneration'], 'payload': payload,
+               'confirmation': {'confirmed': True, 'method': 'recent_auth'}}
+    client.success('/api/v1/config/base/validate', request)
+    candidate = client.success('/api/v1/config/base', request, 'PUT')
+    client.success('/api/v1/config/base/apply', {
+        'generation': candidate['generation'], 'candidateId': candidate['candidateId'],
+    })
+    active = client.success('/api/v1/config/base', method='GET')
+    assert active['logLevel'] == payload['logLevel']
+    assert active['generation'] > status['activeGeneration']
+    return {'configuration_api': True, 'generation_advanced': True}
+
+
 def verify_protocol_read(context, codes, message_id, body, attachment):
     # 通过协议取回真实正文，不以数据库存在或欢迎响应替代取信验收。
     client = LocalIMAP(HOST, 993, ssl_context=context, timeout=30)
@@ -332,6 +352,7 @@ def main():
         assert len(recovery['codes']) == 10
         recovery.clear()
         result['security_setup'] = {'recovery_codes_generated': 10, 'plaintext_logged': False}
+        result['config_history'] = verify_config_history(client)
         if args.proxy:
             from runtime_proxy import configure_proxy
             result['proxy'] = configure_proxy(client, context, login, Client, LocalHTTPS)

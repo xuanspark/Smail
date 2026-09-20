@@ -53,6 +53,7 @@ class RuntimeSQLTest(unittest.TestCase):
                 fixture = runtime_sql.SQLFixture(kind)
                 with patch.object(fixture, 'admin', return_value='0') as admin:
                     fixture.create()
+                    admin.return_value = 'Y' if kind == 'mysql' else 'f'
                     fixture.lock()
                 statements = '\n'.join(item.args[0] for item in admin.call_args_list)
                 self.assertNotIn('DROP ', statements)
@@ -69,6 +70,15 @@ class RuntimeSQLTest(unittest.TestCase):
         with patch.object(fixture, 'admin') as admin:
             fixture.lock()
             admin.assert_not_called()
+
+    def test_lock_requires_server_confirmation(self):
+        for kind in ('mysql', 'postgres'):
+            with self.subTest(kind=kind):
+                fixture = runtime_sql.SQLFixture(kind)
+                fixture.account_created = True
+                with patch.object(fixture, 'admin', return_value=''):
+                    with self.assertRaises(AssertionError):
+                        fixture.lock()
 
     def test_nonempty_database_fails_first_install_check(self):
         fixture = runtime_sql.SQLFixture('postgres')

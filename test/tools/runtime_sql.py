@@ -124,5 +124,9 @@ class SQLFixture(SQLDatabase):
         user = self.settings['user']
         if self.kind == 'mysql':
             self.admin("ALTER USER '" + user + "'@'localhost' ACCOUNT LOCK;")
+            assert self.admin("SELECT account_locked FROM mysql.user WHERE User='" + user +
+                              "' AND Host='localhost';") == 'Y', '测试数据库账号锁定未生效'
         else:
             self.admin('ALTER ROLE ' + user + ' NOLOGIN;')
+            assert self.admin("SELECT rolcanlogin FROM pg_roles WHERE rolname='" + user +
+                              "';") == 'f', '测试数据库账号锁定未生效'
