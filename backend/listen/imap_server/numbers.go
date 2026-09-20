@@ -22,3 +22,20 @@ func imapUID(value int) (imap.UID, error) {
 	}
 	return imap.UID(number), nil
 }
+
+// 在发送更新、选择邮件或删除数据之前校验整个会话快照，禁止截断后指向另一封邮件。
+func imapSnapshotBounds(uids []int) (uint32, uint32, error) {
+	count, err := imapUint32(len(uids))
+	if err != nil {
+		return 0, 0, err
+	}
+	var maximum uint32
+	for _, value := range uids {
+		uid, err := imapUID(value)
+		if err != nil {
+			return 0, 0, err
+		}
+		maximum = max(maximum, uint32(uid))
+	}
+	return maximum, count, nil
+}

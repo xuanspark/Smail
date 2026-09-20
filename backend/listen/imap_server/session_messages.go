@@ -18,10 +18,16 @@ func (s *serverSession) selectedUIDs() ([]int, error) {
 		if err != nil {
 			return nil, err
 		}
-		s.mailboxUIDs = make([]int, 0, len(relations))
+		uids := make([]int, 0, len(relations))
 		for _, relation := range relations {
-			s.mailboxUIDs = append(s.mailboxUIDs, relation.ID)
+			uids = append(uids, relation.ID)
 		}
+		if _, _, err := imapSnapshotBounds(uids); err != nil {
+			return nil, err
+		}
+		s.mailboxUIDs = uids
+	} else if _, _, err := imapSnapshotBounds(s.mailboxUIDs); err != nil {
+		return nil, err
 	}
 	return append([]int{}, s.mailboxUIDs...), nil
 }
@@ -44,23 +50,31 @@ func (s *serverSession) selectedMessages(numbers imap.NumSet) ([]*response.Email
 	if err != nil {
 		return nil, err
 	}
-	var maximum uint32
-	for _, uid := range uids {
-		maximum = max(maximum, uint32(uid))
+	maximum, count, err := imapSnapshotBounds(uids)
+	if err != nil {
+		return nil, err
 	}
 	selected := make([]int, 0)
 	sequences := make(map[int]int, len(uids))
 	for index, uid := range uids {
+		number, err := imapUID(uid)
+		if err != nil {
+			return nil, err
+		}
+		sequence, err := imapUint32(index + 1)
+		if err != nil {
+			return nil, err
+		}
 		sequences[uid] = index + 1
 		matched := false
 		switch set := numbers.(type) {
 		case imap.SeqSet:
 			for _, span := range set {
-				matched = matched || numberInRange(uint32(index+1), span.Start, span.Stop, uint32(len(uids)))
+				matched = matched || numberInRange(sequence, span.Start, span.Stop, count)
 			}
 		case imap.UIDSet:
 			for _, span := range set {
-				matched = matched || numberInRange(uint32(uid), uint32(span.Start), uint32(span.Stop), maximum)
+				matched = matched || numberInRange(uint32(number), uint32(span.Start), uint32(span.Stop), maximum)
 			}
 		}
 		if matched {

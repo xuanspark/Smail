@@ -110,6 +110,10 @@ func (s *serverSession) Append(mailbox string, r imap.LiteralReader, options *im
 	if err != nil {
 		return nil, err
 	}
+	validity, err := imapUID(uidValidity)
+	if err != nil {
+		return nil, appendNoError("邮箱标识超出协议允许范围")
+	}
 
 	if r.Size() < 0 || r.Size() > maxIMAPAppendBytes {
 		return nil, appendTooBigError()
@@ -180,7 +184,7 @@ func (s *serverSession) Append(mailbox string, r imap.LiteralReader, options *im
 		MsgID:        parsed.MsgID,
 	}
 
-	var savedUID int
+	var savedUID imap.UID
 	if err := db.Transaction(db.Instance, func(session *xorm.Session) error {
 		candidate := modelEmail
 		candidate.Id = 0
@@ -200,15 +204,19 @@ func (s *serverSession) Append(mailbox string, r imap.LiteralReader, options *im
 		if _, err := session.Insert(&relation); err != nil {
 			return fmt.Errorf("insert appended mailbox relation: %w", err)
 		}
-		savedUID = relation.ID
+		// 必须在事务提交前拒绝越界 UID，不能留下客户端无法寻址的邮件。
+		savedUID, err = imapUID(relation.ID)
+		if err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		return nil, appendNoError("Save message failed")
 	}
 
 	return &imap.AppendData{
-		UID:         imap.UID(savedUID),
-		UIDValidity: uint32(uidValidity),
+		UID:         savedUID,
+		UIDValidity: uint32(validity),
 	}, nil
 }
 

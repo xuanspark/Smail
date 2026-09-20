@@ -64,6 +64,14 @@ type IMAPSearchResult struct {
 
 // SearchEmails performs IMAP search based on criteria
 func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchCriteria, snapshot ...[]int) ([]*response.UserEmailUIDData, error) {
+	var snapshotCount uint32
+	if len(snapshot) > 0 {
+		var err error
+		snapshotCount, err = imapSnapshotCount(snapshot[0])
+		if err != nil {
+			return nil, err
+		}
+	}
 	// First get the base list for the mailbox
 	baseList, err := GetUEListByUID(ctx, groupName, 0, 0, nil)
 	if err != nil {
@@ -104,7 +112,7 @@ func SearchEmails(ctx *context.Context, groupName string, criteria *imap.SearchC
 	}
 	if len(snapshot) > 0 {
 		maxUID = 0
-		maxSequence = uint32(len(snapshot[0]))
+		maxSequence = snapshotCount
 		for _, uid := range snapshot[0] {
 			if number, ok := validIMAPNumber(uid); ok {
 				maxUID = max(maxUID, number)
@@ -193,6 +201,18 @@ func validIMAPNumber(value int) (uint32, bool) {
 		return 0, false
 	}
 	return cast.ToUint32(value), true
+}
+
+func imapSnapshotCount(snapshot []int) (uint32, error) {
+	if uint64(len(snapshot)) > math.MaxUint32 {
+		return 0, fmt.Errorf("邮箱邮件数量超出协议允许范围")
+	}
+	for _, value := range snapshot {
+		if _, ok := validIMAPNumber(value); !ok {
+			return 0, fmt.Errorf("邮箱邮件标识超出协议允许范围")
+		}
+	}
+	return cast.ToUint32(len(snapshot)), nil
 }
 
 // filterByUIDSets filters the list by UID sets

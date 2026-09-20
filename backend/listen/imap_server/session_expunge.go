@@ -34,16 +34,20 @@ func (s *serverSession) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) 
 		return &imap.Error{Type: imap.StatusResponseTypeNo, Text: "Expunge failed"}
 	}
 	// 只匹配会话内真实存在的 UID，不展开巨大或稀疏区间。
-	var maximum uint32
-	for _, uid := range snapshot {
-		maximum = max(maximum, uint32(uid))
+	maximum, _, err := imapSnapshotBounds(snapshot)
+	if err != nil {
+		return err
 	}
 	requestedUIDs := make([]int, 0, len(snapshot))
 	for _, uid := range snapshot {
+		number, err := imapUID(uid)
+		if err != nil {
+			return err
+		}
 		matched := uids == nil
 		if uids != nil {
 			for _, span := range *uids {
-				matched = matched || numberInRange(uint32(uid), uint32(span.Start), uint32(span.Stop), maximum)
+				matched = matched || numberInRange(uint32(number), uint32(span.Start), uint32(span.Stop), maximum)
 			}
 		}
 		if matched {
@@ -96,6 +100,10 @@ func expandIMAPUIDSet(uids *imap.UIDSet, maxUID int) ([]int, error) {
 	if uids == nil {
 		return nil, nil
 	}
+	maximum, err := imapUint32(maxUID)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]int, 0)
 	seen := make(map[int]struct{})
 	appendUID := func(uid imap.UID) error {
@@ -118,7 +126,7 @@ func expandIMAPUIDSet(uids *imap.UIDSet, maxUID int) ([]int, error) {
 		stop := uidRange.Stop
 		if start == 0 {
 			if maxUID > 0 {
-				if err := appendUID(imap.UID(maxUID)); err != nil {
+				if err := appendUID(imap.UID(maximum)); err != nil {
 					return nil, err
 				}
 			}
@@ -128,13 +136,13 @@ func expandIMAPUIDSet(uids *imap.UIDSet, maxUID int) ([]int, error) {
 			if maxUID <= 0 {
 				continue
 			}
-			if imap.UID(maxUID) < start {
-				if err := appendUID(imap.UID(maxUID)); err != nil {
+			if imap.UID(maximum) < start {
+				if err := appendUID(imap.UID(maximum)); err != nil {
 					return nil, err
 				}
 				continue
 			}
-			stop = imap.UID(maxUID)
+			stop = imap.UID(maximum)
 		}
 		if stop < start {
 			return nil, fmt.Errorf("invalid UID range")

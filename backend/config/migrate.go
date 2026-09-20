@@ -670,19 +670,15 @@ func parseLegacyMySQLDSN(value string) (DatabaseConfig, string, bool) {
 	if matches == nil {
 		return DatabaseConfig{}, "", false
 	}
-	port := int(DefaultMySQLPort)
-	if matches[4] != "" {
-		parsed, err := strconv.Atoi(matches[4])
-		if err != nil || !validPort(parsed) {
-			return DatabaseConfig{}, "", false
-		}
-		port = parsed
+	port, valid := parseLegacyDatabasePort(matches[4], DefaultMySQLPort)
+	if !valid {
+		return DatabaseConfig{}, "", false
 	}
 	host, ok := normalizeLegacyDatabaseHost(matches[3])
 	if !ok || !validLegacyDatabaseUser(matches[1]) || !validLegacyDatabasePassword(matches[2]) {
 		return DatabaseConfig{}, "", false
 	}
-	return DatabaseConfig{Type: DatabaseTypeMySQL, Host: host, Port: uint16(port), Username: matches[1], Name: matches[5]}, matches[2], true
+	return DatabaseConfig{Type: DatabaseTypeMySQL, Host: host, Port: port, Username: matches[1], Name: matches[5]}, matches[2], true
 }
 
 func parseLegacyPostgreSQLDSN(value string) (DatabaseConfig, string, bool) {
@@ -699,19 +695,27 @@ func parseLegacyPostgreSQLDSN(value string) (DatabaseConfig, string, bool) {
 	if !ok {
 		return DatabaseConfig{}, "", false
 	}
-	port := int(DefaultPostgreSQLPort)
-	if rawPort := parsed.Port(); rawPort != "" {
-		parsedPort, parseErr := strconv.Atoi(rawPort)
-		if parseErr != nil || !validPort(parsedPort) {
-			return DatabaseConfig{}, "", false
-		}
-		port = parsedPort
+	port, valid := parseLegacyDatabasePort(parsed.Port(), DefaultPostgreSQLPort)
+	if !valid {
+		return DatabaseConfig{}, "", false
 	}
 	name := strings.TrimPrefix(parsed.EscapedPath(), "/")
 	if name == "" || strings.Contains(name, "/") || !databaseLocalRefPattern.MatchString(name) {
 		return DatabaseConfig{}, "", false
 	}
-	return DatabaseConfig{Type: DatabaseTypePostgreSQL, Host: host, Port: uint16(port), Username: username, Name: name}, password, true
+	return DatabaseConfig{Type: DatabaseTypePostgreSQL, Host: host, Port: port, Username: username, Name: name}, password, true
+}
+
+// 直接按端口位宽解析，避免先解析为平台整数再缩窄。
+func parseLegacyDatabasePort(value string, fallback uint16) (uint16, bool) {
+	if value == "" {
+		return fallback, fallback != 0
+	}
+	port, err := strconv.ParseUint(value, 10, 16)
+	if err != nil || port == 0 {
+		return 0, false
+	}
+	return uint16(port), true
 }
 
 func normalizeLegacyDatabaseHost(value string) (string, bool) {
