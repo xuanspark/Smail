@@ -76,6 +76,8 @@ var loggedOperations = map[string]string{
 	"/api/setup":                                        "执行系统初始化配置",
 	"/api/plugin/settings/telegram_push/user":          "更新电报通知设置",
 	"/api/plugin/settings/telegram_push/test":          "测试电报消息推送",
+	"/api/plugin/secrets/telegram_push":                "更新电报插件密钥",
+	"/api/plugin/secrets/wechat_push":                  "更新微信插件密钥",
 }
 
 // readonlyPostEndpoints 明确排除属于查询性质的 POST 接口，防止误记操作记录。

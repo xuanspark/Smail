@@ -53,15 +53,19 @@ func TestOperationLogUsesCompletedIdentityWithoutSensitivePayload(t *testing.T) 
 	}
 	runtime := logstore.Start(store)
 	defer runtime.Stop()
-	for _, path := range []string{"/api/v1/login", "/api/v1/security/login/verify", "/api/v1/security/webauthn/login/finish"} {
+	for _, path := range []string{"/api/v1/login", "/api/v1/security/login/verify", "/api/v1/security/webauthn/login/finish", "/api/v1/plugin/secrets/telegram_push", "/api/v1/plugin/secrets/wechat_push"} {
 		ctx := &appcontext.Context{}
-		writer, finish := operationLog(ctx, httptest.NewRequest("POST", path, nil), httptest.NewRecorder())
+		method := http.MethodPost
+		if strings.Contains(path, "/plugin/secrets/") {
+			method = http.MethodPut
+		}
+		writer, finish := operationLog(ctx, httptest.NewRequest(method, path, strings.NewReader(`{"plaintext":"must-not-store"}`)), httptest.NewRecorder())
 		ctx.UserID, ctx.UserAccount, ctx.Role = 42, "audit-probe", access.RoleSuperAdmin
 		response.NewSuccessResponse(map[string]string{"token": "must-not-store"}).FPrint(writer)
 		finish()
 	}
 	entries, err := store.Query(context.Background(), logstore.Query{Kind: "operation", ActorID: "42"})
-	if err != nil || len(entries) != 3 {
+	if err != nil || len(entries) != 5 {
 		t.Fatalf("missing completed login records: %d, %v", len(entries), err)
 	}
 	for _, entry := range entries {

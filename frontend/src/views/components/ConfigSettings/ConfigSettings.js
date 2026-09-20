@@ -699,7 +699,7 @@ export function usePage(pageKey = 'base') {
   }
 
   const savePluginSecret = async () => {
-    if (!canEdit() || !pluginSecretPage.value || !pluginSecretStatus.value || !secretValue.value) return false
+    if (saveFlow.value || !canEdit() || !pluginSecretPage.value || !pluginSecretStatus.value || !secretValue.value) return false
     working.value = 'plugin-secret'
     saveError.value = ''
     try {
@@ -707,6 +707,9 @@ export function usePage(pageKey = 'base') {
       const response = await requestWithRecentAuthentication(() => http.put(`/api/v1/plugin/secrets/${selectedSection.value}`, request))
       notifyResponseError(response, '插件密钥保存失败')
       if (disposed) return false
+      if (typeof response.data?.configured !== 'boolean' || !Number.isSafeInteger(response.data.version) || response.data.version < 0) {
+        throw new Error('插件密钥保存结果不完整，请刷新后核对')
+      }
       secretValue.value = ''
       pluginSecretStatus.value = response.data
       ElMessage.success('密钥已保存，下次启动插件时生效')

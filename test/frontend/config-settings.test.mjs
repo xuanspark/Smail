@@ -1149,28 +1149,26 @@ test('插件读取状态字段不传回严格解析接口，未展示字段和�
 
 for (const key of ['telegram_push', 'wechat_push']) {
   test(`${key} 密钥独立提交、留空保留，保存回读与离开后清空`, async () => {
-    let active = { meta: { generation: 1 }, plugins: {
+    const active = { meta: { generation: 1 }, plugins: {
       telegram_push: { enabled: false, settings: { timeout: 30 }, secretStatus: { configured: false } },
       wechat_push: { enabled: false, settings: { appId: 'test-only', future: 'preserved' }, secretStatus: { configured: false } }
     } }
     const original = structuredClone(active)
-    let pending = null
+    let secretStatus = { configured: false, version: 0 }
     const requests = []
     const http = {
       get: async path => ({ errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: active.meta.generation }
-        : path.endsWith('/pending') ? pending : active }),
+        : path.endsWith('/pending') ? null : path.includes('/plugin/secrets/') ? secretStatus : active }),
       put: async (path, body) => {
         requests.push({ path, body })
-        pending = { generation: 2, section: 'plugins', sameSession: true, candidateId: 'secret-test', payload: body.payload }
-        return { errorNo: 0, data: pending }
+        assert.equal(path, `/api/v1/plugin/secrets/${key}`)
+        assert.deepEqual(body, { version: 0, change: { operation: 'replace', value: { plaintext: ' test-only-plugin-secret ' } } })
+        secretStatus = { configured: true, version: 1 }
+        return { errorNo: 0, data: secretStatus }
       },
       post: async (path, body) => {
         requests.push({ path, body })
-        if (path.endsWith('/apply')) {
-          active = { ...pending.payload, meta: { generation: 2 } }
-          active.plugins[key].secretStatus = { configured: true }
-          pending = null
-        }
+        assert.equal(path, '/api/v1/config/plugins/validate')
         return { errorNo: 0, data: { valid: true } }
       }
     }
@@ -1181,25 +1179,22 @@ for (const key of ['telegram_push', 'wechat_push']) {
     assert.deepEqual(requests.at(-1).body.secretChanges, {})
     page.updateSecret(' test-only-plugin-secret ')
     assert.equal(page.hasChanges.value, true)
+    assert.equal(page.hasConfigChanges.value, false)
     assert.equal(page.editorText.value.includes('test-only-plugin-secret'), false)
     await page.validateConfig()
     assert.equal(requests.at(-1).path, '/api/v1/config/plugins/validate')
-    assert.deepEqual(requests.at(-1).body.secretChanges, {
-      [`plugins.${key}.secret`]: { operation: 'replace', value: { plaintext: ' test-only-plugin-secret ' } }
-    })
+    assert.deepEqual(requests.at(-1).body.secretChanges, {})
     for (const id of Object.keys(original.plugins)) {
       assert.deepEqual(requests.at(-1).body.payload.plugins[id].settings, original.plugins[id].settings)
       assert.equal(requests.at(-1).body.payload.plugins[id].secretStatus, undefined)
       assert.equal(requests.at(-1).body.payload.plugins[id].enabled, false)
     }
-    assert.equal(await page.saveConfig(), true)
+    assert.equal(await page.saveAndApply(), false)
+    assert.equal(await page.savePluginSecret(), true)
     assert.equal(page.secretValue.value, '')
-    const saved = requests.find(item => item.path === '/api/v1/config/plugins')
-    assert.equal(saved.body.secretChanges[`plugins.${key}.secret`].value.plaintext, ' test-only-plugin-secret ')
-    page.updateSecret('blocked-pending-edit')
-    assert.equal(page.secretValue.value, '')
-    assert.equal(await page.applyConfig(), true)
-    assert.equal(page.secretValue.value, '')
+    assert.equal(page.hasChanges.value, false)
+    assert.equal(page.pendingCandidate.value, null)
+    assert.deepEqual(active, original)
     assert.match(page.secretField.value.description, /^已设置/)
     await page.validateConfig()
     assert.deepEqual(requests.at(-1).body.secretChanges, {})
@@ -1211,11 +1206,77 @@ for (const key of ['telegram_push', 'wechat_push']) {
     await readonly.loadAll()
     const previousRequests = requests.length
     readonly.updateSecret('forbidden')
-    await readonly.saveConfig()
+    await readonly.savePluginSecret()
     assert.equal(readonly.secretValue.value, '')
     assert.equal(requests.length, previousRequests)
   })
 }
+
+test('插件密钥状态读取失败禁止保存，冲突后保留输入并显示错误', async () => {
+  let available = false
+  let calls = 0
+  const { page } = fixture(async path => {
+    if (path.includes('/plugin/secrets/')) {
+      if (!available) throw new Error('状态读取失败')
+      return { errorNo: 0, data: { configured: true, version: 3 } }
+    }
+    return { errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: 1 } : { plugins: { telegram_push: { enabled: false, settings: {} } } } }
+  }, 'telegram_push', { http: { put: async () => {
+    calls++
+    return { errorNo: 100, errorMsg: '配置已被其他操作更新，请刷新后重试' }
+  } } })
+  await page.loadAll()
+  page.updateSecret('blocked')
+  assert.equal(await page.savePluginSecret(), false)
+  assert.equal(calls, 0)
+  assert.equal(page.secretValue.value, '')
+  available = true
+  await page.loadAll()
+  page.updateSecret('test-only-secret')
+  assert.equal(await page.savePluginSecret(), false)
+  assert.equal(calls, 1)
+  assert.equal(page.secretValue.value, 'test-only-secret')
+  assert.equal(page.pluginSecretStatus.value.version, 3)
+  assert.match(page.saveError.value, /配置已被其他操作更新/)
+  assert.equal(page.busy.value, false)
+})
+
+test('插件密钥保存近期认证后重试一次，并阻止并发保存与离页', async () => {
+  const waiting = deferred()
+  let writes = 0
+  let reauth = 0
+  const { page } = fixture(async path => ({ errorNo: 0, data: path.includes('/plugin/secrets/')
+    ? { configured: false, version: 0 }
+    : path.endsWith('/status') ? { activeGeneration: 1 } : { plugins: { telegram_push: { enabled: false, settings: {} } } } }), 'telegram_push', {
+    prompt: () => waiting.promise,
+    http: {
+      put: async () => {
+        writes++
+        return writes === 1 ? { errorNo: 405, data: { code: 'RECENT_AUTH_REQUIRED' } }
+          : { errorNo: 0, data: { configured: true, version: 1 } }
+      },
+      post: async path => {
+        assert.equal(path, '/api/v1/security/reauth')
+        reauth++
+        return { errorNo: 0 }
+      }
+    }
+  })
+  await page.loadAll()
+  page.updateSecret('test-only-secret')
+  const save = page.savePluginSecret()
+  assert.equal(page.busy.value, true)
+  assert.equal(await page.savePluginSecret(), false)
+  assert.equal(await page.beforeLeave(), false)
+  page.updateSecret('concurrent-edit')
+  assert.equal(page.secretValue.value, 'test-only-secret')
+  waiting.resolve({ value: 'test-only-password' })
+  assert.equal(await save, true)
+  assert.equal(writes, 2)
+  assert.equal(reauth, 1)
+  assert.equal(page.secretValue.value, '')
+  assert.equal(page.busy.value, false)
+})
 
 test('SQLite 不显示或发送密码，网络数据库和中继密码留空保留且不裁剪空格', async () => {
   for (const type of ['sqlite', 'mysql', 'postgresql']) {
@@ -1329,7 +1390,7 @@ for (const key of ['spam_block', 'telegram_push', 'wechat_push']) {
       get: async path => {
         requests.push(path)
         return { errorNo: 0, data: path.endsWith('/status') ? { activeGeneration: active.meta.generation }
-          : path.endsWith('/pending') ? pending : active }
+          : path.endsWith('/pending') ? pending : path.includes('/plugin/secrets/') ? { configured: false, version: 0 } : active }
       },
       put: async (path, body) => {
         assert.equal(path, '/api/v1/config/plugins')
@@ -1358,7 +1419,8 @@ for (const key of ['spam_block', 'telegram_push', 'wechat_push']) {
     }
     const { page, messages, dispose } = fixture(() => {}, key, { http })
     await page.loadAll()
-    assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/plugins', '/api/v1/config/pending'])
+    assert.deepEqual(requests, ['/api/v1/config/status', '/api/v1/config/plugins',
+      ...(key === 'spam_block' ? [] : [`/api/v1/plugin/secrets/${key}`]), '/api/v1/config/pending'])
     assert.equal(page.selectedSection.value, key)
     page.updateField(['plugins', key, 'enabled'], true)
     await page.validateConfig()
