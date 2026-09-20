@@ -127,8 +127,8 @@ func HttpsStop() {
 	httpsServerMu.Lock()
 	defer httpsServerMu.Unlock()
 	if httpsServer != nil {
-		if err := httpsServer.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.WithError(err).Warn("close HTTPS server failed")
+		if err := shutdownWebServer(httpsServer, webShutdownTimeout); err != nil {
+			log.WithError(err).Warn("HTTPS 请求未能在停服期限内排空，已强制关闭连接")
 		}
 		httpsServer = nil
 	}

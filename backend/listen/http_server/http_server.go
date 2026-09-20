@@ -27,8 +27,8 @@ func HttpStop() {
 	httpServerMu.Lock()
 	defer httpServerMu.Unlock()
 	if httpServer != nil {
-		if err := httpServer.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.WithError(err).Warn("close HTTP server failed")
+		if err := shutdownWebServer(httpServer, webShutdownTimeout); err != nil {
+			log.WithError(err).Warn("HTTP 请求未能在停服期限内排空，已强制关闭连接")
 		}
 		httpServer = nil
 	}
