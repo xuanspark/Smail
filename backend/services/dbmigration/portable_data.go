@@ -1,6 +1,7 @@
 package dbmigration
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -257,6 +258,10 @@ func visitPortableRows(ctx context.Context, database portableQuery, kind config.
 		return ErrSQLConnectionUnavailable
 	}
 	defer rows.Close()
+	types, err := rows.ColumnTypes()
+	if err != nil || len(types) != len(columns) {
+		return ErrSQLDataVerification
+	}
 	for rows.Next() {
 		values, pointers := make([]any, len(columns)), make([]any, len(columns))
 		for i := range values {
@@ -264,6 +269,20 @@ func visitPortableRows(ctx context.Context, database portableQuery, kind config.
 		}
 		if err := rows.Scan(pointers...); err != nil {
 			return ErrSQLDataVerification
+		}
+		for i, column := range types {
+			// 只移除源 SQL 定长字符的空格填充；SQLite 声明和变长、二进制值保持原样。
+			fixed := kind == config.DatabaseTypePostgreSQL && column.DatabaseTypeName() == "BPCHAR" ||
+				kind == config.DatabaseTypeMySQL && column.DatabaseTypeName() == "CHAR"
+			if !fixed {
+				continue
+			}
+			switch value := values[i].(type) {
+			case []byte:
+				values[i] = bytes.TrimRight(value, " ")
+			case string:
+				values[i] = strings.TrimRight(value, " ")
+			}
 		}
 		if err := visit(values); err != nil {
 			return err
