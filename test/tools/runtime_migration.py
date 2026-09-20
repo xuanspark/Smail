@@ -194,12 +194,13 @@ def process_uses_target(root, state):
     assert '/opt/smail/data/smail.db' not in paths, '进程仍然打开旧业务库'
 
 
-def run_probe(root, unit, password, phase):
+def run_probe(root, unit, password, phase, sql_settings=None):
     state = service_state(unit)
     pid = state['MainPID']
     assert pid.isdigit() and int(pid) > 0
     assert Path('/proc/' + pid + '/ns/net').readlink() != Path('/proc/self/ns/net').readlink()
     probe = 'smail-migration-probe-' + unit.removeprefix('smail-runtime-review-') + '-' + phase
+    script = 'runtime_sql_migration.py' if sql_settings else 'runtime_migration.py'
     command = ['systemd-run', '--wait', '--pipe', '--unit=' + probe,
         '--property=User=smail', '--property=Group=smail',
         '--property=NetworkNamespacePath=/proc/' + pid + '/ns/net',
@@ -208,10 +209,11 @@ def run_probe(root, unit, password, phase):
         '--property=ReadWritePaths=' + str(root.parent), '--property=MemoryMax=48M',
         '--property=MemorySwapMax=0', '--property=CPUQuota=25%', '--property=TasksMax=32',
         '--property=RuntimeMaxSec=150s', '--property=KillMode=control-group',
-        '--property=TimeoutStopSec=10s', 'python3', str(root.parent / 'runtime_migration.py'),
+        '--property=TimeoutStopSec=10s', 'python3', str(root.parent / script),
         str(root), phase]
     try:
-        completed = subprocess.run(command, input=password + '\n', text=True,
+        data = password + '\n' + (json.dumps(sql_settings) + '\n' if sql_settings else '')
+        completed = subprocess.run(command, input=data, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=175)
         (root.parent / ('migration-' + phase + '.log')).write_text(completed.stdout, encoding='utf-8')
         assert completed.returncode == 0, '迁移探针失败，请检查独立阶段日志'
