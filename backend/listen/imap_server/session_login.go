@@ -11,7 +11,7 @@ import (
 )
 
 func (s *serverSession) Login(username, pwd string) error {
-	user, err := auth.AuthenticateProtocol("imap", s.remoteAddress, username, pwd)
+	user, authorization, err := auth.AuthenticateProtocolSession("imap", s.remoteAddress, username, pwd)
 	if err != nil {
 		if errors.Is(err, password.ErrBusy) {
 			return &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeUnavailable, Text: "Authentication temporarily unavailable"}
@@ -29,6 +29,7 @@ func (s *serverSession) Login(username, pwd string) error {
 	}
 
 	s.status = AUTHORIZED
+	s.authorization = authorization
 	s.ctx.UserID = user.ID
 	s.ctx.UserName = user.Name
 	s.ctx.UserAccount = user.Account

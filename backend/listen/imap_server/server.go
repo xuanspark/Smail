@@ -15,6 +15,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/group"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/id"
@@ -58,6 +59,7 @@ type serverSession struct {
 	remoteAddress  string
 	mailboxMu      sync.Mutex
 	mailboxUIDs    []int
+	authorization  *auth.ProtocolSession
 }
 
 // NewSession creates a new IMAP session.
@@ -69,12 +71,12 @@ func (s *Server) NewSession(remoteAddresses ...net.Addr) imapserver.Session {
 		remoteAddress = remoteAddresses[0].String()
 	}
 
-	return &serverSession{
+	return &authorizedSession{serverSession: &serverSession{
 		server:        s,
 		ctx:           tc,
 		connectTime:   time.Now(),
 		remoteAddress: remoteAddress,
-	}
+	}}
 }
 
 func (s *serverSession) Close() error {

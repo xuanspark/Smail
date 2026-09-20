@@ -3,6 +3,7 @@
 import argparse
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from email.message import EmailMessage
 from email.parser import BytesParser
 from email.policy import default as email_policy
@@ -274,6 +275,90 @@ def verify_restored(root, context, password, message_id, port):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def verify_protocol_revocation(client, context, codes, revoke=None):
+    # 必须保持已认证连接跨越撤销操作，重新连接失败不能代替旧连接失效验收。
+    results = {}
+    with ExitStack() as cleanup:
+        smtp = smtp_connect(context)
+        cleanup.callback(smtp.close)
+        imap = LocalIMAP(HOST, 993, ssl_context=context, timeout=30)
+        cleanup.callback(imap.shutdown)
+        pop = LocalPOP(HOST, 995, context=context, timeout=30)
+        cleanup.callback(pop.close)
+        assert smtp.auth('PLAIN', lambda challenge=None: '\0' + ADDRESS + '\0' + codes['smtp'])[0] == 235
+        assert imap.login(ADDRESS, codes['imap'])[0] == 'OK'
+        assert imap.select('INBOX', readonly=True)[0] == 'OK'
+        status, contents = imap.uid('FETCH', '1:*', '(BODY.PEEK[])')
+        assert status == 'OK' and any(isinstance(item, tuple) and item[1] for item in contents)
+        pop.user(ADDRESS)
+        pop.pass_(codes['pop3'])
+        messages = pop.list()[1]
+        assert messages
+        first = int(messages[0].split()[0])
+        assert pop.retr(first)[0].startswith(b'+OK')
+        # 不依赖外部 MX 或外发投递，直接验证旧认证连接能否开启新的邮件事务。
+        assert smtp.mail(ADDRESS)[0] == 250
+        assert smtp.rcpt(ADDRESS)[0] == 250
+        assert smtp.rset()[0] == 250
+        if revoke is None:
+            for protocol in codes:
+                client.success('/api/v1/security/credentials/protocols/revoke', {'protocol': protocol})
+        else:
+            revoke()
+        try:
+            code, _ = smtp.mail(ADDRESS)
+            assert code in (250, 530, 535), 'SMTP 不是成功或明确的认证拒绝'
+            results['smtp_existing_denied'] = code in (530, 535)
+        except smtplib.SMTPServerDisconnected:
+            results['smtp_existing_denied'] = True
+
+        try:
+            status, _ = imap.uid('FETCH', '1:*', '(BODY.PEEK[])')
+            results['imap_existing_denied'] = status in ('NO', 'BAD')
+        except imaplib.IMAP4.abort:
+            results['imap_existing_denied'] = True
+        try:
+            pop.retr(first)
+            results['pop3_existing_denied'] = False
+        except poplib.error_proto as error:
+            assert b'-ERR' in str(error).encode() or 'EOF' in str(error)
+            results['pop3_existing_denied'] = True
+        fresh = smtp_connect(context)
+        try:
+            try:
+                fresh.auth('PLAIN', lambda challenge=None: '\0' + ADDRESS + '\0' + codes['smtp'])
+                results['smtp_new_login_denied'] = False
+            except smtplib.SMTPAuthenticationError as error:
+                assert error.smtp_code == 535
+                results['smtp_new_login_denied'] = True
+        finally:
+            fresh.close()
+        fresh = LocalIMAP(HOST, 993, ssl_context=context, timeout=30)
+        try:
+            try:
+                fresh.login(ADDRESS, codes['imap'])
+                results['imap_new_login_denied'] = False
+            except imaplib.IMAP4.error as error:
+                assert 'AUTHENTICATIONFAILED' in str(error)
+                results['imap_new_login_denied'] = True
+        finally:
+            fresh.shutdown()
+        fresh = LocalPOP(HOST, 995, context=context, timeout=30)
+        try:
+            fresh.user(ADDRESS)
+            try:
+                fresh.pass_(codes['pop3'])
+                results['pop3_new_login_denied'] = False
+            except poplib.error_proto as error:
+                assert '-ERR' in str(error)
+                results['pop3_new_login_denied'] = True
+        finally:
+            fresh.close()
+        # 拒绝不能由整个服务崩溃导致。
+        assert client.success('/api/v1/user/info').get('account') == ACCOUNT
+        return results
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('root', type=Path)
@@ -436,6 +521,15 @@ def main():
         if args.proxy:
             from runtime_proxy import verify_proxy_sources
             result['proxy']['sources'] = verify_proxy_sources(context, login, Client)
+        result['stage'] = 'protocol_revocation'
+        result['protocol_revocation'] = verify_protocol_revocation(client, context, codes)
+        assert all(result['protocol_revocation'].values()), '撤销后旧协议连接仍可访问业务数据'
+        result['stage'] = 'client_revocation'
+        credential = client.success('/api/v1/security/credentials/clients/create', {'client_name': '隔离旧连接撤销验收'})
+        client_codes = dict.fromkeys(('smtp', 'imap', 'pop3'), credential['code'])
+        revoke = lambda: client.success('/api/v1/security/credentials/clients/revoke', {'client_id': credential['client']['id']})
+        result['client_revocation'] = verify_protocol_revocation(client, context, client_codes, revoke)
+        assert all(result['client_revocation'].values()), '撤销客户端授权码后旧协议连接仍可访问业务数据'
         result['stage'] = 'complete'
         result['passed'] = True
     finally:

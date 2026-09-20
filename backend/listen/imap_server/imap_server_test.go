@@ -1059,6 +1059,17 @@ func TestIdleNotice(t *testing.T) {
 	}
 
 	ctx := &pcontext.Context{UserID: user.ID}
+	// IDLE 的继续响应先于应用回调注册，必须等待注册完成再验证主动通知。
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, registered := userConnects.Load(user.ID); registered {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("IDLE 连接未完成通知注册")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if err = IdleNotice(ctx, user.ID, &models.Email{Id: 1}); err != nil {
 		t.Fatal(err)
 	}

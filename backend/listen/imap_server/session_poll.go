@@ -12,6 +12,9 @@ func (s *serverSession) Poll(w *imapserver.UpdateWriter, allowExpunge bool) erro
 }
 
 func (s *serverSession) poll(w *imapserver.UpdateWriter, allowExpunge, forceExists bool) error {
+	if s.authorization != nil && s.authorization.Check() != nil {
+		return protocolAuthorizationError()
+	}
 	s.mailboxMu.Lock()
 	defer s.mailboxMu.Unlock()
 	if s.currentMailbox == "" {

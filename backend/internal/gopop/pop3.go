@@ -176,6 +176,11 @@ func (s *Server) handleClient(conn net.Conn) {
 		cmd, args := getCommand(rawLine)
 		slog.Debug("pop3 command", "cmd", cmd)
 		var cmdError error
+		// 撤销后的事务连接立即终止，不执行 QUIT 的延迟删除或任何后续命令。
+		if session.Status == TRANSACTION && session.Authorize != nil && session.Authorize() != nil {
+			fmt.Fprint(conn, "-ERR authorization revoked"+eol)
+			return
+		}
 
 		/*
 			user<SP>username<CRLF>	      user 命令是POP3客户端程序与POP3邮件服务器建立连接后通常发送的第一条命令，参数 username 表示收件人的帐户名称。

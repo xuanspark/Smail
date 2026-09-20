@@ -36,6 +36,7 @@ type Session struct {
 	From          string
 	To            []string
 	Ctx           *context.Context
+	authorization *auth.ProtocolSession
 }
 
 // AuthMechanisms returns a slice of available auth mechanisms
@@ -63,7 +64,7 @@ func (s *Session) Auth(mech string) (sasl.Server, error) {
 }
 
 func (s *Session) AuthPlain(username, pwd string) error {
-	user, err := auth.AuthenticateProtocol("smtp", s.RemoteAddress.String(), username, pwd)
+	user, authorization, err := auth.AuthenticateProtocolSession("smtp", s.RemoteAddress.String(), username, pwd)
 	if err != nil {
 		if errors.Is(err, password.ErrBusy) {
 			return &smtp.SMTPError{Code: 454, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "Temporary authentication failure"}
@@ -77,6 +78,7 @@ func (s *Session) AuthPlain(username, pwd string) error {
 	}
 
 	s.User = user.Account
+	s.authorization = authorization
 	s.Ctx.UserAccount = user.Account
 	s.Ctx.UserID = user.ID
 	s.Ctx.UserName = user.Name
@@ -86,12 +88,18 @@ func (s *Session) AuthPlain(username, pwd string) error {
 	return nil
 }
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+	if err := s.checkAuthorization(); err != nil {
+		return err
+	}
 	log.WithContext(s.Ctx).Debug("SMTP MAIL accepted")
 	s.From = from
 	return nil
 }
 
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
+	if err := s.checkAuthorization(); err != nil {
+		return err
+	}
 	log.WithContext(s.Ctx).Debug("SMTP RCPT accepted")
 
 	s.To = append(s.To, to)
@@ -104,5 +112,13 @@ func (s *Session) Reset() {
 }
 
 func (s *Session) Logout() error {
+	return nil
+}
+
+// 未认证的外部收信保留原流程，已认证连接不得在撤销后降级成匿名连接。
+func (s *Session) checkAuthorization() error {
+	if s.authorization != nil && s.authorization.Check() != nil {
+		return &smtp.SMTPError{Code: 535, EnhancedCode: smtp.EnhancedCode{5, 7, 8}, Message: "Authentication credentials revoked"}
+	}
 	return nil
 }

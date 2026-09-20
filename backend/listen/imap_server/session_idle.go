@@ -88,6 +88,10 @@ func IdleNotice(ctx *context.Context, userId int, email *models.Email) error {
 
 	for _, connect := range connects.writers {
 		if connect.session != nil {
+			// 已撤销的监听连接不再收到通知，也不能阻断其他收件连接的投递。
+			if connect.session.authorization != nil && connect.session.authorization.Check() != nil {
+				continue
+			}
 			// 同步变化和显式总数在同一锁内只写一次，避免投递时重复通知。
 			if err := connect.session.poll(connect.writer, true, true); err != nil {
 				return err

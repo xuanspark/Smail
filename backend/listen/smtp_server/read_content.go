@@ -41,6 +41,9 @@ import (
 const DropUnknownRecipientEmails = true
 
 func (s *Session) Data(r io.Reader) (resultErr error) {
+	if err := s.checkAuthorization(); err != nil {
+		return err
+	}
 	messageBytes := 0
 	var recipientIDs []int
 	result := "unknown"
@@ -87,6 +90,10 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 	}
 	if len(emailData) > maxSMTPMessageBytes {
 		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message size exceeds fixed maximum message size"}
+	}
+	// DATA 上传期间也可能撤销授权，读取完成后必须再次复核。
+	if err := s.checkAuthorization(); err != nil {
+		return err
 	}
 
 	log.WithContext(ctx).Debugf("message_bytes=%d", len(emailData))

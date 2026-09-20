@@ -45,6 +45,11 @@ var (
 )
 
 func AuthenticateProtocol(protocol string, remoteAddress string, account string, plain string) (*models.User, error) {
+	var grant *credentials.ProtocolGrant
+	return authenticateProtocol(protocol, remoteAddress, account, plain, &grant)
+}
+
+func authenticateProtocol(protocol string, remoteAddress string, account string, plain string, grant **credentials.ProtocolGrant) (*models.User, error) {
 	normalizedProtocol, protocolErr := credentials.NormalizeProtocol(protocol)
 	normalizedAccount := strings.ToLower(strings.TrimSpace(account))
 	if normalizedIdentifier, err := NormalizeProtocolIdentifier(account); err == nil {
@@ -85,11 +90,11 @@ func AuthenticateProtocol(protocol string, remoteAddress string, account string,
 	if err != nil {
 		return fail()
 	}
-	matched, err := service.CheckClientOrProtocolCode(userID, normalizedProtocol, plain)
+	matched, err := service.CheckClientOrProtocolGrant(userID, normalizedProtocol, plain)
 	if errors.Is(err, password.ErrBusy) {
 		return nil, err
 	}
-	if err != nil || !matched {
+	if err != nil || matched == nil {
 		return fail()
 	}
 	var user models.User
@@ -99,6 +104,7 @@ func AuthenticateProtocol(protocol string, remoteAddress string, account string,
 	}
 	protocolPairAttempts.clear(pairKey)
 	protocolAccountAttempts.clear(accountKey)
+	*grant = matched
 	return &user, nil
 }
 

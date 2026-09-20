@@ -25,4 +25,5 @@ type Session struct {
 	Conn         net.Conn
 	InTls        bool
 	AliveTime    time.Time
+	Authorize    func() error
 }

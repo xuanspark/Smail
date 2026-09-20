@@ -292,36 +292,53 @@ func (s *Service) VerifyClientOrProtocolCode(userID int, protocol string, rawPla
 
 // CheckClientOrProtocolCode 将计算过载向上返回，避免被当成密码错误累计封禁。
 func (s *Service) CheckClientOrProtocolCode(userID int, protocol string, rawPlain string) (bool, error) {
+	grant, err := s.CheckClientOrProtocolGrant(userID, protocol, rawPlain)
+	return grant != nil, err
+}
+
+// CheckClientOrProtocolGrant 返回本次实际匹配的凭据快照，不保存明文授权码。
+func (s *Service) CheckClientOrProtocolGrant(userID int, protocol string, rawPlain string) (*ProtocolGrant, error) {
 	if s == nil || s.engine == nil || userID <= 0 || rawPlain == "" || len([]byte(rawPlain)) > 256 {
-		return false, password.CheckDummy(rawPlain)
+		return nil, password.CheckDummy(rawPlain)
 	}
 	cleanedPlain := CleanAuthCode(rawPlain)
 	if cleanedPlain == "" {
-		return false, password.CheckDummy(rawPlain)
+		return nil, password.CheckDummy(rawPlain)
+	}
+	protocol, err := NormalizeProtocol(protocol)
+	if err != nil {
+		return nil, password.CheckDummy(rawPlain)
 	}
 
 	// 1. 优先校验客户端专属授权码
 	var clients []models.ClientCredential
-	err := s.engine.Where("user_id = ? AND revoked_at IS NULL AND code_hash != ''", userID).Find(&clients)
+	err = s.engine.Where("user_id = ? AND revoked_at IS NULL AND code_hash != ''", userID).Find(&clients)
 	if err == nil && len(clients) > 0 {
 		for _, client := range clients {
 			// 比对清洗后的统一大写无横线授权码
 			matched, err := password.Check(client.CodeHash, cleanedPlain)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
 			if matched {
+				grant := &ProtocolGrant{engine: s.engine, userID: userID, protocol: protocol, client: true, id: client.ID, version: client.CodeVersion, hash: client.CodeHash}
 				now := s.now()
 				affected, err := s.engine.ID(client.ID).
 					Where("revoked_at IS NULL AND code_version = ? AND code_hash = ?", client.CodeVersion, client.CodeHash).
 					Cols("last_used_at", "updated_at").Update(&models.ClientCredential{LastUsedAt: &now})
 				if err != nil || affected == 1 {
-					return err == nil, err
+					if err != nil {
+						return nil, err
+					}
+					return grant, nil
 				}
 				valid, err := s.engine.ID(client.ID).
 					Where("revoked_at IS NULL AND code_version = ? AND code_hash = ?", client.CodeVersion, client.CodeHash).
 					Exist(&models.ClientCredential{})
-				return valid, err
+				if err != nil || !valid {
+					return nil, err
+				}
+				return grant, nil
 			}
 		}
 	}
@@ -329,40 +346,44 @@ func (s *Service) CheckClientOrProtocolCode(userID int, protocol string, rawPlai
 	// 2. 回退校验旧版按协议划分的授权码（支持 cleanedPlain 或原樣 rawPlain）
 	protocol, err = NormalizeProtocol(protocol)
 	if err != nil {
-		return false, password.CheckDummy(rawPlain)
+		return nil, password.CheckDummy(rawPlain)
 	}
 	var item models.ProtocolCredential
 	has, err := s.engine.Where("user_id = ? AND protocol = ? AND enabled = ? AND revoked_at IS NULL", userID, protocol, true).Get(&item)
 	if err != nil || !has || item.CodeHash == "" {
-		return false, password.CheckDummy(rawPlain)
+		return nil, password.CheckDummy(rawPlain)
 	}
 
 	// 兼容旧哈希直接比对原始输入，或者比对清洗后的输入
 	trimmedPlain := strings.TrimSpace(rawPlain)
 	matched, err := password.Check(item.CodeHash, trimmedPlain)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if !matched && trimmedPlain != cleanedPlain {
 		matched, err = password.Check(item.CodeHash, cleanedPlain)
 	}
 	if err != nil || !matched {
-		return false, err
+		return nil, err
 	}
+	grant := &ProtocolGrant{engine: s.engine, userID: userID, protocol: protocol, id: item.ID, version: item.CodeVersion, hash: item.CodeHash}
 
 	now := s.now()
 	affected, err := s.engine.ID(item.ID).
 		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
 		Cols("last_used_at", "updated_at").Update(&models.ProtocolCredential{LastUsedAt: &now})
 	if err == nil && affected == 1 {
-		return true, nil
+		return grant, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	valid, err := s.engine.ID(item.ID).
 		Where("enabled = ? AND revoked_at IS NULL AND code_version = ? AND code_hash = ?", true, item.CodeVersion, item.CodeHash).
 		Exist(&models.ProtocolCredential{})
-	return valid, err
+	if err != nil || !valid {
+		return nil, err
+	}
+	return grant, nil
 }

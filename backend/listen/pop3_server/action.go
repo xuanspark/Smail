@@ -104,7 +104,7 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 	if session.Conn != nil && session.Conn.RemoteAddr() != nil {
 		remoteAddress = session.Conn.RemoteAddr().String()
 	}
-	user, err := auth.AuthenticateProtocol("pop3", remoteAddress, session.User, pwd)
+	user, authorization, err := auth.AuthenticateProtocolSession("pop3", remoteAddress, session.User, pwd)
 	if err != nil {
 		if errors2.Is(err, password.ErrBusy) {
 			return gopop.ErrAuthenticationTemporary
@@ -118,6 +118,7 @@ func (a action) Pass(session *gopop.Session, pwd string) error {
 	}
 
 	ctx := session.Ctx.(*context.Context)
+	session.Authorize = authorization.Check
 	ctx.UserID = user.ID
 	ctx.UserName = user.Name
 	ctx.UserAccount = user.Account
@@ -335,6 +336,11 @@ func parseMessageNumber(value string) (int, error) {
 }
 
 func (a action) ensureMessageMap(session *gopop.Session) ([]*response.EmailResponseData, error) {
+	if session.Authorize != nil {
+		if err := session.Authorize(); err != nil {
+			return nil, err
+		}
+	}
 	if session.MessageMap != nil {
 		return nil, nil
 	}
@@ -404,6 +410,11 @@ func (a action) Noop(session *gopop.Session) error {
 }
 
 func (a action) Quit(session *gopop.Session) error {
+	if session.Authorize != nil {
+		if err := session.Authorize(); err != nil {
+			return err
+		}
+	}
 	log.WithContext(session.Ctx).Debugf("POP3 CMD: QUIT ")
 
 	var DelIds []int

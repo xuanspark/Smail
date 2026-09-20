@@ -113,7 +113,12 @@ func (s *Service) SetProtocolEnabled(userID int, protocol string, enabled bool) 
 		return nil
 	}
 	item.Enabled = enabled
-	if _, err := s.engine.ID(item.ID).Cols("enabled", "updated_at").Update(&item); err != nil {
+	update := s.engine.ID(item.ID).Cols("enabled", "updated_at")
+	if !enabled {
+		// 即使关闭后立即开启且旧连接尚未发命令，也不能恢复旧会话的授权。
+		update = update.Incr("code_version", 1)
+	}
+	if _, err := update.Update(&item); err != nil {
 		return fmt.Errorf("update protocol credential: %w", err)
 	}
 	return nil
