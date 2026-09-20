@@ -44,9 +44,11 @@ type TransactionHooks struct {
 }
 
 type TransactionStore struct {
-	root       string
-	validation RuntimeValidationOptions
-	hooks      TransactionHooks
+	root        string
+	validation  RuntimeValidationOptions
+	hooks       TransactionHooks
+	database    *DatabaseConfig
+	legacyState bool
 }
 
 var transactionIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -78,7 +80,22 @@ func (s *TransactionStore) Commit(current, candidate RuntimeConfig) error {
 		return ErrManagerStorage
 	}
 	if runtimepath.DeploymentLayout(s.root) {
-		return s.commitState(current, candidate)
+		unlock, err := s.lockState()
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		live, err := NewConfigLoader(s.root, ConfigLoaderOptions{Validation: s.validation}).Load()
+		if err != nil || live.Generation != current.Generation {
+			return errors.Join(ErrGenerationConflict, err)
+		}
+		entries, err := os.ReadDir(filepath.Join(s.root, "data", "transaction"))
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if len(entries) != 0 {
+			return ErrConfigRecoveryRequired
+		}
 	}
 	if current.Generation == 0 || candidate.Generation != current.Generation+1 {
 		return ErrGenerationConflict
@@ -201,7 +218,14 @@ func (s *TransactionStore) Recover() error {
 		return ErrManagerStorage
 	}
 	if runtimepath.DeploymentLayout(s.root) {
-		return s.recoverState()
+		if err := s.migrateLegacyState(); err != nil {
+			return err
+		}
+		unlock, err := s.lockState()
+		if err != nil {
+			return err
+		}
+		defer unlock()
 	}
 	directory, err := secureManagerConfigDirectory(s.root)
 	if err != nil {

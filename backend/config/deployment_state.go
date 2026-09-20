@@ -9,7 +9,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
-// InitializeDeployment 为全新部署创建状态库，并自动归档已采用 ssl 布局的原有业务密钥。
+// InitializeDeployment 为全新部署准备目录和密钥；选定数据库前不创建数据库文件。
 // 更旧的 config/data 布局仍需完整迁移，不能只搬密钥而切断证书或数据库引用。
 func InitializeDeployment(root string) error {
 	if runtimepath.DeploymentLayout(root) {
@@ -21,13 +21,6 @@ func InitializeDeployment(root string) error {
 		} else if !os.IsNotExist(err) {
 			return err
 		}
-	}
-	db, err := NewTransactionStore(root, RuntimeValidationOptions{}).openState()
-	if err != nil {
-		return err
-	}
-	if err := db.Close(); err != nil {
-		return err
 	}
 	return initializeDeploymentKeys(root)
 }

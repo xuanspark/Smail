@@ -121,13 +121,18 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 		}
 	}
 	// 恢复事务可能仍需要旧材料；恢复未完成时不能清理任何版本。
-	if runtimepath.DeploymentLayout(root) {
-		records, err := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true}).stateRecords("transaction")
+	if entries, err := os.ReadDir(filepath.Join(root, "data", "transaction")); err != nil && !os.IsNotExist(err) || len(entries) > 0 {
+		return ErrConfigRecoveryRequired
+	}
+	if _, err := os.Lstat(filepath.Join(root, "data", "smail-state.db")); err == nil {
+		store := NewTransactionStore(root, RuntimeValidationOptions{HasSuperAdmin: true})
+		store.legacyState = true
+		records, err := store.stateRecords("transaction")
 		if err != nil || len(records) != 0 {
 			return errors.Join(ErrConfigRecoveryRequired, err)
 		}
-	} else if entries, err := os.ReadDir(filepath.Join(root, "data", "transaction")); err != nil && !os.IsNotExist(err) || len(entries) > 0 {
-		return ErrConfigRecoveryRequired
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	keep := make(map[string]bool)
 	for _, ssl := range protected {

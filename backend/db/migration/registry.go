@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"git.pcux.cn/xuans/Smail/internal/configstate"
 	"regexp"
 	"strings"
 )
@@ -33,6 +34,11 @@ func DefaultMigrations() []Migration {
 		DefineCustom(21, "expand_trusted_sender_blacklist", "expand_trusted_sender_blacklist_v1", applyTrustedSenderBlacklistSchema),
 		DefineForDialects(22, "create_client_credentials", clientCredentialStatements()),
 		DefineForDialects(23, "create_outbound_delivery", outboundDeliveryStatements()),
+		DefineForDialects(24, "unify_configuration_history", map[Dialect][]string{
+			DialectSQLite:   {configstate.Schema("sqlite")},
+			DialectMySQL:    {configstate.Schema("mysql")},
+			DialectPostgres: {configstate.Schema("postgres")},
+		}),
 	}
 }
 

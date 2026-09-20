@@ -101,6 +101,9 @@ func validateDatabase(database DatabaseConfig) error {
 
 func validSQLiteLocalRef(value string) bool {
 	value = filepath.ToSlash(value)
+	if strings.EqualFold(value, "smail-state.db") {
+		return false
+	}
 	if value == "" || filepath.IsAbs(value) || isWindowsAbsolute(value) || strings.HasPrefix(value, "config/") || strings.ContainsAny(value, `\\:`) {
 		return false
 	}

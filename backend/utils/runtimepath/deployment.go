@@ -41,7 +41,7 @@ func DeploymentLayout(root string) bool {
 	if _, err := os.Lstat(filepath.Join(root, "data", "credential.key")); err == nil {
 		return false
 	}
-	for _, name := range []string{"data/smail-state.db", "ssl/credential.key", "ssl/credentials/credential.key"} {
+	for _, name := range []string{"data/.config-state.lock", "data/smail-state.db", "ssl/credential.key", "ssl/credentials/credential.key"} {
 		info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name)))
 		if err == nil && info.Mode().IsRegular() {
 			return true

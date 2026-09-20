@@ -69,7 +69,9 @@ func (m *ConfigManager) SwitchDatabase(ctx context.Context, expectedGeneration u
 	if err := contextError(ctx); err != nil {
 		return err
 	}
-	if _, _, err := m.transactions.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
+	backupStore := *m.transactions
+	backupStore.database = &target
+	if _, _, err := backupStore.CreateBackupIfDue(current, time.Now().UTC()); err != nil {
 		return err
 	}
 	if err := contextError(ctx); err != nil {

@@ -58,7 +58,7 @@ func TestDeploymentStateRecoversEveryCommitPhase(t *testing.T) {
 			}
 			entries, _ = os.ReadDir(filepath.Join(root, "data"))
 			for _, entry := range entries {
-				if entry.Name() != "smail-state.db" {
+				if entry.Name() != ".config-state.lock" && entry.Name() != "transaction" {
 					t.Fatalf("data 中产生额外文件：%s", entry.Name())
 				}
 			}
@@ -90,7 +90,9 @@ func TestDeploymentStateImportsHistoryWithoutChangingSecret(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(target, "ssl", "credential.key"), key, 0600); err != nil {
 		t.Fatal(err)
 	}
-	writeRuntimeFixture(t, target, current)
+	targetConfig := cloneRuntimeConfig(current)
+	targetConfig.Root.Database = DatabaseConfig{Type: DatabaseTypeSQLite, LocalRef: "smail.db"}
+	writeRuntimeFixture(t, target, targetConfig)
 	if err := ImportDeploymentHistory(source, target, validation); err != nil {
 		t.Fatal(err)
 	}

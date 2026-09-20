@@ -1,7 +1,6 @@
 package config
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,10 +10,9 @@ import (
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
-	_ "modernc.org/sqlite"
 )
 
-// 状态数据库只保存配置历史和恢复事务，五个生效配置文件仍是配置读取来源。
+// 配置历史保存在所选业务数据库；事务字段仅用于读取旧版独立状态库。
 type stateRecord struct {
 	Transaction *TransactionManifest  `json:"transaction,omitempty"`
 	Backup      *ConfigBackupManifest `json:"backup,omitempty"`
@@ -23,14 +21,17 @@ type stateRecord struct {
 }
 
 func (s *TransactionStore) lockState() (func(), error) {
-	db, err := s.openState()
+	directory, err := runtimepath.Directory(s.root)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Close(); err != nil {
+	filename := filepath.Join(directory, ".config-state.lock")
+	if info, err := os.Lstat(filename); err == nil && !info.Mode().IsRegular() {
+		return nil, ErrManagerStorage
+	} else if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	file, err := os.OpenFile(filepath.Join(s.root, "data", "smail-state.db"), os.O_RDWR, 0600)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -40,40 +41,6 @@ func (s *TransactionStore) lockState() (func(), error) {
 		return nil, errors.New("配置状态正在被其他进程使用，请稍后重试")
 	}
 	return func() { unlock(); file.Close() }, nil
-}
-
-func (s *TransactionStore) openState() (*sql.DB, error) {
-	directory, err := runtimepath.Directory(s.root)
-	if err != nil {
-		return nil, err
-	}
-	filename := filepath.Join(directory, "smail-state.db")
-	info, err := os.Lstat(filename)
-	if err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
-		return nil, ErrManagerStorage
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	db, err := sql.Open("sqlite", filepath.ToSlash(filename))
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	for _, statement := range []string{
-		"PRAGMA busy_timeout=5000", "PRAGMA synchronous=FULL",
-		`CREATE TABLE IF NOT EXISTS config_records (kind TEXT NOT NULL, id TEXT NOT NULL, payload BLOB NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(kind,id))`,
-	} {
-		if _, err = db.Exec(statement); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	if err = os.Chmod(filename, 0600); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
 }
 
 func (s *TransactionStore) saveState(kind, id string, record stateRecord) error {
@@ -89,7 +56,7 @@ func (s *TransactionStore) saveState(kind, id string, record stateRecord) error 
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(`INSERT INTO config_records(kind,id,payload,digest) VALUES(?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload,digest=excluded.digest`, kind, id, data, SectionDigest(data))
+	_, err = db.Exec(db.upsert(), kind, id, data, SectionDigest(data))
 	return err
 }
 
@@ -289,6 +256,10 @@ func (s *TransactionStore) recoverState() error {
 		return err
 	}
 	defer unlock()
+	return s.recoverStateLocked()
+}
+
+func (s *TransactionStore) recoverStateLocked() error {
 	if entries, err := os.ReadDir(filepath.Join(s.root, "data", "transaction")); err == nil && len(entries) != 0 {
 		return ErrConfigRecoveryRequired
 	} else if err != nil && !os.IsNotExist(err) {

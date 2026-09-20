@@ -98,8 +98,12 @@ func runtimeCompatibility(runtime RuntimeConfig) (*Config, error) {
 }
 
 func compatibilityDatabase(database DatabaseConfig, vault *credential.Vault) (string, string, error) {
+	return compatibilityDatabaseAt(ROOT_PATH, database, vault)
+}
+
+func compatibilityDatabaseAt(root string, database DatabaseConfig, vault *credential.Vault) (string, string, error) {
 	if database.Type == DatabaseTypeSQLite {
-		path := filepath.Join(ROOT_PATH, "data", database.LocalRef)
+		path := filepath.Join(root, "data", database.LocalRef)
 		return DBTypeSQLite, path, nil
 	}
 	password, err := OpenStoredSecret(vault, database.Password)
