@@ -188,7 +188,9 @@ func validateCustomSSLReferences(root string, candidate RuntimeConfig) error {
 
 func validationCertificateDomains(candidate *RuntimeConfig) []string {
 	if EffectiveSSLManagement(candidate.SSL.TLS) == SSLManagementProject && candidate.SSL.TLS.Challenge == SSLChallengeDNS {
-		domains := []string{"*." + strings.TrimPrefix(candidate.Root.Domains.Primary, "*.")}
+		primary := strings.TrimPrefix(candidate.Root.Domains.Primary, "*.")
+		// 加载、导出和配置复验与自动申请一致，同时要求根域名和泛域名。
+		domains := []string{primary, "*." + primary}
 		if candidate.Root.Domains.Web != "" {
 			domains = append(domains, candidate.Root.Domains.Web)
 		}
