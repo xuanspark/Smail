@@ -4,6 +4,7 @@ import argparse
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
+from copy import deepcopy
 from email.message import EmailMessage
 from email.parser import BytesParser
 from email.policy import default as email_policy
@@ -71,6 +72,66 @@ class Client:
         assert status == 200 and data is not None and data.get('errorNo') == 0, (
             path, status, data.get('errorNo') if data else None, data.get('errorMsg') if data else None)
         return data['data']
+
+
+def copy_session(client):
+    replay = Client(client.context, client.port)
+    replay.cookies = deepcopy(client.cookies)
+    return replay
+
+
+def require_session_denied(client):
+    status, data, _ = client.request('/api/v1/user/info')
+    assert status == 200 and data is not None and data.get('errorNo') == 403, '旧会话未明确返回需要登录'
+
+
+def verify_http_session_revocation(admin, context):
+    # 普通验收账号与超管分离，不改变备份恢复所需的超管密码。
+    account = 'sessionreview'
+    password = secrets.token_urlsafe(9)
+    new_password = secrets.token_urlsafe(9)
+    admin.success('/api/v1/user/create', {
+        'account': account, 'username': '隔离会话撤销验收', 'password': password,
+        'disabled': 0, 'role': 'user',
+    })
+
+    def login(value):
+        client = Client(context)
+        identity = client.success('/api/v1/login', {'account': account, 'password': value})
+        assert identity.get('account') == account and not identity.get('pending')
+        assert client.success('/api/v1/user/info').get('account') == account
+        return client
+
+    first, independent = login(password), login(password)
+    replay = copy_session(first)
+    assert replay.success('/api/v1/user/info').get('account') == account
+    first.success('/api/v1/logout')
+    require_session_denied(replay)
+    assert independent.success('/api/v1/user/info').get('account') == account
+    result = {'logout_cookie_replay_denied': True, 'independent_session_preserved': True}
+
+    # 此独立会话在禁用期间不发请求，避免只验证已被销毁的会话记录。
+    replay_after_enable = login(password)
+    admin.success('/api/v1/user/edit', {'account': account, 'disabled': 1})
+    require_session_denied(independent)
+    admin.success('/api/v1/user/edit', {'account': account, 'disabled': 0})
+    require_session_denied(replay_after_enable)
+    result.update(disabled_session_denied=True, reenabled_old_session_denied=True)
+
+    current, other = login(password), login(password)
+    replay = copy_session(current)
+    current.success('/api/v1/settings/modify_password', {
+        'current_password': password, 'password': new_password,
+    })
+    require_session_denied(replay)
+    require_session_denied(other)
+    status, data, _ = Client(context).request('/api/v1/login', {'account': account, 'password': password})
+    assert status == 200 and data is not None and data.get('errorNo') == 100, '修改密码后旧密码未明确拒绝'
+    login(new_password)
+    assert admin.success('/api/v1/user/info').get('account') == ACCOUNT
+    result.update(password_change_sessions_denied=True, old_password_denied=True,
+                  new_password_accepted=True, admin_session_preserved=True)
+    return result
 
 
 def smtp_connect(context):
@@ -530,6 +591,8 @@ def main():
         revoke = lambda: client.success('/api/v1/security/credentials/clients/revoke', {'client_id': credential['client']['id']})
         result['client_revocation'] = verify_protocol_revocation(client, context, client_codes, revoke)
         assert all(result['client_revocation'].values()), '撤销客户端授权码后旧协议连接仍可访问业务数据'
+        result['stage'] = 'http_session_revocation'
+        result['http_session_revocation'] = verify_http_session_revocation(client, context)
         result['stage'] = 'complete'
         result['passed'] = True
     finally:
