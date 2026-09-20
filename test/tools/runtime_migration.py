@@ -48,17 +48,20 @@ def root_database(root):
     return database['localRef']
 
 
-def migration_integrity(root):
+def migration_integrity(root, interrupted=False):
     active = root_database(root)
     assert active == 'migrated.db'
     names = sorted(path.name for path in (root / 'data').glob('*.db'))
-    assert names == ['migrated.db', 'occupied.db', 'smail.db'], '发现意外数据库文件'
+    expected = ['migrated.db', 'occupied.db', 'smail.db']
+    if interrupted:
+        expected.append('interrupted.db')
+    assert names == sorted(expected), '发现意外数据库文件'
     with read_database(root / 'data' / active) as database:
         assert database.execute('PRAGMA integrity_check').fetchone() == ('ok',)
         count = database.execute('SELECT COUNT(*) FROM config_records').fetchone()[0]
         assert count > 0
     return {'active_database': active, 'config_records': count,
-            'retained_offline_files': ['smail.db', 'occupied.db'], 'integrity': 'ok'}
+            'retained_offline_files': sorted(set(expected) - {active}), 'integrity': 'ok'}
 
 
 def wait_ready(client, generation=None):
@@ -194,13 +197,16 @@ def process_uses_target(root, state):
     assert '/opt/smail/data/smail.db' not in paths, '进程仍然打开旧业务库'
 
 
-def run_probe(root, unit, password, phase, sql_settings=None):
+def run_probe(root, unit, password, phase, sql_settings=None, probe_script=None):
     state = service_state(unit)
     pid = state['MainPID']
     assert pid.isdigit() and int(pid) > 0
     assert Path('/proc/' + pid + '/ns/net').readlink() != Path('/proc/self/ns/net').readlink()
     probe = 'smail-migration-probe-' + unit.removeprefix('smail-runtime-review-') + '-' + phase
     script = 'runtime_sql_migration.py' if sql_settings else 'runtime_migration.py'
+    if probe_script is not None:
+        assert probe_script == 'runtime_interruption.py' and sql_settings is None
+        script = probe_script
     command = ['systemd-run', '--wait', '--pipe', '--unit=' + probe,
         '--property=User=smail', '--property=Group=smail',
         '--property=NetworkNamespacePath=/proc/' + pid + '/ns/net',

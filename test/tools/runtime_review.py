@@ -80,8 +80,11 @@ def main():
     parser.add_argument('--memory-max-mib', type=int, choices=(128, 192, 256), default=128)
     parser.add_argument('--restore', action='store_true')
     parser.add_argument('--migration', action='store_true')
+    parser.add_argument('--interruption', action='store_true')
     parser.add_argument('--database-type', choices=('sqlite', 'mysql', 'postgres'), default='sqlite')
     args = parser.parse_args()
+    if args.interruption and (not args.migration or args.database_type != 'sqlite'):
+        parser.error('中断验收必须选择 SQLite 迁移独立场景')
     if args.migration and (args.nginx_template or args.restore):
         parser.error('迁移进程验收仅使用直接 TLS 的独立场景')
     if args.restore and args.database_type != 'sqlite':
@@ -131,6 +134,10 @@ def main():
             shutil.copy2(Path(__file__).with_name('runtime_sql_migration.py'), target / 'runtime_sql_migration.py')
             (target / 'runtime_sql_migration.py').chmod(0o640)
             shutil.chown(target / 'runtime_sql_migration.py', user='root', group='smail')
+    if args.interruption:
+        shutil.copy2(Path(__file__).with_name('runtime_interruption.py'), target / 'runtime_interruption.py')
+        (target / 'runtime_interruption.py').chmod(0o640)
+        shutil.chown(target / 'runtime_interruption.py', user='root', group='smail')
     if args.nginx_template:
         shutil.copy2(Path(__file__).with_name('runtime_proxy.py'), target / 'runtime_proxy.py')
         (target / 'runtime_proxy.py').chmod(0o640)
@@ -267,6 +274,9 @@ def main():
             assert database.execute('SELECT COUNT(*) FROM email WHERE msg_id=?', (message_id,)).fetchone()[0] == 0
         result['live_message_absent'] = True
         if args.migration:
+            if args.interruption:
+                from runtime_interruption import verify_interruption
+                verify_interruption(root, unit, password, result)
             if migration_target:
                 from runtime_sql_migration import verify_migration
                 verify_migration(root, unit, password, result, sql_fixture, migration_target)
@@ -287,7 +297,7 @@ def main():
                     result['integrity'] = migration_target.integrity(root)
                 elif args.migration:
                     from runtime_migration import migration_integrity
-                    result['integrity'] = migration_integrity(root)
+                    result['integrity'] = migration_integrity(root, interrupted=args.interruption)
                 else:
                     result['integrity'] = sql_fixture.integrity(root) if sql_fixture else database_integrity(root)
             except (AssertionError, sqlite3.Error, RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
