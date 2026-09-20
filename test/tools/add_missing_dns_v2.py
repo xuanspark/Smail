@@ -1,7 +1,8 @@
+import os
 import urllib.request, urllib.parse, hmac, hashlib, base64, time, json
 
-ak = 'ENV_ALIDNS_ACCESS_KEY_ID'
-sk = 'ENV_ALIDNS_ACCESS_KEY_SECRET'
+ak = os.environ['SMAIL_ALIDNS_ACCESS_KEY_ID']
+sk = os.environ['SMAIL_ALIDNS_ACCESS_KEY_SECRET']
 
 def percent_encode(val):
     res = urllib.parse.quote(str(val), safe='')

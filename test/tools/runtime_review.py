@@ -1,11 +1,13 @@
 """在 47 服务器创建空数据副本并进行受限验收，不停止线上服务或删除文件。"""
 
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import sqlite3
 import subprocess
@@ -19,6 +21,18 @@ def run(*args):
 def service_state():
     return {name: run('systemctl', 'show', name, '--property=MainPID,NRestarts,ActiveState,InvocationID')
             for name in ('smail.service', 'nginx.service', 'mysql.service', 'Scert.service')}
+
+
+def database_integrity(root):
+    # 验收器不能创建数据库，也不能允许第二个状态库。
+    data = root / 'data'
+    assert not (data / 'smail-state.db').exists(), '单数据库实例生成了旧状态库'
+    assert sorted(path.name for path in data.glob('*.db')) == ['smail.db']
+    with closing(sqlite3.connect((data / 'smail.db').as_uri() + '?mode=ro', uri=True)) as database:
+        integrity = database.execute('PRAGMA integrity_check').fetchall()
+        assert database.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='config_records'").fetchone()[0] == 1
+    assert integrity == [('ok',)]
+    return {'smail.db': integrity}
 
 
 def stop_test_units(names):
@@ -62,6 +76,8 @@ def main():
     parser.add_argument('--main-sha', required=True)
     parser.add_argument('--binary', type=Path, default=Path('/opt/smail/smail'))
     parser.add_argument('--nginx-template', type=Path)
+    parser.add_argument('--memory-max-mib', type=int, choices=(128, 192, 256), default=128)
+    parser.add_argument('--restore', action='store_true')
     args = parser.parse_args()
     assert os.geteuid() == 0 and run('hostname') == 'ikun2'
     os.umask(0o027)
@@ -80,7 +96,7 @@ def main():
     with (live / 'smail').open('rb') as stream:
         live_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
     memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
-    required_memory = 320 if args.nginx_template else 272
+    required_memory = args.memory_max_mib + (192 if args.nginx_template else 144)
     assert int(memory['MemAvailable'].split()[0]) >= required_memory * 1024, '可用内存不足，暂停隔离验收'
     stamp = time.strftime('%Y%m%d-%H%M%S')
     target = Path('/var/tmp') / ('smail-review-runtime-' + stamp)
@@ -94,8 +110,12 @@ def main():
     shutil.copy2(binary, root / 'smail')
     (root / 'smail').chmod(0o755)
     shutil.copy2(Path(__file__).with_name('runtime_probe.py'), target / 'runtime_probe.py')
+    (target / 'runtime_probe.py').chmod(0o640)
+    shutil.chown(target / 'runtime_probe.py', user='root', group='smail')
     if args.nginx_template:
         shutil.copy2(Path(__file__).with_name('runtime_proxy.py'), target / 'runtime_proxy.py')
+        (target / 'runtime_proxy.py').chmod(0o640)
+        shutil.chown(target / 'runtime_proxy.py', user='root', group='smail')
     subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
                     '-keyout', str(root / 'ssl/runtime.key'), '-out', str(root / 'ssl/runtime.crt'),
                     '-subj', '/CN=mail.runtime.invalid', '-addext',
@@ -111,6 +131,7 @@ def main():
     probe_unit = 'smail-runtime-probe-' + stamp
     proxy_unit = 'smail-runtime-nginx-' + stamp
     result = {'target': str(target), 'unit': unit, 'main_sha256': args.main_sha,
+              'memory_max_mib': args.memory_max_mib,
               'source': str(binary), 'live_sha256': live_sha, 'before': before,
               'topology': 'nginx-8001-8002' if args.nginx_template else 'direct-80-443'}
     service_env = []
@@ -123,6 +144,7 @@ def main():
                        '--setenv=SMAIL_HTTPS_PORT=8002']
         probe_args = ['--proxy']
     started = time.strftime('%Y-%m-%dT%H:%M:%S')
+    password = secrets.token_urlsafe(9)
     try:
         subprocess.run([
             'systemd-run', '--unit=' + unit, '--property=Type=exec',
@@ -131,7 +153,8 @@ def main():
             '--property=ProtectSystem=strict', '--property=ProtectHome=yes',
             '--property=NoNewPrivileges=yes', '--property=CapabilityBoundingSet=CAP_NET_BIND_SERVICE',
             '--property=AmbientCapabilities=CAP_NET_BIND_SERVICE',
-            '--property=MemoryMax=128M', '--property=MemorySwapMax=0', '--property=CPUQuota=25%',
+            '--property=MemoryMax=' + str(args.memory_max_mib) + 'M',
+            '--property=MemorySwapMax=0', '--property=CPUQuota=25%',
             '--property=TasksMax=128', '--property=RuntimeMaxSec=300s', '--property=OOMPolicy=stop',
             '--property=KillMode=control-group', '--property=TimeoutStopSec=10s',
             '--property=BindPaths=' + str(root) + ':/opt/smail ' + str(control) + ':/run/smail',
@@ -173,8 +196,9 @@ def main():
             '--property=MemorySwapMax=0', '--property=CPUQuota=25%', '--property=TasksMax=32',
             '--property=RuntimeMaxSec=240s', '--property=OOMPolicy=stop',
             '--property=KillMode=control-group', '--property=TimeoutStopSec=10s',
-            'python3', str(target / 'runtime_probe.py'), str(root), '--live-net', live_net, *probe_args,
-        ], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=270)
+            'python3', str(target / 'runtime_probe.py'), str(root), '--live-net', live_net,
+            '--password-stdin', *probe_args,
+        ], input=password + '\n', text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=270)
         (target / 'probe.log').write_text(probe.stdout, encoding='utf-8')
         result['probe_code'] = probe.returncode
         if (target / 'probe-result.json').exists():
@@ -191,12 +215,10 @@ def main():
         with (live / 'smail').open('rb') as stream:
             result['live_unchanged'] = (result['after'] == before
                                         and hashlib.file_digest(stream, 'sha256').hexdigest() == live_sha)
-        result['integrity'] = {}
-        for name in ('smail.db', 'smail-state.db'):
-            path = root / 'data' / name
-            if path.exists():
-                with sqlite3.connect(f'file:{path}?mode=ro', uri=True) as database:
-                    result['integrity'][name] = database.execute('PRAGMA integrity_check').fetchall()
+        try:
+            result['integrity'] = database_integrity(root)
+        except (AssertionError, sqlite3.Error) as error:
+            result['integrity'] = {'error': type(error).__name__}
         (target / 'service.log').write_text(run('journalctl', '-u', unit, '--no-pager'), encoding='utf-8')
         kernel = run('journalctl', '-k', '--since', started, '--no-pager')
         result['oom_events'] = sum('oom-kill:constraint=' in line for line in kernel.splitlines())
@@ -205,7 +227,12 @@ def main():
     assert result['live_unchanged'] and result['oom_events'] == 0
     assert not result['cleanup_errors'], '测试单元未全部停止，需要核查保留的结果'
     assert not result['resource_errors'], '资源证据不完整，需要核查保留的结果'
-    assert result['integrity'] == {'smail.db': [('ok',)], 'smail-state.db': [('ok',)]}
+    assert result['integrity'] == {'smail.db': [('ok',)]}
+    if args.restore:
+        from runtime_restore import verify_backup_restore
+        restored = verify_backup_restore(root, result, password, args.nginx_template is not None)
+        (target / 'restore-result.json').write_text(json.dumps(restored, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(json.dumps({'restore': restored}, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

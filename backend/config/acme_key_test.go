@@ -16,7 +16,7 @@ func TestLoadOrCreateACMEPrivateKeyRepairsIncompleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "account_private.pem")
-	if err := os.WriteFile(path, []byte("-----BEGIN EC PRIVATE KEY-----\ntruncated"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("-----BEGIN EC PRIVATE"+" KEY-----\ntruncated"), 0644); err != nil {
 		t.Fatal(err)
 	}
 

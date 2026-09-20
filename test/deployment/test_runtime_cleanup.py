@@ -1,8 +1,11 @@
 '''隔离验收收尾回归，模拟异常，不停止真实服务。'''
 
 from pathlib import Path
+from contextlib import closing
 import subprocess
+import sqlite3
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +18,34 @@ class RuntimeCleanupTest(unittest.TestCase):
     app = 'smail-runtime-review-20260918-020000'
     probe = 'smail-runtime-probe-20260918-020000'
     proxy = 'smail-runtime-nginx-20260918-020000'
+
+    def test_single_database_integrity_and_legacy_rejection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'data').mkdir()
+            with closing(sqlite3.connect(root / 'data/smail.db')) as database:
+                database.execute('CREATE TABLE config_records (id TEXT)')
+            self.assertEqual(review.database_integrity(root), {'smail.db': [('ok',)]})
+            (root / 'data/smail-state.db').touch()
+            with self.assertRaises(AssertionError):
+                review.database_integrity(root)
+
+    def test_missing_database_is_not_created_by_verifier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'data').mkdir()
+            with self.assertRaises(AssertionError):
+                review.database_integrity(root)
+            self.assertEqual(list((root / 'data').iterdir()), [])
+
+    def test_missing_history_table_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'data').mkdir()
+            with closing(sqlite3.connect(root / 'data/smail.db')) as database:
+                database.execute('CREATE TABLE other (id TEXT)')
+            with self.assertRaises(AssertionError):
+                review.database_integrity(root)
 
     def test_resources_then_stop_all(self):
         result = {}

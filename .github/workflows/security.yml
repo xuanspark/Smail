@@ -15,13 +15,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
-      - name: Reject committed private keys
-        shell: bash
+      - name: Reject committed cloud credentials and private keys
+        run: python3 test/tools/check_tracked_secrets.py
+      - name: Verify isolated acceptance and secret scanner regressions
         run: |
-          if git grep -n -E -- '-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----'; then
-            echo 'Committed private key detected.'
-            exit 1
-          fi
+          python3 -m unittest discover -s test/deployment -p 'test_runtime_*.py'
+          python3 -m unittest discover -s test/deployment -p 'test_tracked_secrets.py'
       - name: Setup Go environment
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:

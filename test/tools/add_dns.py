@@ -1,4 +1,8 @@
+import os
 import urllib.request, urllib.parse, hmac, hashlib, base64, time, json, paramiko, subprocess
+
+ak = os.environ['SMAIL_ALIDNS_ACCESS_KEY_ID']
+sk = os.environ['SMAIL_ALIDNS_ACCESS_KEY_SECRET']
 
 client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.RejectPolicy())
@@ -17,9 +21,6 @@ print('DKIM Value:', dkim_val)
 
 dmarc_val = 'v=DMARC1; p=quarantine; rua=mailto:admin@solit.cn'
 print('DMARC Value:', dmarc_val)
-
-ak = 'ENV_ALIDNS_ACCESS_KEY_ID'
-sk = 'ENV_ALIDNS_ACCESS_KEY_SECRET'
 
 def aliyun_request(params):
     public_params = {

@@ -4,6 +4,8 @@ import argparse
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from email.message import EmailMessage
+from email.parser import BytesParser
+from email.policy import default as email_policy
 import http.client
 from http.cookies import SimpleCookie
 import imaplib
@@ -15,6 +17,7 @@ import smtplib
 import socket
 import sqlite3
 import ssl
+import sys
 import threading
 import time
 
@@ -93,6 +96,48 @@ class LocalPOP(poplib.POP3_SSL):
         return self.context.wrap_socket(raw, server_hostname=self.host)
 
 
+def verify_message_content(raw, message_id, body, attachment):
+    message = BytesParser(policy=email_policy).parsebytes(raw)
+    assert str(message['Message-ID']).strip('<>') == message_id
+    text = message.get_body(preferencelist=('plain',))
+    assert text is not None and body in text.get_content()
+    files = list(message.iter_attachments())
+    assert len(files) == 1 and files[0].get_filename() == '验收附件.txt'
+    assert files[0].get_payload(decode=True) == attachment
+
+
+def verify_protocol_read(context, codes, message_id, body, attachment):
+    # 通过协议取回真实正文，不以数据库存在或欢迎响应替代取信验收。
+    client = LocalIMAP(HOST, 993, ssl_context=context, timeout=30)
+    try:
+        assert client.login(ADDRESS, codes['imap'])[0] == 'OK'
+        assert client.select('INBOX', readonly=True)[0] == 'OK'
+        status, matches = client.uid('SEARCH', None, 'HEADER', 'Message-ID', '"<' + message_id + '>"')
+        assert status == 'OK' and matches[0].split(), 'IMAP 收件箱没有测试邮件'
+        status, contents = client.uid('FETCH', matches[0].split()[-1], '(BODY.PEEK[])')
+        assert status == 'OK'
+        raw = next(item[1] for item in contents if isinstance(item, tuple))
+        verify_message_content(raw, message_id, body, attachment)
+    finally:
+        client.logout()
+    client = LocalPOP(HOST, 995, context=context, timeout=30)
+    try:
+        client.user(ADDRESS)
+        client.pass_(codes['pop3'])
+        found = False
+        for item in client.list()[1]:
+            raw = b'\r\n'.join(client.retr(int(item.split()[0]))[1])
+            message = BytesParser(policy=email_policy).parsebytes(raw)
+            if str(message['Message-ID']).strip('<>') == message_id:
+                verify_message_content(raw, message_id, body, attachment)
+                found = True
+                break
+        assert found, 'POP3 没有取到测试邮件'
+    finally:
+        client.quit()
+    return {'imap_inbox': True, 'imap_body_attachment': True, 'pop3_body_attachment': True}
+
+
 def protocol_operation(protocol, context, code):
     if protocol == 'smtp':
         client = smtp_connect(context)
@@ -140,15 +185,61 @@ def protocol_operation(protocol, context, code):
     return invoke
 
 
+def verify_restored(root, context, password, message_id, port):
+    client = Client(context, port=port)
+    for _ in range(60):
+        try:
+            assert client.request('/api/ping', method='GET')[0] == 200
+            break
+        except (OSError, AssertionError):
+            time.sleep(1)
+    else:
+        raise AssertionError('恢复实例未就绪')
+    assert client.success('/api/v1/login', {'account': ACCOUNT, 'password': password})['account'] == ACCOUNT
+    assert client.success('/api/v1/user/info')['account'] == ACCOUNT
+    client.success('/api/v1/security/reauth', {'password': password})
+    codes = {}
+    for protocol in ('smtp', 'imap', 'pop3'):
+        codes[protocol] = client.success('/api/v1/security/credentials/protocols/generate', {'protocol': protocol})['code']
+        assert protocol_operation(protocol, context, codes[protocol])() == 'success'
+    body = '内部25端口真实收信，检查中文正文和附件。'
+    attachment = '隔离验收附件内容'.encode('utf-8')
+    result = {'login': True, 'session': True, 'protocol_login': list(codes),
+              'historical_mail': verify_protocol_read(context, codes, message_id, body, attachment)}
+    message = EmailMessage()
+    message['From'] = 'restore@sender.invalid'
+    message['To'] = ADDRESS
+    message['Subject'] = '备份恢复后中文收信验收'
+    restored_id = message_id + '.restored'
+    message['Message-ID'] = '<' + restored_id + '>'
+    message.set_content(body)
+    message.add_attachment(attachment, maintype='text', subtype='plain', filename='验收附件.txt')
+    with smtp_connect(context) as smtp:
+        assert not smtp.send_message(message)
+    result['new_mail'] = verify_protocol_read(context, codes, restored_id, body, attachment)
+    result['passed'] = True
+    (root.parent / 'restore-probe-result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('root', type=Path)
     parser.add_argument('--live-net', required=True)
     parser.add_argument('--proxy', action='store_true')
+    parser.add_argument('--password-stdin', action='store_true')
+    parser.add_argument('--restore-message-id')
     args = parser.parse_args()
     assert str(Path('/proc/self/ns/net').readlink()) != args.live_net, '禁止在宿主网络执行测试'
     root = args.root.resolve(strict=True)
-    assert root.parent.name.startswith('smail-review-runtime-') and root.name == 'instance'
+    assert root.parent.name.startswith(('smail-review-runtime-', 'smail-review-restore-')) and root.name == 'instance'
+    password = sys.stdin.readline().strip() if args.password_stdin else secrets.token_urlsafe(9)
+    assert len(password) == 12
+    if args.restore_message_id:
+        assert args.password_stdin
+        context = ssl.create_default_context(cafile=str(root / 'ssl/runtime.crt'))
+        verify_restored(root, context, password, args.restore_message_id, 8002 if args.proxy else 443)
+        return
     result = {'stage': 'setup', 'passed': False}
     started = time.monotonic()
     try:
@@ -170,7 +261,6 @@ def main():
         client.success(setup, {'step': 'database', 'action': 'set', 'db_type': 'sqlite', 'db_dsn': ''})
         with sqlite3.connect(f'file:{root / "data/smail.db"}?mode=ro', uri=True) as database:
             assert database.execute('SELECT COUNT(*) FROM user').fetchone()[0] == 0
-        password = secrets.token_urlsafe(9)
         client.success(setup, {'step': 'password', 'action': 'set', 'account': ACCOUNT, 'password': password})
         client.success(setup, {'step': 'domain', 'action': 'set', 'smtp_domain': 'runtime.invalid',
                                'web_domain': HOST, 'multi_domain': ''})
@@ -193,6 +283,12 @@ def main():
         assert 'smail_csrf' in client.cookies
         assert client.success('/api/v1/user/info').get('account') == ACCOUNT
         result['setup'] = {'empty_database': True, 'token_required': True, 'login': True, 'session': True}
+        # 首次登录先完成正式安全设置，不绕过恢复方式要求直接启用协议。
+        client.success('/api/v1/security/reauth', {'password': password})
+        recovery = client.success('/api/v1/security/credentials/recovery-codes/generate', {'count': 10})
+        assert len(recovery['codes']) == 10
+        recovery.clear()
+        result['security_setup'] = {'recovery_codes_generated': 10, 'plaintext_logged': False}
         if args.proxy:
             from runtime_proxy import configure_proxy
             result['proxy'] = configure_proxy(client, context, login, Client, LocalHTTPS)
@@ -213,7 +309,7 @@ def main():
         result['smtp_invalid_credentials'] = 535
         result['stage'] = 'smtp'
         message = EmailMessage()
-        message['From'] = 'probe@runtime.invalid'
+        message['From'] = 'probe@sender.invalid'
         message['To'] = ADDRESS
         message['Subject'] = '隔离首次安装中文收信验收'
         message_id = 'runtime-' + root.parent.name + '@runtime.invalid'
@@ -234,6 +330,8 @@ def main():
                                       (rows[0][0],)).fetchall()
             assert owners == [(ACCOUNT,)]
         result['smtp'] = {'message_id': message_id, 'stored': True, 'owners': 1, 'attachment': True}
+        result['stage'] = 'protocol_read'
+        result['protocol_read'] = verify_protocol_read(context, codes, message_id, body, attachment)
         result['stage'] = 'overload'
         rounds = []
         result['overload'] = rounds

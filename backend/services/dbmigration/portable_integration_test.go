@@ -1,8 +1,11 @@
 package dbmigration
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -51,9 +54,23 @@ func portableIntegrationInput(t *testing.T, name string, kind config.DatabaseTyp
 func runPortableIntegrationChain(t *testing.T, inputs []TargetInput) {
 	t.Helper()
 	root, source := portableFixture(t)
+	manager := portableIntegrationManager(t, root, source)
 	open, err := NewRuntimeSQLConnectionFactory(root)
 	if err != nil {
 		t.Fatal("integration connection factory unavailable")
+	}
+	// 使用二进制历史记录检查跨库复制，不输出配置原文或凭据。
+	payload := []byte{0, 1, 127, 128, 255}
+	digest := fmt.Sprintf("%x", sha256.Sum256(payload))
+	seed := &PortableExecutor{root: root, open: open}
+	database, err := seed.connect(context.Background(), source)
+	if err != nil {
+		t.Fatal("integration history source unavailable")
+	}
+	_, err = database.Exec("INSERT INTO config_records(kind,id,payload,digest) VALUES ('integration','integration-history',?,?)", payload, digest)
+	_ = database.Close()
+	if err != nil {
+		t.Fatal("integration history seed failed")
 	}
 	inputs = append(inputs, TargetInput{Type: config.DatabaseTypeSQLite, LocalRef: "roundtrip.db"})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -73,11 +90,9 @@ func runPortableIntegrationChain(t *testing.T, inputs []TargetInput) {
 		if err != nil {
 			t.Fatal("integration plan validation failed")
 		}
-		switched := false
-		executor := &PortableExecutor{root: root, open: open, switchConfig: func(context.Context, uint64, config.DatabaseConfig, config.AuditActor) error {
-			switched = true
-			return nil
-		}}
+		plan.expectedGeneration = manager.Snapshot().Generation
+		plan.actor = config.AuditActor{UserID: "40", Role: "super_admin", SessionID: "integration-session", RecentAuth: true, RecoveryCodeConfigured: true}
+		executor := &PortableExecutor{root: root, open: open, switchConfig: manager.SwitchDatabase}
 		// 路径只记录随机测试库名，不记录连接账号、密码或底层驱动错误。
 		t.Logf("hop %d: %s -> %s, retained database: %s%s", index+1, source.Type, target.Type, target.Name, target.LocalRef)
 		if err := executor.Run(ctx, plan, func(Status) error { return nil }); err != nil {
@@ -85,8 +100,12 @@ func runPortableIntegrationChain(t *testing.T, inputs []TargetInput) {
 			t.Fatalf("migration failed: %s", migrationErrorCode(err))
 		}
 		executor.Close()
-		if !switched {
-			t.Fatal("configuration switch was not reached")
+		if status := manager.Status(); len(status.PendingRestart) != 1 || status.PendingRestart[0] != config.ServiceDatabase {
+			t.Fatal("database restart requirement was not recorded")
+		}
+		manager = reopenPortableManager(t, root)
+		if snapshot := manager.Snapshot(); snapshot.Generation != plan.expectedGeneration+1 || snapshot.Root.Database != target {
+			t.Fatal("configuration transaction did not survive manager restart")
 		}
 		connection, err := executor.connect(ctx, target)
 		if err != nil {
@@ -96,10 +115,21 @@ func runPortableIntegrationChain(t *testing.T, inputs []TargetInput) {
 		queryErr := connection.QueryRowContext(ctx, "SELECT subject FROM email WHERE id=82").Scan(&subject)
 		var logPayload string
 		logErr := connection.QueryRowContext(ctx, "SELECT payload FROM mail_log WHERE id='migration-log'").Scan(&logPayload)
+		var historyPayload []byte
+		var historyDigest string
+		historyErr := connection.QueryRowContext(ctx, "SELECT payload,digest FROM config_records WHERE kind='integration' AND id='integration-history'").Scan(&historyPayload, &historyDigest)
+		var backups int
+		backupErr := connection.QueryRowContext(ctx, "SELECT COUNT(*) FROM config_records WHERE kind='backup'").Scan(&backups)
 		_, insertErr := connection.ExecContext(ctx, "INSERT INTO "+quoteDatabaseIdentifier(target.Type, "user")+" (account,name,password) VALUES ('next_hop_"+string(rune('a'+index))+"','sequence','test-only')")
 		_ = connection.Close()
 		if queryErr != nil || subject != "中文主题" || logErr != nil || logPayload != `{"message":"中文日志"}` || insertErr != nil {
 			t.Fatal("target content or identity sequence was not preserved")
+		}
+		if historyErr != nil || !bytes.Equal(historyPayload, payload) || historyDigest != digest {
+			t.Fatal("configuration history bytes or digest were not preserved")
+		}
+		if backupErr != nil || backups == 0 {
+			t.Fatal("real configuration backup did not survive migration")
 		}
 		source = target
 	}
