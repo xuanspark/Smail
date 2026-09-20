@@ -148,6 +148,9 @@ func registerV1TOTPRoute(mux *http.ServeMux) {
 }
 
 func registerV1PluginRoutes(mux *http.ServeMux) {
+	for _, id := range []string{"telegram_push", "wechat_push"} {
+		mux.HandleFunc("/api/v1/plugin/secrets/"+id, limitBody(16<<10, contextIterceptor(controllers.PluginSecret)))
+	}
 	getUserSettings := contextIterceptor(controllers.GetTelegramUserSettings)
 	updateUserSettings := limitBody(16<<10, contextIterceptor(controllers.UpdateTelegramUserSettings))
 	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/user", func(w http.ResponseWriter, r *http.Request) {

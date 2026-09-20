@@ -76,11 +76,18 @@
               type="password"
               show-password
               clearable
-              :disabled="!canWrite || sectionLoading || busy || !!sectionError || !!pendingCandidate"
+              :disabled="!canWrite || sectionLoading || busy || !!sectionError || !!pendingCandidate || (pluginSecretPage && !pluginSecretStatus)"
               :placeholder="secretField.placeholder"
               autocomplete="new-password"
               @update:model-value="updateSecret"
             />
+            <el-button
+              v-if="pluginSecretPage && canWrite"
+              :disabled="busy || sectionLoading || !!sectionError || !!pendingCandidate || !pluginSecretStatus || !secretValue"
+              @click="savePluginSecret"
+            >
+              保存密钥
+            </el-button>
           </div>
 
           <div v-if="canWrite" class="editor-footer">
@@ -102,7 +109,7 @@
               <el-button
                 type="primary"
                 :loading="busy"
-                :disabled="sectionLoading || busy || !!sectionError || (!pendingCandidate && !hasChanges)"
+                :disabled="sectionLoading || busy || !!sectionError || (!pendingCandidate && !hasConfigChanges)"
                 @click="saveAndApply"
               >
                 {{ continuingSave ? '继续保存' : '保存配置' }}
@@ -154,11 +161,14 @@ const {
   saveError,
   secretField,
   secretValue,
+  pluginSecretPage,
+  pluginSecretStatus,
+  savePluginSecret,
   pendingCandidate,
   pendingScopeHint,
   managePending,
   validationResult,
-  hasChanges,
+  hasConfigChanges,
   canWrite,
   refreshPage,
   saveAndApply

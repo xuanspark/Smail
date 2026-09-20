@@ -62,6 +62,8 @@ export function usePage(pageKey = 'base') {
   const sectionError = ref('')
   const saveError = ref('')
   const secretValue = ref('')
+  const pluginSecretStatus = ref(null)
+  const pluginSecretPage = computed(() => ['telegram_push', 'wechat_push'].includes(selectedSection.value))
   const confirmed = ref(false)
   const savedGeneration = ref(0)
   const pendingCandidate = ref(null)
@@ -147,6 +149,7 @@ export function usePage(pageKey = 'base') {
   })
   const restartPreview = ref(null)
   const hasChanges = computed(() => editorText.value !== loadedText.value || !!secretValue.value || !!savedGeneration.value)
+  const hasConfigChanges = computed(() => editorText.value !== loadedText.value || (!pluginSecretPage.value && !!secretValue.value) || !!savedGeneration.value)
 
   const canWrite = computed(() => globalStatus.hasCapability(apiSection() === 'plugins' ? 'plugin.write_global' : 'config.write_global'))
   const canRollback = computed(() => globalStatus.hasCapability('config.rollback'))
@@ -161,10 +164,10 @@ export function usePage(pageKey = 'base') {
     const pluginSecrets = { telegram_push: 'Telegram Bot Token', wechat_push: '微信 Secret' }
     const label = pluginSecrets[selectedSection.value]
     if (label && formConfig.value.plugins?.[selectedSection.value]) {
-      const configured = readFormConfig(loadedText.value).plugins?.[selectedSection.value]?.secretStatus?.configured
+      const configured = pluginSecretStatus.value?.configured
       return {
         label,
-        description: `${configured ? '已设置' : '未设置'}。保存后加密存储，不回显；留空保持原值。`,
+        description: `${configured ? '已设置' : '未设置'}。加密存储，不回显；保存后下次启动插件时生效。`,
         placeholder: `输入新的 ${label}（可选）`
       }
     }
@@ -191,6 +194,7 @@ export function usePage(pageKey = 'base') {
   }
   const updateSecret = value => {
     if (saveFlow.value || !canEdit() || !secretField.value || secretValue.value === value) return
+    if (pluginSecretPage.value && !pluginSecretStatus.value) return
     secretValue.value = value
     saveError.value = ''
     invalidateCandidate()
@@ -293,6 +297,7 @@ export function usePage(pageKey = 'base') {
     editorText.value = ''
     loadedText.value = ''
     secretValue.value = ''
+    pluginSecretStatus.value = null
     confirmed.value = false
     validationResult.value = null
     savedGeneration.value = 0
@@ -308,6 +313,16 @@ export function usePage(pageKey = 'base') {
       }
       editorText.value = JSON.stringify(publicConfig, null, 2)
       loadedText.value = editorText.value
+      if (pluginSecretPage.value) {
+        const secretResponse = await http.get(`/api/v1/plugin/secrets/${selectedSection.value}`)
+        if (requestId !== sectionRequestId || disposed) return false
+        notifyResponseError(secretResponse, '插件密钥状态读取失败')
+        const secretStatus = secretResponse.data
+        if (typeof secretStatus?.configured !== 'boolean' || !Number.isSafeInteger(secretStatus.version) || secretStatus.version < 0) {
+          throw new Error('插件密钥状态不完整，请刷新后重试')
+        }
+        pluginSecretStatus.value = secretStatus
+      }
       if (section === 'base') {
         const database = publicConfig.database || {}
         Object.assign(databaseConfig, { type: database.type || '', name: database.name || '', localRef: database.localRef || '' })
@@ -536,9 +551,6 @@ export function usePage(pageKey = 'base') {
     if (value && selectedSection.value === 'base' && secretField.value) {
       secretChanges['database.password'] = { operation: 'replace', value: { plaintext: value } }
     }
-    if (value && ['telegram_push', 'wechat_push'].includes(selectedSection.value) && secretField.value) {
-      secretChanges[`plugins.${selectedSection.value}.secret`] = { operation: 'replace', value: { plaintext: value } }
-    }
     const relayPassword = formConfig.value?.relay?.password
     if (relayPassword && selectedSection.value === 'mail') {
       secretChanges['relay.password'] = { operation: 'replace', value: { plaintext: relayPassword } }
@@ -664,6 +676,10 @@ export function usePage(pageKey = 'base') {
 
   const saveAndApply = async () => {
     if (saveFlow.value || !canOperate()) return false
+    if (pluginSecretPage.value && secretValue.value) {
+      ElMessage.warning('请先保存密钥，再保存运行配置')
+      return false
+    }
     saveFlow.value = pendingCandidate.value ? 'resume' : 'save'
     try {
       if (pendingCandidate.value) {
@@ -680,6 +696,30 @@ export function usePage(pageKey = 'base') {
   const continuePending = async () => {
     if (!pendingCandidate.value) return false
     return saveAndApply()
+  }
+
+  const savePluginSecret = async () => {
+    if (!canEdit() || !pluginSecretPage.value || !pluginSecretStatus.value || !secretValue.value) return false
+    working.value = 'plugin-secret'
+    saveError.value = ''
+    try {
+      const request = { version: pluginSecretStatus.value.version, change: { operation: 'replace', value: { plaintext: secretValue.value } } }
+      const response = await requestWithRecentAuthentication(() => http.put(`/api/v1/plugin/secrets/${selectedSection.value}`, request))
+      notifyResponseError(response, '插件密钥保存失败')
+      if (disposed) return false
+      secretValue.value = ''
+      pluginSecretStatus.value = response.data
+      ElMessage.success('密钥已保存，下次启动插件时生效')
+      return true
+    } catch (error) {
+      if (!disposed && !isRecentAuthenticationCancelled(error)) {
+        saveError.value = error.message || '插件密钥保存失败'
+        ElMessage.error(saveError.value)
+      }
+      return false
+    } finally {
+      working.value = ''
+    }
   }
 
   const previewRollback = async () => {
@@ -762,7 +802,7 @@ export function usePage(pageKey = 'base') {
     saveFlow, busy, showPendingRecovery, continuingSave,
     loading, availabilityError, working, status, stateLabel, stateTagType, sectionOptions: sections,
     selectedSection, currentSection, sectionLoading, editorText, formConfig, formErrors, updateField, updateSecret,
-    sectionError, saveError, sensitiveHint, secretField, secretValue,
+    sectionError, saveError, sensitiveHint, secretField, secretValue, pluginSecretPage, pluginSecretStatus, savePluginSecret, hasConfigChanges,
     confirmed, savedGeneration, pendingCandidate, managePending, validationResult, canWrite, canRollback,
     backupsLoading, backupsError, backups, rollbackGeneration, rollbackConfirmed, rollbackPreview,
     loadAll, loadSection, validateConfig, saveConfig, applyConfig, saveAndApply, continuePending,
