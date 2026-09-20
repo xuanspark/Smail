@@ -79,8 +79,11 @@ def main():
     parser.add_argument('--nginx-template', type=Path)
     parser.add_argument('--memory-max-mib', type=int, choices=(128, 192, 256), default=128)
     parser.add_argument('--restore', action='store_true')
+    parser.add_argument('--migration', action='store_true')
     parser.add_argument('--database-type', choices=('sqlite', 'mysql', 'postgres'), default='sqlite')
     args = parser.parse_args()
+    if args.migration and (args.database_type != 'sqlite' or args.nginx_template or args.restore):
+        parser.error('迁移进程验收当前只覆盖直接 TLS 的 SQLite 独立场景')
     if args.restore and args.database_type != 'sqlite':
         parser.error('SQL 数据库备份恢复需要独立验收，不能套用 SQLite 冷备流程')
     assert os.geteuid() == 0 and run('hostname') == 'ikun2'
@@ -116,6 +119,10 @@ def main():
     shutil.copy2(Path(__file__).with_name('runtime_probe.py'), target / 'runtime_probe.py')
     (target / 'runtime_probe.py').chmod(0o640)
     shutil.chown(target / 'runtime_probe.py', user='root', group='smail')
+    if args.migration:
+        shutil.copy2(Path(__file__).with_name('runtime_migration.py'), target / 'runtime_migration.py')
+        (target / 'runtime_migration.py').chmod(0o640)
+        shutil.chown(target / 'runtime_migration.py', user='root', group='smail')
     if args.database_type != 'sqlite':
         shutil.copy2(Path(__file__).with_name('runtime_sql.py'), target / 'runtime_sql.py')
         (target / 'runtime_sql.py').chmod(0o640)
@@ -231,6 +238,9 @@ def main():
             message_id = result['probe']['smtp']['message_id']
             assert database.execute('SELECT COUNT(*) FROM email WHERE msg_id=?', (message_id,)).fetchone()[0] == 0
         result['live_message_absent'] = True
+        if args.migration:
+            from runtime_migration import verify_migration
+            verify_migration(root, unit, password, result)
     finally:
         try:
             collect_and_stop(result, unit, probe_unit, proxy_unit if args.nginx_template else None)
@@ -239,7 +249,11 @@ def main():
                 result['live_unchanged'] = (result['after'] == before
                                             and hashlib.file_digest(stream, 'sha256').hexdigest() == live_sha)
             try:
-                result['integrity'] = sql_fixture.integrity(root) if sql_fixture else database_integrity(root)
+                if args.migration:
+                    from runtime_migration import migration_integrity
+                    result['integrity'] = migration_integrity(root)
+                else:
+                    result['integrity'] = sql_fixture.integrity(root) if sql_fixture else database_integrity(root)
             except (AssertionError, sqlite3.Error, RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
                 result['integrity'] = {'error': type(error).__name__}
         finally:
@@ -266,6 +280,8 @@ def main():
     assert not result['resource_errors'], '资源证据不完整，需要核查保留的结果'
     if sql_fixture:
         assert result['integrity'].get('sqlite_files') == 0 and result['integrity']['config_records'] > 0
+    elif args.migration:
+        assert result['migration']['passed'] and result['integrity']['active_database'] == 'migrated.db'
     else:
         assert result['integrity'] == {'smail.db': [('ok',)]}
     if args.restore:
