@@ -135,7 +135,7 @@ func TestBuildPostgresDSNUsesStructuredFields(t *testing.T) {
 	if host != "2001:db8::2" || port != "5432" || strings.TrimPrefix(parsed.Path, "/") != "smail_1" {
 		t.Fatalf("unexpected connection settings: host=%q port=%q name=%q", host, port, parsed.Path)
 	}
-	if parsed.Query().Get("sslmode") != "disable" {
+	if parsed.Query().Get("sslmode") != "require" {
 		t.Fatalf("unexpected sslmode: %q", parsed.Query().Get("sslmode"))
 	}
 }

@@ -683,8 +683,20 @@ func parseLegacyMySQLDSN(value string) (DatabaseConfig, string, bool) {
 
 func parseLegacyPostgreSQLDSN(value string) (DatabaseConfig, string, bool) {
 	parsed, err := url.ParseRequestURI(value)
-	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User == nil || parsed.Host == "" {
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Fragment != "" || parsed.User == nil || parsed.Host == "" {
 		return DatabaseConfig{}, "", false
+	}
+	// 仅接受正式运行能够原样表达的选项；未知、重复和降级 TLS 的选项仍需人工迁移。
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return DatabaseConfig{}, "", false
+	}
+	supported := map[string]string{"sslmode": "require", "timezone": "UTC", "search_path": "public"}
+	for key, values := range query {
+		expected, known := supported[key]
+		if !known || len(values) != 1 || values[0] != expected {
+			return DatabaseConfig{}, "", false
+		}
 	}
 	username := parsed.User.Username()
 	password, ok := parsed.User.Password()

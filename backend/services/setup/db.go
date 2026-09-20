@@ -363,7 +363,8 @@ func buildPostgresDSN(settings DatabaseSettings, previousDSN string) (string, er
 		query = previous.Query()
 	}
 	if query.Get("sslmode") == "" {
-		query.Set("sslmode", "disable")
+		// 首次安装与正式运行保持相同的 TLS 要求，避免完成安装时切换连接语义。
+		query.Set("sslmode", "require")
 	}
 	parsed := &url.URL{
 		Scheme:   "postgres",
