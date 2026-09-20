@@ -164,16 +164,13 @@ func importManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificate
 		return atomicfile.WriteRoot(candidateRoot, name, data, permission)
 	}
 	if err := write("private.key", privateKeyPEM, 0600); err != nil {
-		candidateRoot.Close()
-		return ManagedSSLReference{}, err
+		return ManagedSSLReference{}, errors.Join(err, candidateRoot.Close())
 	}
 	if err := write("public.crt", certificatePEM, 0600); err != nil {
-		candidateRoot.Close()
-		return ManagedSSLReference{}, err
+		return ManagedSSLReference{}, errors.Join(err, candidateRoot.Close())
 	}
 	if err := write("issuer.crt", issuerPEM, 0600); err != nil {
-		candidateRoot.Close()
-		return ManagedSSLReference{}, err
+		return ManagedSSLReference{}, errors.Join(err, candidateRoot.Close())
 	}
 	if err := candidateRoot.Close(); err != nil {
 		return ManagedSSLReference{}, err
@@ -557,10 +554,9 @@ func stageManagedSSLAtRoot(root string, mode string, privateKeyPEM, certificateP
 	}
 	unlock, err := lockStateFile(lease)
 	if err != nil {
-		lease.Close()
-		return ManagedSSLReference{}, err
+		return ManagedSSLReference{}, errors.Join(err, lease.Close())
 	}
-	managedSSLStorage.staged[directory] = func() { unlock(); lease.Close() }
+	managedSSLStorage.staged[directory] = func() { releaseConfigLease(unlock, lease) }
 	return ManagedSSLReference{Mode: mode, CertificateRef: filepath.ToSlash(publicRef), PrivateKeyRef: filepath.ToSlash(privateRef), CertificatePath: publicPath, PrivateKeyPath: privatePath}, nil
 }
 
@@ -656,8 +652,7 @@ func removeManagedSSLDirectory(directory string) error {
 	}
 	for _, entry := range entries {
 		if err := storage.Remove(entry.Name()); err != nil {
-			storage.Close()
-			return err
+			return errors.Join(err, storage.Close())
 		}
 	}
 	if err := storage.Close(); err != nil {

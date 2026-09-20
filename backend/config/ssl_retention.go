@@ -218,9 +218,11 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 				unlock, err := lockStateFile(lease)
 				if err != nil {
 					keep[path] = true
-					lease.Close()
+					if closeErr := lease.Close(); closeErr != nil {
+						return errors.Join(err, closeErr)
+					}
 				} else {
-					leases = append(leases, func() { unlock(); lease.Close() })
+					leases = append(leases, func() { releaseConfigLease(unlock, lease) })
 				}
 			}
 			versions = append(versions, retainedSSLVersion{directory: path, modified: info.ModTime()})

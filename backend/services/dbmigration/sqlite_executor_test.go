@@ -78,6 +78,33 @@ func TestSQLiteExecutorCopiesDatabaseAndSwitchesConfiguration(t *testing.T) {
 	}
 }
 
+func TestVacuumSQLiteBindsDestinationAsData(t *testing.T) {
+	for _, name := range []string{"copy with spaces.db", "copy'quote.db", "copy'; DROP TABLE messages; --.db"} {
+		t.Run(name, func(t *testing.T) {
+			_, root := newSQLiteMigrationFixture(t, nil)
+			source := filepath.Join(root, "data", "smail.db")
+			target := filepath.Join(root, "data", name)
+			if err := vacuumSQLite(context.Background(), source, target); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{source, target} {
+				database, err := sql.Open("sqlite", path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var body string
+				queryErr := database.QueryRow("SELECT body FROM messages WHERE id = 1").Scan(&body)
+				if err := errors.Join(queryErr, database.Close()); err != nil {
+					t.Fatal(err)
+				}
+				if body != "测试邮件" {
+					t.Fatal("源库或复制库的邮件内容被意外修改")
+				}
+			}
+		})
+	}
+}
+
 func TestSQLiteExecutorSupportsNestedReferences(t *testing.T) {
 	var switched config.DatabaseConfig
 	service, root := newSQLiteMigrationFixture(t, func(_ context.Context, candidate config.DatabaseConfig) error {

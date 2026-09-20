@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/tls"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,10 +100,9 @@ func stageFlatSSLAtRoot(root, mode string, privateKey, certificate, issuer []byt
 	}
 	unlock, err := lockStateFile(lease)
 	if err != nil {
-		lease.Close()
-		return ManagedSSLReference{}, err
+		return ManagedSSLReference{}, errors.Join(err, lease.Close())
 	}
-	managedSSLStorage.staged[publicPath] = func() { unlock(); lease.Close() }
+	managedSSLStorage.staged[publicPath] = func() { releaseConfigLease(unlock, lease) }
 	complete = true
 	return ManagedSSLReference{Mode: mode, CertificateRef: "ssl/" + base + ".crt", PrivateKeyRef: "ssl/" + base + ".key", CertificatePath: publicPath, PrivateKeyPath: privatePath}, nil
 }
@@ -204,7 +204,9 @@ func pruneFlatSSLLocked(root string, protected []SSLConfig) error {
 		}
 		unlock, err := lockStateFile(lease)
 		if err != nil {
-			lease.Close()
+			if closeErr := lease.Close(); closeErr != nil {
+				return errors.Join(err, closeErr)
+			}
 			continue
 		}
 		err = storage.Remove(filepath.Base(privatePath))
@@ -212,8 +214,7 @@ func pruneFlatSSLLocked(root string, protected []SSLConfig) error {
 			err = storage.Remove(filepath.Base(publicPath))
 		}
 		unlock()
-		lease.Close()
-		if err != nil {
+		if err := errors.Join(err, lease.Close()); err != nil {
 			return err
 		}
 	}

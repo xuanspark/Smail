@@ -163,19 +163,18 @@ func (s *TransactionStore) openState() (*stateDatabase, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := database.PingContext(ctx); err != nil {
-		database.Close()
+		closeConfigResource(database)
 		return nil, ErrStateDatabaseUnavailable
 	}
 	if !s.legacyState {
 		if _, err := database.Exec(configstate.Schema(driver)); err != nil {
-			database.Close()
+			closeConfigResource(database)
 			return nil, ErrStateDatabaseUnavailable
 		}
 	}
 	if filename != "" {
 		if err := os.Chmod(filename, 0600); err != nil {
-			database.Close()
-			return nil, err
+			return nil, errors.Join(err, database.Close())
 		}
 	}
 	return database, nil

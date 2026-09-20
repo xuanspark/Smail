@@ -37,10 +37,9 @@ func (s *TransactionStore) lockState() (func(), error) {
 	}
 	unlock, err := lockStateFile(file)
 	if err != nil {
-		file.Close()
-		return nil, errors.New("配置状态正在被其他进程使用，请稍后重试")
+		return nil, errors.Join(errors.New("配置状态正在被其他进程使用，请稍后重试"), file.Close())
 	}
-	return func() { unlock(); file.Close() }, nil
+	return func() { releaseConfigLease(unlock, file) }, nil
 }
 
 func (s *TransactionStore) saveState(kind, id string, record stateRecord) error {

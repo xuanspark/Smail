@@ -288,8 +288,7 @@ func vacuumSQLite(ctx context.Context, source, target string) error {
 	if err := database.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping sqlite source: %w", err)
 	}
-	query := "VACUUM INTO '" + strings.ReplaceAll(target, "'", "''") + "'"
-	if _, err := database.ExecContext(ctx, query); err != nil {
+	if _, err := database.ExecContext(ctx, "VACUUM INTO ?", target); err != nil {
 		return fmt.Errorf("copy sqlite database: %w", err)
 	}
 	return nil

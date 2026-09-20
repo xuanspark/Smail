@@ -2,6 +2,7 @@ package res_init
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,8 +207,7 @@ func Init(serverVersion string) error {
 			return err
 		}
 		if err := startAdminResetControl(); err != nil {
-			stopServices()
-			return err
+			return errors.Join(err, stopServices())
 		}
 		serviceErrors := make(chan error, 9)
 		adminResetErrors := adminResetServeErrors
@@ -221,13 +221,11 @@ func Init(serverVersion string) error {
 		hooks.Init(serverVersion)
 		outboxRuntime, err = outbox.Start(db.Instance)
 		if err != nil {
-			stopServices()
-			return fmt.Errorf("start persistent outbox: %w", err)
+			return errors.Join(fmt.Errorf("启动持久化发件队列失败: %w", err), stopServices())
 		}
 		httpRun, httpsRun, err := http_server.PrepareWebServers()
 		if err != nil {
-			stopServices()
-			return fmt.Errorf("prepare web services: %w", err)
+			return errors.Join(fmt.Errorf("准备网页服务失败: %w", err), stopServices())
 		}
 		mailSecurity := config.CurrentMailSecurity()
 		// SMTP 25 用于服务器间投递，始终保留并支持机会性 STARTTLS。
@@ -244,8 +242,7 @@ func Init(serverVersion string) error {
 
 		// 等待 HTTP 服务启动后再执行需要 HTTP 回调的 ACME 操作。
 		if err := waitHTTPReady(serviceErrors); err != nil {
-			stopServices()
-			return err
+			return errors.Join(err, stopServices())
 		}
 
 		// 更新 SSL 配置。
@@ -269,8 +266,7 @@ func Init(serverVersion string) error {
 		select {
 		case err := <-serviceErrors:
 			log.WithError(err).WithFields(log.Fields{"action": "运行邮箱服务", "result": "failure"}).Error("邮箱服务运行失败")
-			stopServices()
-			return err
+			return errors.Join(err, stopServices())
 		case <-signal.RestartChan:
 			log.WithFields(log.Fields{"action": "重启服务", "result": "started"}).Info("已收到服务重启请求")
 			if err := stopServices(); err != nil {
