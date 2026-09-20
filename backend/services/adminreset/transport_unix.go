@@ -86,7 +86,8 @@ func validateControlSocketOwner(info os.FileInfo) error {
 
 func validateControlOwner(info os.FileInfo, resource string) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) {
+	uid := os.Geteuid()
+	if !ok || uid < 0 || uint64(stat.Uid) != uint64(uid) {
 		return fmt.Errorf("%s owner does not match service identity", resource)
 	}
 	return nil

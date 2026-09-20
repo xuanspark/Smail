@@ -14,6 +14,8 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
+const systemdInputAgentPath = "/usr/bin/systemd-ask-password"
+
 func ReadProtectedPassword() (string, error) {
 	return ReadProtectedPasswordContext(context.Background())
 }
@@ -83,7 +85,7 @@ func readSystemdInputContext(ctx context.Context, prompt, echo string, options .
 	// systemd 代理把提示保存在单行配置中，用终端换行控制显示列表，避免配置被拆行。
 	prompt = strings.ReplaceAll(strings.ReplaceAll(prompt, "\r\n", "\n"), "\n", "\x1bE")
 	args := append([]string{"--no-tty", "--echo=" + echo}, options...)
-	command := exec.CommandContext(ctx, "systemd-ask-password", append(args, prompt)...)
+	command := systemdInputCommand(ctx, append(args, prompt)...)
 	// 先允许代理清理请求文件，避免取消后继续弹出已经失效的输入提示。
 	command.Cancel = func() error { return command.Process.Signal(syscall.SIGTERM) }
 	command.WaitDelay = time.Second
@@ -96,6 +98,11 @@ func readSystemdInputContext(ctx context.Context, prompt, echo string, options .
 	value := string(output)
 	defer clearBytes(output)
 	return value, nil
+}
+
+func systemdInputCommand(ctx context.Context, args ...string) *exec.Cmd {
+	// 管理员流程不能从调用环境的 PATH 解析高权限密码代理。
+	return exec.CommandContext(ctx, systemdInputAgentPath, args...)
 }
 
 func stripPasswordLineEnding(value []byte) []byte {

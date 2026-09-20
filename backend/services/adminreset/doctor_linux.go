@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const systemctlPath = "/usr/bin/systemctl"
+
 // AuthorizeCurrentProcess 只允许部署管理员启动正式重置流程。
 func AuthorizeCurrentProcess() error {
 	if !authorizeLinuxProcess(os.Geteuid(), os.Getpid(), os.Getppid(), os.Getenv("INVOCATION_ID"), os.Getenv("SYSTEMD_EXEC_PID")) || !authorizedSystemdStartJob() {
@@ -21,11 +23,15 @@ func AuthorizeCurrentProcess() error {
 }
 
 func authorizedSystemdStartJob() bool {
-	output, err := exec.Command("systemctl", "list-jobs", "--no-legend", "--plain", "--no-pager").Output()
+	output, err := systemdJobCommand().Output()
 	if err != nil {
 		return false
 	}
 	return hasAuthorizedStartJob(string(output))
+}
+
+func systemdJobCommand() *exec.Cmd {
+	return exec.Command(systemctlPath, "list-jobs", "--no-legend", "--plain", "--no-pager")
 }
 
 func hasAuthorizedStartJob(output string) bool {
@@ -63,7 +69,7 @@ func validInvocationID(value string) bool {
 
 // CheckEnvironment 读取 Linux 管理程序的非敏感运行状态。
 func CheckEnvironment() EnvironmentReport {
-	_, err := exec.LookPath("systemd-ask-password")
+	_, err := exec.LookPath(systemdInputAgentPath)
 	serviceManaged := os.Getppid() == 1 && validInvocationID(os.Getenv("INVOCATION_ID")) && authorizedSystemdStartJob()
 	_, callerErr := findStartCaller()
 	return EnvironmentReport{

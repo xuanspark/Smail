@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -64,12 +65,15 @@ type terminalStream struct {
 }
 
 func (s *terminalStream) Read(buffer []byte) (int, error) {
-	fd := int(s.terminal.file.Fd())
+	fd, err := terminalPollDescriptor(s.terminal.file.Fd())
+	if err != nil {
+		return 0, err
+	}
 	for {
 		if err := s.ctx.Err(); err != nil {
 			return 0, err
 		}
-		fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+		fds := []unix.PollFd{{Fd: fd, Events: unix.POLLIN}}
 		_, err := unix.Poll(fds, 100)
 		if err == unix.EINTR {
 			continue
@@ -83,7 +87,7 @@ func (s *terminalStream) Read(buffer []byte) (int, error) {
 		if fds[0].Revents&unix.POLLIN == 0 {
 			continue
 		}
-		n, err := unix.Read(fd, buffer)
+		n, err := unix.Read(int(fd), buffer)
 		if err == unix.EAGAIN || err == unix.EINTR {
 			continue
 		}
@@ -92,4 +96,11 @@ func (s *terminalStream) Read(buffer []byte) (int, error) {
 		}
 		return n, err
 	}
+}
+
+func terminalPollDescriptor(fd uintptr) (int32, error) {
+	if fd > math.MaxInt32 {
+		return 0, ErrUnauthorizedPeer
+	}
+	return int32(fd), nil
 }

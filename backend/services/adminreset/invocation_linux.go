@@ -5,6 +5,7 @@ package adminreset
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -47,11 +48,11 @@ func OpenInvocation(parent context.Context) (context.Context, func(), error) {
 	file := os.NewFile(uintptr(fd), "smail-admin-terminal")
 	var info unix.Stat_t
 	err = unix.Fstat(fd, &info)
-	device := uint32(caller.terminal)
-	expectedDevice := unix.Mkdev((device>>8)&0xfff, (device&0xff)|((device>>12)&0xfff00))
+	expectedDevice, deviceErr := terminalDevice(caller.terminal)
 	// 服务不属于调用终端的会话，不能使用 TIOCGPGRP；前台关系由 /proc 校验。
-	if err != nil || info.Rdev != expectedDevice || !term.IsTerminal(fd) {
-		file.Close()
+	if err != nil || deviceErr != nil || info.Rdev != expectedDevice || !term.IsTerminal(fd) {
+		// 关闭只释放终端描述符；授权失败始终返回，不因关闭错误放行。
+		_ = file.Close()
 		return nil, nil, ErrUnauthorizedPeer
 	}
 	ctx, cancel := context.WithCancel(parent)
@@ -78,8 +79,25 @@ func OpenInvocation(parent context.Context) (context.Context, func(), error) {
 	return ctx, func() {
 		cancel()
 		<-done
-		file.Close()
+		// 终端不缓存业务写入；取消并等待监视器退出后释放描述符。
+		_ = file.Close()
 	}, nil
+}
+
+func terminalDevice(raw int) (uint64, error) {
+	if raw < math.MinInt32 || raw > math.MaxInt32 {
+		return 0, ErrUnauthorizedPeer
+	}
+	// /proc 的 tty_nr 是有符号的 32 位编码；负值的高位仍属于合法设备号。
+	encoded := int64(raw)
+	if encoded < 0 {
+		encoded += 1 << 32
+	}
+	if encoded < 0 || encoded > math.MaxUint32 {
+		return 0, ErrUnauthorizedPeer
+	}
+	device := uint32(encoded)
+	return unix.Mkdev((device>>8)&0xfff, (device&0xff)|((device>>12)&0xfff00)), nil
 }
 
 func findStartCaller() (callerIdentity, error) {
