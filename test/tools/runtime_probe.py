@@ -185,6 +185,38 @@ def protocol_operation(protocol, context, code):
     return invoke
 
 
+def verify_imap_append(context, code, message_id, body, attachment):
+    appended_id = 'append-' + message_id
+    message = EmailMessage()
+    message['From'] = ADDRESS
+    message['To'] = ADDRESS
+    message['Subject'] = '邮件协议追加和删除验收'
+    message['Message-ID'] = '<' + appended_id + '>'
+    message.set_content(body)
+    message.add_attachment(attachment, maintype='text', subtype='plain', filename='验收附件.txt')
+    client = LocalIMAP(HOST, 993, ssl_context=context, timeout=30)
+    try:
+        assert client.login(ADDRESS, code)[0] == 'OK'
+        assert client.select('INBOX')[0] == 'OK'
+        assert client.append('INBOX', None, None, message.as_bytes(policy=email_policy.clone(linesep='\r\n')))[0] == 'OK'
+        status, values = client.response('APPENDUID')
+        assert status == 'APPENDUID' and len(values) == 1 and values[0]
+        validity, uid = map(int, values[0].split())
+        assert 0 < validity <= 2**32 - 1 and 0 < uid <= 2**32 - 1
+        assert client.noop()[0] == 'OK'
+        status, contents = client.uid('FETCH', str(uid), '(BODY.PEEK[])')
+        assert status == 'OK'
+        raw = next(item[1] for item in contents if isinstance(item, tuple))
+        verify_message_content(raw, appended_id, body, attachment)
+        assert client.uid('STORE', str(uid), '+FLAGS.SILENT', r'(\Deleted)')[0] == 'OK'
+        assert client.uid('EXPUNGE', str(uid))[0] == 'OK'
+        status, matches = client.uid('SEARCH', None, 'HEADER', 'Message-ID', '"<' + appended_id + '>"')
+        assert status == 'OK' and not matches[0].split()
+    finally:
+        client.logout()
+    return {'append_uid': True, 'body_attachment': True, 'uid_expunge': True}
+
+
 def verify_restored(root, context, password, message_id, port):
     client = Client(context, port=port)
     for _ in range(60):
@@ -229,12 +261,18 @@ def main():
     parser.add_argument('--proxy', action='store_true')
     parser.add_argument('--password-stdin', action='store_true')
     parser.add_argument('--restore-message-id')
+    parser.add_argument('--sql-stdin', action='store_true')
     args = parser.parse_args()
     assert str(Path('/proc/self/ns/net').readlink()) != args.live_net, '禁止在宿主网络执行测试'
     root = args.root.resolve(strict=True)
     assert root.parent.name.startswith(('smail-review-runtime-', 'smail-review-restore-')) and root.name == 'instance'
     password = sys.stdin.readline().strip() if args.password_stdin else secrets.token_urlsafe(9)
     assert len(password) == 12
+    sql_database = None
+    if args.sql_stdin:
+        assert args.password_stdin and not args.restore_message_id
+        from runtime_sql import SQLDatabase
+        sql_database = SQLDatabase(json.loads(sys.stdin.readline()))
     if args.restore_message_id:
         assert args.password_stdin
         context = ssl.create_default_context(cafile=str(root / 'ssl/runtime.crt'))
@@ -258,9 +296,14 @@ def main():
         assert Client(port=setup_port).request('/api/v1/setup', {'step': 'database', 'action': 'get'})[0] == 403
         assert not (root / 'data/smail.db').exists(), '业务库必须从空数据开始'
         setup = '/api/v1/setup'
-        client.success(setup, {'step': 'database', 'action': 'set', 'db_type': 'sqlite', 'db_dsn': ''})
-        with sqlite3.connect(f'file:{root / "data/smail.db"}?mode=ro', uri=True) as database:
-            assert database.execute('SELECT COUNT(*) FROM user').fetchone()[0] == 0
+        if sql_database:
+            client.success(setup, sql_database.setup_payload())
+            sql_database.assert_empty_users()
+            assert not (root / 'data/smail.db').exists()
+        else:
+            client.success(setup, {'step': 'database', 'action': 'set', 'db_type': 'sqlite', 'db_dsn': ''})
+            with sqlite3.connect(f'file:{root / "data/smail.db"}?mode=ro', uri=True) as database:
+                assert database.execute('SELECT COUNT(*) FROM user').fetchone()[0] == 0
         client.success(setup, {'step': 'password', 'action': 'set', 'account': ACCOUNT, 'password': password})
         client.success(setup, {'step': 'domain', 'action': 'set', 'smtp_domain': 'runtime.invalid',
                                'web_domain': HOST, 'multi_domain': ''})
@@ -320,18 +363,22 @@ def main():
         message.add_attachment(attachment, maintype='text', subtype='plain', filename='验收附件.txt')
         with smtp_connect(context) as smtp:
             assert not smtp.send_message(message)
-        with sqlite3.connect(f'file:{root / "data/smail.db"}?mode=ro', uri=True) as database:
-            rows = database.execute('SELECT id,text,attachments FROM email WHERE msg_id=?', (message_id,)).fetchall()
-            assert len(rows) == 1 and body in rows[0][1]
-            attachments = json.loads(rows[0][2])
-            assert len(attachments) == 1 and attachments[0]['Filename'] == '验收附件.txt'
-            assert base64.b64decode(attachments[0]['Content']) == attachment
-            owners = database.execute('SELECT u.account FROM user_email e JOIN user u ON u.id=e.user_id WHERE e.email_id=?',
-                                      (rows[0][0],)).fetchall()
-            assert owners == [(ACCOUNT,)]
+        if sql_database:
+            sql_database.verify_message(message_id, ACCOUNT, body, attachment)
+        else:
+            with sqlite3.connect(f'file:{root / "data/smail.db"}?mode=ro', uri=True) as database:
+                rows = database.execute('SELECT id,text,attachments FROM email WHERE msg_id=?', (message_id,)).fetchall()
+                assert len(rows) == 1 and body in rows[0][1]
+                attachments = json.loads(rows[0][2])
+                assert len(attachments) == 1 and attachments[0]['Filename'] == '验收附件.txt'
+                assert base64.b64decode(attachments[0]['Content']) == attachment
+                owners = database.execute('SELECT u.account FROM user_email e JOIN user u ON u.id=e.user_id WHERE e.email_id=?',
+                                          (rows[0][0],)).fetchall()
+                assert owners == [(ACCOUNT,)]
         result['smtp'] = {'message_id': message_id, 'stored': True, 'owners': 1, 'attachment': True}
         result['stage'] = 'protocol_read'
         result['protocol_read'] = verify_protocol_read(context, codes, message_id, body, attachment)
+        result['imap_append'] = verify_imap_append(context, codes['imap'], message_id, body, attachment)
         result['stage'] = 'overload'
         rounds = []
         result['overload'] = rounds

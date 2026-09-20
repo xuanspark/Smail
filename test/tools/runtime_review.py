@@ -20,7 +20,8 @@ def run(*args):
 
 def service_state():
     return {name: run('systemctl', 'show', name, '--property=MainPID,NRestarts,ActiveState,InvocationID')
-            for name in ('smail.service', 'nginx.service', 'mysql.service', 'Scert.service')}
+            for name in ('smail.service', 'nginx.service', 'mysql.service', 'Scert.service',
+                         'fdm-studio.service', 'postgresql@18-main.service')}
 
 
 def database_integrity(root):
@@ -78,7 +79,10 @@ def main():
     parser.add_argument('--nginx-template', type=Path)
     parser.add_argument('--memory-max-mib', type=int, choices=(128, 192, 256), default=128)
     parser.add_argument('--restore', action='store_true')
+    parser.add_argument('--database-type', choices=('sqlite', 'mysql', 'postgres'), default='sqlite')
     args = parser.parse_args()
+    if args.restore and args.database_type != 'sqlite':
+        parser.error('SQL 数据库备份恢复需要独立验收，不能套用 SQLite 冷备流程')
     assert os.geteuid() == 0 and run('hostname') == 'ikun2'
     os.umask(0o027)
     live = Path('/opt/smail')
@@ -112,6 +116,10 @@ def main():
     shutil.copy2(Path(__file__).with_name('runtime_probe.py'), target / 'runtime_probe.py')
     (target / 'runtime_probe.py').chmod(0o640)
     shutil.chown(target / 'runtime_probe.py', user='root', group='smail')
+    if args.database_type != 'sqlite':
+        shutil.copy2(Path(__file__).with_name('runtime_sql.py'), target / 'runtime_sql.py')
+        (target / 'runtime_sql.py').chmod(0o640)
+        shutil.chown(target / 'runtime_sql.py', user='root', group='smail')
     if args.nginx_template:
         shutil.copy2(Path(__file__).with_name('runtime_proxy.py'), target / 'runtime_proxy.py')
         (target / 'runtime_proxy.py').chmod(0o640)
@@ -136,6 +144,13 @@ def main():
               'topology': 'nginx-8001-8002' if args.nginx_template else 'direct-80-443'}
     service_env = []
     probe_args = []
+    sql_fixture = None
+    bridge = None
+    result['database_type'] = args.database_type
+    if args.database_type != 'sqlite':
+        from runtime_sql import SQLFixture
+        sql_fixture = SQLFixture(args.database_type)
+        result['sql_database'] = sql_fixture.settings['name']
     if args.nginx_template:
         from runtime_proxy import prepare_nginx
         prepare_nginx(target, root, args.nginx_template)
@@ -146,6 +161,9 @@ def main():
     started = time.strftime('%Y-%m-%dT%H:%M:%S')
     password = secrets.token_urlsafe(9)
     try:
+        if sql_fixture:
+            sql_fixture.create()
+            probe_args.append('--sql-stdin')
         subprocess.run([
             'systemd-run', '--unit=' + unit, '--property=Type=exec',
             '--property=User=smail', '--property=Group=smail',
@@ -168,6 +186,9 @@ def main():
         assert str(Path('/proc/' + pid + '/ns/net').readlink()) != live_net
         assert Path('/proc/' + pid + '/root/opt/smail/smail').stat().st_ino == (root / 'smail').stat().st_ino
         assert (root / 'smail').stat().st_ino != (live / 'smail').stat().st_ino
+        if sql_fixture:
+            from runtime_sql_bridge import DatabaseBridge
+            bridge = DatabaseBridge(int(pid), sql_fixture.port)
         if args.nginx_template:
             subprocess.run([
                 'systemd-run', '--unit=' + proxy_unit, '--property=Type=exec',
@@ -198,7 +219,8 @@ def main():
             '--property=KillMode=control-group', '--property=TimeoutStopSec=10s',
             'python3', str(target / 'runtime_probe.py'), str(root), '--live-net', live_net,
             '--password-stdin', *probe_args,
-        ], input=password + '\n', text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=270)
+        ], input=password + '\n' + (json.dumps(sql_fixture.settings) + '\n' if sql_fixture else ''),
+           text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=270)
         (target / 'probe.log').write_text(probe.stdout, encoding='utf-8')
         result['probe_code'] = probe.returncode
         if (target / 'probe-result.json').exists():
@@ -210,15 +232,30 @@ def main():
             assert database.execute('SELECT COUNT(*) FROM email WHERE msg_id=?', (message_id,)).fetchone()[0] == 0
         result['live_message_absent'] = True
     finally:
-        collect_and_stop(result, unit, probe_unit, proxy_unit if args.nginx_template else None)
-        result['after'] = service_state()
-        with (live / 'smail').open('rb') as stream:
-            result['live_unchanged'] = (result['after'] == before
-                                        and hashlib.file_digest(stream, 'sha256').hexdigest() == live_sha)
         try:
-            result['integrity'] = database_integrity(root)
-        except (AssertionError, sqlite3.Error) as error:
-            result['integrity'] = {'error': type(error).__name__}
+            collect_and_stop(result, unit, probe_unit, proxy_unit if args.nginx_template else None)
+            result['after'] = service_state()
+            with (live / 'smail').open('rb') as stream:
+                result['live_unchanged'] = (result['after'] == before
+                                            and hashlib.file_digest(stream, 'sha256').hexdigest() == live_sha)
+            try:
+                result['integrity'] = sql_fixture.integrity(root) if sql_fixture else database_integrity(root)
+            except (AssertionError, sqlite3.Error, RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+                result['integrity'] = {'error': type(error).__name__}
+        finally:
+            result.setdefault('cleanup_errors', [])
+            if bridge:
+                try:
+                    bridge.close()
+                    result['database_bridge_stopped'] = True
+                except Exception as error:
+                    result['cleanup_errors'].append({'action': 'database_bridge', 'error': type(error).__name__})
+            if sql_fixture:
+                try:
+                    sql_fixture.lock()
+                    result['test_database_account_locked'] = True
+                except Exception as error:
+                    result['cleanup_errors'].append({'action': 'database_account', 'error': type(error).__name__})
         (target / 'service.log').write_text(run('journalctl', '-u', unit, '--no-pager'), encoding='utf-8')
         kernel = run('journalctl', '-k', '--since', started, '--no-pager')
         result['oom_events'] = sum('oom-kill:constraint=' in line for line in kernel.splitlines())
@@ -227,7 +264,10 @@ def main():
     assert result['live_unchanged'] and result['oom_events'] == 0
     assert not result['cleanup_errors'], '测试单元未全部停止，需要核查保留的结果'
     assert not result['resource_errors'], '资源证据不完整，需要核查保留的结果'
-    assert result['integrity'] == {'smail.db': [('ok',)]}
+    if sql_fixture:
+        assert result['integrity'].get('sqlite_files') == 0 and result['integrity']['config_records'] > 0
+    else:
+        assert result['integrity'] == {'smail.db': [('ok',)]}
     if args.restore:
         from runtime_restore import verify_backup_restore
         restored = verify_backup_restore(root, result, password, args.nginx_template is not None)
