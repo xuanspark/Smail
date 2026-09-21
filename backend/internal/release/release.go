@@ -15,9 +15,11 @@ import (
 )
 
 var (
-	ErrInvalidPair      = errors.New("invalid release pair")
-	ErrUpgradeRollback  = errors.New("release upgrade rolled back")
-	ErrUpgradeDirectory = errors.New("release target directory is invalid")
+	ErrInvalidPair           = errors.New("invalid release pair")
+	ErrUpgradeRollback       = errors.New("release upgrade rolled back")
+	ErrUpgradeRollbackFailed = errors.New("release rollback incomplete; preserve backups for manual recovery")
+	ErrUpgradeBackupConflict = errors.New("release recovery backup already exists")
+	ErrUpgradeDirectory      = errors.New("release target directory is invalid")
 )
 
 type Manifest struct {
@@ -111,51 +113,75 @@ func InstallPair(mainSource, adminSource, targetDir string, pair Pair) error {
 	return replacePair(stage, targetDir, []string{mainName, adminName, "release.json"})
 }
 
-var renamePath = os.Rename
+var (
+	renamePath           = os.Rename
+	syncReleaseDirectory = syncDirectory
+)
 
 func replacePair(stage, targetDir string, names []string) error {
-	committed := make([]string, 0, len(names))
+	// 先检查所有备份，不能因升级新版本而删除上次未完成恢复的证据。
+	for _, name := range names {
+		target := filepath.Join(targetDir, name)
+		if _, err := os.Lstat(target + ".previous"); err == nil {
+			return fmt.Errorf("%w: %s", ErrUpgradeBackupConflict, name)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect recovery backup %s: %w", name, err)
+		}
+		if info, err := os.Lstat(target); err == nil {
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("%w: %s", ErrUpgradeDirectory, name)
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect release target %s: %w", name, err)
+		}
+	}
+	committed := make(map[string]bool, len(names))
 	backups := make(map[string]string, len(names))
-	rollback := func() {
-		for index := len(committed) - 1; index >= 0; index-- {
-			name := committed[index]
+	rollback := func(cause error) error {
+		var failures []error
+		for index := len(names) - 1; index >= 0; index-- {
+			name := names[index]
 			target := filepath.Join(targetDir, name)
-			_ = os.Remove(target)
+			if committed[name] {
+				if err := os.Remove(target); err != nil {
+					failures = append(failures, fmt.Errorf("remove replacement %s: %w", name, err))
+					continue
+				}
+			}
 			if backup, ok := backups[name]; ok {
-				_ = renamePath(backup, target)
+				if err := renamePath(backup, target); err != nil {
+					failures = append(failures, fmt.Errorf("restore %s: %w", name, err))
+				}
 			}
 		}
-		for name, backup := range backups {
-			if _, err := os.Stat(filepath.Join(targetDir, name)); os.IsNotExist(err) {
-				_ = renamePath(backup, filepath.Join(targetDir, name))
-			}
+		if err := syncReleaseDirectory(targetDir); err != nil {
+			failures = append(failures, fmt.Errorf("sync restored release: %w", err))
 		}
+		if len(failures) != 0 {
+			return errors.Join(cause, ErrUpgradeRollbackFailed, errors.Join(failures...))
+		}
+		return errors.Join(cause, ErrUpgradeRollback)
 	}
 
 	for _, name := range names {
 		target := filepath.Join(targetDir, name)
 		if _, err := os.Stat(target); err == nil {
 			backup := target + ".previous"
-			_ = os.Remove(backup)
 			if err := renamePath(target, backup); err != nil {
-				rollback()
-				return fmt.Errorf("backup %s: %w", name, err)
+				return rollback(fmt.Errorf("backup %s: %w", name, err))
 			}
 			backups[name] = backup
 		} else if !os.IsNotExist(err) {
-			rollback()
-			return fmt.Errorf("inspect %s: %w", name, err)
+			return rollback(fmt.Errorf("inspect %s: %w", name, err))
 		}
 		if err := renamePath(filepath.Join(stage, name), target); err != nil {
-			rollback()
-			return fmt.Errorf("install %s: %w: %w", name, err, ErrUpgradeRollback)
+			return rollback(fmt.Errorf("install %s: %w", name, err))
 		}
-		committed = append(committed, name)
+		committed[name] = true
 	}
 
-	if err := syncDirectory(targetDir); err != nil {
-		rollback()
-		return fmt.Errorf("sync release target: %w: %w", err, ErrUpgradeRollback)
+	if err := syncReleaseDirectory(targetDir); err != nil {
+		return rollback(fmt.Errorf("sync release target: %w", err))
 	}
 	for _, backup := range backups {
 		// 备份清理失败不回滚已经持久化的新版本，避免把升级结果置于不一致状态。
