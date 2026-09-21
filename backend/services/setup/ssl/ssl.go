@@ -551,15 +551,8 @@ func GenSSL(update bool) error {
 	}
 
 	if !update {
-		privatePath, publicPath, pathErr := config.ResolveRuntimeSSLPaths(cfg)
-		privateFile, errpi := os.ReadFile(privatePath)
-		public, errpu := os.ReadFile(publicPath)
-		if pathErr != nil {
-			errpi = pathErr
-			errpu = pathErr
-		}
-		// 当前存在证书数据，就不生成了
-		if errpi == nil && errpu == nil && len(privateFile) > 0 && len(public) > 0 {
+		// 只有当前受控证书完整有效时才跳过申请，避免仅凭路径读取结果复用不安全文件。
+		if _, err := config.LoadRuntimeTLSCertificate(cfg); err == nil {
 			return nil
 		}
 	}

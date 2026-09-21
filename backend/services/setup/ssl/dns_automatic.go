@@ -3,7 +3,7 @@ package ssl
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- 阿里云 DNS RPC API 要求 HMAC-SHA1
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -199,7 +199,7 @@ func (provider *aliDNSChallenge) call(action string, values url.Values, target a
 	canonical := strings.ReplaceAll(values.Encode(), "+", "%20")
 	// 阿里云 DNS RPC API 的当前签名协议固定使用 HMAC-SHA1；此处不能自行替换为 SHA-256，
 	// 否则服务商会拒绝请求。请求通过 HTTPS 发送，密钥只用于内存中的签名计算。
-	mac := hmac.New(sha1.New, []byte(provider.secretKey+"&")) // #nosec G505 -- 阿里云 DNS RPC API 要求 HMAC-SHA1
+	mac := hmac.New(sha1.New, []byte(provider.secretKey+"&"))
 	_, _ = mac.Write([]byte("POST&%2F&" + aliDNSPercentEncode(canonical)))
 	values.Set("Signature", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
 	request, err := http.NewRequest(http.MethodPost, provider.endpoint, strings.NewReader(values.Encode()))
