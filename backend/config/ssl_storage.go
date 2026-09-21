@@ -693,7 +693,7 @@ func ensureManagedDirectoryAtRoot(root, directory string) error {
 		if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return ErrUnsafeSSLFile
 		}
-		if err := os.Chmod(current, 0700); err != nil {
+		if err := os.Chmod(current, 0700); err != nil { // #nosec G302
 			return err
 		}
 	}

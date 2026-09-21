@@ -64,7 +64,7 @@ func SecureDirectory(root, name string) (string, error) {
 	if err := safeDirectory(directory); err != nil {
 		return "", err
 	}
-	return directory, os.Chmod(directory, 0700)
+	return directory, os.Chmod(directory, 0700) // #nosec G302
 }
 
 func KeyDirectory(root string) string {

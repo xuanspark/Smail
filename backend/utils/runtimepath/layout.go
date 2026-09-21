@@ -28,7 +28,7 @@ func Directory(root string) (string, error) {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return "", errors.New("运行数据目录无效")
 	}
-	if err := os.Chmod(directory, 0700); err != nil {
+	if err := os.Chmod(directory, 0700); err != nil { // #nosec G302
 		return "", err
 	}
 	return directory, nil

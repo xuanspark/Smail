@@ -985,7 +985,7 @@ func writeLegacyMigrationBackup(directory string, data []byte, now time.Time) (s
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", ErrManagerStorage
 	}
-	if err := os.Chmod(backupDirectory, 0700); err != nil {
+	if err := os.Chmod(backupDirectory, 0700); err != nil { // #nosec G302
 		return "", err
 	}
 	token := make([]byte, 8)
