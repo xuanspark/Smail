@@ -26,6 +26,7 @@ class WebrootTests(unittest.TestCase):
             path.chmod(0o755)
         for context in (patch.object(renew, 'WEBROOT', self.webroot),
                         patch.object(renew, 'ROOT', self.directory),
+                        patch.object(renew, 'DOMAINS', ('solit.cn', 'web.solit.cn')),
                         patch.dict(os.environ, {'SMAIL_ACME_CHALLENGE': 'http'}, clear=True)):
             context.start()
             self.addCleanup(context.stop)
@@ -67,6 +68,11 @@ class WebrootTests(unittest.TestCase):
 
     def test_http_explicitly_uses_existing_webroot(self):
         self.assertEqual(renew.challenge_arguments(), ['--http', '--http.webroot', str(self.webroot)])
+
+    def test_wildcard_certificate_rejects_http_challenge(self):
+        with patch.object(renew, 'DOMAINS', ('solit.cn', '*.solit.cn')):
+            with self.assertRaisesRegex(RuntimeError, '泛域名证书必须使用 DNS 验证'):
+                renew.challenge_arguments()
 
     def test_due_http_success_reuses_key_without_port_binding(self):
         self.assertTrue(any(command[0].endswith('/lego') for command in self.execute()))

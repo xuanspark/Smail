@@ -42,6 +42,8 @@ def main():
     args = parser.parse_args()
     if not args.confirm_staging_challenge or os.geteuid() != 0 or run('hostname') != 'ikun2':
         parser.error('只允许在 47 服务器明确执行测试 CA 的全新 HTTP 挑战')
+    if '*.solit.cn' in renew.DOMAINS:
+        parser.error('当前泛域名证书必须使用 DNS-01，不能执行 HTTP-01 演练')
     if file_state(CONFIG)['sha256'] != CONFIG_SHA:
         parser.error('Nginx 配置与已审查模板不符，停止演练')
     memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())

@@ -29,6 +29,8 @@ def challenge_arguments():
         return ['--dns', dns_provider()]
     if method != 'http':
         raise RuntimeError('验证方式必须为 dns 或 http，不允许自动回退到停机验证')
+    if '*.solit.cn' in DOMAINS:
+        raise RuntimeError('泛域名证书必须使用 DNS 验证，不能使用 HTTP 验证')
     private = ROOT.lstat()
     if (ROOT.resolve(strict=True) != ROOT or not stat.S_ISDIR(private.st_mode)
             or private.st_uid != 0 or private.st_mode & 0o077):
