@@ -985,7 +985,8 @@ func writeLegacyMigrationBackup(directory string, data []byte, now time.Time) (s
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", ErrManagerStorage
 	}
-	if err := os.Chmod(backupDirectory, 0700); err != nil { // #nosec G302
+	// #nosec G302 -- 迁移备份目录仅允许应用用户访问，目录权限需要保留执行位。
+	if err := os.Chmod(backupDirectory, 0700); err != nil {
 		return "", err
 	}
 	token := make([]byte, 8)

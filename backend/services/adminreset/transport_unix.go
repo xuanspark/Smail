@@ -33,7 +33,8 @@ func ListenUnix(path string, allowedUIDs []uint32) (*UnixServer, error) {
 	if err := validateControlDirectory(parent); err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(parent, 0750); err != nil { // #nosec G302
+	// #nosec G302 -- 本地控制目录需要允许受控组遍历，访问仍由属主和组权限限制。
+	if err := os.Chmod(parent, 0750); err != nil {
 		return nil, fmt.Errorf("set control directory permissions: %w", err)
 	}
 	if info, err := os.Lstat(path); err == nil {

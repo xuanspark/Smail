@@ -64,7 +64,8 @@ func SecureDirectory(root, name string) (string, error) {
 	if err := safeDirectory(directory); err != nil {
 		return "", err
 	}
-	return directory, os.Chmod(directory, 0700) // #nosec G302
+	// #nosec G302 -- 运行目录仅允许应用用户访问，目录权限需要保留执行位。
+	return directory, os.Chmod(directory, 0700)
 }
 
 func KeyDirectory(root string) string {

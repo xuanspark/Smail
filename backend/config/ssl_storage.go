@@ -693,7 +693,8 @@ func ensureManagedDirectoryAtRoot(root, directory string) error {
 		if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return ErrUnsafeSSLFile
 		}
-		if err := os.Chmod(current, 0700); err != nil { // #nosec G302
+		// #nosec G302 -- 证书存储目录仅允许应用用户访问，目录权限需要保留执行位。
+		if err := os.Chmod(current, 0700); err != nil {
 			return err
 		}
 	}
