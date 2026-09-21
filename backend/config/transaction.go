@@ -41,6 +41,9 @@ type TransactionManifest struct {
 
 type TransactionHooks struct {
 	BeforePhase func(TransactionPhase) error
+	// 准备钩子仅供内部测试使用，不通过运行配置或网络请求开放。
+	BeforePrepare func() error
+	BeforePublish func() error
 }
 
 type TransactionStore struct {
@@ -119,11 +122,16 @@ func (s *TransactionStore) Commit(current, candidate RuntimeConfig) error {
 	if err != nil {
 		return err
 	}
+	staging, err := secureTransactionStagingDirectory(transactions)
+	if err != nil {
+		return err
+	}
 	id, err := newTransactionID()
 	if err != nil {
 		return err
 	}
-	transactionDirectory := filepath.Join(transactions, id)
+	// 清单及归档完整前，不得把目录暴露给启动恢复扫描。
+	transactionDirectory := filepath.Join(staging, id)
 	candidateDirectory := filepath.Join(transactionDirectory, "candidate")
 	originalDirectory := filepath.Join(transactionDirectory, "original")
 	manifestWritten := false
@@ -140,6 +148,11 @@ func (s *TransactionStore) Commit(current, candidate RuntimeConfig) error {
 	}
 	if err := validateTransactionDirectory(transactionDirectory); err != nil {
 		return err
+	}
+	if s.hooks.BeforePrepare != nil {
+		if err := s.hooks.BeforePrepare(); err != nil {
+			return err
+		}
 	}
 	for name, data := range currentFiles {
 		if err := atomicfile.Write(filepath.Join(originalDirectory, name), data, 0600); err != nil {
@@ -164,7 +177,36 @@ func (s *TransactionStore) Commit(current, candidate RuntimeConfig) error {
 	if err := writeTransactionManifest(transactionDirectory, manifest); err != nil {
 		return err
 	}
+	if s.hooks.BeforePublish != nil {
+		if err := s.hooks.BeforePublish(); err != nil {
+			return err
+		}
+	}
+	if err := atomicfile.SyncDirectory(transactionDirectory); err != nil {
+		return err
+	}
+	if err := atomicfile.SyncDirectory(staging); err != nil {
+		return err
+	}
+	activeDirectory := filepath.Join(transactions, id)
+	if _, err := os.Lstat(activeDirectory); err == nil {
+		return ErrConfigRecoveryRequired
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(transactionDirectory, activeDirectory); err != nil {
+		return err
+	}
+	transactionDirectory = activeDirectory
+	candidateDirectory = filepath.Join(transactionDirectory, "candidate")
+	// 发布后即使目录同步失败也必须保留清单，由启动恢复决定回滚或保留。
 	manifestWritten = true
+	if err := atomicfile.SyncDirectory(transactions); err != nil {
+		return err
+	}
+	if err := atomicfile.SyncDirectory(staging); err != nil {
+		return err
+	}
 	if err := s.beforePhase(manifest.Phase); err != nil {
 		return err
 	}
@@ -558,6 +600,20 @@ func secureTransactionDirectory(configDirectory string) (string, error) {
 		return "", err
 	}
 	if err := ensureDirectory(directory); err != nil {
+		return "", err
+	}
+	return directory, nil
+}
+
+func secureTransactionStagingDirectory(transactions string) (string, error) {
+	directory := filepath.Join(filepath.Dir(transactions), "transaction-staging")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return "", err
+	}
+	if err := ensureDirectory(directory); err != nil {
+		return "", err
+	}
+	if err := atomicfile.SyncDirectory(filepath.Dir(transactions)); err != nil {
 		return "", err
 	}
 	return directory, nil

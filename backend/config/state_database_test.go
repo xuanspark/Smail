@@ -132,7 +132,7 @@ func TestUnavailableSelectedDatabaseDoesNotCreateSQLite(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, entry := range entries {
-				if entry.Name() != ".config-state.lock" && entry.Name() != "transaction" {
+				if entry.Name() != ".config-state.lock" && entry.Name() != "transaction" && entry.Name() != "transaction-staging" {
 					t.Fatalf("远程数据库失败后创建了额外文件：%s", entry.Name())
 				}
 			}
@@ -263,7 +263,7 @@ func TestSelectedDatabaseLiveIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
-		if entry.Name() == ".config-state.lock" || entry.Name() == "transaction" || kind == DatabaseTypeSQLite && entry.Name() == "smail.db" {
+		if entry.Name() == ".config-state.lock" || entry.Name() == "transaction" || entry.Name() == "transaction-staging" || kind == DatabaseTypeSQLite && entry.Name() == "smail.db" {
 			continue
 		}
 		t.Fatalf("真实数据库模式产生额外数据库：%s", entry.Name())

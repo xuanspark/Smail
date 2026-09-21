@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -58,7 +59,28 @@ func TestTransactionCrashChild(t *testing.T) {
 	if point == "root_before_manifest" {
 		phase = TransactionSectionsCommitted
 	}
+	pause := func() error {
+		if err := os.Mkdir(filepath.Join(root, "crash-ready"), 0700); err != nil {
+			return err
+		}
+		// 必须等待父进程强制终止，不能返回错误而执行提交函数的 defer。
+		for {
+			time.Sleep(time.Hour)
+		}
+	}
 	store := NewTransactionStore(root, crashOptions().Validation).WithHooks(TransactionHooks{
+		BeforePrepare: func() error {
+			if point == "before_prepare" {
+				return pause()
+			}
+			return nil
+		},
+		BeforePublish: func() error {
+			if point == "before_publish" {
+				return pause()
+			}
+			return nil
+		},
 		BeforePhase: func(reached TransactionPhase) error {
 			if reached != phase {
 				return nil
@@ -74,13 +96,7 @@ func TestTransactionCrashChild(t *testing.T) {
 					return err
 				}
 			}
-			if err := os.Mkdir(filepath.Join(root, "crash-ready"), 0700); err != nil {
-				return err
-			}
-			// 必须等待父进程强制终止，不能返回错误而执行提交函数的 defer。
-			for {
-				time.Sleep(time.Hour)
-			}
+			return pause()
 		},
 	})
 	if err := store.Commit(current, crashCandidate(current)); err != nil {
@@ -251,7 +267,7 @@ func TestTransactionProcessCrashRecovery(t *testing.T) {
 						t.Fatal(err)
 					}
 					for _, entry := range entries {
-						if entry.Name() != ".config-state.lock" && entry.Name() != "transaction" {
+						if entry.Name() != ".config-state.lock" && entry.Name() != "transaction" && entry.Name() != "transaction-staging" {
 							t.Fatalf("纯配置恢复意外创建数据文件：%s", entry.Name())
 						}
 					}
@@ -305,4 +321,77 @@ func TestTransactionUnpublishedDirectoryFailsClosed(t *testing.T) {
 			t.Fatal("无清单残留被错误删除")
 		}
 	}
+}
+
+func TestTransactionPreparationProcessCrashRecovery(t *testing.T) {
+	for _, kind := range []DatabaseType{DatabaseTypeSQLite, DatabaseTypeMySQL, DatabaseTypePostgreSQL} {
+		t.Run(string(kind), func(t *testing.T) {
+			for _, point := range []string{"before_prepare", "before_publish"} {
+				t.Run(point, func(t *testing.T) {
+					root, current := crashFixture(t, kind)
+					files := readCrashConfigFiles(t, filepath.Join(root, "config"))
+					killTransactionChild(t, root, point)
+					active, err := os.ReadDir(filepath.Join(root, "data", "transaction"))
+					if err != nil || len(active) != 0 {
+						t.Fatalf("准备中的事务被提前发布：%v", err)
+					}
+					base := filepath.Join(root, "data", "transaction-staging")
+					staged, err := os.ReadDir(base)
+					if err != nil || len(staged) != 1 {
+						t.Fatalf("没有保留强制终止时的暂存现场：%v", err)
+					}
+					stagedDirectory := filepath.Join(base, staged[0].Name())
+					if point == "before_publish" {
+						manifest, err := readTransactionManifest(stagedDirectory)
+						if err != nil || manifest.Phase != TransactionPrepared {
+							t.Fatalf("发布前清单不完整：%v", err)
+						}
+					} else if _, err := os.Stat(filepath.Join(stagedDirectory, "manifest.json")); !os.IsNotExist(err) {
+						t.Fatalf("准备开始前不应有事务清单：%v", err)
+					}
+					for attempt := 0; attempt < 2; attempt++ {
+						manager, err := NewConfigManager(root, crashOptions())
+						if err != nil || manager.Snapshot().Generation != current.Generation {
+							t.Fatalf("准备阶段崩溃后无法启动原配置：%v", err)
+						}
+						assertCrashConfigFiles(t, root, files)
+					}
+					// 旧暂存仅保留为证据，不得阻塞后续正式配置提交。
+					store := NewTransactionStore(root, crashOptions().Validation)
+					if err := store.Commit(current, crashCandidate(current)); err != nil {
+						t.Fatalf("准备残留阻塞后续提交：%v", err)
+					}
+					manager, err := NewConfigManager(root, crashOptions())
+					if err != nil || manager.Snapshot().Generation != current.Generation+1 {
+						t.Fatalf("后续提交未能正常启动：%v", err)
+					}
+					staged, err = os.ReadDir(base)
+					if err != nil || len(staged) != 1 || filepath.Join(base, staged[0].Name()) != stagedDirectory {
+						t.Fatal("后续提交删除旧证据或遗留了新的暂存目录")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestTransactionStagingRejectsSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 符号链接需要额外权限；在 Linux 云端验证")
+	}
+	root, current := crashFixture(t, DatabaseTypeSQLite)
+	files := readCrashConfigFiles(t, filepath.Join(root, "config"))
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "data", "transaction-staging")); err != nil {
+		t.Fatal(err)
+	}
+	store := NewTransactionStore(root, crashOptions().Validation)
+	if err := store.Commit(current, crashCandidate(current)); !errors.Is(err, ErrTransactionInvalid) {
+		t.Fatalf("未拒绝暂存目录符号链接：%v", err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("事务写入逃逸到外部目录")
+	}
+	assertCrashConfigFiles(t, root, files)
 }
