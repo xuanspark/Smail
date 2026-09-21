@@ -122,6 +122,7 @@ def main():
     parser.add_argument('--restore', action='store_true')
     parser.add_argument('--migration', action='store_true')
     parser.add_argument('--interruption', action='store_true')
+    parser.add_argument('--switch-fault', choices=('before-root', 'after-root'))
     parser.add_argument('--database-type', choices=('sqlite', 'mysql', 'postgres'), default='sqlite')
     parser.add_argument('--migration-target-type', choices=('sqlite', 'mysql', 'postgres'))
     args = parser.parse_args()
@@ -132,6 +133,9 @@ def main():
         parser.error(str(error))
     if args.interruption and not args.migration:
         parser.error('中断验收必须选择同引擎迁移独立场景')
+    if args.switch_fault and (not args.migration or args.interruption or
+                              args.database_type == 'sqlite' or target_kind != args.database_type):
+        parser.error('联合切换故障必须使用独立的同引擎 SQL 迁移场景')
     if args.migration and (args.nginx_template or args.restore):
         parser.error('迁移进程验收仅使用直接 TLS 的独立场景')
     if args.restore and args.database_type != 'sqlite':
@@ -186,7 +190,7 @@ def main():
         shutil.copy2(Path(__file__).with_name('runtime_mixed_migration.py'), target / 'runtime_mixed_migration.py')
         (target / 'runtime_mixed_migration.py').chmod(0o640)
         shutil.chown(target / 'runtime_mixed_migration.py', user='root', group='smail')
-    if args.interruption:
+    if args.interruption or args.switch_fault:
         shutil.copy2(Path(__file__).with_name('runtime_interruption.py'), target / 'runtime_interruption.py')
         (target / 'runtime_interruption.py').chmod(0o640)
         shutil.chown(target / 'runtime_interruption.py', user='root', group='smail')
@@ -194,6 +198,10 @@ def main():
             shutil.copy2(Path(__file__).with_name('runtime_sql_interruption.py'), target / 'runtime_sql_interruption.py')
             (target / 'runtime_sql_interruption.py').chmod(0o640)
             shutil.chown(target / 'runtime_sql_interruption.py', user='root', group='smail')
+    if args.switch_fault:
+        shutil.copy2(Path(__file__).with_name('runtime_sql_switch_fault.py'), target / 'runtime_sql_switch_fault.py')
+        (target / 'runtime_sql_switch_fault.py').chmod(0o640)
+        shutil.chown(target / 'runtime_sql_switch_fault.py', user='root', group='smail')
     if args.nginx_template:
         shutil.copy2(Path(__file__).with_name('runtime_proxy.py'), target / 'runtime_proxy.py')
         (target / 'runtime_proxy.py').chmod(0o640)
@@ -352,7 +360,10 @@ def main():
                 else:
                     from runtime_interruption import verify_interruption
                     verify_interruption(root, unit, password, result)
-            if mixed:
+            if args.switch_fault:
+                from runtime_sql_switch_fault import verify_switch_fault
+                verify_switch_fault(root, unit, password, result, sql_fixture, migration_target, args.switch_fault)
+            elif mixed:
                 from runtime_mixed_migration import verify_migration
                 verify_migration(root, unit, password, result, mixed_source, mixed_target)
             elif migration_target:
@@ -374,8 +385,9 @@ def main():
                     result['integrity'] = migration_integrity(root, mixed_source, mixed_target)
                 elif migration_target:
                     from runtime_sql_migration import assert_active
-                    assert_active(root, migration_target)
-                    result['integrity'] = migration_target.integrity(root)
+                    active_database = sql_fixture if args.switch_fault == 'before-root' else migration_target
+                    assert_active(root, active_database)
+                    result['integrity'] = active_database.integrity(root)
                 elif args.migration:
                     from runtime_migration import migration_integrity
                     result['integrity'] = migration_integrity(root, interrupted=args.interruption)
