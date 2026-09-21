@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +11,7 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db/migration"
+	securefile "git.pcux.cn/xuans/Smail/utils/file"
 )
 
 // PortableExecutor 使用版本化目标结构复制业务数据，不拼接用户提供的 SQL。
@@ -108,7 +108,7 @@ func (e *PortableExecutor) createTarget(ctx context.Context, target config.Datab
 		if err != nil {
 			return nil, err
 		}
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		file, err := securefile.CreateExclusiveFile(path, 0600)
 		if err != nil {
 			return nil, ErrTargetExists
 		}
