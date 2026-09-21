@@ -321,7 +321,7 @@ func GenerateRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *htt
 		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
 		return
 	}
-	codes, err := service.GenerateRecoveryCodes(ctx.UserID, input.Count)
+	codes, err := service.GenerateRecoveryCodesContext(recoveryRequestContext(req), ctx.UserID, input.Count)
 	if err != nil {
 		if writePasswordBusy(w, err) {
 			return

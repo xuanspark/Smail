@@ -1,16 +1,17 @@
 package credentials
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base32"
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/password"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/text/unicode/norm"
 	"xorm.io/xorm"
 )
@@ -34,7 +35,7 @@ const (
 // Service 统一管理密保问题和离线恢复码。
 type Service struct {
 	engine    *xorm.Engine
-	mu        sync.Mutex
+	mu        contextMutex
 	now       func() time.Time
 	vaultRoot string
 }
@@ -140,6 +141,16 @@ func (s *Service) VerifySecurityQuestion(userID int, answer string) (bool, error
 
 // GenerateRecoveryCodes 撤销旧码并生成一组只返回一次的离线恢复码。
 func (s *Service) GenerateRecoveryCodes(userID int, count int) ([]string, error) {
+	return s.GenerateRecoveryCodesContext(context.Background(), userID, count)
+}
+
+// GenerateRecoveryCodesContext 在请求取消时停止后续计算，并回滚尚未提交的恢复码轮换。
+// 单次 Argon2id 计算不可中断，因此每次计算前后检查取消，不降低原有密码强度。
+func (s *Service) GenerateRecoveryCodesContext(ctx context.Context, userID int, count int) ([]string, error) {
+	return s.generateRecoveryCodes(ctx, userID, count, password.Hash)
+}
+
+func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count int, hashSecret func(string) (string, error)) (codes []string, resultErr error) {
 	if s == nil || s.engine == nil {
 		return nil, ErrUnavailable
 	}
@@ -152,45 +163,73 @@ func (s *Service) GenerateRecoveryCodes(userID int, count int) ([]string, error)
 	if count < minCodeCount || count > maxCodeCount {
 		return nil, fmt.Errorf("recovery code count must be between %d and %d", minCodeCount, maxCodeCount)
 	}
-	codes := make([]string, 0, count)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	started := time.Now()
+	phase := "hash"
+	log.WithFields(log.Fields{"action": "生成离线恢复码", "phase": phase, "count": count}).Info("开始处理离线恢复码")
+	defer func() {
+		log.WithFields(log.Fields{"action": "生成离线恢复码", "phase": phase, "count": count,
+			"elapsed_ms": time.Since(started).Milliseconds(), "success": resultErr == nil,
+			"cancelled": ctx.Err() != nil}).Info("离线恢复码处理结束")
+	}()
+	codes = make([]string, 0, count)
 	items := make([]models.RecoveryCode, 0, count)
 	for i := 0; i < count; i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		plain, err := newRecoveryCode()
 		if err != nil {
 			return nil, err
 		}
-		hash, err := password.Hash(plain)
+		hash, err := hashSecret(plain)
 		if err != nil {
 			return nil, fmt.Errorf("hash recovery code: %w", err)
 		}
 		codes = append(codes, plain)
 		items = append(items, models.RecoveryCode{UserID: userID, CodeHash: hash, CodeVersion: 1})
 	}
-
-	s.mu.Lock()
+	phase = "lock"
+	log.WithFields(log.Fields{"action": "生成离线恢复码", "phase": phase, "count": count,
+		"hash_ms": time.Since(started).Milliseconds()}).Info("恢复码密码计算结束")
+	if err := s.mu.LockContext(ctx); err != nil {
+		return nil, err
+	}
 	defer s.mu.Unlock()
+	phase = "transaction"
 	session := s.engine.NewSession()
 	if session == nil {
 		return nil, ErrUnavailable
 	}
 	defer session.Close()
+	session.Context(ctx)
 	if err := session.Begin(); err != nil {
 		return nil, fmt.Errorf("begin recovery code transaction: %w", err)
 	}
+	defer session.Rollback()
 	now := s.now()
 	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		_ = session.Rollback()
 		return nil, fmt.Errorf("revoke old recovery codes: %w", err)
 	}
 	for i := range items {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if _, err := session.Insert(&items[i]); err != nil {
 			_ = session.Rollback()
 			return nil, fmt.Errorf("store recovery code: %w", err)
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := session.Commit(); err != nil {
 		return nil, fmt.Errorf("commit recovery codes: %w", err)
 	}
+	phase = "complete"
 	return codes, nil
 }
 

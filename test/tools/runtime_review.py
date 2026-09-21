@@ -93,12 +93,32 @@ def stop_database_bridges(bridges, result):
     result['database_bridge_stopped'] = bool(bridges) and len(closed) == len(bridges)
 
 
+def validate_memory_profile(hard_mib, soft_mib):
+    if hard_mib not in (128, 192, 256) or soft_mib not in (64, 128, 192):
+        raise ValueError('不支持的隔离内存配置')
+    if soft_mib + 64 > hard_mib:
+        raise ValueError('Go 内存目标与进程硬上限之间必须保留至少 64 MiB')
+
+
+def go_environment(raw):
+    # 只保留本轮资源控制项，不能把其他环境变量写入证据。
+    result = {}
+    for item in raw.split(b'\0'):
+        name, separator, value = item.partition(b'=')
+        if separator and name in (b'GOMEMLIMIT', b'GOMAXPROCS'):
+            if name.decode('ascii') in result:
+                raise ValueError('Go 资源环境项重复')
+            result[name.decode('ascii')] = value.decode('ascii')
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--main-sha', required=True)
     parser.add_argument('--binary', type=Path, default=Path('/opt/smail/smail'))
     parser.add_argument('--nginx-template', type=Path)
     parser.add_argument('--memory-max-mib', type=int, choices=(128, 192, 256), default=128)
+    parser.add_argument('--go-memory-limit-mib', type=int, choices=(64, 128, 192), default=64)
     parser.add_argument('--restore', action='store_true')
     parser.add_argument('--migration', action='store_true')
     parser.add_argument('--interruption', action='store_true')
@@ -106,6 +126,7 @@ def main():
     parser.add_argument('--migration-target-type', choices=('sqlite', 'mysql', 'postgres'))
     args = parser.parse_args()
     try:
+        validate_memory_profile(args.memory_max_mib, args.go_memory_limit_mib)
         target_kind = migration_kind(args.database_type, args.migration_target_type, args.migration, args.interruption)
     except ValueError as error:
         parser.error(str(error))
@@ -189,6 +210,7 @@ def main():
     proxy_unit = 'smail-runtime-nginx-' + stamp
     result = {'target': str(target), 'unit': unit, 'main_sha256': args.main_sha,
               'memory_max_mib': args.memory_max_mib,
+              'go_memory_limit_mib': args.go_memory_limit_mib, 'cpu_quota_percent': 25,
               'source': str(binary), 'live_sha256': live_sha, 'before': before,
               'topology': 'nginx-8001-8002' if args.nginx_template else 'direct-80-443'}
     service_env = []
@@ -259,7 +281,8 @@ def main():
             '--property=BindPaths=' + str(root) + ':/opt/smail ' + str(control) + ':/run/smail',
             '--property=ReadWritePaths=/opt/smail /run/smail',
             '--property=WorkingDirectory=/opt/smail', '--setenv=SMAIL_ROOT=/opt/smail',
-            '--setenv=GOMEMLIMIT=64MiB', '--setenv=GOMAXPROCS=1', *service_env, '/opt/smail/smail',
+            '--setenv=GOMEMLIMIT=' + str(args.go_memory_limit_mib) + 'MiB',
+            '--setenv=GOMAXPROCS=1', *service_env, '/opt/smail/smail',
         ], check=True)
         pid = run('systemctl', 'show', unit, '--property=MainPID', '--value')
         assert pid != '0'
@@ -267,6 +290,8 @@ def main():
         assert str(Path('/proc/' + pid + '/ns/net').readlink()) != live_net
         assert Path('/proc/' + pid + '/root/opt/smail/smail').stat().st_ino == (root / 'smail').stat().st_ino
         assert (root / 'smail').stat().st_ino != (live / 'smail').stat().st_ino
+        result['go_environment'] = go_environment(Path('/proc/' + pid + '/environ').read_bytes())
+        assert result['go_environment'] == {'GOMEMLIMIT': str(args.go_memory_limit_mib) + 'MiB', 'GOMAXPROCS': '1'}
         if sql_fixture or migration_target:
             from runtime_sql_bridge import DatabaseBridge
             ports = {fixture.port for fixture in (sql_fixture, migration_target) if fixture}

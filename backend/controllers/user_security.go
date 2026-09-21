@@ -109,8 +109,11 @@ func GenerateManagedRecoveryCodes(ctx *context.Context, w http.ResponseWriter, r
 		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
 		return
 	}
-	codes, err := service.GenerateRecoveryCodes(target.ID, input.Count)
+	codes, err := service.GenerateRecoveryCodesContext(recoveryRequestContext(req), target.ID, input.Count)
 	if err != nil {
+		if writePasswordBusy(w, err) {
+			return
+		}
 		log.WithContext(ctx).WithError(err).Error("generate managed recovery codes failed")
 		writeSecurityError(w, response.ParamsError, "安全码生成失败")
 		return

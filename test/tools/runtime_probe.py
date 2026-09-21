@@ -494,7 +494,12 @@ def main():
         result['setup'] = {'empty_database': True, 'token_required': True, 'login': True, 'session': True}
         # 首次登录先完成正式安全设置，不绕过恢复方式要求直接启用协议。
         client.success('/api/v1/security/reauth', {'password': password})
-        recovery = client.success('/api/v1/security/credentials/recovery-codes/generate', {'count': 10})
+        result['stage'] = 'recovery_codes'
+        recovery_started = time.monotonic()
+        try:
+            recovery = client.success('/api/v1/security/credentials/recovery-codes/generate', {'count': 10})
+        finally:
+            result['recovery_generation_seconds'] = round(time.monotonic() - recovery_started, 3)
         assert len(recovery['codes']) == 10
         recovery.clear()
         result['security_setup'] = {'recovery_codes_generated': 10, 'plaintext_logged': False}

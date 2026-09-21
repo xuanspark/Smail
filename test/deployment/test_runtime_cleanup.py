@@ -19,6 +19,20 @@ class RuntimeCleanupTest(unittest.TestCase):
     probe = 'smail-runtime-probe-20260918-020000'
     proxy = 'smail-runtime-nginx-20260918-020000'
 
+    def test_memory_profiles_keep_explicit_native_reserve(self):
+        for hard, soft in ((128, 64), (192, 64), (192, 128), (256, 192)):
+            review.validate_memory_profile(hard, soft)
+        for hard, soft in ((128, 128), (192, 192), (128, 256), (64, 64), (1024, 64)):
+            with self.subTest(hard=hard, soft=soft), self.assertRaises(ValueError):
+                review.validate_memory_profile(hard, soft)
+
+    def test_go_resource_environment_does_not_record_other_variables(self):
+        self.assertEqual(review.go_environment(b'PASSWORD=not-for-logs\0GOMEMLIMIT=128MiB\0GOMAXPROCS=1\0'),
+                         {'GOMEMLIMIT': '128MiB', 'GOMAXPROCS': '1'})
+        self.assertEqual(review.go_environment(b'PASSWORD=not-for-logs\0'), {})
+        with self.assertRaises(ValueError):
+            review.go_environment(b'GOMEMLIMIT=64MiB\0GOMEMLIMIT=128MiB\0')
+
     def test_single_database_integrity_and_legacy_rejection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
