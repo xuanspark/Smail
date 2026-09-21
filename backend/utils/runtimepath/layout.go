@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -60,6 +61,8 @@ var obsoleteFiles = map[string]bool{
 	"config.dev.json": true, "config_mysql.json": true, "config.json.legacy": true,
 }
 
+var atomicTemporaryFilePattern = regexp.MustCompile(`^\.(?:config\.json|smtp\.json|email\.json|ssl\.json|plugins\.json)-[0-9a-f]{32}$`)
+
 type Move struct {
 	Source string
 	Target string
@@ -90,6 +93,16 @@ func Plan(root string) ([]Move, error) {
 	var moves []Move
 	for _, entry := range entries {
 		name := entry.Name()
+		if atomicTemporaryFilePattern.MatchString(name) {
+			info, err := os.Lstat(filepath.Join(configDirectory, name))
+			if err != nil {
+				return nil, err
+			}
+			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+				return nil, errors.New("配置临时文件不能是目录")
+			}
+			continue
+		}
 		if configurationFiles[name] && !entry.IsDir() {
 			continue
 		}
@@ -153,6 +166,9 @@ func CheckReady(root string) error {
 	if err := CheckKeyLayout(root); err != nil {
 		return err
 	}
+	if err := cleanAtomicTemporaryFiles(root); err != nil {
+		return err
+	}
 	if _, err := os.Lstat(filepath.Join(root, "data", migrationLock)); err == nil || !os.IsNotExist(err) {
 		return errors.New("运行目录迁移尚未结束，请保留现场并核对迁移锁")
 	}
@@ -214,6 +230,35 @@ func CheckReady(root string) error {
 		info, err := os.Lstat(filepath.Join(base, name))
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 			return fmt.Errorf("已初始化部署缺少必要运行文件，拒绝重新创建：%s", name)
+		}
+	}
+	return nil
+}
+
+// cleanAtomicTemporaryFiles 丢弃未完成的原子写入临时文件，不能触碰未知文件。
+func cleanAtomicTemporaryFiles(root string) error {
+	configDirectory := filepath.Join(root, "config")
+	entries, err := os.ReadDir(configDirectory)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !atomicTemporaryFilePattern.MatchString(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(configDirectory, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return errors.New("配置原子临时文件无效")
+		}
+		if err := os.Remove(path); err != nil {
+			return err
 		}
 	}
 	return nil
