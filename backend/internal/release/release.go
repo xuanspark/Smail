@@ -263,6 +263,7 @@ func syncDirectory(path string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
+	// #nosec G304 -- 该路径只来自发布流程创建并校验过的目录。
 	directory, err := os.Open(path)
 	if err != nil {
 		return err
