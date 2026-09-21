@@ -130,8 +130,8 @@ def main():
         target_kind = migration_kind(args.database_type, args.migration_target_type, args.migration, args.interruption)
     except ValueError as error:
         parser.error(str(error))
-    if args.interruption and (not args.migration or args.database_type != 'sqlite'):
-        parser.error('中断验收必须选择 SQLite 迁移独立场景')
+    if args.interruption and not args.migration:
+        parser.error('中断验收必须选择同引擎迁移独立场景')
     if args.migration and (args.nginx_template or args.restore):
         parser.error('迁移进程验收仅使用直接 TLS 的独立场景')
     if args.restore and args.database_type != 'sqlite':
@@ -190,6 +190,10 @@ def main():
         shutil.copy2(Path(__file__).with_name('runtime_interruption.py'), target / 'runtime_interruption.py')
         (target / 'runtime_interruption.py').chmod(0o640)
         shutil.chown(target / 'runtime_interruption.py', user='root', group='smail')
+        if args.database_type != 'sqlite':
+            shutil.copy2(Path(__file__).with_name('runtime_sql_interruption.py'), target / 'runtime_sql_interruption.py')
+            (target / 'runtime_sql_interruption.py').chmod(0o640)
+            shutil.chown(target / 'runtime_sql_interruption.py', user='root', group='smail')
     if args.nginx_template:
         shutil.copy2(Path(__file__).with_name('runtime_proxy.py'), target / 'runtime_proxy.py')
         (target / 'runtime_proxy.py').chmod(0o640)
@@ -342,8 +346,12 @@ def main():
         result['live_message_absent'] = True
         if args.migration:
             if args.interruption:
-                from runtime_interruption import verify_interruption
-                verify_interruption(root, unit, password, result)
+                if sql_fixture:
+                    from runtime_sql_interruption import verify_interruption
+                    verify_interruption(root, unit, password, result, sql_fixture)
+                else:
+                    from runtime_interruption import verify_interruption
+                    verify_interruption(root, unit, password, result)
             if mixed:
                 from runtime_mixed_migration import verify_migration
                 verify_migration(root, unit, password, result, mixed_source, mixed_target)

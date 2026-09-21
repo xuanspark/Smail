@@ -206,7 +206,8 @@ def run_probe(root, unit, password, phase, sql_settings=None, probe_script=None)
     script = 'runtime_sql_migration.py' if sql_settings else 'runtime_migration.py'
     if probe_script is not None:
         assert ((probe_script == 'runtime_interruption.py' and sql_settings is None)
-                or (probe_script == 'runtime_mixed_migration.py' and sql_settings is not None))
+                or (probe_script in ('runtime_mixed_migration.py', 'runtime_sql_interruption.py')
+                    and sql_settings is not None))
         script = probe_script
     command = ['systemd-run', '--wait', '--pipe', '--unit=' + probe,
         '--property=User=smail', '--property=Group=smail',
