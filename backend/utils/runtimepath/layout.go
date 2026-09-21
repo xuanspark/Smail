@@ -180,7 +180,15 @@ func CheckReady(root string) error {
 		return ErrMigrationRequired
 	}
 	// 已初始化部署缺失账号库或加密密钥时必须报错，不能按首次安装处理。
-	raw, err := os.ReadFile(filepath.Join(root, "config", "config.json"))
+	configRoot, err := os.OpenRoot(filepath.Join(root, "config"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	raw, err := configRoot.ReadFile("config.json")
+	_ = configRoot.Close()
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -279,7 +287,12 @@ func migrate(root string, rename func(string, string) error) ([]Move, error) {
 		return nil, err
 	}
 	lockPath := filepath.Join(directory, migrationLock)
-	lock, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	lockRoot, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, err
+	}
+	lock, err := lockRoot.OpenFile(migrationLock, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	_ = lockRoot.Close()
 	if err != nil {
 		return nil, errors.New("无法取得迁移锁；请确认没有其他迁移进程，并人工核对中断现场")
 	}

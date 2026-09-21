@@ -148,7 +148,15 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 		}
 	}
 	// 磁盘引用也必须保留，避免其他管理器实例或已提交未发布的候选被删除。
-	data, err := os.ReadFile(filepath.Join(root, "config", "ssl.json"))
+	configRoot, err := os.OpenRoot(filepath.Join(root, "config"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	data, err := configRoot.ReadFile("ssl.json")
+	_ = configRoot.Close()
 	if err == nil {
 		var section SSLSectionConfig
 		if err := ParseStrict(data, &section); err != nil {

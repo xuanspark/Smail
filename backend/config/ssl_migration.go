@@ -16,7 +16,15 @@ func MigrateLegacySSLStorage(root string) error {
 	if !runtimepath.DeploymentLayout(root) {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(root, "config", "config.json"))
+	configRoot, err := os.OpenRoot(filepath.Join(root, "config"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	data, err := configRoot.ReadFile("config.json")
+	_ = configRoot.Close()
 	if os.IsNotExist(err) {
 		return nil
 	}

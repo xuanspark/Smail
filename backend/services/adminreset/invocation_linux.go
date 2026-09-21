@@ -120,7 +120,12 @@ func findStartCaller() (callerIdentity, error) {
 		if err != nil || (executable != "/usr/bin/systemctl" && executable != "/bin/systemctl") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(base, "cmdline"))
+		procRoot, err := os.OpenRoot(base)
+		if err != nil {
+			continue
+		}
+		data, err := procRoot.ReadFile("cmdline")
+		_ = procRoot.Close()
 		if err != nil {
 			continue
 		}
@@ -132,7 +137,12 @@ func findStartCaller() (callerIdentity, error) {
 		if !allowed {
 			return callerIdentity{}, ErrUnauthorizedPeer
 		}
-		status, err := os.ReadFile(filepath.Join(base, "status"))
+		procRoot, err = os.OpenRoot(base)
+		if err != nil {
+			return callerIdentity{}, ErrUnauthorizedPeer
+		}
+		status, err := procRoot.ReadFile("status")
+		_ = procRoot.Close()
 		if err != nil || !rootProcessStatus(string(status)) {
 			return callerIdentity{}, ErrUnauthorizedPeer
 		}

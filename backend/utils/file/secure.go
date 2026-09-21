@@ -36,6 +36,59 @@ func ReadRegularFile(path string, maxSize int64) ([]byte, error) {
 	return data, nil
 }
 
+func OpenRegularFile(path string, flags int, perm os.FileMode) (*os.File, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, ErrUnsafeRegularFile
+	}
+	absolute, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return nil, ErrUnsafeRegularFile
+	}
+	root, err := os.OpenRoot(filepath.Dir(absolute))
+	if err != nil {
+		return nil, ErrUnsafeRegularFile
+	}
+	defer root.Close()
+
+	name := filepath.Base(absolute)
+	info, err := root.Lstat(name)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, ErrUnsafeRegularFile
+	}
+	if err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular()) {
+		return nil, ErrUnsafeRegularFile
+	}
+	file, err := root.OpenFile(name, flags, perm)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() {
+		_ = file.Close()
+		return nil, ErrUnsafeRegularFile
+	}
+	return file, nil
+}
+
+func CreateExclusiveFile(path string, perm os.FileMode) (*os.File, error) {
+	return OpenRegularFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+}
+
+func WriteRegularFile(path string, data []byte, perm os.FileMode) error {
+	if strings.TrimSpace(path) == "" {
+		return ErrUnsafeRegularFile
+	}
+	absolute, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return ErrUnsafeRegularFile
+	}
+	root, err := os.OpenRoot(filepath.Dir(absolute))
+	if err != nil {
+		return ErrUnsafeRegularFile
+	}
+	defer root.Close()
+	return root.WriteFile(filepath.Base(absolute), data, perm)
+}
 func ControlledRelativePath(base, value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", errors.New("path is required")
