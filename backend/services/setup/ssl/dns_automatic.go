@@ -176,6 +176,14 @@ func aliDNSPercentEncode(value string) string {
 }
 
 func (provider *aliDNSChallenge) call(action string, values url.Values, target any) error {
+	// 每次请求使用独立副本，重试不能把上一次的签名带入新的签名计算。
+	parameters := make(url.Values, len(values))
+	for key, entries := range values {
+		if key != "Signature" {
+			parameters[key] = append([]string(nil), entries...)
+		}
+	}
+	values = parameters
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return errors.New("DNS 请求随机数生成失败")
