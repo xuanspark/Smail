@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
+	fileutil "git.pcux.cn/xuans/Smail/utils/file"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
@@ -31,7 +32,7 @@ func (s *TransactionStore) lockState() (func(), error) {
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
+	file, err := fileutil.OpenRegularFile(filename, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}

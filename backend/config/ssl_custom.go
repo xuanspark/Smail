@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	securefile "git.pcux.cn/xuans/Smail/utils/file"
+
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 )
 
@@ -146,7 +148,7 @@ func readExternalSSLFile(path string, privateKey bool) ([]byte, error) {
 	if privateKey && info.Mode().Perm()&0077 != 0 && runtimeSupportsPermissionCheck() {
 		return nil, ErrSSLPrivateKeyPermission
 	}
-	file, err := os.Open(path)
+	file, err := securefile.OpenRegularFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, ErrSSLFileUnavailable
 	}
