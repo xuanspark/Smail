@@ -62,6 +62,8 @@ class MigrationTarget(SQLFixture):
 
 def target_payload(database):
     settings = database.settings
+    if database.kind == 'sqlite':
+        return {'type': 'sqlite', 'localRef': settings['name']}
     return {'type': 'mysql' if database.kind == 'mysql' else 'postgresql',
             'host': '127.0.0.1', 'port': database.port, 'username': settings['user'],
             'name': settings['name'], 'password': {'plaintext': settings['password']}}
@@ -104,6 +106,10 @@ def history_rows(database):
     if database.kind == 'mysql':
         values = ','.join('LOWER(HEX(`' + column + '`))' for column in ('kind', 'id', 'payload', 'digest'))
         query = 'SELECT JSON_ARRAY(' + values + ') FROM config_records'
+    elif database.kind == 'sqlite':
+        values = ','.join('CASE WHEN "' + column + '" IS NULL THEN NULL ELSE lower(hex("' + column + '")) END'
+                          for column in ('kind', 'id', 'payload', 'digest'))
+        query = 'SELECT json_array(' + values + ') FROM config_records'
     else:
         values = ["encode(convert_to(" + column + ",'UTF8'),'hex')" for column in ('kind', 'id')]
         values += ["encode(payload,'hex')", "encode(convert_to(digest,'UTF8'),'hex')"]
@@ -120,20 +126,22 @@ def history_rows(database):
     return sorted(rows)
 
 
+def connection_count(database):
+    name, user = database.settings['name'], database.settings['user']
+    if database.kind == 'mysql':
+        query = "SELECT COUNT(*) FROM information_schema.processlist WHERE USER='" + user + "' AND DB='" + name + "';"
+    else:
+        query = "SELECT COUNT(*) FROM pg_stat_activity WHERE usename='" + user + "' AND datname='" + name + "';"
+    return int(database.admin(query))
+
+
 def assert_connections(source, target):
-    counts = []
-    for database in (source, target):
-        name, user = database.settings['name'], database.settings['user']
-        if database.kind == 'mysql':
-            query = "SELECT COUNT(*) FROM information_schema.processlist WHERE USER='" + user + "' AND DB='" + name + "';"
-        else:
-            query = "SELECT COUNT(*) FROM pg_stat_activity WHERE usename='" + user + "' AND datname='" + name + "';"
-        counts.append(int(database.admin(query)))
+    counts = [connection_count(database) for database in (source, target)]
     assert counts[0] == 0 and counts[1] > 0, '源库仍有活动连接或目标库没有应用连接'
     return {'source_connections': counts[0], 'target_connections': counts[1]}
 
 
-def prepare(root, password, source, target):
+def prepare(root, password, source, target, active_check=assert_active):
     client, _ = login(root, password)
     generation = clear_pending_restart(client)
     endpoint = '/api/v1/database/migrations'
@@ -142,7 +150,7 @@ def prepare(root, password, source, target):
     })
     record = client.success(endpoint, {'id': preview['migration']['id'], 'token': preview['token']})
     assert record['status'] == 'succeeded'
-    assert_active(root, target)
+    active_check(root, target)
     pending = client.success('/api/v1/config/status', method='GET')
     assert pending['activeGeneration'] > generation and pending['pendingRestart']
     status, denied, _ = client.request('/api/v1/security/credentials/protocols/generate', {'protocol': 'imap'})
@@ -154,9 +162,9 @@ def prepare(root, password, source, target):
             'existing_session_preserved': True, 'generation': pending['activeGeneration']}
 
 
-def verify_mail(root, password, phase, source, target):
+def verify_mail(root, password, phase, source, target, active_check=assert_active):
     client, context = login(root, password)
-    assert_active(root, target)
+    active_check(root, target)
     assert not client.success('/api/v1/config/status', method='GET')['pendingRestart']
     codes = {}
     for protocol in ('smtp', 'imap', 'pop3'):

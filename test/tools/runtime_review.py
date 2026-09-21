@@ -75,7 +75,7 @@ def collect_and_stop(result, unit, probe_unit, proxy_unit=None):
 def migration_kind(source, target, enabled, interrupted):
     if target is None:
         return source
-    if not enabled or interrupted or source == 'sqlite' or target not in ('mysql', 'postgres'):
+    if not enabled or interrupted or target not in ('sqlite', 'mysql', 'postgres'):
         raise ValueError('跨引擎目标必须用于独立 SQL 迁移验收')
     return target
 
@@ -103,7 +103,7 @@ def main():
     parser.add_argument('--migration', action='store_true')
     parser.add_argument('--interruption', action='store_true')
     parser.add_argument('--database-type', choices=('sqlite', 'mysql', 'postgres'), default='sqlite')
-    parser.add_argument('--migration-target-type', choices=('mysql', 'postgres'))
+    parser.add_argument('--migration-target-type', choices=('sqlite', 'mysql', 'postgres'))
     args = parser.parse_args()
     try:
         target_kind = migration_kind(args.database_type, args.migration_target_type, args.migration, args.interruption)
@@ -152,7 +152,8 @@ def main():
         shutil.copy2(Path(__file__).with_name('runtime_migration.py'), target / 'runtime_migration.py')
         (target / 'runtime_migration.py').chmod(0o640)
         shutil.chown(target / 'runtime_migration.py', user='root', group='smail')
-    if args.database_type != 'sqlite':
+    mixed = args.migration and args.database_type != target_kind and 'sqlite' in (args.database_type, target_kind)
+    if args.database_type != 'sqlite' or mixed:
         shutil.copy2(Path(__file__).with_name('runtime_sql.py'), target / 'runtime_sql.py')
         (target / 'runtime_sql.py').chmod(0o640)
         shutil.chown(target / 'runtime_sql.py', user='root', group='smail')
@@ -160,6 +161,10 @@ def main():
             shutil.copy2(Path(__file__).with_name('runtime_sql_migration.py'), target / 'runtime_sql_migration.py')
             (target / 'runtime_sql_migration.py').chmod(0o640)
             shutil.chown(target / 'runtime_sql_migration.py', user='root', group='smail')
+    if mixed:
+        shutil.copy2(Path(__file__).with_name('runtime_mixed_migration.py'), target / 'runtime_mixed_migration.py')
+        (target / 'runtime_mixed_migration.py').chmod(0o640)
+        shutil.chown(target / 'runtime_mixed_migration.py', user='root', group='smail')
     if args.interruption:
         shutil.copy2(Path(__file__).with_name('runtime_interruption.py'), target / 'runtime_interruption.py')
         (target / 'runtime_interruption.py').chmod(0o640)
@@ -197,11 +202,17 @@ def main():
         from runtime_sql import SQLFixture
         sql_fixture = SQLFixture(args.database_type)
         result['sql_database'] = sql_fixture.settings['name']
-        if args.migration:
-            from runtime_sql_migration import MigrationTarget
-            migration_target = MigrationTarget(target_kind)
-            result['sql_target_database'] = migration_target.settings['name']
-            result['migration_target_type'] = target_kind
+    if args.migration and target_kind != 'sqlite':
+        from runtime_sql_migration import MigrationTarget
+        migration_target = MigrationTarget(target_kind)
+        result['sql_target_database'] = migration_target.settings['name']
+    if args.migration:
+        result['migration_target_type'] = target_kind
+    mixed_source = mixed_target = None
+    if mixed:
+        from runtime_mixed_migration import SQLiteDatabase
+        mixed_source = sql_fixture or SQLiteDatabase(root, {'kind': 'sqlite', 'name': 'smail.db'})
+        mixed_target = migration_target or SQLiteDatabase(root, {'kind': 'sqlite', 'name': 'migrated.db'})
     if args.nginx_template:
         from runtime_proxy import prepare_nginx
         prepare_nginx(target, root, args.nginx_template)
@@ -218,6 +229,7 @@ def main():
         network_args = ['--property=PrivateNetwork=yes']
         if migration_target:
             migration_target.create()
+        if args.migration and (sql_fixture or migration_target):
             # 使用独立限时单元固定隔离网络，应用换进程后仍能访问本轮数据库桥接。
             network_unit = 'smail-runtime-netns-' + stamp
             subprocess.run([
@@ -255,11 +267,9 @@ def main():
         assert str(Path('/proc/' + pid + '/ns/net').readlink()) != live_net
         assert Path('/proc/' + pid + '/root/opt/smail/smail').stat().st_ino == (root / 'smail').stat().st_ino
         assert (root / 'smail').stat().st_ino != (live / 'smail').stat().st_ino
-        if sql_fixture:
+        if sql_fixture or migration_target:
             from runtime_sql_bridge import DatabaseBridge
-            ports = {sql_fixture.port}
-            if migration_target:
-                ports.add(migration_target.port)
+            ports = {fixture.port for fixture in (sql_fixture, migration_target) if fixture}
             for port in sorted(ports):
                 bridges[port] = DatabaseBridge(int(pid), port)
             result['database_bridge_ports'] = sorted(bridges)
@@ -309,7 +319,10 @@ def main():
             if args.interruption:
                 from runtime_interruption import verify_interruption
                 verify_interruption(root, unit, password, result)
-            if migration_target:
+            if mixed:
+                from runtime_mixed_migration import verify_migration
+                verify_migration(root, unit, password, result, mixed_source, mixed_target)
+            elif migration_target:
                 from runtime_sql_migration import verify_migration
                 verify_migration(root, unit, password, result, sql_fixture, migration_target)
             else:
@@ -323,7 +336,10 @@ def main():
                 result['live_unchanged'] = (result['after'] == before
                                             and hashlib.file_digest(stream, 'sha256').hexdigest() == live_sha)
             try:
-                if migration_target:
+                if mixed:
+                    from runtime_mixed_migration import migration_integrity
+                    result['integrity'] = migration_integrity(root, mixed_source, mixed_target)
+                elif migration_target:
                     from runtime_sql_migration import assert_active
                     assert_active(root, migration_target)
                     result['integrity'] = migration_target.integrity(root)
@@ -362,7 +378,10 @@ def main():
     assert result['live_unchanged'] and result['oom_events'] == 0
     assert not result['cleanup_errors'], '测试单元未全部停止，需要核查保留的结果'
     assert not result['resource_errors'], '资源证据不完整，需要核查保留的结果'
-    if sql_fixture:
+    if mixed:
+        assert result['migration']['passed'] and result['network_anchor_stopped']
+        assert result['integrity']['config_records'] > 0
+    elif sql_fixture:
         assert result['integrity'].get('sqlite_files') == 0 and result['integrity']['config_records'] > 0
         if args.migration:
             assert result['migration']['passed'] and result['network_anchor_stopped']

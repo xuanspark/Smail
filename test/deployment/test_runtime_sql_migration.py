@@ -18,8 +18,10 @@ class RuntimeSQLMigrationTest(unittest.TestCase):
         for source, target in (('mysql', 'postgres'), ('postgres', 'mysql')):
             self.assertEqual(review.migration_kind(source, target, True, False), target)
         self.assertEqual(review.migration_kind('sqlite', None, True, False), 'sqlite')
-        for arguments in (('sqlite', 'mysql', True, False), ('mysql', 'postgres', False, False),
-                          ('mysql', 'postgres', True, True), ('mysql', 'sqlite', True, False)):
+        for source, target in (('sqlite', 'mysql'), ('sqlite', 'postgres'), ('mysql', 'sqlite'), ('postgres', 'sqlite')):
+            self.assertEqual(review.migration_kind(source, target, True, False), target)
+        for arguments in (('mysql', 'postgres', False, False), ('mysql', 'postgres', True, True),
+                          ('sqlite', 'mysql', True, True), ('mysql', 'invalid', True, False)):
             with self.assertRaises(ValueError):
                 review.migration_kind(*arguments)
 
