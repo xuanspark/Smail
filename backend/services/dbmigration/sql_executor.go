@@ -236,6 +236,7 @@ func (c *SQLCopier) copyMySQL(ctx context.Context, sourceDB, adminDB *sql.DB, so
 		}
 	}()
 
+	// #nosec G202 -- 数据库名称来自已校验配置，并通过 MySQL 标识符引用。
 	rows, err := sourceDB.QueryContext(ctx, "SHOW FULL TABLES FROM "+quoteMySQLIdentifier(sourceName))
 	if err != nil {
 		return fmt.Errorf("list mysql tables: %w", err)
@@ -275,6 +276,7 @@ func (c *SQLCopier) copyMySQL(ctx context.Context, sourceDB, adminDB *sql.DB, so
 		}
 		sourceTable := quoteMySQLIdentifier(sourceName) + "." + quoteMySQLIdentifier(tableName)
 		targetTable := quoteMySQLIdentifier(targetName) + "." + quoteMySQLIdentifier(tableName)
+		// #nosec G202 -- 源表和目标表均来自数据库元数据并通过 MySQL 标识符引用。
 		if _, err := adminDB.ExecContext(ctx, "INSERT INTO "+targetTable+" SELECT * FROM "+sourceTable); err != nil {
 			return fmt.Errorf("copy mysql table data: %w", err)
 		}
@@ -362,6 +364,7 @@ func (c *SQLCopier) copyMySQLForeignKeys(ctx context.Context, database *sql.DB, 
 		}
 		columns := quoteMySQLIdentifiers(foreignKey.columns)
 		referencedColumns := quoteMySQLIdentifiers(foreignKey.referencedColumns)
+		// #nosec G202 -- 外键标识符统一引用，更新和删除规则已通过白名单校验。
 		query := "ALTER TABLE " + quoteMySQLIdentifier(targetName) + "." + quoteMySQLIdentifier(foreignKey.tableName) + " ADD CONSTRAINT " + quoteMySQLIdentifier(foreignKey.constraintName) + " FOREIGN KEY (" + strings.Join(columns, ", ") + ") REFERENCES " + quoteMySQLIdentifier(referencedSchema) + "." + quoteMySQLIdentifier(foreignKey.referencedTable) + " (" + strings.Join(referencedColumns, ", ") + ") ON UPDATE " + foreignKey.updateRule + " ON DELETE " + foreignKey.deleteRule
 		if _, err := database.ExecContext(ctx, query); err != nil {
 			return fmt.Errorf("copy mysql foreign key: %w", err)

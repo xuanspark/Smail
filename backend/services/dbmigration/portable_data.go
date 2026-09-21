@@ -190,6 +190,7 @@ func copyPortableTables(ctx context.Context, source *sql.Conn, target *sql.DB, p
 			}
 			// 只有绑定序列的主键需要推进；日志等文本主键不能参与数值聚合。
 			if sequence.Valid {
+				// #nosec G202 -- 表名来自数据库元数据，并通过标识符引用；数据值仍使用参数。
 				query := "SELECT setval($1::regclass, COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM " + quoted
 				if _, err := transaction.ExecContext(ctx, query, sequence.String); err != nil {
 					return ErrSQLDataVerification
@@ -235,6 +236,7 @@ func synchronizeSequences(ctx context.Context, transaction *sql.Tx, plan Plan, s
 				return ErrSQLDataVerification
 			}
 		case config.DatabaseTypePostgreSQL:
+			// #nosec G202 -- 序列名称来自数据库元数据，并通过 PostgreSQL 标识符引用；数值使用参数。
 			query := "SELECT setval(pg_get_serial_sequence($1, 'id'), GREATEST(COALESCE(MAX(id), 0), $2), true) FROM " + quotePostgreSQLIdentifier(sequence.Name)
 			if _, err := transaction.ExecContext(ctx, query, sequence.Name, sequence.Seq); err != nil {
 				return ErrSQLDataVerification
