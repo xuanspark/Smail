@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/internal/buildinfo"
+	securefile "git.pcux.cn/xuans/Smail/utils/file"
 )
 
 var (
@@ -191,7 +192,7 @@ func replacePair(stage, targetDir string, names []string) error {
 }
 
 func ReadManifest(targetDir string) (Manifest, error) {
-	data, err := os.ReadFile(filepath.Join(targetDir, "release.json"))
+	data, err := securefile.ReadRegularFile(filepath.Join(targetDir, "release.json"), 1<<20)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -210,23 +211,28 @@ func executableNames() (string, string) {
 }
 
 func validateExecutableSource(path string) error {
-	info, err := os.Lstat(path)
+	input, err := securefile.OpenRegularFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() == 0 {
+	defer input.Close()
+	info, err := input.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
 		return ErrInvalidPair
 	}
 	return nil
 }
 
 func copyExecutable(source, target string, mode os.FileMode) error {
-	input, err := os.Open(source)
+	input, err := securefile.OpenRegularFile(source, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
 	defer input.Close()
-	output, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	output, err := securefile.CreateExclusiveFile(target, mode)
 	if err != nil {
 		return err
 	}
@@ -247,7 +253,7 @@ func writeManifest(path string, manifest Manifest) error {
 		return fmt.Errorf("encode release manifest: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0640); err != nil {
+	if err := securefile.WriteRegularFile(path, data, 0600); err != nil {
 		return fmt.Errorf("write release manifest: %w", err)
 	}
 	return nil
