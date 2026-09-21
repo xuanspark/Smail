@@ -149,28 +149,26 @@ func pruneManagedSSLLocked(root string, protected []SSLConfig) error {
 	}
 	// 磁盘引用也必须保留，避免其他管理器实例或已提交未发布的候选被删除。
 	configRoot, err := os.OpenRoot(filepath.Join(root, "config"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	data, err := configRoot.ReadFile("ssl.json")
-	_ = configRoot.Close()
 	if err == nil {
-		var section SSLSectionConfig
-		if err := ParseStrict(data, &section); err != nil {
-			return err
-		}
-		if section.TLS.CertificateRef != "" {
-			protected = append(protected, section.TLS)
-			reference, err := resolveManagedSSLPathsAtRoot(root, section.TLS)
-			if err != nil {
+		data, readErr := configRoot.ReadFile("ssl.json")
+		_ = configRoot.Close()
+		if readErr == nil {
+			var section SSLSectionConfig
+			if err := ParseStrict(data, &section); err != nil {
 				return err
 			}
-			if legacyManagedSSLReference(section.TLS.CertificateRef) {
-				keep[filepath.Dir(reference.CertificatePath)] = true
+			if section.TLS.CertificateRef != "" {
+				protected = append(protected, section.TLS)
+				reference, err := resolveManagedSSLPathsAtRoot(root, section.TLS)
+				if err != nil {
+					return err
+				}
+				if legacyManagedSSLReference(section.TLS.CertificateRef) {
+					keep[filepath.Dir(reference.CertificatePath)] = true
+				}
 			}
+		} else if !os.IsNotExist(readErr) {
+			return readErr
 		}
 	} else if !os.IsNotExist(err) {
 		return err

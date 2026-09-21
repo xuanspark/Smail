@@ -338,7 +338,7 @@ func (s *TransactionStore) Recover() error {
 			return ErrTransactionPhase
 		}
 	}
-	return nil
+	return cleanupEmptyTransactionStaging(transactions)
 }
 
 func (s *TransactionStore) beforePhase(phase TransactionPhase) error {
@@ -617,6 +617,31 @@ func secureTransactionStagingDirectory(transactions string) (string, error) {
 		return "", err
 	}
 	return directory, nil
+}
+
+func cleanupEmptyTransactionStaging(transactions string) error {
+	directory := filepath.Join(filepath.Dir(transactions), "transaction-staging")
+	info, err := os.Lstat(directory)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return ErrTransactionInvalid
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 0 {
+		return nil
+	}
+	if err := os.Remove(directory); err != nil {
+		return err
+	}
+	return atomicfile.SyncDirectory(filepath.Dir(transactions))
 }
 
 func validateTransactionDirectory(directory string) error {

@@ -126,6 +126,22 @@ func retainPreviousSSL(root string, next *SSLConfig, previous SSLConfig) {
 	}
 }
 
+func removeFlatSSLFile(directory, path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || hasMultipleFileLinks(path) {
+		return ErrUnsafeSSLFile
+	}
+	storage, err := os.OpenRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer storage.Close()
+	return storage.Remove(filepath.Base(path))
+}
+
 func pruneFlatSSLLocked(root string, protected []SSLConfig) error {
 	// 当前材料不可用时暂停回收，避免丢失仍可恢复的历史证书。
 	if len(protected) == 0 {
@@ -165,11 +181,6 @@ func pruneFlatSSLLocked(root string, protected []SSLConfig) error {
 			keep[publicPath] = true
 		}
 	}
-	storage, err := os.OpenRoot(directory)
-	if err != nil {
-		return err
-	}
-	defer storage.Close()
 	for _, entry := range entries {
 		publicPath := filepath.Join(directory, entry.Name())
 		privatePath := strings.TrimSuffix(publicPath, ".crt") + ".key"
@@ -189,7 +200,7 @@ func pruneFlatSSLLocked(root string, protected []SSLConfig) error {
 		if err != nil {
 			// 先删私钥、后删证书；中断留下的孤立证书可在下轮安全重试。
 			if _, statErr := os.Lstat(privatePath); os.IsNotExist(statErr) {
-				if err := storage.Remove(filepath.Base(publicPath)); err != nil {
+				if err := removeFlatSSLFile(directory, publicPath); err != nil {
 					return err
 				}
 			}
@@ -209,9 +220,9 @@ func pruneFlatSSLLocked(root string, protected []SSLConfig) error {
 			}
 			continue
 		}
-		err = storage.Remove(filepath.Base(privatePath))
+		err = removeFlatSSLFile(directory, privatePath)
 		if err == nil {
-			err = storage.Remove(filepath.Base(publicPath))
+			err = removeFlatSSLFile(directory, publicPath)
 		}
 		unlock()
 		if err := errors.Join(err, lease.Close()); err != nil {
