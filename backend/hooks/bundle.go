@@ -1,7 +1,9 @@
 package hooks
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,10 +45,40 @@ func pluginRoot() (string, error) {
 		if err != nil || len(data) == 0 {
 			return "", errors.New("内置插件内容不可用")
 		}
-		if err := os.WriteFile(filepath.Join(root, entry.Name()), data, 0700); err != nil {
+		if err := writeBundledPlugin(filepath.Join(root, entry.Name()), data); err != nil {
 			return "", err
 		}
 	}
 	bundledRoot = root
 	return root, nil
+}
+
+func writeBundledPlugin(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	remove := true
+	defer func() {
+		if remove {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err := io.Copy(file, bytes.NewReader(data)); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Chmod(0700); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	remove = false
+	return nil
 }

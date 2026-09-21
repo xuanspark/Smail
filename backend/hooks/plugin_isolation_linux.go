@@ -42,7 +42,7 @@ func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string
 		return nil, fmt.Errorf("create plugin sandbox: %w", err)
 	}
 	cleanup := func() { _ = os.RemoveAll(runtimeDir) }
-	if err := os.Chmod(runtimeDir, 0700); err != nil {
+	if err := unix.Chmod(runtimeDir, 0700); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("secure plugin sandbox: %w", err)
 	}
@@ -93,8 +93,12 @@ func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string
 				listenerFile,
 			},
 			Sys: &syscall.SysProcAttr{
-				Chroot:     runtimeDir,
-				Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), NoSetGroups: true},
+				Chroot: runtimeDir,
+				Credential: &syscall.Credential{
+					Uid:         uint32(uid), // #nosec G115 -- pluginIdentity restricts both values to 1..65534.
+					Gid:         uint32(gid), // #nosec G115 -- pluginIdentity restricts both values to 1..65534.
+					NoSetGroups: true,
+				},
 				Cloneflags: cloneFlags,
 				Pdeathsig:  syscall.SIGKILL,
 				Setsid:     true,
@@ -126,12 +130,12 @@ func copyPluginConfig(root, runtimeDir, name string, uid, gid int) error {
 }
 
 func copyPluginFile(sourcePath, targetPath string, uid, gid int, mode os.FileMode) error {
-	source, err := os.Open(sourcePath)
+	source, err := openPluginSource(sourcePath)
 	if err != nil {
 		return fmt.Errorf("open plugin configuration: %w", err)
 	}
 	defer source.Close()
-	target, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	target, err := createPluginTarget(targetPath, mode)
 	if err != nil {
 		return fmt.Errorf("create sandbox plugin configuration: %w", err)
 	}
@@ -149,13 +153,39 @@ func copyPluginFile(sourcePath, targetPath string, uid, gid int, mode os.FileMod
 		_ = os.Remove(targetPath)
 		return errors.New("plugin configuration exceeds the allowed size")
 	}
-	if err := os.Chmod(targetPath, mode); err != nil {
+	if err := target.Chmod(mode); err != nil {
 		return fmt.Errorf("secure sandbox plugin configuration: %w", err)
 	}
-	if err := os.Chown(targetPath, uid, gid); err != nil {
+	if err := target.Chown(uid, gid); err != nil {
 		return fmt.Errorf("assign sandbox plugin configuration identity: %w", err)
 	}
 	return nil
+}
+
+func openPluginSource(path string) (*os.File, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	file := os.NewFile(uintptr(fd), path)
+	if file == nil {
+		_ = unix.Close(fd)
+		return nil, errors.New("open plugin source returned an invalid file")
+	}
+	return file, nil
+}
+
+func createPluginTarget(path string, mode os.FileMode) (*os.File, error) {
+	fd, err := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, uint32(mode.Perm()))
+	if err != nil {
+		return nil, err
+	}
+	file := os.NewFile(uintptr(fd), path)
+	if file == nil {
+		_ = unix.Close(fd)
+		return nil, errors.New("create plugin target returned an invalid file")
+	}
+	return file, nil
 }
 
 func pluginIdentity(name string) (int, error) {
@@ -171,13 +201,13 @@ func pluginIdentity(name string) (int, error) {
 }
 
 func copyPluginExecutable(sourcePath, targetPath string, uid, gid int) error {
-	source, err := os.Open(sourcePath)
+	source, err := openPluginSource(sourcePath)
 	if err != nil {
 		return fmt.Errorf("open plugin executable: %w", err)
 	}
 	defer source.Close()
 
-	target, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
+	target, err := createPluginTarget(targetPath, 0700)
 	if err != nil {
 		return fmt.Errorf("create sandbox plugin executable: %w", err)
 	}
@@ -192,10 +222,10 @@ func copyPluginExecutable(sourcePath, targetPath string, uid, gid int) error {
 	if err := target.Close(); err != nil {
 		return fmt.Errorf("close sandbox plugin executable: %w", err)
 	}
-	if err := os.Chmod(targetPath, 0700); err != nil {
+	if err := target.Chmod(0700); err != nil {
 		return fmt.Errorf("secure sandbox plugin executable: %w", err)
 	}
-	if err := os.Chown(targetPath, uid, gid); err != nil {
+	if err := target.Chown(uid, gid); err != nil {
 		return fmt.Errorf("assign sandbox plugin identity: %w", err)
 	}
 	return nil
