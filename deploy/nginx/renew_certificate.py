@@ -11,7 +11,7 @@ import deploy_certificate as deploy
 
 
 ROOT = Path('/var/lib/smail-acme-tls')
-DOMAINS = ('solit.cn', 'mail.solit.cn', 'smtp.solit.cn', 'imap.solit.cn', 'pop.solit.cn')
+DOMAINS = deploy.DOMAINS
 RENEW_TIMEOUT = 600
 WEBROOT = Path('/var/lib/smail-acme')
 

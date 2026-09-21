@@ -11,7 +11,7 @@ import ssl
 import subprocess
 
 
-HOST = 'mail.solit.cn'
+HOST = 'web.solit.cn'
 CONTEXT = ssl.create_default_context()
 
 
@@ -47,7 +47,8 @@ def main():
     leaf = subprocess.run(['openssl', 'x509', '-in', '/opt/smail/ssl/custom.crt', '-outform', 'DER'],
                           check=True, capture_output=True).stdout
     expected = hashlib.sha256(leaf).hexdigest()
-    for port, host in [(443, HOST), (8002, HOST), (465, 'smtp.solit.cn'),
+    for port, host in [(443, HOST), (443, 'solit.cn'), (443, 'mail.solit.cn'),
+                       (8002, HOST), (465, 'smtp.solit.cn'),
                        (993, 'imap.solit.cn'), (995, 'pop.solit.cn')]:
         with socket.create_connection(('127.0.0.1', port), timeout=10) as raw:
             with CONTEXT.wrap_socket(raw, server_hostname=host) as stream:
@@ -86,7 +87,7 @@ def main():
         raise AssertionError('unknown SNI accepted')
     root = json.loads(Path('/opt/smail/config/config.json').read_text())
     assert root['http']['port'] == 8001 and root['http']['httpsPort'] == 8002
-    assert root['security']['webAuthnRpOrigins'] == ['https://mail.solit.cn']
+    assert root['security']['webAuthnRpOrigins'] == ['https://web.solit.cn']
     results['fingerprintSHA256'] = expected
     results['status'] = 'failed' if results['failures'] else 'passed'
     print(json.dumps(results, ensure_ascii=False, indent=2))

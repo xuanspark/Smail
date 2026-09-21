@@ -11,7 +11,7 @@ import verify_nginx_tls as verify
 
 
 class RedirectAcceptanceTest(unittest.TestCase):
-    expected = 'https://mail.solit.cn/acceptance?x=1'
+    expected = 'https://web.solit.cn/acceptance?x=1'
 
     def check(self, first, second):
         results = {'checks': []}
@@ -29,12 +29,12 @@ class RedirectAcceptanceTest(unittest.TestCase):
         self.assertEqual(self.check(self.response(), self.response()), [])
 
     def test_internal_https_port_is_failure(self):
-        failures = self.check(self.response(), self.response('https://mail.solit.cn:8002/acceptance?x=1'))
+        failures = self.check(self.response(), self.response('https://web.solit.cn:8002/acceptance?x=1'))
         self.assertEqual(len(failures), 1)
         self.assertEqual(failures[0]['port'], 8001)
 
     def test_public_port_does_not_skip_validation(self):
-        failures = self.check(self.response('http://mail.solit.cn/acceptance?x=1'), self.response())
+        failures = self.check(self.response('http://web.solit.cn/acceptance?x=1'), self.response())
         self.assertEqual([item['port'] for item in failures], [80])
 
     def test_missing_location_records_failure(self):
@@ -46,7 +46,7 @@ class RedirectAcceptanceTest(unittest.TestCase):
         self.assertEqual(failures[0]['actualStatus'], 200)
 
     def test_path_and_query_must_be_preserved(self):
-        for location in ('https://mail.solit.cn/', 'https://mail.solit.cn/acceptance',
+        for location in ('https://web.solit.cn/', 'https://web.solit.cn/acceptance',
                          'https://other.invalid/acceptance?x=1'):
             with self.subTest(location=location):
                 self.assertTrue(self.check(self.response(), self.response(location)))

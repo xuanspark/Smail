@@ -264,7 +264,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_wrong_domain_does_not_change_live_files(self):
         with patch.object(deploy, 'DOMAINS', ('wrong.example',)), \
-                self.assertRaises(subprocess.CalledProcessError):
+                self.assertRaisesRegex(RuntimeError, '根域名和泛域名'):
             deploy.main()
         self.assert_old_untouched()
 

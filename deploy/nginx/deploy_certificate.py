@@ -17,7 +17,10 @@ import time
 import uuid
 
 
-DOMAINS = ('solit.cn', 'mail.solit.cn', 'smtp.solit.cn', 'imap.solit.cn', 'pop.solit.cn')
+DOMAINS = ('solit.cn', '*.solit.cn')
+VERIFY_HOSTNAMES = ('solit.cn', 'web.solit.cn', 'mail.solit.cn', 'smtp.solit.cn',
+                    'imap.solit.cn', 'pop.solit.cn')
+CERTIFICATE_SNI = 'web.solit.cn'
 LINEAGE = Path('/var/lib/smail-acme-tls/certificates')
 TARGET = Path('/opt/smail/ssl')
 BACKUPS = Path('/var/backups')
@@ -96,7 +99,13 @@ def replace_file(path, data, uid, gid):
 
 
 def validate(directory):
-    for domain in DOMAINS:
+    names = run('openssl', 'x509', '-in', str(directory / 'candidate.crt'), '-noout',
+                '-ext', 'subjectAltName').decode('utf-8')
+    certificate_domains = {item.strip()[4:] for line in names.splitlines()
+                           for item in line.split(',') if item.strip().startswith('DNS:')}
+    if not set(DOMAINS).issubset(certificate_domains):
+        raise RuntimeError('证书必须同时覆盖根域名和泛域名')
+    for domain in VERIFY_HOSTNAMES:
         run('openssl', 'verify', '-CAfile', CA_FILE, '-purpose', 'sslserver',
             '-untrusted', str(directory / 'candidate.issuer.crt'), '-verify_hostname', domain,
             str(directory / 'candidate.crt'))
@@ -119,7 +128,7 @@ def verify_live_certificate(fingerprint):
         while True:
             try:
                 with socket.create_connection(('127.0.0.1', port), timeout=2) as connection:
-                    with context.wrap_socket(connection, server_hostname='mail.solit.cn') as secure:
+                    with context.wrap_socket(connection, server_hostname=CERTIFICATE_SNI) as secure:
                         actual = hashlib.sha256(secure.getpeercert(binary_form=True)).hexdigest()
                 if actual == fingerprint:
                     break
