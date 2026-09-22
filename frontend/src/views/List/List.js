@@ -26,6 +26,8 @@ export function usePage() {
   const groupList = ref([])
   const isRefreshing = ref(false)
   let refreshTimer = null
+  let requestVersion = 0
+  const currentPage = ref(1)
   
   const taskTableDataRef = ref(null)
   
@@ -49,8 +51,10 @@ export function usePage() {
     }
   })
   
-  watch(groupStore, async (newV) => {
-    tag = newV.tag;
+  watch([() => groupStore.tag, () => groupStore.keyword], () => {
+    tag = groupStore.tag;
+    currentPage.value = 1;
+    taskTableDataRef.value?.clearSelection();
     if (tag === "") {
       tag = '{"type":0,"status":-1}'
     }
@@ -63,19 +67,33 @@ export function usePage() {
   const totalPage = ref(0)
   
   const updateList = async function (silent = false) {
+    if (silent && selectedRows.value.length > 0) return
+    const version = ++requestVersion
     if (!silent) {
       isRefreshing.value = true
     }
     try {
-      const res = await http.post("/api/v1/email/list", {tag: tag, page_size: 15})
+      const res = await http.post("/api/v1/email/list", {
+        tag, keyword: groupStore.keyword, current_page: currentPage.value, page_size: 15
+      })
+      if (version !== requestVersion) return
+      if (res.errorNo !== 0) throw new Error(res.errorMsg)
+      const available = new Set((res.data.list || []).map(row => row.id))
+      selectedRows.value.filter(row => !available.has(row.id)).forEach(row => {
+        taskTableDataRef.value?.toggleRowSelection(row, false)
+      })
       data.value = res.data.list || []
       totalPage.value = res.data.total_page || 0
+      if (currentPage.value > Math.max(1, totalPage.value)) {
+        currentPage.value = Math.max(1, totalPage.value)
+        await updateList(silent)
+      }
     } catch (err) {
-      if (!silent) {
+      if (!silent && version === requestVersion) {
         ElMessage.error(err?.message || '获取邮件列表失败')
       }
     } finally {
-      if (!silent) {
+      if (!silent && version === requestVersion) {
         isRefreshing.value = false
       }
     }
@@ -97,6 +115,7 @@ export function usePage() {
   updateList()
   
   updateGroupList()
+  watch(() => groupStore.revision, updateGroupList)
 
   // 定时刷新逻辑：已登录 60s，未登录 300s
   const getRefreshInterval = () => {
@@ -137,6 +156,7 @@ export function usePage() {
   })
 
   onUnmounted(() => {
+    requestVersion += 1
     stopAutoRefreshTimer()
   })
   
@@ -237,9 +257,9 @@ export function usePage() {
   }
   
   const pageChange = function (p) {
-    http.post("/api/v1/email/list", {tag: tag, page_size: 15, current_page: p}).then(res => {
-      data.value = res.data.list || []
-    })
+    currentPage.value = p
+    taskTableDataRef.value?.clearSelection()
+    updateList()
   }
 
   const trustSender = function (senderEmail) {
@@ -301,6 +321,7 @@ export function usePage() {
     tag,
     data,
     totalPage,
+    currentPage,
     updateList,
     updateGroupList,
     rowClick,

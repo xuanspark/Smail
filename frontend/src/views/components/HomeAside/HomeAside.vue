@@ -11,6 +11,8 @@
     <div class="search-box">
       <el-input
         v-model="searchQuery"
+        @keyup.enter="submitSearch"
+        @clear="submitSearch"
         :placeholder="lang.search"
         prefix-icon="Search"
         clearable
@@ -63,6 +65,7 @@ import { usePage, BrandLogo, Setting, SwitchButton } from './HomeAside.js'
 
 const {
   searchQuery,
+  submitSearch,
   lang,
   activeGroup,
   handleMenuSelect,

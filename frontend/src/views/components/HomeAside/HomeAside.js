@@ -47,7 +47,11 @@ export function usePage() {
   
   const data = ref([]);
   
-  const searchQuery = ref("");
+  const searchQuery = ref(groupStore.keyword);
+  const submitSearch = () => {
+    groupStore.keyword = searchQuery.value.trim();
+    router.push({ name: "list" });
+  };
   
   const activeGroup = ref(groupStore.tag);
   
@@ -55,7 +59,7 @@ export function usePage() {
     activeGroup.value = newVal;
   });
   
-  http.get("/api/v1/group").then((res) => {
+  const loadGroups = () => http.get("/api/v1/group").then((res) => {
     if (res.data) {
       // Attempting to flatten the tree for a simpler premium menu or keep it, el-tree is less beautiful.
       // For now we assume res.data is an array of items. If it's a tree, we flatten it.
@@ -68,8 +72,11 @@ export function usePage() {
       }
       traverse(res.data);
       data.value = list;
+
     }
-  });
+  }).catch(error => ElMessage.error(error.message));
+  watch(() => groupStore.revision, loadGroups);
+  loadGroups();
   
   const handleMenuSelect = function (index) {
     const selected = data.value.find(d => d.tag === index);
@@ -111,6 +118,7 @@ export function usePage() {
     router,
     data,
     searchQuery,
+    submitSearch,
     activeGroup,
     handleMenuSelect,
     openSettings

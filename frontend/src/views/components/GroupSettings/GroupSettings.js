@@ -1,4 +1,5 @@
 import { reactive } from "vue";
+import useGroupStore from '../../../stores/group';
 
 import lang from "../../../i18n/i18n";
 
@@ -10,6 +11,8 @@ import { Folder, Delete, Plus } from "@element-plus/icons-vue";
 
 export function usePage() {
   const data = reactive([]);
+  const groupStore = useGroupStore();
+  const saving = new WeakSet();
   
   http.get("/api/v1/group").then((res) => {
     data.push(...res.data);
@@ -21,6 +24,7 @@ export function usePage() {
         if (res.errorNo !== 0) {
           ElMessage({ message: res.errorMsg, type: "error" });
         } else {
+          groupStore.invalidate();
           const pc = node.parent.childNodes;
           for (let i = 0; i < pc.length; i++) {
             if (pc[i].id === node.id) {
@@ -63,18 +67,22 @@ export function usePage() {
   };
   
   const onInputBlur = function (item) {
-    if (item.label !== "") {
+    if (item.id !== -1 || saving.has(item)) return;
+    if (item.label.trim() !== "") {
+      saving.add(item);
       http.post("/api/v1/group/add", { name: item.label, parent_id: item.parent_id })
         .then((res) => {
           if (res.errorNo !== 0) {
             ElMessage({ message: res.errorMsg, type: "error" });
           } else {
-            http.get("/api/v1/group").then((res) => {
+            groupStore.invalidate();
+            return http.get("/api/v1/group").then((res) => {
               data.splice(0, data.length);
               data.push(...res.data);
             });
           }
-        });
+        }).catch(error => ElMessage.error(error.message))
+        .finally(() => saving.delete(item));
     }
   };
 

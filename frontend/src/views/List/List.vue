@@ -45,13 +45,14 @@
       <el-table height="100%"
                 ref="taskTableDataRef"
                 :data="data"
+                row-key="id"
                 :show-header="false"
                 class="modern-mail-table"
                 @row-click="rowClick"
                 @selection-change="selectionChange"
                 :row-style="rowStyle"
       >
-        <el-table-column type="selection" width="40"/>
+        <el-table-column type="selection" width="40" :reserve-selection="true"/>
 
         <el-table-column width="30" class-name="status-col">
           <template #default="scope">
@@ -115,6 +116,7 @@
           background
           layout="prev, pager, next"
           :page-count="totalPage"
+          v-model:current-page="currentPage"
           @current-change="pageChange"
       />
     </div>
@@ -152,6 +154,7 @@ const {
   rowStyle,
   formatShortDate,
   totalPage,
+  currentPage,
   pageChange,
   isOutbox,
   trustSender,
