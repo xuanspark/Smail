@@ -7,9 +7,12 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+from contextlib import closing
 import subprocess
 import tarfile
 import time
+
+from database_inventory import sqlite_inventory
 
 
 DATABASE_NAME = 'smail.db'
@@ -21,8 +24,7 @@ def run(*args):
 
 def database_path(root):
     data = root / 'data'
-    files = sorted(path for path in data.rglob('*.db')
-                   if path.is_file() or path.is_symlink())
+    files = sqlite_inventory(root, [data / 'smail.db'])
     expected = data / DATABASE_NAME
     assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
     assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
@@ -32,7 +34,7 @@ def database_path(root):
 def database_counts(root):
     counts = {}
     database_path_value = database_path(root)
-    with sqlite3.connect(f'file:{database_path_value}?mode=ro', uri=True) as database:
+    with closing(sqlite3.connect(database_path_value.as_uri() + '?mode=ro', uri=True)) as database:
         assert database.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         tables = database.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
         counts[DATABASE_NAME] = {
@@ -95,7 +97,7 @@ def main():
                 probe = subprocess.run([
                     'nsenter', '--target', pid, '--net', 'curl', '--silent', '--fail', '--max-time', '2',
                     '--noproxy', '*', '--cacert', str(restored / 'ssl/custom.crt'),
-                    '--resolve', 'mail.solit.cn:443:127.0.0.1', 'https://mail.solit.cn/api/ping',
+                    '--resolve', 'web.solit.cn:443:127.0.0.1', 'https://web.solit.cn/api/ping',
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if probe.returncode == 0:
                     ready = True
@@ -124,9 +126,9 @@ with smtplib.SMTP('127.0.0.1',25,timeout=20) as client:
 '''
         subprocess.run(['nsenter', '--target', pid, '--net', 'python3', '-c', probe,
                         str(restored / 'ssl/custom.crt'), stamp], check=True)
-        with sqlite3.connect(f'file:{restored / "data/smail.db"}?mode=ro', uri=True) as database:
+        with closing(sqlite3.connect(f'file:{restored / "data/smail.db"}?mode=ro', uri=True)) as database:
             assert database.execute('SELECT COUNT(*) FROM email WHERE msg_id=?', ('restore-' + stamp + '@review.invalid',)).fetchone()[0] == 1
-        with sqlite3.connect('file:/opt/smail/data/smail.db?mode=ro', uri=True) as database:
+        with closing(sqlite3.connect('file:/opt/smail/data/smail.db?mode=ro', uri=True)) as database:
             assert database.execute('SELECT COUNT(*) FROM email WHERE msg_id=?', ('restore-' + stamp + '@review.invalid',)).fetchone()[0] == 0
         result.update(ready=True, isolated=True, restored_smtp=True, live_pid_unchanged=live_pid == run(
             'systemctl', 'show', 'smail.service', '--property=MainPID', '--value'))

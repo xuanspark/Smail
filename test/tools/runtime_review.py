@@ -13,6 +13,8 @@ import sqlite3
 import subprocess
 import time
 
+from database_inventory import sqlite_inventory
+
 
 def run(*args):
     return subprocess.check_output(args, text=True).strip()
@@ -28,8 +30,7 @@ def database_integrity(root):
     # 验收器不能创建数据库，也不能允许第二个状态库。
     data = root / 'data'
     assert not (data / 'smail-state.db').exists(), '单数据库实例生成了旧状态库'
-    files = sorted(path for path in data.rglob('*.db')
-                   if path.is_file() or path.is_symlink())
+    files = sqlite_inventory(root, [data / 'smail.db'])
     assert files == [data / 'smail.db']
     assert (data / 'smail.db').is_file() and not (data / 'smail.db').is_symlink()
     with closing(sqlite3.connect((data / 'smail.db').as_uri() + '?mode=ro', uri=True)) as database:
@@ -173,6 +174,9 @@ def main():
         shutil.chown(directory, user='smail', group='smail')
     shutil.copy2(binary, root / 'smail')
     (root / 'smail').chmod(0o755)
+    shutil.copy2(Path(__file__).with_name('database_inventory.py'), target / 'database_inventory.py')
+    (target / 'database_inventory.py').chmod(0o640)
+    shutil.chown(target / 'database_inventory.py', user='root', group='smail')
     shutil.copy2(Path(__file__).with_name('runtime_probe.py'), target / 'runtime_probe.py')
     (target / 'runtime_probe.py').chmod(0o640)
     shutil.chown(target / 'runtime_probe.py', user='root', group='smail')
@@ -351,7 +355,7 @@ def main():
             result['probe'] = json.loads((target / 'probe-result.json').read_text())
         assert probe.returncode == 0, '隔离验收失败，请检查保留的 probe.log'
         assert result['probe']['passed']
-        with sqlite3.connect(f'file:{live / "data/smail.db"}?mode=ro', uri=True) as database:
+        with closing(sqlite3.connect(f'file:{live / "data/smail.db"}?mode=ro', uri=True)) as database:
             message_id = result['probe']['smtp']['message_id']
             assert database.execute('SELECT COUNT(*) FROM email WHERE msg_id=?', (message_id,)).fetchone()[0] == 0
         result['live_message_absent'] = True

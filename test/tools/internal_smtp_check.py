@@ -5,6 +5,7 @@ import hashlib
 import json
 import smtplib
 import sqlite3
+from contextlib import closing
 import ssl
 import subprocess
 import time
@@ -12,6 +13,8 @@ from email.message import EmailMessage
 from email.policy import SMTP
 from email.utils import formatdate
 from pathlib import Path
+
+from database_inventory import sqlite_inventory
 
 
 ROOT = Path('/opt/smail')
@@ -24,8 +27,7 @@ ATTACHMENT = '中文附件内容，内部收信验收。'.encode('utf-8')
 
 def database_path(root):
     data = root / 'data'
-    files = sorted(path for path in data.rglob('*.db')
-                   if path.is_file() or path.is_symlink())
+    files = sqlite_inventory(root, [data / 'smail.db'])
     expected = data / DATABASE_NAME
     assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
     assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
@@ -79,12 +81,12 @@ def main():
     backup = Path('/var/backups') / f'smail-internal-smtp-{RUN}'
     backup.mkdir(mode=0o700)
     database_path_value = database_path(ROOT)
-    with sqlite3.connect(f'file:{database_path_value}?mode=ro', uri=True) as source:
-        with sqlite3.connect(backup / DATABASE_NAME) as target:
+    with closing(sqlite3.connect(database_path_value.as_uri() + '?mode=ro', uri=True)) as source:
+        with closing(sqlite3.connect(backup / DATABASE_NAME)) as target:
             source.backup(target)
             assert target.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     (backup / DATABASE_NAME).chmod(0o600)
-    with sqlite3.connect(f'file:{database_path_value}?mode=ro', uri=True) as database:
+    with closing(sqlite3.connect(database_path_value.as_uri() + '?mode=ro', uri=True)) as database:
         database.row_factory = sqlite3.Row
         policy = json.loads((ROOT / 'config/email.json').read_text(encoding='utf-8')).get('policy', {})
         assert policy.get('spamFilterLevel', 0) == 0, 'This fixture requires the current unfiltered policy'

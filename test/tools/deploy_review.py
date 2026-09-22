@@ -7,8 +7,11 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+from contextlib import closing
 import subprocess
 import time
+
+from database_inventory import sqlite_inventory
 
 
 ROOT = Path('/opt/smail')
@@ -27,8 +30,7 @@ def digest(path):
 
 def database_path(root):
     data = root / 'data'
-    files = sorted(path for path in data.rglob('*.db')
-                   if path.is_file() or path.is_symlink())
+    files = sqlite_inventory(root, [data / 'smail.db'])
     expected = data / DATABASE_NAME
     assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
     assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
@@ -36,11 +38,23 @@ def database_path(root):
 
 
 def snapshot(source, target):
-    with sqlite3.connect(f'file:{source}?mode=ro', uri=True) as original:
-        with sqlite3.connect(target) as copied:
+    with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True)) as original:
+        with closing(sqlite3.connect(target)) as copied:
             original.backup(copied)
             assert copied.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     target.chmod(0o600)
+
+
+
+def database_state(root):
+    database = database_path(root)
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
+        assert connection.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+        version = connection.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
+        assert version == 24
+        connection.execute('SELECT COUNT(*) FROM config_records').fetchone()
+        states = dict(connection.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
+    return version, states
 
 
 def wait_ready():
@@ -48,7 +62,7 @@ def wait_ready():
         result = subprocess.run([
             'curl', '--silent', '--fail', '--max-time', '2', '--noproxy', '*',
             '--cacert', str(ROOT / 'ssl/custom.crt'), '--resolve',
-            'mail.solit.cn:443:127.0.0.1', 'https://mail.solit.cn/api/ping',
+            'web.solit.cn:443:127.0.0.1', 'https://web.solit.cn/api/ping',
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if result.returncode == 0 and run('systemctl', 'is-active', 'smail.service') == 'active':
             return
@@ -98,12 +112,7 @@ def main():
             assert digest(ROOT / name) == checksum
         subprocess.run(['systemctl', 'start', 'smail.service'], check=True)
         wait_ready()
-        database_path(ROOT)
-        with sqlite3.connect(f'file:{database}?mode=ro', uri=True) as connection:
-            assert connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-            version = connection.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
-            assert version == 23
-            states = dict(connection.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
+        version, states = database_state(ROOT)
         result = {'backup': str(backup), 'archive_sha256': digest(archive),
                   'artifacts': expected, 'migration': version, 'queue_states': states,
                   'service': run('systemctl', 'is-active', 'smail.service'),

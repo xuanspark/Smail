@@ -7,6 +7,8 @@ import re
 import secrets
 import subprocess
 
+from database_inventory import sqlite_inventory
+
 
 def command(args, sql, env=None):
     result = subprocess.run(args, input=sql, text=True, capture_output=True,
@@ -75,8 +77,7 @@ class SQLDatabase:
 
     def integrity(self, root):
         # 配置历史和业务表必须位于所选 SQL 库，运行目录不能悄悄创建 SQLite。
-        assert not list((root / 'data').rglob('*.db'))
-        assert not list((root / 'data').rglob('*.sqlite*'))
+        sqlite_inventory(root, [])
         count = int(self.query('SELECT COUNT(*) FROM config_records'))
         assert count > 0
         return {'type': self.kind, 'database': self.settings['name'],
