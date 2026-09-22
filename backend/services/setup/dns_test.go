@@ -69,8 +69,8 @@ func TestBuildDNSItemsCreatesExpectedRecordShape(t *testing.T) {
 	}
 	items := buildDNSItemsWithWebIPv4(cfg, "example.com", "v=DKIM1; k=rsa; p=test", "198.51.100.20", "2001:db8::20", "", []string{"203.0.113.20"})
 
-	if len(items) != 13 {
-		t.Fatalf("DNS item count = %d, want 13", len(items))
+	if len(items) != 14 {
+		t.Fatalf("DNS item count = %d, want 14", len(items))
 	}
 	if items[0].Host != "panel" || items[0].Type != "A" || items[0].Value != "203.0.113.20" {
 		t.Fatalf("web A record = %#v", items[0])
@@ -86,8 +86,11 @@ func TestBuildDNSItemsCreatesExpectedRecordShape(t *testing.T) {
 			t.Fatalf("mail service AAAA record = %#v", items[index])
 		}
 	}
-	if items[9].Value != "smtp.example.com | 1" || items[9].TTL != dnsRecordTTL {
-		t.Fatalf("MX record = %#v", items[9])
+	if items[9].Host != "*" || items[9].Type != "A" || items[9].Value != "198.51.100.20" || items[9].TTL != dnsRecordTTL {
+		t.Fatalf("wildcard A record = %#v", items[9])
+	}
+	if items[10].Value != "smtp.example.com | 1" || items[10].TTL != dnsRecordTTL {
+		t.Fatalf("MX record = %#v", items[10])
 	}
 }
 

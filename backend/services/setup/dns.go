@@ -61,7 +61,7 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 		address = "[未检测到公网 IPv4]"
 	}
 
-	items := make([]*DNSItem, 0, 13)
+	items := make([]*DNSItem, 0, 14)
 	appendARecord := func(host string) {
 		for _, item := range items {
 			if item.Type == "A" && item.Host == host {
@@ -124,6 +124,7 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 			appendAAAARecord(host, address)
 		}
 	}
+	appendARecord("*")
 
 	items = append(items,
 		&DNSItem{Type: "MX", Host: "@", Value: fmt.Sprintf("smtp.%s | 1", domain), TTL: dnsRecordTTL},
