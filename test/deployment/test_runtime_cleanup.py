@@ -61,6 +61,16 @@ class RuntimeCleanupTest(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 review.database_integrity(root)
 
+    def test_nested_database_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'data').mkdir()
+            with closing(sqlite3.connect(root / 'data/smail.db')) as database:
+                database.execute('CREATE TABLE config_records (id TEXT)')
+            (root / 'data/archive').mkdir()
+            (root / 'data/archive/old.db').touch()
+            with self.assertRaises(AssertionError):
+                review.database_integrity(root)
     def test_resources_then_stop_all(self):
         result = {}
         with patch.object(review.subprocess, 'check_output', return_value='Result=success') as stats, \

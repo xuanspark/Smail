@@ -114,7 +114,8 @@ def main():
     except BaseException:
         if installed:
             subprocess.run(['systemctl', 'stop', 'smail.service'], check=True)
-            database = database_path(ROOT)
+            database = ROOT / 'data' / DATABASE_NAME
+            assert database.is_file() and not database.is_symlink()
             snapshot(database, backup / ('failed-' + DATABASE_NAME))
             snapshot(backup / DATABASE_NAME, database)
             shutil.chown(database, user='smail', group='smail')

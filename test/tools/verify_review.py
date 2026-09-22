@@ -76,7 +76,7 @@ def main():
         integrity = connection.execute('PRAGMA integrity_check').fetchall()
         assert integrity == [('ok',)]
         summary['database_integrity'][DATABASE_NAME] = 'ok'
-        summary['migration'] = database.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
+        summary['migration'] = connection.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
         summary['queue_states'] = dict(connection.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
     control = Path('/run/smail/admin-control.sock').lstat()
     assert stat.S_ISSOCK(control.st_mode) and stat.S_IMODE(control.st_mode) == 0o600

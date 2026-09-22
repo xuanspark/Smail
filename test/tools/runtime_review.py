@@ -28,7 +28,10 @@ def database_integrity(root):
     # 验收器不能创建数据库，也不能允许第二个状态库。
     data = root / 'data'
     assert not (data / 'smail-state.db').exists(), '单数据库实例生成了旧状态库'
-    assert sorted(path.name for path in data.glob('*.db')) == ['smail.db']
+    files = sorted(path for path in data.rglob('*.db')
+                   if path.is_file() or path.is_symlink())
+    assert files == [data / 'smail.db']
+    assert (data / 'smail.db').is_file() and not (data / 'smail.db').is_symlink()
     with closing(sqlite3.connect((data / 'smail.db').as_uri() + '?mode=ro', uri=True)) as database:
         integrity = database.execute('PRAGMA integrity_check').fetchall()
         assert database.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='config_records'").fetchone()[0] == 1
