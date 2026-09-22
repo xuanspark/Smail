@@ -10,8 +10,21 @@ import stat
 import subprocess
 
 
+DATABASE_NAME = 'smail.db'
+
+
 def run(*args):
     return subprocess.check_output(args, text=True).strip()
+
+
+def database_path(root):
+    data = root / 'data'
+    files = sorted(path for path in data.rglob('*.db')
+                   if path.is_file() or path.is_symlink())
+    expected = data / DATABASE_NAME
+    assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
+    assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
+    return expected
 
 
 def main():
@@ -58,17 +71,16 @@ def main():
             summary[name + '_sha256'] = actual
     summary['admin_version'] = run(str(root / 'smail-admin'), 'version')
     summary['database_integrity'] = {}
-    for name in ('smail.db', 'smail-state.db'):
-        with sqlite3.connect(f'file:{root / "data" / name}?mode=ro', uri=True) as database:
-            integrity = database.execute('PRAGMA integrity_check').fetchall()
-            assert integrity == [('ok',)]
-            summary['database_integrity'][name] = 'ok'
-    with sqlite3.connect(f'file:{root / "data/smail.db"}?mode=ro', uri=True) as database:
+    database = database_path(root)
+    with sqlite3.connect(f'file:{database}?mode=ro', uri=True) as connection:
+        integrity = connection.execute('PRAGMA integrity_check').fetchall()
+        assert integrity == [('ok',)]
+        summary['database_integrity'][DATABASE_NAME] = 'ok'
         summary['migration'] = database.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
-        summary['queue_states'] = dict(database.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
+        summary['queue_states'] = dict(connection.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
     control = Path('/run/smail/admin-control.sock').lstat()
     assert stat.S_ISSOCK(control.st_mode) and stat.S_IMODE(control.st_mode) == 0o600
-    assert control.st_uid == (root / 'data/smail.db').stat().st_uid
+    assert control.st_uid == database.stat().st_uid
     summary['control_socket_mode'] = oct(stat.S_IMODE(control.st_mode))
     curl = ['curl', '--silent', '--show-error', '--fail', '--max-time', '10', '--noproxy', '*',
             '--cacert', str(root / 'ssl/custom.crt'), '--resolve', 'mail.solit.cn:443:127.0.0.1']

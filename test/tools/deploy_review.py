@@ -1,4 +1,4 @@
-"""仅在 47 服务器备份并升级 Smail，保留双库和失败证据。"""
+"""仅在 47 服务器备份并升级 Smail，保留单库和失败证据。"""
 
 import argparse
 import hashlib
@@ -13,7 +13,7 @@ import time
 
 ROOT = Path('/opt/smail')
 STAGING = Path('/var/tmp/smail-review-20260917')
-DATABASES = ('smail.db', 'smail-state.db')
+DATABASE_NAME = 'smail.db'
 
 
 def run(*args):
@@ -23,6 +23,16 @@ def run(*args):
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def database_path(root):
+    data = root / 'data'
+    files = sorted(path for path in data.rglob('*.db')
+                   if path.is_file() or path.is_symlink())
+    expected = data / DATABASE_NAME
+    assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
+    assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
+    return expected
 
 
 def snapshot(source, target):
@@ -65,6 +75,7 @@ def main():
         assert header[:5] == b'\x7fELF\x02' and header[18:20] == b'\x3e\x00'
         assert digest(path) == checksum
         assert not (ROOT / name).is_symlink()
+    database = database_path(ROOT)
 
     backup = Path('/var/backups') / time.strftime('smail-before-outbox-%Y%m%d-%H%M%S')
     backup.mkdir(mode=0o700)
@@ -76,10 +87,8 @@ def main():
         subprocess.run(['tar', '-czf', str(archive), '-C', '/opt', 'smail'], check=True)
         subprocess.run(['tar', '-dzf', str(archive), '-C', '/opt'], check=True)
         archive.chmod(0o600)
-        for name in DATABASES:
-            source = ROOT / 'data' / name
-            assert source.resolve() == source and not source.is_symlink()
-            snapshot(source, backup / name)
+        assert database.resolve() == database and not database.is_symlink()
+        snapshot(database, backup / DATABASE_NAME)
         for name in expected:
             shutil.copy2(ROOT / name, backup / name)
         installed = True
@@ -89,13 +98,12 @@ def main():
             assert digest(ROOT / name) == checksum
         subprocess.run(['systemctl', 'start', 'smail.service'], check=True)
         wait_ready()
-        for name in DATABASES:
-            with sqlite3.connect(f'file:{ROOT / "data" / name}?mode=ro', uri=True) as database:
-                assert database.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-        with sqlite3.connect(f'file:{ROOT / "data/smail.db"}?mode=ro', uri=True) as database:
-            version = database.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
+        database_path(ROOT)
+        with sqlite3.connect(f'file:{database}?mode=ro', uri=True) as connection:
+            assert connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+            version = connection.execute('SELECT MAX(version) FROM schema_migration').fetchone()[0]
             assert version == 23
-            states = dict(database.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
+            states = dict(connection.execute('SELECT state,COUNT(*) FROM outbound_delivery GROUP BY state'))
         result = {'backup': str(backup), 'archive_sha256': digest(archive),
                   'artifacts': expected, 'migration': version, 'queue_states': states,
                   'service': run('systemctl', 'is-active', 'smail.service'),
@@ -106,10 +114,10 @@ def main():
     except BaseException:
         if installed:
             subprocess.run(['systemctl', 'stop', 'smail.service'], check=True)
-            for name in DATABASES:
-                snapshot(ROOT / 'data' / name, backup / ('failed-' + name))
-                snapshot(backup / name, ROOT / 'data' / name)
-                shutil.chown(ROOT / 'data' / name, user='smail', group='smail')
+            database = database_path(ROOT)
+            snapshot(database, backup / ('failed-' + DATABASE_NAME))
+            snapshot(backup / DATABASE_NAME, database)
+            shutil.chown(database, user='smail', group='smail')
             for name in expected:
                 shutil.copy2(backup / name, ROOT / name)
         subprocess.run(['systemctl', 'start', 'smail.service'], check=True)

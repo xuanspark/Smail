@@ -12,20 +12,33 @@ import tarfile
 import time
 
 
+DATABASE_NAME = 'smail.db'
+
+
 def run(*args):
     return subprocess.check_output(args, text=True).strip()
 
 
+def database_path(root):
+    data = root / 'data'
+    files = sorted(path for path in data.rglob('*.db')
+                   if path.is_file() or path.is_symlink())
+    expected = data / DATABASE_NAME
+    assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
+    assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
+    return expected
+
+
 def database_counts(root):
     counts = {}
-    for name in ('smail.db', 'smail-state.db'):
-        with sqlite3.connect(f'file:{root / "data" / name}?mode=ro', uri=True) as database:
-            assert database.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-            tables = database.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
-            counts[name] = {
-                table: database.execute('SELECT COUNT(*) FROM "' + table.replace('"', '""') + '"').fetchone()[0]
-                for (table,) in tables
-            }
+    database_path_value = database_path(root)
+    with sqlite3.connect(f'file:{database_path_value}?mode=ro', uri=True) as database:
+        assert database.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+        tables = database.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
+        counts[DATABASE_NAME] = {
+            table: database.execute('SELECT COUNT(*) FROM "' + table.replace('"', '""') + '"').fetchone()[0]
+            for (table,) in tables
+        }
     return counts
 
 

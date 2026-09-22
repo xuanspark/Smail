@@ -15,10 +15,21 @@ from pathlib import Path
 
 
 ROOT = Path('/opt/smail')
+DATABASE_NAME = 'smail.db'
 RUN = time.strftime('%Y%m%d-%H%M%S')
 DOMAIN = 'solit.cn'
 BODY = '内部25端口中文正文验收：邮件必须真实入库，并且只属于指定收件人。'
 ATTACHMENT = '中文附件内容，内部收信验收。'.encode('utf-8')
+
+
+def database_path(root):
+    data = root / 'data'
+    files = sorted(path for path in data.rglob('*.db')
+                   if path.is_file() or path.is_symlink())
+    expected = data / DATABASE_NAME
+    assert files == [expected], '正式验收要求运行目录仅保留 data/smail.db'
+    assert expected.is_file() and not expected.is_symlink(), '活动数据库不能是符号链接'
+    return expected
 
 
 def connect():
@@ -64,16 +75,16 @@ def deliver(label, recipients, multipart=False):
 def main():
     assert ROOT.is_dir() and Path('/etc/systemd/system/smail.service').is_file()
     assert subprocess.check_output(['systemctl', 'is-active', 'smail.service'], text=True).strip() == 'active'
-    # 只读连接真实业务库，备份两份数据库，不清除前一轮故障证据。
+    # 只读连接真实业务库，备份唯一数据库，不清除前一轮故障证据。
     backup = Path('/var/backups') / f'smail-internal-smtp-{RUN}'
     backup.mkdir(mode=0o700)
-    for name in ('smail.db', 'smail-state.db'):
-        with sqlite3.connect(f'file:{ROOT / "data" / name}?mode=ro', uri=True) as source:
-            with sqlite3.connect(backup / name) as target:
-                source.backup(target)
-                assert target.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-        (backup / name).chmod(0o600)
-    with sqlite3.connect(f'file:{ROOT / "data/smail.db"}?mode=ro', uri=True) as database:
+    database_path_value = database_path(ROOT)
+    with sqlite3.connect(f'file:{database_path_value}?mode=ro', uri=True) as source:
+        with sqlite3.connect(backup / DATABASE_NAME) as target:
+            source.backup(target)
+            assert target.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+    (backup / DATABASE_NAME).chmod(0o600)
+    with sqlite3.connect(f'file:{database_path_value}?mode=ro', uri=True) as database:
         database.row_factory = sqlite3.Row
         policy = json.loads((ROOT / 'config/email.json').read_text(encoding='utf-8')).get('policy', {})
         assert policy.get('spamFilterLevel', 0) == 0, 'This fixture requires the current unfiltered policy'
