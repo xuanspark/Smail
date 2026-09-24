@@ -1,6 +1,8 @@
 package setup
 
 import (
+	"fmt"
+
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/errors"
@@ -17,6 +19,18 @@ func GetDomainSettings() (string, string, []string, error) {
 }
 
 func SetDomainSettings(smtpDomain, webDomain, multiDomains string) error {
+	return setDomainSettings(smtpDomain, webDomain, multiDomains, nil)
+}
+
+// SetDomainSettingsWithPublicHTTPSPort 同时保存公网入口端口，不改变内部监听端口。
+func SetDomainSettingsWithPublicHTTPSPort(smtpDomain, webDomain, multiDomains string, publicHTTPSPort int) error {
+	if publicHTTPSPort < 1 || publicHTTPSPort > 65535 {
+		return fmt.Errorf("公网 HTTPS 端口必须是 1 到 65535 的整数")
+	}
+	return setDomainSettings(smtpDomain, webDomain, multiDomains, &publicHTTPSPort)
+}
+
+func setDomainSettings(smtpDomain, webDomain, multiDomains string, publicHTTPSPort *int) error {
 	configData, err := config.ReadConfig()
 	if err != nil {
 		return errors.Wrap(err)
@@ -43,6 +57,9 @@ func SetDomainSettings(smtpDomain, webDomain, multiDomains string) error {
 
 	configData.Domain = smtpDomain
 	configData.WebDomain = webDomain
+	if publicHTTPSPort != nil {
+		configData.PublicHTTPSPort = *publicHTTPSPort
+	}
 
 	// 检查域名是否指向本机 todo
 

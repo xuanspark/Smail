@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cast"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -166,15 +167,26 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		response.NewSuccessResponse(map[string]any{
-			"smtp_domain": smtpDomain,
-			"web_domain":  webDomain,
-			"domains":     domains,
+			"smtp_domain":       smtpDomain,
+			"web_domain":        webDomain,
+			"domains":           domains,
+			"public_https_port": config.ResolvePublicHTTPSPort(config.CurrentHTTPConfig()),
 		}).FPrint(w)
 		return
 	}
 
 	if reqData["step"] == "domain" && reqData["action"] == "set" {
-		err := setup.SetDomainSettings(cast.ToString(reqData["smtp_domain"]), cast.ToString(reqData["web_domain"]), reqData["multi_domain"])
+		var err error
+		if value := strings.TrimSpace(reqData["public_https_port"]); value != "" {
+			port, parseErr := strconv.Atoi(value)
+			if parseErr != nil || port < 1 || port > 65535 {
+				response.NewErrorResponse(response.ParamsError, "公网 HTTPS 端口必须是 1 到 65535 的整数", "").FPrint(w)
+				return
+			}
+			err = setup.SetDomainSettingsWithPublicHTTPSPort(reqData["smtp_domain"], reqData["web_domain"], reqData["multi_domain"], port)
+		} else {
+			err = setup.SetDomainSettings(reqData["smtp_domain"], reqData["web_domain"], reqData["multi_domain"])
+		}
 		if err != nil {
 			writeSetupError(ctx, w, err)
 			return

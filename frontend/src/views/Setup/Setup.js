@@ -86,6 +86,7 @@ export function usePage() {
   const domainSettings = reactive({
     "web_domain": "",
     "smtp_domain": "",
+    "public_https_port": "",
     "multi_domain": []
   })
 
@@ -208,6 +209,7 @@ export function usePage() {
       assertSetupSuccess(res)
       domainSettings.web_domain = res.data.web_domain;
       domainSettings.smtp_domain = res.data.smtp_domain;
+      domainSettings.public_https_port = String(res.data.public_https_port || "")
       domainSettings.multi_domain = Array.isArray(res.data.domains) ? res.data.domains : []
       return res
     }).catch((error) => {
@@ -512,10 +514,16 @@ export function usePage() {
   }
 
   const setDomainConfig = () => {
+    const publicHTTPSPort = String(domainSettings.public_https_port || "").trim()
+    if (publicHTTPSPort && (!/^[1-9]\d{0,4}$/.test(publicHTTPSPort) || Number(publicHTTPSPort) > 65535)) {
+      ElMessage.error("公网 HTTPS 端口必须是 1 到 65535 的整数")
+      return
+    }
     return setupRequest({
       "action": "set",
       "step": "domain",
       "web_domain": domainSettings.web_domain,
+      "public_https_port": publicHTTPSPort,
       "smtp_domain": domainSettings.smtp_domain,
       "multi_domain": domainSettings.multi_domain.join(",")
     }).then((res) => {

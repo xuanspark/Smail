@@ -161,6 +161,18 @@
             <el-input placeholder="请输入 Web 管理域名" v-model="domainSettings.web_domain"></el-input>
           </el-form-item>
 
+          <el-form-item label="公网 HTTPS 端口">
+            <el-input
+              v-model="domainSettings.public_https_port"
+              inputmode="numeric"
+              maxlength="5"
+              placeholder="留空时使用当前部署的默认端口"
+            ></el-input>
+            <p class="field-hint">
+              填写浏览器访问后台使用的端口。Nginx 对外提供标准 HTTPS 时填写 443；直连部署填写实际 HTTPS 端口。此设置不会改变 Smail 内部监听端口。
+            </p>
+          </el-form-item>
+
           <el-form-item :label="lang.multi_domain_setting">
                         <span>{{ lang.multi_domain_setting_desc }}
                           <el-button @click="addDomain" size="small"
