@@ -23,7 +23,7 @@
               <template #reference>
                 <div class="sender-selector">
                   <span class="sender-name">{{ ruleForm.nickName }}</span>
-                  <span class="sender-email">&lt;{{ ruleForm.sender }}@{{ ruleForm.pick域名 }}&gt;</span>
+                  <span class="sender-email">&lt;{{ ruleForm.sender }}@{{ ruleForm.pickedDomain }}&gt;</span>
                   <el-icon class="arrow-down"><ArrowDown /></el-icon>
                 </div>
               </template>
@@ -39,7 +39,7 @@
                   </div>
                   <div class="edit-row">
                     <span class="edit-label">域名</span>
-                    <el-select v-model="ruleForm.pick域名" class="w-full">
+                    <el-select v-model="ruleForm.pickedDomain" class="w-full">
                       <el-option :value="item" v-for="item in ruleForm.domains" :key="item">{{ item }}</el-option>
                     </el-select>
                   </div>

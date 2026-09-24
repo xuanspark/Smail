@@ -64,7 +64,7 @@ export function usePage() {
     bcc: [],
     subject: '',
     domains: [],
-    pick域名: ""
+    pickedDomain: ""
   })
   
   const fileList = reactive([]);
@@ -98,13 +98,13 @@ export function usePage() {
         globalStatus.init(()=>{
           ruleForm.sender = globalStatus.userInfos.account
           ruleForm.domains = globalStatus.userInfos.domains
-          ruleForm.pick域名 = globalStatus.userInfos.domains[0]
+          ruleForm.pickedDomain = globalStatus.userInfos.domains[0]
           ruleForm.nickName = globalStatus.userInfos.name
         })
       }else{
         ruleForm.sender = globalStatus.userInfos.account
         ruleForm.domains = globalStatus.userInfos.domains
-        ruleForm.pick域名 = globalStatus.userInfos.domains[0]
+        ruleForm.pickedDomain = globalStatus.userInfos.domains[0]
         ruleForm.nickName = globalStatus.userInfos.name
       }
   }
@@ -198,7 +198,7 @@ export function usePage() {
         isSending.value = true
   
         http.post("/api/v1/email/send", {
-          from: {name: ruleForm.nickName, email: ruleForm.sender + "@" + ruleForm.pick域名},
+          from: {name: ruleForm.nickName, email: ruleForm.sender + "@" + ruleForm.pickedDomain},
           to: objectTos,
           cc: objectCcs,
           bcc: objectBccs,
