@@ -1,6 +1,7 @@
 import { useRouter } from "vue-router";
 
 import { ref, watch, computed } from "vue";
+import { storeToRefs } from "pinia";
 
 import useGroupStore from "../../../stores/group";
 
@@ -47,7 +48,7 @@ export function usePage() {
   
   const data = ref([]);
   
-  const searchQuery = ref(groupStore.keyword);
+  const { keyword: searchQuery } = storeToRefs(groupStore);
   const submitSearch = () => {
     groupStore.keyword = searchQuery.value.trim();
     router.push({ name: "list" });
