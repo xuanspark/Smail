@@ -61,7 +61,7 @@ jobs:
           if [ "$platform" = "darwin" ]; then platform="mac"; fi
           suffix="${platform}_${{ matrix.goarch }}${extension}"
           cd backend
-          BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go version)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+          BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go env GOVERSION)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
           go build -tags bundled -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail_$suffix ./cmd/smail
           go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail-admin_$suffix ./cmd/smail-admin
           go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail-config_$suffix ./cmd/smail-config

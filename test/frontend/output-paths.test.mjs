@@ -11,7 +11,7 @@ const read = relative => readFile(path.join(root, relative), 'utf8')
 
 test('跨平台构建输出不得越过项目 out 目录', async () => {
   const content = await read('Makefile')
-  assert.match(content, /GO_VERSION \?= \$\(shell cd backend && go version\)/)
+  assert.match(content, /GO_VERSION \?= \$\(shell cd backend && go env GOVERSION\)/)
   const commands = [...content.matchAll(/cd ([^\s]+) && [^\n]*go build [^\n]* -o ([^\s]+) /g)]
   assert.equal(commands.length, 18)
   for (const [, directory, output] of commands) {

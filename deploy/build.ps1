@@ -51,7 +51,7 @@ try {
     $gitHash = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw '无法读取构建提交信息' }
     $buildTime = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-    $goVersion = (& go version).Trim()
+    $goVersion = (& go env GOVERSION).Trim()
     $flags = "-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=dev-$($fingerprint.Substring(0, 12))' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$gitHash' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$buildTime' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$goVersion'"
     & go build -tags bundled -trimpath -ldflags $flags -o (Join-Path $output 'smail.exe') ./cmd/smail
     if ($LASTEXITCODE -ne 0) { throw '开发后端构建失败' }
