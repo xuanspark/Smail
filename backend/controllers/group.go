@@ -42,7 +42,7 @@ func GetUserGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request
 		},
 		{
 			Label: i18n.GetText(ctx.Lang, "sketch"),
-			Tag:   dto.SearchTag{Type: 0, Status: 4}.ToString(),
+			Tag:   dto.SearchTag{Type: -1, Status: 4}.ToString(),
 		},
 		{
 			Label: i18n.GetText(ctx.Lang, "junk"),
