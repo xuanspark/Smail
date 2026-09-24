@@ -106,6 +106,8 @@ func router(mux *http.ServeMux) error {
 	mux.HandleFunc("/api/email/detail", onlyMethod(http.MethodPost, limitBody(256<<10, contextIterceptor(email.EmailDetail))))
 	mux.HandleFunc("/api/email/move", onlyMethod(http.MethodPost, limitBody(256<<10, contextIterceptor(email.Move))))
 	mux.HandleFunc("/api/email/send", onlyMethod(http.MethodPost, limitBody(40<<20, contextIterceptor(email.Send))))
+	mux.HandleFunc("/api/email/draft/save", onlyMethod(http.MethodPost, limitBody(40<<20, contextIterceptor(email.SaveDraft))))
+	mux.HandleFunc("/api/email/draft/detail", onlyMethod(http.MethodPost, limitBody(64<<10, contextIterceptor(email.ReadDraft))))
 	mux.HandleFunc("/api/email/contacts", onlyMethod(http.MethodGet, contextIterceptor(email.ContactsList)))
 	mux.HandleFunc("/api/email/contacts/delete", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(email.DeleteContact))))
 	mux.HandleFunc("/api/email/trust-sender", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(email.TrustSender))))

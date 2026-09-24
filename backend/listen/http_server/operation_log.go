@@ -15,6 +15,7 @@ import (
 
 // loggedOperations 注册显式的静态状态变更路由，仅记录状态变更操作，不将列表查询误认为操作，也不复制请求或响应载荷。
 var loggedOperations = map[string]string{
+	"/api/email/draft/save": "保存邮件草稿",
 	"/api/login":                                       "处理账号登录",
 	"/api/logout":                                      "退出登录",
 	"/api/security/reauth":                             "完成身份重新认证",
@@ -82,6 +83,7 @@ var loggedOperations = map[string]string{
 
 // readonlyPostEndpoints 明确排除属于查询性质的 POST 接口，防止误记操作记录。
 var readonlyPostEndpoints = map[string]struct{}{
+	"/api/email/draft/detail": {},
 	"/api/user/info":    {},
 	"/api/user/list":    {},
 	"/api/email/list":   {},

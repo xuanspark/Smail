@@ -66,6 +66,8 @@ func registerV1Routes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/email/detail", "/api/email/detail", http.MethodPost, 256<<10, email.EmailDetail)
 	registerV1MethodRoute(mux, "/api/v1/email/move", "/api/email/move", http.MethodPost, 256<<10, email.Move)
 	registerV1MethodRoute(mux, "/api/v1/email/send", "/api/email/send", http.MethodPost, 40<<20, email.Send)
+	registerV1MethodRoute(mux, "/api/v1/email/draft/save", "/api/email/draft/save", http.MethodPost, 40<<20, email.SaveDraft)
+	registerV1MethodRoute(mux, "/api/v1/email/draft/detail", "/api/email/draft/detail", http.MethodPost, 64<<10, email.ReadDraft)
 	registerV1MethodRoute(mux, "/api/v1/email/contacts", "/api/email/contacts", http.MethodGet, 0, email.ContactsList)
 	registerV1MethodRoute(mux, "/api/v1/email/contacts/delete", "/api/email/contacts/delete", http.MethodPost, 16<<10, email.DeleteContact)
 	registerV1MethodRoute(mux, "/api/v1/email/trust-sender", "/api/email/trust-sender", http.MethodPost, 16<<10, email.TrustSender)

@@ -3,6 +3,7 @@ package email
 import (
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/consts"
@@ -36,6 +37,8 @@ const (
 )
 
 type sendRequest struct {
+	DraftID      int          `json:"draft_id"`
+	DraftVersion string       `json:"draft_version"`
 	ReplyTo     []user       `json:"reply_to"`
 	From        user         `json:"from"`
 	To          []user       `json:"to"`
@@ -73,6 +76,10 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	log.WithContext(ctx).Infof("发送邮件")
 
+	if reqData.DraftID < 0 || (reqData.DraftID == 0) != (reqData.DraftVersion == "") {
+		writeDraftError(w, errDraftConflict)
+		return
+	}
 	allowLocalAlias := ctx.EffectiveRole() == access.RoleSuperAdmin
 	if reqData.From.Email != "" && !validation.IsAuthorizedSender(reqData.From.Email, ctx.UserAccount, allowLocalAlias, domains.Accepted) {
 		response.NewErrorResponse(response.ParamsError, "发件人地址不允许", "").FPrint(w)
@@ -247,7 +254,11 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		MsgID:        msgID,
 	}
 
-	err = persistOutgoingEmail(db.Instance, ctx.UserID, &modelEmail)
+	err = persistOutgoingEmailWithDraft(db.Instance, ctx.UserID, &modelEmail, reqData.DraftID, reqData.DraftVersion)
+	if errors.Is(err, errDraftConflict) {
+		writeDraftError(w, err)
+		return
+	}
 
 	if err != nil || modelEmail.Id <= 0 {
 		if err != nil {
@@ -275,13 +286,23 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 }
 
 func persistOutgoingEmail(engine *xorm.Engine, userID int, email *models.Email) error {
+	return persistOutgoingEmailWithDraft(engine, userID, email, 0, "")
+}
+
+func persistOutgoingEmailWithDraft(engine *xorm.Engine, userID int, email *models.Email, draftID int, version string) error {
 	var saved models.Email
 	err := db.Transaction(engine, func(session *xorm.Session) error {
 		candidate := *email
 		candidate.Id = 0
 		candidate.Status = consts.EmailStatusDeliveryPending
-		if _, err := session.Insert(&candidate); err != nil {
-			return err
+		if draftID > 0 {
+			if err := replaceDraft(session, userID, draftID, version, &candidate); err != nil {
+				return err
+			}
+		} else {
+			if _, err := session.Insert(&candidate); err != nil {
+				return err
+			}
 		}
 		if candidate.Id <= 0 {
 			return fmt.Errorf("insert outgoing email returned no identifier")
@@ -292,8 +313,19 @@ func persistOutgoingEmail(engine *xorm.Engine, userID int, email *models.Email) 
 			Status:  consts.EmailStatusDeliveryPending,
 			IsRead:  1,
 		}
-		if _, err := session.Insert(&relation); err != nil {
-			return err
+		if draftID > 0 {
+			affected, err := session.Where("user_id = ? AND email_id = ? AND status = ? AND is_deleted = 0", userID, draftID, consts.EmailStatusDrafts).
+				Cols("status", "group_id", "is_read").Update(&relation)
+			if err != nil {
+				return err
+			}
+			if affected != 1 {
+				return errDraftConflict
+			}
+		} else {
+			if _, err := session.Insert(&relation); err != nil {
+				return err
+			}
 		}
 		if err := outbox.Enqueue(session, candidate); err != nil {
 			return err
