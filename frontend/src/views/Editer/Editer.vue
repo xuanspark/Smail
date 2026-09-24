@@ -3,18 +3,25 @@
     <div class="composer-header">
       <h2 class="composer-title">{{ lang.compose }}</h2>
       <div class="composer-actions">
-        <el-button class="action-btn" @click="upload">
+        <el-button class="action-btn" :disabled="isBusy" @click="upload">
           <el-icon><Paperclip /></el-icon> {{ lang.add_att }}
         </el-button>
-        <el-button type="primary" class="send-btn" :loading="isSending" :disabled="isSending" @click="send(ruleFormRef)">
+        <el-button class="action-btn" :loading="isSaving" :disabled="isBusy" @click="saveDraft">
+          <el-icon><Document /></el-icon> {{ lang.draft_save }}
+        </el-button>
+        <el-button type="primary" class="send-btn" :loading="isSending" :disabled="isBusy" @click="send(ruleFormRef)">
           <el-icon><Position /></el-icon> {{ lang.send }}
         </el-button>
         <input v-show="false" ref="fileRef" type="file" @change="fileChange" multiple>
       </div>
     </div>
 
-    <div class="composer-body">
-      <el-form :rules="rules" ref="ruleFormRef" :model="ruleForm" class="composer-form">
+    <div v-if="loadFailed" class="draft-error" role="alert">
+      <span>{{ lang.draft_load_failed }}</span>
+      <el-button @click="loadDraft">{{ lang.draft_retry }}</el-button>
+    </div>
+    <div class="composer-body" v-loading="isLoading" :aria-busy="isLoading">
+      <el-form :disabled="isBusy" :rules="rules" ref="ruleFormRef" :model="ruleForm" class="composer-form">
         
         <div class="compose-row">
           <div class="field-label">{{ lang.sender }}</div>
@@ -32,7 +39,7 @@
                   <div class="edit-row">
                     <span class="edit-label">前缀</span>
                     <el-input 
-                      :disabled="!(globalStatus.userInfos.is_admin)"
+                      :disabled="isBusy || !(globalStatus.userInfos.is_admin)"
                       v-model="ruleForm.sender" 
                       :placeholder="lang.sender_desc"
                     />
@@ -172,6 +179,12 @@ const {
   fileList,
   delFile,
   isSending,
+  isBusy,
+  isSaving,
+  isLoading,
+  loadFailed,
+  loadDraft,
+  saveDraft,
   contactOptions,
   deleteContact
 } = usePage()

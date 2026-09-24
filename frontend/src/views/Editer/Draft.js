@@ -1,20 +1,23 @@
-import {computed, onBeforeUnmount, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
 import {onBeforeRouteLeave, onBeforeRouteUpdate, useRoute} from 'vue-router'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {http} from '@/utils/axios'
 import lang from '../../i18n/i18n'
 
-export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, editorRef, showCcBcc, isSending, pendingFiles}) {
+export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, editorRef, showCcBcc, isSending, pendingFiles, prepareIdentity}) {
   const route = useRoute()
   const draftID = ref(0)
   const draftVersion = ref('')
   const isSaving = ref(false)
   const isLoading = ref(true)
   const loadFailed = ref(false)
+  const sent = ref(false)
   const replyTo = ref([])
-  const isBusy = computed(() => isSaving.value || isSending.value || isLoading.value || loadFailed.value || pendingFiles.value > 0)
+  let envelopeSender = null
+  let originalFrom = ''
+  let recipientNames = new Map()
+  const isBusy = computed(() => sent.value || isSaving.value || isSending.value || isLoading.value || loadFailed.value || pendingFiles.value > 0)
   let savedSnapshot = ''
-  let sent = false
   let loadSequence = 0
   let disposed = false
 
@@ -22,9 +25,10 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     draft_id: draftID.value,
     draft_version: draftVersion.value,
     from: {name: ruleForm.nickName, email: `${ruleForm.sender}@${ruleForm.pickedDomain}`},
-    to: ruleForm.receivers.map(email => ({name: '', email})),
-    cc: ruleForm.cc.map(email => ({name: '', email})),
-    bcc: ruleForm.bcc.map(email => ({name: '', email})),
+    to: ruleForm.receivers.map(email => ({name: recipientNames.get(email) || '', email})),
+    cc: ruleForm.cc.map(email => ({name: recipientNames.get(email) || '', email})),
+    bcc: ruleForm.bcc.map(email => ({name: recipientNames.get(email) || '', email})),
+    sender: envelopeSender?.email && envelopeSender.email !== originalFrom ? envelopeSender : undefined,
     reply_to: replyTo.value,
     subject: ruleForm.subject,
     text: editorRef.value?.getText() || '',
@@ -37,30 +41,35 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     to: ruleForm.receivers, cc: ruleForm.cc, bcc: ruleForm.bcc,
     subject: ruleForm.subject, html: valueHtml.value, attrs: fileList
   })
-  const isDirty = () => !sent && savedSnapshot !== '' && snapshot() !== savedSnapshot
+  const isDirty = () => !sent.value && savedSnapshot !== '' && snapshot() !== savedSnapshot
 
   const loadDraft = async () => {
     const sequence = ++loadSequence
     isLoading.value = true
     loadFailed.value = false
     const rawID = route.query.draft
-    if (rawID === undefined) {
-      draftID.value = 0
-      draftVersion.value = ''
-      replyTo.value = []
-      ruleForm.receivers = []
-      ruleForm.cc = []
-      ruleForm.bcc = []
-      ruleForm.subject = ''
-      valueHtml.value = '<p><br></p>'
-      fileList.splice(0)
-      showCcBcc.value = false
-      sent = false
-      savedSnapshot = snapshot()
-      isLoading.value = false
-      return
-    }
     try {
+      const identity = await prepareIdentity()
+      if (disposed || sequence !== loadSequence) return
+      Object.assign(ruleForm, identity)
+      if (rawID === undefined) {
+        draftID.value = 0
+        draftVersion.value = ''
+        replyTo.value = []
+        envelopeSender = null
+        originalFrom = ''
+        recipientNames = new Map()
+        ruleForm.receivers = []
+        ruleForm.cc = []
+        ruleForm.bcc = []
+        ruleForm.subject = ''
+        valueHtml.value = '<p><br></p>'
+        fileList.splice(0)
+        showCcBcc.value = false
+        sent.value = false
+        return
+      }
+      if (typeof rawID !== 'string' || !/^[1-9]\d*$/.test(rawID)) throw new Error(lang.draft_load_failed)
       const id = Number(rawID)
       if (!Number.isSafeInteger(id) || id <= 0) throw new Error(lang.draft_load_failed)
       const result = await http.post('/api/v1/email/draft/detail', {id})
@@ -76,22 +85,32 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
       ruleForm.sender = message.from.email.slice(0, split)
       ruleForm.pickedDomain = message.from.email.slice(split + 1)
       ruleForm.nickName = message.from.name || ''
+      originalFrom = message.from.email
+      envelopeSender = message.sender || null
+      recipientNames = new Map(
+        [...(message.to || []), ...(message.cc || []), ...(message.bcc || [])]
+          .map(item => [item.email, item.name || ''])
+      )
       ruleForm.receivers = (message.to || []).map(item => item.email)
       ruleForm.cc = (message.cc || []).map(item => item.email)
       ruleForm.bcc = (message.bcc || []).map(item => item.email)
       replyTo.value = message.reply_to || []
       ruleForm.subject = message.subject || ''
-      valueHtml.value = message.html || '<p><br></p>'
+      const plainText = (message.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, '<br>')
+      valueHtml.value = message.html || (plainText ? `<p>${plainText}</p>` : '<p><br></p>')
       fileList.splice(0, fileList.length, ...(message.attrs || []))
       showCcBcc.value = ruleForm.cc.length > 0 || ruleForm.bcc.length > 0
-      sent = false
-      savedSnapshot = snapshot()
+      sent.value = false
     } catch (error) {
       if (disposed || sequence !== loadSequence) return
       loadFailed.value = true
       ElMessage.error(error.message || lang.draft_load_failed)
     } finally {
-      if (!disposed && sequence === loadSequence) isLoading.value = false
+      await nextTick()
+      if (!disposed && sequence === loadSequence) {
+        if (!loadFailed.value) savedSnapshot = snapshot()
+        isLoading.value = false
+      }
     }
   }
 
@@ -119,7 +138,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
   }
 
   const confirmLeave = async () => {
-    if (sent) return true
+    if (sent.value) return true
     if (isSaving.value || isSending.value || pendingFiles.value > 0) return false
     if (!isDirty()) return true
     try {
@@ -137,10 +156,10 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     if (String(value || '') !== String(draftID.value || '')) loadDraft()
   })
   watch([editorRef, isBusy], ([editor, busy]) => {
-    if (!editor || editor.isDestroyed) return
+    if (!editor || disposed) return
     if (busy) editor.disable()
     else editor.enable()
-  })
+  }, {flush: 'post'})
   const beforeUnload = event => {
     if (isDirty() || isSaving.value || isSending.value || pendingFiles.value > 0) {
       event.preventDefault()
@@ -154,7 +173,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     window.removeEventListener('beforeunload', beforeUnload)
   })
   const markSent = () => {
-    sent = true
+    sent.value = true
     groupStore.invalidate()
   }
   return {draftID, draftVersion, isSaving, isLoading, isBusy, loadFailed, loadDraft, saveDraft, buildMessage, markSent}

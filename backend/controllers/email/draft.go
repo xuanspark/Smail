@@ -26,6 +26,8 @@ import (
 
 var errDraftConflict = errors.New("draft missing, changed or no longer editable")
 
+const ownedDraftRelation = "EXISTS (SELECT 1 FROM user_email WHERE user_id = ? AND email_id = ? AND status = ? AND is_deleted = 0)"
+
 var draftColumns = []string{
 	"subject", "reply_to", "from_name", "from_address", "to", "bcc", "cc",
 	"text", "html", "sender", "attachments", "spf_check", "dkim_check",
@@ -104,11 +106,11 @@ func buildDraft(ctx *context.Context, input sendRequest) (*models.Email, error) 
 		return result
 	}
 	message := &parsemail.Email{
-		From: &parsemail.User{Name: input.From.Name, EmailAddress: input.From.Email},
+		From:   &parsemail.User{Name: input.From.Name, EmailAddress: input.From.Email},
 		Sender: &parsemail.User{Name: input.Sender.Name, EmailAddress: input.Sender.Email},
-		To: convert(input.To), Cc: convert(input.Cc), Bcc: convert(input.Bcc), ReplyTo: convert(input.ReplyTo),
+		To:     convert(input.To), Cc: convert(input.Cc), Bcc: convert(input.Bcc), ReplyTo: convert(input.ReplyTo),
 		Subject: parsemail.SanitizeText(input.Subject),
-		Text: []byte(parsemail.SanitizeText(input.Text)), HTML: []byte(parsemail.SanitizeHTML(input.HTML)),
+		Text:    []byte(parsemail.SanitizeText(input.Text)), HTML: []byte(parsemail.SanitizeHTML(input.HTML)),
 	}
 	total := 0
 	for _, item := range input.Attachments {
@@ -152,7 +154,7 @@ func buildDraft(ctx *context.Context, input sendRequest) (*models.Email, error) 
 		Text: sql.NullString{String: string(message.Text), Valid: true},
 		Html: sql.NullString{String: string(message.HTML), Valid: true}, Attachments: fields.Attachments,
 		SPFCheck: 1, DKIMCheck: 1, MsgID: version, CreateTime: now, SendDate: now,
-		Size: len(message.Text)+len(message.HTML)+total,
+		Size: len(message.Text) + len(message.HTML) + total,
 	}, nil
 }
 
@@ -160,16 +162,10 @@ func loadOwnedDraft(session *xorm.Session, userID, id int, version string) (*mod
 	if userID <= 0 || id <= 0 {
 		return nil, errDraftConflict
 	}
-	var relation models.UserEmail
-	found, err := session.Where("user_id = ? AND email_id = ? AND status = ? AND is_deleted = 0", userID, id, consts.EmailStatusDrafts).Get(&relation)
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return nil, errDraftConflict
-	}
 	var draft models.Email
-	found, err = session.ID(id).Where("send_user_id = ? AND type = ? AND status = ?", userID, consts.EmailTypeSend, consts.EmailStatusDrafts).Get(&draft)
+	found, err := session.ID(id).
+		Where("send_user_id = ? AND type = ? AND status = ?", userID, consts.EmailTypeSend, consts.EmailStatusDrafts).
+		And(ownedDraftRelation, userID, id, consts.EmailStatusDrafts).Get(&draft)
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +186,7 @@ func replaceDraft(session *xorm.Session, userID, id int, version string, candida
 	candidate.Id = previous.Id
 	candidate.CreateTime = previous.CreateTime
 	affected, err := session.ID(id).Where("send_user_id = ? AND status = ? AND msg_id = ?", userID, consts.EmailStatusDrafts, version).
+		And(ownedDraftRelation, userID, id, consts.EmailStatusDrafts).
 		Cols(draftColumns...).Update(candidate)
 	if err != nil {
 		return err
@@ -234,9 +231,16 @@ func persistDraft(engine *xorm.Engine, userID int, draft *models.Email, id int, 
 func draftMessage(draft models.Email) (sendRequest, error) {
 	message := sendRequest{
 		DraftID: draft.Id, DraftVersion: draft.MsgID,
-		From: user{Name: draft.FromName, Email: draft.FromAddress},
+		From:    user{Name: draft.FromName, Email: draft.FromAddress},
 		Subject: draft.Subject, Text: draft.Text.String, HTML: draft.Html.String,
 		Attachments: []attachment{},
+	}
+	var sender *parsemail.User
+	if err := json.Unmarshal([]byte(draft.Sender), &sender); err != nil {
+		return sendRequest{}, err
+	}
+	if sender != nil {
+		message.Sender = user{Name: sender.Name, Email: sender.EmailAddress}
 	}
 	decodeUsers := func(value string, target *[]user) error {
 		var users []parsemail.User
@@ -249,7 +253,10 @@ func draftMessage(draft models.Email) (sendRequest, error) {
 		}
 		return nil
 	}
-	for _, field := range []struct { value string; target *[]user }{
+	for _, field := range []struct {
+		value  string
+		target *[]user
+	}{
 		{draft.To, &message.To}, {draft.Cc, &message.Cc}, {draft.Bcc, &message.Bcc}, {draft.ReplyTo, &message.ReplyTo},
 	} {
 		if err := decodeUsers(field.value, field.target); err != nil {

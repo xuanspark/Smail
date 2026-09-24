@@ -46,7 +46,7 @@ func genSQL(ctx *context.Context, count bool, tagInfo dto.SearchTag, keyword str
 	} else if pop3List {
 		sql += `e.id,e.size from email e left join user_email ue on e.id=ue.email_id where ue.user_id = ? `
 	} else {
-		sql += `e.*,ue.is_read from email e left join user_email ue on e.id=ue.email_id where ue.user_id = ? `
+		sql += `e.*,ue.is_read,ue.is_deleted,ue.status AS user_status from email e left join user_email ue on e.id=ue.email_id where ue.user_id = ? `
 	}
 
 	if tagInfo.Status != -1 {

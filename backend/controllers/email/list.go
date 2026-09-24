@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"git.pcux.cn/xuans/Smail/consts"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
@@ -43,6 +44,7 @@ type emilItem struct {
 	IsBlacklisted bool   `json:"is_blacklisted"`
 	Error         string `json:"error"`
 	Status        int8   `json:"status"`
+	EditableDraft bool   `json:"editable_draft"`
 }
 
 type User struct {
@@ -140,6 +142,8 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			IsBlacklisted: isBlacklisted,
 			Error:         email.Error.String,
 			Status:        email.Status,
+			EditableDraft: email.Type == consts.EmailTypeSend && email.Status == consts.EmailStatusDrafts &&
+				email.SendUserID == ctx.UserID && email.UserStatus == consts.EmailStatusDrafts && email.IsDeleted == 0,
 		})
 	}
 

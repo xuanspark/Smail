@@ -1,4 +1,4 @@
-import './Editer.js'
+import {useDraft} from './Draft'
 
 import '@wangeditor/editor/dist/css/style.css'
 
@@ -92,24 +92,14 @@ export function usePage() {
     })
   }
   
-  const init = function () {
-      loadContacts()
-      if (globalStatus.userInfos === null || globalStatus.userInfos == undefined || Object.keys(globalStatus.userInfos).length == 0){
-        globalStatus.init(()=>{
-          ruleForm.sender = globalStatus.userInfos.account
-          ruleForm.domains = globalStatus.userInfos.domains
-          ruleForm.pickedDomain = globalStatus.userInfos.domains[0]
-          ruleForm.nickName = globalStatus.userInfos.name
-        })
-      }else{
-        ruleForm.sender = globalStatus.userInfos.account
-        ruleForm.domains = globalStatus.userInfos.domains
-        ruleForm.pickedDomain = globalStatus.userInfos.domains[0]
-        ruleForm.nickName = globalStatus.userInfos.name
-      }
+  const prepareIdentity = async function () {
+    if (!globalStatus.userInfos?.account) await globalStatus.init()
+    const info = globalStatus.userInfos
+    if (!info?.account || !Array.isArray(info.domains) || !info.domains.length) {
+      throw new Error(lang.draft_identity_failed)
+    }
+    return {sender: info.account, domains: info.domains, pickedDomain: info.domains[0], nickName: info.name || ''}
   }
-  
-  init()
   
   const validateSender = function (rule, value, callback) {
     if (typeof ruleForm.sender === "undefined" || ruleForm.sender === null || ruleForm.sender.trim() === "") {
@@ -180,34 +170,36 @@ export function usePage() {
   }
   
   const isSending = ref(false)
+  const pendingFiles = ref(0)
+  const readers = new Set()
+  const draft = useDraft({
+    router, groupStore, ruleForm, valueHtml, fileList, editorRef,
+    showCcBcc, isSending, pendingFiles, prepareIdentity
+  })
+  const init = () => {
+    loadContacts()
+    return draft.loadDraft()
+  }
+  init()
+  onBeforeUnmount(() => {
+    for (const reader of readers) reader.abort()
+  })
 
   const send = function (formEl) {
-    if (!formEl || isSending.value) return
+    if (!formEl || draft.isBusy.value || !editorRef.value) return
     formEl.validate((valid) => {
+      if (draft.isBusy.value) return
       if (valid) {
         if(ruleForm.receivers.length === 0 && ruleForm.cc.length === 0 && ruleForm.bcc.length === 0) {
           ElMessage.warning("请至少填写一个收件人");
           return;
         }
-        let objectTos = ruleForm.receivers.map(e => ({name: "", email: e}));
-        let objectCcs = ruleForm.cc.map(e => ({name: "", email: e}));
-        let objectBccs = ruleForm.bcc.map(e => ({name: "", email: e}));
-  
-        if (!editorRef.value) return
-        const text = editorRef.value.getText()
+        const message = draft.buildMessage()
         isSending.value = true
   
-        http.post("/api/v1/email/send", {
-          from: {name: ruleForm.nickName, email: ruleForm.sender + "@" + ruleForm.pickedDomain},
-          to: objectTos,
-          cc: objectCcs,
-          bcc: objectBccs,
-          subject: ruleForm.subject,
-          text: text,
-          html: valueHtml.value,
-          attrs: fileList
-        }).then(res => {
+        http.post("/api/v1/email/send", message).then(res => {
           if (res.errorNo === 0) {
+            draft.markSent()
             ElMessage.success(lang.succ_send)
             groupStore.name = lang.outbox
             groupStore.tag = '{"type":1,"status":-1}'
@@ -227,25 +219,48 @@ export function usePage() {
   }
   
   const upload = function () {
-    fileRef.value.dispatchEvent(new MouseEvent('click'))
+    if (draft.isBusy.value) return
+    fileRef.value?.click()
   }
   
   const fileChange = function (e) {
-    let files = e.target.files || e.dataTransfer.files;
-    if (!files.length) return;
-    for (let i = 0; i < files.length; i++) {
-      const reader = new FileReader();
-      reader.onload = function fileReadCompleted() {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (draft.isBusy.value || !files.length) return
+    if (fileList.length + files.length > 20 || files.some(file => file.size > 10 * 1024 * 1024)) {
+      ElMessage.warning(lang.draft_attachment_limit)
+      return
+    }
+    for (const file of files) {
+      const reader = new FileReader()
+      readers.add(reader)
+      pendingFiles.value += 1
+      reader.onload = () => {
+        const data = String(reader.result || '')
         fileList.push({
-          name: files[i].name,
-          data: this.result
+          name: file.name,
+          data: data.startsWith('data:;')
+            ? data.replace('data:;', 'data:application/octet-stream;')
+            : data
         })
-      };
-      reader.readAsDataURL(files[i]);
+      }
+      reader.onerror = () => ElMessage.error(lang.draft_attachment_failed)
+      reader.onloadend = () => {
+        readers.delete(reader)
+        pendingFiles.value -= 1
+      }
+      try {
+        reader.readAsDataURL(file)
+      } catch {
+        readers.delete(reader)
+        pendingFiles.value -= 1
+        ElMessage.error(lang.draft_attachment_failed)
+      }
     }
   }
   
   const delFile = function (index) {
+    if (draft.isBusy.value) return
     fileList.splice(index, 1);
   }
 
@@ -281,6 +296,12 @@ export function usePage() {
     ruleForm,
     fileList,
     isSending,
+    isBusy: draft.isBusy,
+    isSaving: draft.isSaving,
+    isLoading: draft.isLoading,
+    loadFailed: draft.loadFailed,
+    loadDraft: draft.loadDraft,
+    saveDraft: draft.saveDraft,
     init,
     validateSender,
     checkEmail,

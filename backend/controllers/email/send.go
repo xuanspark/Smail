@@ -39,17 +39,17 @@ const (
 type sendRequest struct {
 	DraftID      int          `json:"draft_id"`
 	DraftVersion string       `json:"draft_version"`
-	ReplyTo     []user       `json:"reply_to"`
-	From        user         `json:"from"`
-	To          []user       `json:"to"`
-	Bcc         []user       `json:"bcc"`
-	Cc          []user       `json:"cc"`
-	Subject     string       `json:"subject"`
-	Text        string       `json:"text"`   // Plaintext message (optional)
-	HTML        string       `json:"html"`   // Html message (optional)
-	Sender      user         `json:"sender"` // override From as SMTP envelope sender (optional)
-	ReadReceipt []string     `json:"read_receipt"`
-	Attachments []attachment `json:"attrs"`
+	ReplyTo      []user       `json:"reply_to"`
+	From         user         `json:"from"`
+	To           []user       `json:"to"`
+	Bcc          []user       `json:"bcc"`
+	Cc           []user       `json:"cc"`
+	Subject      string       `json:"subject"`
+	Text         string       `json:"text"`   // Plaintext message (optional)
+	HTML         string       `json:"html"`   // Html message (optional)
+	Sender       user         `json:"sender"` // override From as SMTP envelope sender (optional)
+	ReadReceipt  []string     `json:"read_receipt"`
+	Attachments  []attachment `json:"attrs"`
 }
 
 type user struct {
@@ -231,6 +231,10 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	now := time.Now()
+	messageSize := len(e.Text) + len(e.HTML)
+	for _, item := range e.Attachments {
+		messageSize += len(item.Content)
+	}
 	modelEmail := models.Email{
 		Type:         consts.EmailTypeSend,
 		Subject:      e.Subject,
@@ -252,6 +256,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		Status:       consts.EmailStatusDeliveryPending,
 		CreateTime:   now,
 		MsgID:        msgID,
+		Size:         messageSize,
 	}
 
 	err = persistOutgoingEmailWithDraft(db.Instance, ctx.UserID, &modelEmail, reqData.DraftID, reqData.DraftVersion)

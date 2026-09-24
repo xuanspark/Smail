@@ -99,7 +99,7 @@
                   </template>
                 </div>
 
-                <div class="mail-subject">{{ scope.row.title }}</div>
+                <div class="mail-subject">{{ scope.row.title || lang.mail_no_subject }}</div>
                 <div class="mail-snippet">{{ scope.row.desc }}</div>
               </div>
               <div class="mail-meta">

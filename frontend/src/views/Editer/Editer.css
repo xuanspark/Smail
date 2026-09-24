@@ -30,7 +30,17 @@
 
 .composer-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+.draft-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  color: var(--el-color-danger);
 }
 
 .action-btn {

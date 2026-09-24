@@ -161,6 +161,10 @@ export function usePage() {
   })
   
   const rowClick = function (row) {
+    if (row.editable_draft) {
+      router.push({name: 'editer', query: {draft: String(row.id)}})
+      return
+    }
     router.push("/detail/" + row.id)
   }
   

@@ -1,5 +1,17 @@
 // 管理后台统一使用中文。
 const lang = {
+    "mail_no_subject": "（无主题）",
+    "draft_save": "保存草稿",
+    "draft_saved": "草稿已保存",
+    "draft_title": "未保存的邮件",
+    "draft_leave_warning": "邮件有未保存的修改，离开后这些修改将丢失。是否仍要离开？",
+    "draft_leave": "放弃修改并离开",
+    "draft_stay": "继续编辑",
+    "draft_load_failed": "草稿加载失败，请重试或返回草稿箱刷新后重新打开",
+    "draft_identity_failed": "无法获取发件人信息，请刷新页面后重试",
+    "draft_retry": "重新加载",
+    "draft_attachment_limit": "最多添加二十个附件，每个附件不得超过十兆字节",
+    "draft_attachment_failed": "附件读取失败，请重新选择文件",
     "logout": "注销",
     "resetPwd": "重置账号密码",
     "disabled": "禁用",

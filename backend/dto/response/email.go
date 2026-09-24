@@ -6,6 +6,7 @@ type EmailResponseData struct {
 	models.Email `xorm:"extends"`
 	IsRead       int8 `json:"is_read"`
 	IsDeleted    int8 `json:"-"`
+	UserStatus   int8 `xorm:"user_status" json:"-"`
 	SerialNumber int  `json:"serial_number"`
 	UeId         int  `json:"ue_id"`
 }
