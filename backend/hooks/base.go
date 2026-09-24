@@ -380,7 +380,11 @@ func Init(serverVersion string) {
 				continue
 			}
 		}
-		syncTelegramUserSettings(logicalID, hook)
+		if syncErr := syncTelegramUserSettings(logicalID, hook); syncErr != nil {
+			log.WithError(syncErr).Warnf("[%s] 用户设置恢复失败，插件未启用", logicalID)
+			_ = process.Kill()
+			continue
+		}
 		if healthErr := hook.Health(); healthErr != nil {
 			log.Warnf("[%s] Plugin health check failed", logicalID)
 			_ = process.Kill()
@@ -418,20 +422,24 @@ func SyncTelegramUserSettings(userID int, settings pluginservice.TelegramUserSet
 	}
 	return configurer.ConfigureUserSettings(userID, payload)
 }
-func syncTelegramUserSettings(logicalID string, hook *HookSender) {
-	if logicalID != "telegram_push" || hook == nil || pluginConfigService == nil {
-		return
+func syncTelegramUserSettings(logicalID string, hook *HookSender) error {
+	if logicalID != "telegram_push" {
+		return nil
+	}
+	if hook == nil || pluginConfigService == nil {
+		return pluginservice.ErrPluginStoreUnavailable
 	}
 	entries, err := pluginConfigService.ListTelegramUserSettings()
 	if err != nil {
-		log.WithError(err).Warnf("[%s] Telegram user settings sync load failed", logicalID)
-		return
+		return fmt.Errorf("读取 Telegram 用户设置失败: %w", err)
 	}
+	// 完整恢复后才能注册插件，避免空设置或部分设置被误判为正常运行。
 	for _, entry := range entries {
 		if syncErr := syncTelegramUserSetting(hook, entry.UserID, entry.Settings); syncErr != nil {
-			log.WithError(syncErr).Warnf("[%s] Telegram user settings sync failed for user %d", logicalID, entry.UserID)
+			return fmt.Errorf("恢复 Telegram 用户 %d 的设置失败: %w", entry.UserID, syncErr)
 		}
 	}
+	return nil
 }
 
 func syncTelegramUserSetting(hook *HookSender, userID int, settings pluginservice.TelegramUserSettings) error {
