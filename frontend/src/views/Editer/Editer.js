@@ -94,7 +94,7 @@ export function usePage() {
   
   const init = function () {
       loadContacts()
-      if ( Object.keys(globalStatus.userInfos)==0 || globalStatus.userInfos === null || globalStatus.userInfos == undefined ){
+      if (globalStatus.userInfos === null || globalStatus.userInfos == undefined || Object.keys(globalStatus.userInfos).length == 0){
         globalStatus.init(()=>{
           ruleForm.sender = globalStatus.userInfos.account
           ruleForm.domains = globalStatus.userInfos.domains
@@ -179,8 +179,10 @@ export function usePage() {
     editorRef.value = editor
   }
   
+  const isSending = ref(false)
+
   const send = function (formEl) {
-    if (!formEl) return
+    if (!formEl || isSending.value) return
     formEl.validate((valid) => {
       if (valid) {
         if(ruleForm.receivers.length === 0 && ruleForm.cc.length === 0 && ruleForm.bcc.length === 0) {
@@ -191,7 +193,9 @@ export function usePage() {
         let objectCcs = ruleForm.cc.map(e => ({name: "", email: e}));
         let objectBccs = ruleForm.bcc.map(e => ({name: "", email: e}));
   
-        let text = editorRef.value.getText()
+        if (!editorRef.value) return
+        const text = editorRef.value.getText()
+        isSending.value = true
   
         http.post("/api/v1/email/send", {
           from: {name: ruleForm.nickName, email: ruleForm.sender + "@" + ruleForm.pick域名},
@@ -209,8 +213,12 @@ export function usePage() {
             groupStore.tag = '{"type":1,"status":-1}'
             router.replace({name: 'list'})
           } else {
-            ElMessage.error(res.data)
+            ElMessage.error(res.errorMsg || res.data || lang.fail)
           }
+        }).catch(() => {
+          ElMessage.error(lang.fail)
+        }).finally(() => {
+          isSending.value = false
         })
       } else {
         return false
@@ -272,6 +280,7 @@ export function usePage() {
     ruleFormRef,
     ruleForm,
     fileList,
+    isSending,
     init,
     validateSender,
     checkEmail,

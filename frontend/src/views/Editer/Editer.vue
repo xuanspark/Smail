@@ -6,7 +6,7 @@
         <el-button class="action-btn" @click="upload">
           <el-icon><Paperclip /></el-icon> {{ lang.add_att }}
         </el-button>
-        <el-button type="primary" class="send-btn" @click="send(ruleFormRef)">
+        <el-button type="primary" class="send-btn" :loading="isSending" :disabled="isSending" @click="send(ruleFormRef)">
           <el-icon><Position /></el-icon> {{ lang.send }}
         </el-button>
         <input v-show="false" ref="fileRef" type="file" @change="fileChange" multiple>
@@ -171,6 +171,7 @@ const {
   handleCreated,
   fileList,
   delFile,
+  isSending,
   contactOptions,
   deleteContact
 } = usePage()

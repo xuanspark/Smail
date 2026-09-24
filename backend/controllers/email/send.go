@@ -101,7 +101,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(reqData.To) <= 0 {
+	if len(reqData.To)+len(reqData.Cc)+len(reqData.Bcc) <= 0 {
 		response.NewErrorResponse(response.ParamsError, "收件人必填", "收件人必填").FPrint(w)
 		return
 	}
