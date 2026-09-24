@@ -42,6 +42,19 @@ func GetEmailDetail(ctx *context.Context, id int, markRead bool) (*response.Emai
 	}
 
 	email.IsRead = ue.IsRead
+	var sender parsemail.User
+	if strings.TrimSpace(email.Sender) != "" {
+		if err := json.Unmarshal([]byte(email.Sender), &sender); err != nil {
+			return nil, fmt.Errorf("decode stored sender: %w", err)
+		}
+	}
+	session := db.Instance.NewSession()
+	blocked, err := models.BlacklistedRecipientIDs(session, []int{ctx.UserID}, email.FromAddress, sender.EmailAddress)
+	session.Close()
+	if err != nil {
+		return nil, err
+	}
+	email.IsBlacklisted = blocked[ctx.UserID]
 	if email.Type == 0 {
 		email.Bcc = "[]"
 	}

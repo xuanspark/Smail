@@ -1,5 +1,12 @@
 ﻿<template>
   <div class="settings-card sender-filter-card" v-loading="loading">
+    <el-alert
+      title="黑名单仅对当前账号生效"
+      description="命中黑名单的新邮件不会进入你的邮箱，也不会触发你的收信规则；不影响其他收件人。历史邮件保留并显示警告，白名单不会绕过协议校验。"
+      type="info"
+      :closable="false"
+      show-icon
+    />
     <div class="settings-header sf-header">
       <div class="header-main">
         <h3>发件人黑白名单</h3>

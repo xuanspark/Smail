@@ -40,6 +40,8 @@ import (
 // 注意：此开关只能通过修改代码来更改，不暴露给用户配置
 const DropUnknownRecipientEmails = true
 
+var errAllRecipientsBlocked = oerrors.New("all recipients blocked by sender policy")
+
 func (s *Session) Data(r io.Reader) (resultErr error) {
 	if err := s.checkAuthorization(); err != nil {
 		return err
@@ -118,6 +120,7 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 6, 0}, Message: "Invalid message content"}
 	}
 
+	email.EnvelopeFrom = s.From
 	if s.From != "" {
 		from := parsemail.BuilderUser(s.From)
 		if email.From == nil {
@@ -200,6 +203,9 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 
 		details.Stage = "保存收到的邮件"
 		users, dbEmail, saveErr := saveEmail(ctx, len(emailData), email, 0, 0, s.To, SPFStatus, dkimStatus)
+		if oerrors.Is(saveErr, errAllRecipientsBlocked) {
+			return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Message rejected by recipient policy"}
+		}
 		if saveErr != nil {
 			log.WithContext(ctx).Errorf("CRITICAL audit_event=initial_persist_failed direction=inbound msg_id=%q error=%v", email.MsgID, saveErr)
 			return localPersistenceSMTPError()
@@ -324,6 +330,28 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 	users, drop, err := resolveIncomingUsers(ctx, email, emailType, reallyTo, SPFStatus, dkimStatus)
 	if err != nil || drop {
 		return users, nil, err
+	}
+	if emailType == int(consts.EmailTypeReceive) {
+		userIDs := make([]int, 0, len(users))
+		for _, user := range users {
+			userIDs = append(userIDs, user.ID)
+		}
+		session := db.Instance.NewSession()
+		blocked, filterErr := models.BlacklistedRecipientIDs(session, userIDs, email.SenderFilterAddresses()...)
+		session.Close()
+		if filterErr != nil {
+			return nil, nil, filterErr
+		}
+		allowed := make([]*models.User, 0, len(users))
+		for _, user := range users {
+			if !blocked[user.ID] {
+				allowed = append(allowed, user)
+			}
+		}
+		users = allowed
+		if len(users) == 0 {
+			return nil, nil, errAllRecipientsBlocked
+		}
 	}
 
 	msgID := email.MsgID

@@ -72,12 +72,17 @@
                 
                 <!-- 高辨识度安全与发送状态标签 -->
                 <div class="mail-status-tags" v-if="scope.row.dangerous || isOutbox">
+                  <el-tag v-if="scope.row.is_blacklisted" type="danger" effect="dark" size="small">
+                    黑名单发件人
+                  </el-tag>
+                  <template v-else>
                   <el-tooltip content="点击将该发件人添加至信任白名单，后续免除风险提示" placement="top" v-if="scope.row.dangerous">
                     <el-tag type="danger" effect="dark" size="small" class="clickable-tag" @click.stop="trustSender(scope.row.sender.EmailAddress)">
                       <el-icon><Warning /></el-icon> 疑似不安全 (点击信任)
                     </el-tag>
                   </el-tooltip>
                   
+                  </template>
                   <template v-if="isOutbox">
                     <el-tag type="warning" effect="light" size="small" v-if="scope.row.status === 6">
                       待投递

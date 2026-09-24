@@ -89,7 +89,11 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	whitelistMap := make(map[string]bool)
 	blacklistMap := make(map[string]bool)
 	var senderFilters []models.UserTrustedSender
-	if err := db.Instance.Table(&models.UserTrustedSender{}).Where("user_id = ?", ctx.UserID).Find(&senderFilters); err == nil {
+	if err := db.Instance.Table(&models.UserTrustedSender{}).Where("user_id = ?", ctx.UserID).Find(&senderFilters); err != nil {
+		log.WithContext(ctx).WithError(err).Error("load sender filters failed")
+		response.NewErrorResponse(response.ServerError, "读取发件人安全标记失败", "").FPrint(w)
+		return
+	} else {
 		for _, item := range senderFilters {
 			addr := strings.ToLower(strings.TrimSpace(item.Email))
 			if item.FilterType == models.FilterTypeBlacklist {
@@ -122,7 +126,7 @@ func EmailList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		authentication := parsemail.NewEmailAuthentication(email.SPFCheck == 1, email.DKIMCheck == 1)
 		senderAddr := strings.ToLower(strings.TrimSpace(sender.EmailAddress))
 		isTrusted := whitelistMap[senderAddr]
-		isBlacklisted := blacklistMap[senderAddr]
+		isBlacklisted := blacklistMap[senderAddr] || blacklistMap[strings.ToLower(strings.TrimSpace(email.FromAddress))]
 		dangerous := authentication.Dangerous
 		if isBlacklisted {
 			dangerous = true

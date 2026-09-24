@@ -73,6 +73,7 @@ func NewEmailAuthentication(spfPassed, dkimPassed bool) *EmailAuthentication {
 
 // Email is the type used for email messages
 type Email struct {
+	EnvelopeFrom   string
 	ReplyTo        []*User
 	From           *User
 	To             []*User
@@ -91,6 +92,20 @@ type Email struct {
 	MsgID          string // RFC-compliant Message-ID, persisted in DB
 	Size           int
 	Authentication *EmailAuthentication
+}
+
+func (e *Email) SenderFilterAddresses() []string {
+	if e == nil {
+		return nil
+	}
+	addresses := []string{e.EnvelopeFrom}
+	if e.From != nil {
+		addresses = append(addresses, e.From.EmailAddress)
+	}
+	if e.Sender != nil {
+		addresses = append(addresses, e.Sender.EmailAddress)
+	}
+	return addresses
 }
 
 type StoredEmailFields struct {

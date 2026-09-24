@@ -169,6 +169,15 @@ func forwardToLocalUser(ctx *context.Context, email *parsemail.Email, account, f
 	if !has {
 		return fmt.Errorf("local forward user not found: %s", forwardAddress)
 	}
+	session := db.Instance.NewSession()
+	blocked, filterErr := models.BlacklistedRecipientIDs(session, []int{user.ID}, email.SenderFilterAddresses()...)
+	session.Close()
+	if filterErr != nil {
+		return filterErr
+	}
+	if blocked[user.ID] {
+		return fmt.Errorf("local forwarding rejected by recipient policy")
+	}
 
 	var ue models.UserEmail
 	has, err = db.Instance.Table(&models.UserEmail{}).

@@ -23,6 +23,14 @@
       </div>
     </div>
     <div v-else class="mail-detail-content">
+      <el-alert
+        v-if="detailData.is_blacklisted"
+        title="该发件人已在你的黑名单中"
+        description="这是已保存的历史邮件。黑名单会拦截后续新邮件，不会自动删除历史邮件。请谨慎查看内容与附件。"
+        type="error"
+        :closable="false"
+        show-icon
+      />
       <h1 class="mail-subject">{{ detailData.subject }}</h1>
       
       <div class="mail-meta-card">
