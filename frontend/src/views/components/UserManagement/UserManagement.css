@@ -171,3 +171,49 @@
     grid-template-columns: 1fr;
   }
 }
+.group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.account-group-panel {
+  margin-top: 16px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.account-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--el-fill-color-light);
+}
+
+.account-group-header h4 {
+  margin: 0;
+}
+
+.account-group-toggle {
+  flex: 1;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--el-text-color-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-group-toggle:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 4px;
+}
+
+.membership-select {
+  width: 100%;
+}

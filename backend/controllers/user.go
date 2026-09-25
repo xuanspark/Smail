@@ -8,6 +8,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/session"
 	"git.pcux.cn/xuans/Smail/utils/array"
@@ -107,11 +108,14 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 }
 
 type userListRequest struct {
-	CurrentPage int `json:"current_page"`
-	PageSize    int `json:"page_size"`
+	GroupID     *int `json:"group_id"`
+	CurrentPage int  `json:"current_page"`
+	PageSize    int  `json:"page_size"`
 }
 
 type userListItem struct {
+	GroupIDs                []int       `json:"GroupIDs,omitempty"`
+	MembershipVersion       int         `json:"MembershipVersion,omitempty"`
 	ID                      int         `json:"ID"`
 	Account                 string      `json:"Account"`
 	Name                    string      `json:"Name"`
@@ -176,8 +180,24 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var users []models.User
 	query := db.Instance.Table(&models.User{})
 	defer query.Close()
-	if ctx.EffectiveRole() == access.RoleAdmin {
-		query.Where(models.OrdinaryUserPredicate)
+	accountgroup.ApplyScope(query, ctx.UserID, ctx.EffectiveRole())
+	if reqData.GroupID != nil {
+		groups, err := accountgroup.VisibleGroups(db.Instance, ctx.UserID, ctx.EffectiveRole())
+		if err != nil {
+			writeAccountGroupError(w, err)
+			return
+		}
+		allowed := false
+		for _, group := range groups {
+			if group.ID == *reqData.GroupID {
+				allowed = true
+			}
+		}
+		if !allowed {
+			writeAccountGroupError(w, accountgroup.ErrDenied)
+			return
+		}
+		accountgroup.ApplyGroup(query, *reqData.GroupID)
 	}
 	totalNum, err := query.Asc("id").Limit(reqData.PageSize, offset).FindAndCount(&users)
 	if err != nil {
@@ -192,8 +212,21 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	items := make([]userListItem, 0, len(users))
+	memberships := map[int][]int{}
+	if ctx.EffectiveRole() == access.RoleSuperAdmin {
+		ids := make([]int, 0, len(users))
+		for _, user := range users {
+			ids = append(ids, user.ID)
+		}
+		memberships, err = accountgroup.Memberships(db.Instance, ids)
+		if err != nil {
+			writeAccountGroupError(w, err)
+			return
+		}
+	}
 	for _, user := range users {
 		items = append(items, userListItem{
+			GroupIDs:                memberships[user.ID],
 			ID:                      user.ID,
 			Account:                 user.Account,
 			Name:                    user.Name,
@@ -205,6 +238,9 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			ExternalEmailEnabled:    user.ExternalEmailEnabled == 1,
 			ExternalEmailConfigured: externalEmailConfigured[user.ID],
 		})
+		if ctx.EffectiveRole() == access.RoleSuperAdmin {
+			items[len(items)-1].MembershipVersion = user.SecurityVersion
+		}
 	}
 	response.NewSuccessResponse(map[string]any{
 		"current_page": reqData.CurrentPage,
@@ -284,6 +320,9 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	targetRole := user.EffectiveRole()
+	if !requireAccountScope(ctx, w, user.ID) {
+		return
+	}
 	if err := authorizeCapability(ctx, access.CapabilityUserManage, targetRole, false); err != nil {
 		response.NewErrorResponse(response.NoAccessPrivileges, "无权管理该用户", "").FPrint(w)
 		return
@@ -388,7 +427,9 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole {
 		updateColumns = append(updateColumns, "session_version", "security_version")
 	}
-	if num, err := tx.ID(user.ID).Where("session_version = ? AND security_version = ?", originalSessionVersion, originalSecurityVersion).Cols(updateColumns...).Update(&user); err != nil {
+	update := tx.ID(user.ID).Where("session_version = ? AND security_version = ?", originalSessionVersion, originalSecurityVersion).Cols(updateColumns...)
+	accountgroup.ApplyScope(update, ctx.UserID, ctx.EffectiveRole())
+	if num, err := update.Update(&user); err != nil {
 		log.WithContext(ctx).WithError(err).Error("update user failed")
 		response.NewErrorResponse(response.ServerError, "更新用户失败", "").FPrint(w)
 		return
@@ -400,6 +441,17 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		if err := credentialService.RevokeAllWithSession(tx, user.ID); err != nil {
 			log.WithContext(ctx).WithError(err).Error("revoke target credentials failed")
 			response.NewErrorResponse(response.ServerError, "撤销目标用户安全凭据失败", "").FPrint(w)
+			return
+		}
+	}
+	if user.EffectiveRole() != access.RoleAdmin {
+		count, err := tx.Where("user_id = ?", user.ID).Count(&models.AccountGroupMember{})
+		if err != nil {
+			writeAccountGroupError(w, err)
+			return
+		}
+		if count > 1 {
+			writeSecurityError(w, response.ParamsError, "请先将账号调整为一个分组，再更改为普通用户")
 			return
 		}
 	}

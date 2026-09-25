@@ -7,6 +7,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
@@ -29,7 +30,10 @@ func runtimeLogActors(requestContext context.Context, ctx *appcontext.Context) (
 			return nil, logstore.ErrUnavailable
 		}
 		var users []models.User
-		if err := db.Instance.Context(requestContext).Cols("id").Where(models.OrdinaryUserPredicate).Find(&users); err != nil {
+		query := db.Instance.Context(requestContext).Cols("id").Where(models.OrdinaryUserPredicate)
+		defer query.Close()
+		accountgroup.ApplyScope(query, ctx.UserID, ctx.EffectiveRole())
+		if err := query.Find(&users); err != nil {
 			return nil, logstore.ErrUnavailable
 		}
 		for _, user := range users {

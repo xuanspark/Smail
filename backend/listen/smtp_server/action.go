@@ -2,7 +2,6 @@ package smtp_server
 
 import (
 	"errors"
-	"strings"
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
@@ -15,6 +14,7 @@ import (
 	"github.com/emersion/go-smtp"
 	log "github.com/sirupsen/logrus"
 	"net"
+	"strings"
 )
 
 // The Backend implements SMTP server methods.

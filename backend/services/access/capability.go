@@ -26,6 +26,7 @@ const (
 	CapabilityAuditRead          Capability = "audit.read"
 	CapabilityAuditExport        Capability = "audit.export"
 	CapabilityNotificationManage Capability = "notification.manage"
+	CapabilityAccountGroupManage Capability = "account_group.manage"
 )
 
 type Policy struct {
@@ -37,6 +38,7 @@ type Policy struct {
 }
 
 var policies = map[Capability]Policy{
+	CapabilityAccountGroupManage: {Capability: CapabilityAccountGroupManage, HighRisk: true, RequiresRecentAuth: true},
 	CapabilityNotificationManage: {Capability: CapabilityNotificationManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityConfigRead:         {Capability: CapabilityConfigRead},
 	CapabilityConfigWriteGlobal:  {Capability: CapabilityConfigWriteGlobal, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
@@ -64,6 +66,7 @@ var policies = map[Capability]Policy{
 
 var grants = map[Role]map[Capability]struct{}{
 	RoleSuperAdmin: grant(
+		CapabilityAccountGroupManage,
 		CapabilityNotificationManage,
 		CapabilityPluginReadGlobal, CapabilityUserCreate, CapabilityProfileWriteOwn,
 		CapabilityConfigRead, CapabilityConfigWriteGlobal, CapabilityConfigRollback,

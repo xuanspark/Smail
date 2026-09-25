@@ -12,6 +12,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/services/notification"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -19,14 +20,17 @@ import (
 )
 
 type notificationRequest struct {
-	UserID int `json:"user_id"`
-	Version int `json:"version"`
-	Enabled *bool `json:"enabled"`
-	MinuteLimit int `json:"minute_limit"`
-	DayLimit int `json:"day_limit"`
+	UserID      int   `json:"user_id"`
+	Version     int   `json:"version"`
+	Enabled     *bool `json:"enabled"`
+	MinuteLimit int   `json:"minute_limit"`
+	DayLimit    int   `json:"day_limit"`
 }
 
 func loadNotificationUser(ctx *context.Context, w http.ResponseWriter, userID int, write bool) (*models.User, bool) {
+	if !requireAccountScope(ctx, w, userID) {
+		return nil, false
+	}
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return nil, false
@@ -76,7 +80,9 @@ func GetNotificationStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 		}
 	}
 	user, ok := loadNotificationUser(ctx, w, userID, false)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	item, err := notification.Load(db.Instance, user.ID)
 	if err != nil {
 		writeSecurityError(w, response.ServerError, "读取系统通知授权失败")
@@ -84,20 +90,24 @@ func GetNotificationStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 	}
 	minuteUsed, dayUsed := 0, 0
 	now := time.Now().UTC()
-	if item.MinuteKey == now.Format("2006-01-02T15:04") { minuteUsed = item.MinuteCount }
-	if item.DayKey == now.Format("2006-01-02") { dayUsed = item.DayCount }
+	if item.MinuteKey == now.Format("2006-01-02T15:04") {
+		minuteUsed = item.MinuteCount
+	}
+	if item.DayKey == now.Format("2006-01-02") {
+		dayUsed = item.DayCount
+	}
 	domain := config.CurrentMailDomains().Primary
 	ports := config.CurrentMailPorts()
 	response.NewSuccessResponse(map[string]any{
 		"user_id": user.ID, "account": user.Account, "enabled": item.Enabled == 1,
 		"configured": notification.Configured(item, *user), "version": item.CodeVersion,
 		"account_available": user.Disabled == 0 && user.MustChangePassword == 0,
-		"can_manage": access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), ctx.UserID == user.ID),
-		"minute_limit": item.MinuteLimit, "day_limit": item.DayLimit,
+		"can_manage":        access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), ctx.UserID == user.ID),
+		"minute_limit":      item.MinuteLimit, "day_limit": item.DayLimit,
 		"minute_used": minuteUsed, "day_used": dayUsed,
 		"host": "smtp." + domain, "tls_port": ports.SMTPTLS, "starttls_port": ports.SMTPSTARTTLS,
 		"username": notification.UsernamePrefix + user.Account + "@" + domain,
-		"sender": validation.NotificationAddress(domain), "sender_name": "系统通知",
+		"sender":   validation.NotificationAddress(domain), "sender_name": "系统通知",
 		"max_recipients": notification.MaxRecipients, "max_message_bytes": notification.MaxMessageBytes,
 	}).FPrint(w)
 }
@@ -113,21 +123,26 @@ func ListNotificationAccounts(ctx *context.Context, w http.ResponseWriter, req *
 		return
 	}
 	page, _ := strconv.Atoi(req.URL.Query().Get("page"))
-	if page < 1 || page > 100000 { page = 1 }
+	if page < 1 || page > 100000 {
+		page = 1
+	}
 	query := db.Instance.Table(&models.User{})
 	defer query.Close()
+	accountgroup.ApplyScope(query, ctx.UserID, ctx.EffectiveRole())
 	if ctx.EffectiveRole() == access.RoleAdmin {
-		query.Where("(" + models.OrdinaryUserPredicate + ") OR id = ?", ctx.UserID)
+		query.And("("+models.OrdinaryUserPredicate+") OR id = ?", ctx.UserID)
 	}
 	var users []models.User
-	total, err := query.Asc("id").Limit(20, (page - 1) * 20).FindAndCount(&users)
+	total, err := query.Asc("id").Limit(20, (page-1)*20).FindAndCount(&users)
 	if err != nil {
 		writeSecurityError(w, response.ServerError, "读取账号列表失败")
 		return
 	}
 	items := make([]map[string]any, 0, len(users))
 	userIDs := make([]int, 0, len(users))
-	for _, user := range users { userIDs = append(userIDs, user.ID) }
+	for _, user := range users {
+		userIDs = append(userIDs, user.ID)
+	}
 	grants := make(map[int]models.NotificationGrant)
 	if len(userIDs) > 0 {
 		var rows []models.NotificationGrant
@@ -135,7 +150,9 @@ func ListNotificationAccounts(ctx *context.Context, w http.ResponseWriter, req *
 			writeSecurityError(w, response.ServerError, "读取账号通知状态失败")
 			return
 		}
-		for _, item := range rows { grants[item.UserID] = item }
+		for _, item := range rows {
+			grants[item.UserID] = item
+		}
 	}
 	for _, user := range users {
 		item := grants[user.ID]
@@ -152,10 +169,15 @@ func SetNotificationAuthorization(ctx *context.Context, w http.ResponseWriter, r
 		return
 	}
 	user, ok := loadNotificationUser(ctx, w, input.UserID, true)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	err := notification.SetAuthorization(db.Instance, *user, input.Version, *input.Enabled, input.MinuteLimit, input.DayLimit)
 	recordNotificationManagement(ctx, user.ID, "设置系统通知授权", err, map[string]any{"enabled": *input.Enabled, "minute_limit": input.MinuteLimit, "day_limit": input.DayLimit})
-	if err != nil { writeNotificationError(w, err); return }
+	if err != nil {
+		writeNotificationError(w, err)
+		return
+	}
 	response.NewSuccessResponse(map[string]any{"user_id": user.ID, "enabled": *input.Enabled}).FPrint(w)
 }
 
@@ -166,17 +188,24 @@ func RotateNotificationCredential(ctx *context.Context, w http.ResponseWriter, r
 		return
 	}
 	user, ok := loadNotificationUser(ctx, w, input.UserID, true)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	code, err := notification.Rotate(db.Instance, *user, input.Version)
 	recordNotificationManagement(ctx, user.ID, "重置系统通知凭据", err, nil)
-	if err != nil { writeNotificationError(w, err); return }
+	if err != nil {
+		writeNotificationError(w, err)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	response.NewSuccessResponse(map[string]any{"code": code, "user_id": user.ID}).FPrint(w)
 }
 
 func recordNotificationManagement(ctx *context.Context, userID int, action string, err error, changes map[string]any) {
 	result := "success"
-	if err != nil { result = "failure" }
+	if err != nil {
+		result = "failure"
+	}
 	payload, _ := json.Marshal(map[string]any{"target_user_id": userID, "changes": changes})
 	logstore.Record(ctx, logstore.Entry{Kind: "operation", ActorID: strconv.Itoa(ctx.UserID), ActorRole: string(ctx.EffectiveRole()), Action: action,
 		Section: "系统通知发信", Result: result, CreatedAt: time.Now(), Payload: payload})

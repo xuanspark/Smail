@@ -18,6 +18,7 @@ import (
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/utils/credential"
 	"xorm.io/xorm"
 )
@@ -377,6 +378,9 @@ func (s *ConfigService) UpdateOwnTelegramSettings(actorUserID int, settings Tele
 
 // UpdateTelegramSettingsForUser 查询目标账户的当前角色后才进行跨用户授权。
 func (s *ConfigService) UpdateTelegramSettingsForUser(actor models.User, targetUserID int, settings TelegramUserSettings, expectedVersion uint64) (UserSettingsStatus, error) {
+	if s == nil || !accountgroup.CanAccess(s.engine, actor.ID, actor.EffectiveRole(), targetUserID) {
+		return UserSettingsStatus{}, &access.Denial{Code: access.CodeAccessDenied}
+	}
 	if actor.ID <= 0 || targetUserID <= 0 {
 		return UserSettingsStatus{}, ErrPluginStoreUnavailable
 	}

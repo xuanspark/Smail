@@ -27,6 +27,9 @@ type managedUserSecurityRequest struct {
 }
 
 func loadManagedSecurityUser(ctx *context.Context, w http.ResponseWriter, userID int) (*models.User, bool) {
+	if !requireAccountScope(ctx, w, userID) {
+		return nil, false
+	}
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return nil, false

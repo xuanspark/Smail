@@ -40,6 +40,7 @@ func DefaultMigrations() []Migration {
 			DialectPostgres: {configstate.Schema("postgres")},
 		}),
 		DefineForDialects(25, "create_notification_grants", notificationGrantStatements()),
+		DefineForDialects(26, "create_account_groups", accountGroupStatements()),
 	}
 }
 

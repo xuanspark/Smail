@@ -15,19 +15,19 @@ import (
 )
 
 const (
-	UsernamePrefix = "notify:"
+	UsernamePrefix     = "notify:"
 	DefaultMinuteLimit = 10
-	DefaultDayLimit = 100
-	MaxRecipients = 10
-	MaxMessageBytes = 1 << 20
+	DefaultDayLimit    = 100
+	MaxRecipients      = 10
+	MaxMessageBytes    = 1 << 20
 )
 
 var (
-	ErrDenied = errors.New("notification authorization denied")
-	ErrConflict = errors.New("notification authorization changed")
-	ErrQuota = errors.New("notification quota exceeded")
+	ErrDenied      = errors.New("notification authorization denied")
+	ErrConflict    = errors.New("notification authorization changed")
+	ErrQuota       = errors.New("notification quota exceeded")
 	ErrUnavailable = errors.New("notification authorization unavailable")
-	ErrLimits = errors.New("invalid notification limits")
+	ErrLimits      = errors.New("invalid notification limits")
 )
 
 func IsUsername(username string) bool {
@@ -118,11 +118,11 @@ func Rotate(engine *xorm.Engine, user models.User, expected int) (string, error)
 }
 
 type Grant struct {
-	engine *xorm.Engine
-	userID int
-	version int
-	hash string
-	sessionVersion int
+	engine          *xorm.Engine
+	userID          int
+	version         int
+	hash            string
+	sessionVersion  int
 	securityVersion int
 }
 

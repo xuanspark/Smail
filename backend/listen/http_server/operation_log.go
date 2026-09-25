@@ -15,8 +15,8 @@ import (
 
 // loggedOperations 注册显式的静态状态变更路由，仅记录状态变更操作，不将列表查询误认为操作，也不复制请求或响应载荷。
 var loggedOperations = map[string]string{
-	"/api/system/notification/authorization": "修改系统通知发信权限",
-	"/api/system/notification/credential": "生成系统通知发信凭据",
+	"/api/system/notification/authorization":            "修改系统通知发信权限",
+	"/api/system/notification/credential":               "生成系统通知发信凭据",
 	"/api/email/draft/save":                             "保存邮件草稿",
 	"/api/login":                                        "处理账号登录",
 	"/api/logout":                                       "退出登录",
@@ -55,6 +55,8 @@ var loggedOperations = map[string]string{
 	"/api/security/external-email/disable":              "解绑外部邮箱",
 	"/api/settings/modify_password":                     "修改账号密码",
 	"/api/user/create":                                  "创建用户",
+	"/api/user/groups/save":                             "保存账号分组",
+	"/api/user/groups/membership":                       "调整账号所属分组",
 	"/api/user/edit":                                    "编辑用户",
 	"/api/user/profile":                                 "修改个人资料",
 	"/api/user/security/recovery-codes/generate":        "管理用户安全码",

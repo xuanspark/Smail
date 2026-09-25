@@ -12,10 +12,10 @@ import (
 
 // ProtocolSession 保存不可变身份与凭据快照，拒绝后的连接不能通过重新启用恢复权限。
 type ProtocolSession struct {
-	user    models.User
-	grant   *credentials.ProtocolGrant
+	user         models.User
+	grant        *credentials.ProtocolGrant
 	notification *notification.Grant
-	invalid atomic.Bool
+	invalid      atomic.Bool
 }
 
 func AuthenticateProtocolSession(protocol, remoteAddress, account, plain string) (*models.User, *ProtocolSession, error) {

@@ -3,10 +3,31 @@
     <div class="settings-header">
       <h3>{{ lang.account_management }}</h3>
       <p class="settings-desc">{{ lang.account_management_desc }}</p>
+      <p class="settings-desc">仅显示权限范围内的成员。新账号默认归入默认分组；分组及成员归属由超级管理员维护。</p>
+      <div class="group-toolbar">
+        <el-button v-if="canCreateUser" type="primary" :disabled="groupsLoading" @click="createUser">
+          <el-icon><Plus /></el-icon> 新建账号
+        </el-button>
+        <el-button v-if="canManageGroups" :loading="groupSaving" @click="saveGroup()">新建分组</el-button>
+        <el-button :loading="groupsLoading" @click="reflushList">刷新列表</el-button>
+      </div>
     </div>
 
+    <el-alert v-if="groupsError" :title="groupsError" type="error" :closable="false" />
+    <el-empty v-if="!groupsLoading && !groupsError && accountGroups.length === 0" description="暂无可查看的分组" />
+    <section v-for="group in accountGroups" :key="group.id" class="account-group-panel">
+      <header class="account-group-header">
+        <h4 v-if="group.id === 0">{{ group.name }}</h4>
+        <button v-else type="button" class="account-group-toggle" :aria-expanded="group.expanded" :aria-controls="`account-group-${group.id}`" @click="toggleGroup(group)">
+          <span aria-hidden="true">{{ group.expanded ? '▾' : '▸' }}</span>
+          {{ group.name }}
+        </button>
+        <el-button v-if="canManageGroups && group.id !== 0" text :disabled="groupSaving" @click="saveGroup(group)">重命名</el-button>
+      </header>
+      <div v-if="group.expanded" :id="`account-group-${group.id}`" v-loading="group.loading">
+        <el-alert v-if="group.error" :title="group.error" type="error" :closable="false" />
     <div class="table-container">
-      <el-table :data="userList" class="modern-table" style="width: 100%" empty-text="暂无用户">
+      <el-table :data="group.rows" class="modern-table" style="width: 100%" empty-text="本组暂无成员">
         <el-table-column label="ID" prop="ID" width="44" />
         <el-table-column :label="lang.account" prop="Account" width="88" show-overflow-tooltip />
         <el-table-column :label="lang.user_name" prop="Name" width="76" show-overflow-tooltip />
@@ -58,12 +79,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column align="right" width="68">
-          <template #header>
-            <el-button v-if="canCreateUser" type="primary" size="small" @click="createUser" class="new-btn" plain>
-              <el-icon><Plus /></el-icon> 新建
-            </el-button>
-          </template>
+        <el-table-column label="操作" align="right" :width="canManageGroups ? 126 : 68">
           <template #default="scope">
             <el-button
               size="small"
@@ -75,6 +91,7 @@
             >
               编辑
             </el-button>
+            <el-button v-if="canManageGroups" size="small" text :disabled="groupSaving" @click="editMembership(scope.row)">分组</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -82,14 +99,34 @@
 
     <div class="pagination-wrapper">
       <el-pagination
-        v-model:current-page="currentPage"
+        v-model:current-page="group.page"
         size="small"
         background
         layout="prev, pager, next"
-        :page-count="totalPage"
-        @current-change="reflushList"
+        :page-count="group.totalPages"
+        :disabled="group.loading"
+        @current-change="loadGroup(group)"
       />
     </div>
+      </div>
+    </section>
+
+    <el-dialog v-model="membershipVisible" title="设置账号所属分组" width="450px" :close-on-click-modal="!groupSaving" :close-on-press-escape="!groupSaving" :show-close="!groupSaving">
+      <p>账号：{{ membershipUser?.Account }}</p>
+      <el-form label-position="top">
+        <el-form-item label="所属分组">
+          <el-select v-model="membershipSelection" multiple :multiple-limit="membershipLimit" :disabled="groupSaving" placeholder="未选择时归入默认分组" class="membership-select">
+            <el-option v-for="group in accountGroups" :key="group.id" :label="group.name" :value="group.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <p class="settings-desc">管理员可以多选；普通用户只能选择一个分组。</p>
+      <el-alert title="修改归属会使该账号的旧登录会话和通知发信凭据失效，需要重新登录并配置通知凭据。" type="warning" :closable="false" />
+      <template #footer>
+        <el-button :disabled="groupSaving" @click="membershipVisible = false">取消</el-button>
+        <el-button type="primary" :loading="groupSaving" @click="saveMembership">保存分组</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="userInfoDialog"
@@ -226,11 +263,22 @@ import UserExternalEmailDialog from "./UserExternalEmailDialog/UserExternalEmail
 
 const {
   lang,
-  userList,
+  accountGroups,
+  groupsLoading,
+  groupsError,
+  canManageGroups,
+  groupSaving,
+  membershipVisible,
+  membershipUser,
+  membershipSelection,
+  membershipLimit,
+  loadGroup,
+  toggleGroup,
+  saveGroup,
+  editMembership,
+  saveMembership,
   createUser,
   handleEdit,
-  currentPage,
-  totalPage,
   reflushList,
   userInfoDialog,
   title,

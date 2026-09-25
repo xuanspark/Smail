@@ -16,6 +16,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/utils/logpolicy"
 )
 
@@ -197,7 +198,13 @@ func (s *Store) Query(ctx context.Context, query Query) ([]Entry, error) {
 			if s.dialect == migration.DialectMySQL {
 				userTable, idType = "`user`", "CHAR"
 			}
-			statement += "actor_id IN (SELECT CAST(id AS " + idType + ") FROM " + userTable + " WHERE " + models.OrdinaryUserPredicate + ")"
+			actorID, parseErr := strconv.Atoi(query.ScopeActorID)
+			if parseErr != nil || actorID <= 0 {
+				return nil, ErrInvalid
+			}
+			groupScope, groupArgs := accountgroup.ScopePredicate(actorID)
+			statement += "actor_id IN (SELECT CAST(id AS " + idType + ") FROM " + userTable + " WHERE " + models.OrdinaryUserPredicate + " AND " + groupScope + ")"
+			args = append(args, groupArgs...)
 			// 代管视图还要核对操作发生时的角色，不能因账号降级暴露旧管理操作。
 			// 缺少历史角色的操作仅本人和超级管理员可见，收发信元数据不包含管理操作。
 			if isOperationKind(query.Kind) {

@@ -11,6 +11,7 @@ import {Plus} from "@element-plus/icons-vue";
 import {useGlobalStatusStore} from "@/stores/useGlobalStatusStore";
 import {confirmRecentAuthentication, isRecentAuthenticationCancelled, requestWithRecentAuthentication} from '@/utils/recentAuthentication'
 import {roleMeta, assignableRoles, canManageUser} from '@/utils/userRoles.mjs'
+import {useAccountGroups} from './AccountGroups.js'
 
 export function recoveryCodeMeta(configured) {
   return configured
@@ -47,11 +48,7 @@ export function canManageRecoveryCode(user) {
 export function usePage() {
   const globalStatus = useGlobalStatusStore()
 
-  const userList = reactive([])
-  
-  const currentPage = ref(1)
-  
-  const totalPage = ref(1)
+  const groups = useAccountGroups(globalStatus)
   
   const userInfoDialog = ref(false)
   
@@ -95,17 +92,12 @@ export function usePage() {
   
   const title = ref(lang.editUser)
   
-  const reflushList = function () {
-    http.post('/api/v1/user/list', {"current_page": currentPage.value, "page_size": 6}).then(res => {
-      userList.length = 0
-      totalPage.value = res.data.total_page
-      if (res.data["list"]) {
-        userList.push(...res.data["list"])
-        if (selectedUser.value?.ID) {
-          selectedUser.value = userList.find(item => item.ID === selectedUser.value.ID) || selectedUser.value
-        }
-      }
-    })
+  const reflushList = async function () {
+    await groups.refreshGroups()
+    if (selectedUser.value?.ID) {
+      const users = groups.accountGroups.value.flatMap(group => group.rows)
+      selectedUser.value = users.find(item => item.ID === selectedUser.value.ID) || selectedUser.value
+    }
   }
   
   const handleEdit = function (idx, row) {
@@ -213,9 +205,7 @@ export function usePage() {
     http,
     ElNotification,
     Plus,
-    userList,
-    currentPage,
-    totalPage,
+    ...groups,
     userInfoDialog,
     editModel,
     editUserInfo,

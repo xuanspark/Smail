@@ -17,8 +17,8 @@ func notificationGrantStatements() map[Dialect][]string {
 		day_count INTEGER NOT NULL DEFAULT 0
 	)`
 	return map[Dialect][]string{
-		DialectSQLite: {statement},
-		DialectMySQL: {statement + " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"},
+		DialectSQLite:   {statement},
+		DialectMySQL:    {statement + " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"},
 		DialectPostgres: {statement},
 	}
 }
