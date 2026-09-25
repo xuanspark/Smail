@@ -68,6 +68,8 @@ export function usePage() {
 
   const canCreateUser = computed(() => globalStatus.hasCapability('user.create'))
 
+  const canEditUser = user => canManageUser(globalStatus.role, user?.Role)
+
   const canEditSelectedUser = computed(() => editModel.value === 'create'
     ? canCreateUser.value && availableRoles.value.length > 0
     : canManageUser(globalStatus.role, selectedUser.value?.Role))
@@ -101,6 +103,7 @@ export function usePage() {
   }
   
   const handleEdit = function (idx, row) {
+    if (!canEditUser(row)) return
     selectedUser.value = row
     editUserInfo.account = row.Account
     editUserInfo.name = row.Name
@@ -227,6 +230,7 @@ export function usePage() {
     title,
     reflushList,
     handleEdit,
+    canEditUser,
     createUser,
     submit,
     roleMeta,

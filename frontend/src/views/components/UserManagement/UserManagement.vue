@@ -18,7 +18,14 @@
     <section v-for="group in accountGroups" :key="group.id" class="account-group-panel">
       <header class="account-group-header">
         <h4 v-if="group.id === 0">{{ group.name }}</h4>
-        <button v-else type="button" class="account-group-toggle" :aria-expanded="group.expanded" :aria-controls="`account-group-${group.id}`" @click="toggleGroup(group)">
+        <button
+          v-else
+          type="button"
+          class="account-group-toggle"
+          :aria-expanded="group.expanded"
+          :aria-controls="`account-group-${group.id}`"
+          @click="toggleGroup(group)"
+        >
           <span aria-hidden="true">{{ group.expanded ? '▾' : '▸' }}</span>
           {{ group.name }}
         </button>
@@ -87,6 +94,7 @@
               text
               bg
               @click="handleEdit(scope.$index, scope.row)"
+              :disabled="!canEditUser(scope.row)"
               class="action-btn"
             >
               编辑
@@ -279,6 +287,7 @@ const {
   saveMembership,
   createUser,
   handleEdit,
+  canEditUser,
   reflushList,
   userInfoDialog,
   title,
