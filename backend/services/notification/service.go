@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"xorm.io/xorm"
 )
 
@@ -52,16 +53,32 @@ func Configured(item models.NotificationGrant, user models.User) bool {
 }
 
 // SetAuthorization 使用版本条件避免覆盖其他管理员的修改；关闭时永久清除旧凭据。
-func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabled bool, minuteLimit, dayLimit int) error {
+func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabled bool, minuteLimit, dayLimit int, guards ...accountgroup.WriteGuard) error {
 	if minuteLimit < 1 || minuteLimit > 100 || dayLimit < minuteLimit || dayLimit > 10000 {
 		return ErrLimits
 	}
 	if enabled && (user.Disabled != 0 || user.MustChangePassword != 0) {
 		return ErrDenied
 	}
-	item, err := Load(engine, user.ID)
+	if engine == nil || user.ID <= 0 {
+		return ErrUnavailable
+	}
+	tx := engine.NewSession()
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := accountgroup.CheckWrite(tx, guards...); err != nil {
+		return err
+	}
+	var item models.NotificationGrant
+	found, err := tx.ID(user.ID).Get(&item)
 	if err != nil {
 		return err
+	}
+	if !found {
+		item = models.NotificationGrant{UserID: user.ID}
 	}
 	if item.CodeVersion != expected {
 		return ErrConflict
@@ -75,20 +92,38 @@ func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabl
 	item.MinuteLimit, item.DayLimit = minuteLimit, dayLimit
 	item.CodeVersion++
 	if expected == 0 {
-		_, err = engine.Insert(&item)
+		if _, err := tx.Insert(&item); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	affected, err := tx.ID(user.ID).Where("code_version = ?", expected).
+		Cols("enabled", "code_hash", "code_version", "minute_limit", "day_limit").Update(&item)
+	if err != nil {
 		return err
 	}
-	affected, err := engine.ID(user.ID).Where("code_version = ?", expected).
-		Cols("enabled", "code_hash", "code_version", "minute_limit", "day_limit").Update(&item)
-	if err == nil && affected != 1 {
+	if affected != 1 {
 		return ErrConflict
 	}
-	return err
+	return tx.Commit()
 }
 
 // Rotate 仅返回一次明文。随机凭据具有 256 位熵，数据库只保存 SHA-256 摘要。
-func Rotate(engine *xorm.Engine, user models.User, expected int) (string, error) {
-	item, err := Load(engine, user.ID)
+func Rotate(engine *xorm.Engine, user models.User, expected int, guards ...accountgroup.WriteGuard) (string, error) {
+	if engine == nil || user.ID <= 0 {
+		return "", ErrUnavailable
+	}
+	tx := engine.NewSession()
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err := accountgroup.CheckWrite(tx, guards...); err != nil {
+		return "", err
+	}
+	var item models.NotificationGrant
+	_, err := tx.ID(user.ID).Get(&item)
 	if err != nil {
 		return "", err
 	}
@@ -106,13 +141,16 @@ func Rotate(engine *xorm.Engine, user models.User, expected int) (string, error)
 	item.CodeHash = digest(code)
 	item.CodeVersion++
 	item.SessionVersion, item.SecurityVersion = user.SessionVersion, user.SecurityVersion
-	affected, err := engine.ID(user.ID).Where("code_version = ? AND enabled = 1", expected).
+	affected, err := tx.ID(user.ID).Where("code_version = ? AND enabled = 1", expected).
 		Cols("code_hash", "code_version", "session_version", "security_version").Update(&item)
 	if err != nil {
 		return "", err
 	}
 	if affected != 1 {
 		return "", ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
 	}
 	return code, nil
 }

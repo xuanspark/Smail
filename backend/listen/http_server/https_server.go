@@ -187,6 +187,8 @@ func contextIterceptor(h controllers.HandlerFunc) http.HandlerFunc {
 						}
 					} else {
 						ctx.UserID = currentUser.ID
+						ctx.SessionVersion = currentUser.SessionVersion
+						ctx.SecurityVersion = currentUser.SecurityVersion
 						ctx.UserName = currentUser.Name
 						ctx.UserAccount = currentUser.Account
 						ctx.Role = currentUser.EffectiveRole()

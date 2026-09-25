@@ -11,22 +11,24 @@ const (
 )
 
 type Context struct {
-	context.Context          `json:"-"`
-	UserID                   int
-	UserAccount              string
-	UserName                 string
-	Role                     access.Role
-	Values                   map[string]any
-	Lang                     string
-	IsAdmin                  bool
-	MustChangePassword       int
+	context.Context           `json:"-"`
+	UserID                    int
+	SessionVersion            int
+	SecurityVersion           int
+	UserAccount               string
+	UserName                  string
+	Role                      access.Role
+	Values                    map[string]any
+	Lang                      string
+	IsAdmin                   bool
+	MustChangePassword        int
 	SecuritySetupAcknowledged int
-	RecentAuth               bool
-	RecoveryCodeConfigured   bool
-	TargetRecoveryConfigured bool
-	PluginInstanceAuthorized bool
-	AuditScopeAuthorized     bool
-	DeploymentChannel        bool
+	RecentAuth                bool
+	RecoveryCodeConfigured    bool
+	TargetRecoveryConfigured  bool
+	PluginInstanceAuthorized  bool
+	AuditScopeAuthorized      bool
+	DeploymentChannel         bool
 }
 
 // HasRole 判断当前请求是否属于指定角色。

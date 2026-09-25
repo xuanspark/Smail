@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"xorm.io/xorm"
 )
 
@@ -32,7 +33,30 @@ type BindRequest struct {
 }
 
 // BeginReplacement 创建或更新待验证邮箱。旧邮箱会一直保留到新邮箱验证成功。
-func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmail, error) {
+func (r *Repository) BeginReplacement(request BindRequest, guards ...accountgroup.WriteGuard) (*models.ExternalEmail, error) {
+	if r == nil || r.engine == nil {
+		return nil, ErrInvalidBinding
+	}
+	tx := r.engine.NewSession()
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := accountgroup.CheckWrite(tx, guards...); err != nil {
+		return nil, err
+	}
+	item, err := r.beginReplacement(tx, request)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+func (r *Repository) beginReplacement(tx *xorm.Session, request BindRequest) (*models.ExternalEmail, error) {
 	if r == nil || r.engine == nil || r.vault == nil || request.UserID <= 0 {
 		return nil, ErrInvalidBinding
 	}
@@ -53,7 +77,7 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 	}
 
 	var sameAddress models.ExternalEmail
-	hasSameAddress, err := r.engine.Where("email_fingerprint = ?", fingerprint).Get(&sameAddress)
+	hasSameAddress, err := tx.Where("email_fingerprint = ?", fingerprint).Get(&sameAddress)
 	if err != nil {
 		return nil, fmt.Errorf("check replacement external email: %w", err)
 	}
@@ -76,7 +100,7 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 		sameAddress.VerifiedAt = nil
 		sameAddress.CredentialVersion++
 		sameAddress.UpdatedAt = now
-		updated, err := r.engine.ID(sameAddress.ID).Where("status = ?", models.ExternalEmailStatusDisabled).
+		updated, err := tx.ID(sameAddress.ID).Where("status = ?", models.ExternalEmailStatusDisabled).
 			Cols("email_type", "status", "verified_at", "credential_version", "updated_at").Update(&sameAddress)
 		if err != nil {
 			return nil, fmt.Errorf("reuse disabled replacement external email: %w", err)
@@ -88,7 +112,7 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 	}
 
 	var pending models.ExternalEmail
-	hasPending, err := r.engine.Where(
+	hasPending, err := tx.Where(
 		"user_id = ? AND email_type = ? AND status = ?",
 		request.UserID,
 		request.Type,
@@ -102,7 +126,7 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 		pending.EmailFingerprint = fingerprint
 		pending.CredentialVersion++
 		pending.UpdatedAt = now
-		if _, err := r.engine.ID(pending.ID).Cols("email_ciphertext", "email_fingerprint", "credential_version", "updated_at").Update(&pending); err != nil {
+		if _, err := tx.ID(pending.ID).Cols("email_ciphertext", "email_fingerprint", "credential_version", "updated_at").Update(&pending); err != nil {
 			return nil, fmt.Errorf("update pending replacement external email: %w", err)
 		}
 		return &pending, nil
@@ -118,7 +142,7 @@ func (r *Repository) BeginReplacement(request BindRequest) (*models.ExternalEmai
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
-	if _, err := r.engine.Insert(item); err != nil {
+	if _, err := tx.Insert(item); err != nil {
 		return nil, fmt.Errorf("create replacement external email: %w", err)
 	}
 	return item, nil
@@ -311,7 +335,7 @@ func (r *Repository) Verify(userID, id int) error {
 }
 
 // VerifyReplacement 验证新邮箱后原子停用同用途旧邮箱，并启用新邮箱。
-func (r *Repository) VerifyReplacement(userID, id int) error {
+func (r *Repository) VerifyReplacement(userID, id int, guards ...accountgroup.WriteGuard) error {
 	if r == nil || r.engine == nil || userID <= 0 || id <= 0 {
 		return ErrInvalidBinding
 	}
@@ -330,6 +354,9 @@ func (r *Repository) VerifyReplacement(userID, id int) error {
 		}
 	}()
 
+	if err := accountgroup.CheckWrite(session, guards...); err != nil {
+		return err
+	}
 	item := &models.ExternalEmail{}
 	has, err := session.Where("id = ? AND user_id = ? AND status = ?", id, userID, models.ExternalEmailStatusPending).Get(item)
 	if err != nil {

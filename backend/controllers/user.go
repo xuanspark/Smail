@@ -320,6 +320,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	targetRole := user.EffectiveRole()
+	writeGuard := accountWriteGuard(ctx, user)
 	if !requireAccountScope(ctx, w, user.ID) {
 		return
 	}
@@ -421,6 +422,10 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 	updateColumns := []string{"name", "disabled", "role", "is_admin"}
+	if err := accountgroup.CheckWrite(tx, writeGuard); err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
 	if reqData.Password != "" {
 		updateColumns = append(updateColumns, "password", "must_change_password", "password_changed_at")
 	}

@@ -184,7 +184,63 @@ func ReplaceMembership(tx *xorm.Session, userID int, ids []int) error {
 	return err
 }
 
-func SetMembership(engine *xorm.Engine, user models.User, input []int) error {
+type WriteGuard func(*xorm.Session) error
+
+func CheckWrite(tx *xorm.Session, guards ...WriteGuard) error {
+	for _, guard := range guards {
+		if guard == nil {
+			return ErrDenied
+		}
+		if err := guard(tx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func Guard(actorID int, role access.Role, sessionVersion, securityVersion int, target models.User) WriteGuard {
+	return func(tx *xorm.Session) error {
+		if tx == nil || actorID <= 0 || target.ID <= 0 || (role != access.RoleAdmin && role != access.RoleSuperAdmin) {
+			return ErrDenied
+		}
+		ids := []int{actorID}
+		if target.ID != actorID {
+			ids = append(ids, target.ID)
+		}
+		sort.Ints(ids)
+		for _, id := range ids {
+			if _, err := tx.ID(id).SetExpr("session_version", "session_version").Update(&models.User{}); err != nil {
+				return err
+			}
+		}
+		var actor models.User
+		found, err := tx.ID(actorID).Get(&actor)
+		if err != nil {
+			return err
+		}
+		if !found || actor.Disabled != 0 || actor.MustChangePassword != 0 || actor.EffectiveRole() != role ||
+			actor.SessionVersion != sessionVersion || actor.SecurityVersion != securityVersion {
+			return ErrDenied
+		}
+		var current models.User
+		query := tx.ID(target.ID)
+		ApplyScope(query, actorID, role)
+		found, err = query.Get(&current)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrDenied
+		}
+		if current.SessionVersion != target.SessionVersion || current.SecurityVersion != target.SecurityVersion ||
+			current.EffectiveRole() != target.EffectiveRole() || current.Disabled != target.Disabled || current.MustChangePassword != target.MustChangePassword {
+			return ErrConflict
+		}
+		return nil
+	}
+}
+
+func SetMembership(engine *xorm.Engine, user models.User, input []int, guards ...WriteGuard) error {
 	if engine == nil || user.ID <= 0 {
 		return ErrDenied
 	}
@@ -194,6 +250,9 @@ func SetMembership(engine *xorm.Engine, user models.User, input []int) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := CheckWrite(tx, guards...); err != nil {
+		return err
+	}
 	updated := user
 	updated.SessionVersion++
 	updated.SecurityVersion++

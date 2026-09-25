@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/text/unicode/norm"
@@ -146,11 +147,11 @@ func (s *Service) GenerateRecoveryCodes(userID int, count int) ([]string, error)
 
 // GenerateRecoveryCodesContext 在请求取消时停止后续计算，并回滚尚未提交的恢复码轮换。
 // 单次 Argon2id 计算不可中断，因此每次计算前后检查取消，不降低原有密码强度。
-func (s *Service) GenerateRecoveryCodesContext(ctx context.Context, userID int, count int) ([]string, error) {
-	return s.generateRecoveryCodes(ctx, userID, count, password.Hash)
+func (s *Service) GenerateRecoveryCodesContext(ctx context.Context, userID int, count int, guards ...accountgroup.WriteGuard) ([]string, error) {
+	return s.generateRecoveryCodes(ctx, userID, count, password.Hash, guards...)
 }
 
-func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count int, hashSecret func(string) (string, error)) (codes []string, resultErr error) {
+func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count int, hashSecret func(string) (string, error), guards ...accountgroup.WriteGuard) (codes []string, resultErr error) {
 	if s == nil || s.engine == nil {
 		return nil, ErrUnavailable
 	}
@@ -209,6 +210,9 @@ func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count i
 		return nil, fmt.Errorf("begin recovery code transaction: %w", err)
 	}
 	defer session.Rollback()
+	if err := accountgroup.CheckWrite(session, guards...); err != nil {
+		return nil, err
+	}
 	now := s.now()
 	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		_ = session.Rollback()
@@ -263,8 +267,6 @@ func (s *Service) ConsumeRecoveryCodeWithSession(session *xorm.Session, userID i
 	if len(code) < 12 || len(code) > 64 {
 		return ErrInvalidCode
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return s.consumeRecoveryCode(session, userID, code)
 }
 
@@ -315,7 +317,7 @@ func (s *Service) HasValidRecoveryCode(userID int) (bool, error) {
 }
 
 // RevokeRecoveryCodes 撤销用户现有的离线恢复码，但保留密保问题。
-func (s *Service) RevokeRecoveryCodes(userID int) error {
+func (s *Service) RevokeRecoveryCodes(userID int, guards ...accountgroup.WriteGuard) error {
 	if s == nil || s.engine == nil {
 		return ErrUnavailable
 	}
@@ -325,10 +327,19 @@ func (s *Service) RevokeRecoveryCodes(userID int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	if _, err := s.engine.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+	session := s.engine.NewSession()
+	defer session.Close()
+	if err := session.Begin(); err != nil {
+		return err
+	}
+	defer session.Rollback()
+	if err := accountgroup.CheckWrite(session, guards...); err != nil {
+		return err
+	}
+	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		return fmt.Errorf("revoke recovery codes: %w", err)
 	}
-	return nil
+	return session.Commit()
 }
 
 // RevokeAll 撤销用户的恢复码、密保问题、安全密钥及邮件授权码。
@@ -352,8 +363,6 @@ func (s *Service) RevokeAllWithSession(session *xorm.Session, userID int) error 
 	if userID <= 0 {
 		return ErrInvalidUser
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	now := s.now()
 	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		return fmt.Errorf("revoke recovery codes: %w", err)

@@ -12,6 +12,13 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 )
 
+func accountWriteGuard(ctx *context.Context, target models.User) accountgroup.WriteGuard {
+	if ctx == nil {
+		return nil
+	}
+	return accountgroup.Guard(ctx.UserID, ctx.EffectiveRole(), ctx.SessionVersion, ctx.SecurityVersion, target)
+}
+
 func requireAccountScope(ctx *context.Context, w http.ResponseWriter, targetID int) bool {
 	if ctx == nil || !accountgroup.CanAccess(db.Instance, ctx.UserID, ctx.EffectiveRole(), targetID) {
 		writeSecurityError(w, response.NoAccessPrivileges, "无权查看或管理该账号")
@@ -110,7 +117,7 @@ func SetAccountGroupMembership(ctx *context.Context, w http.ResponseWriter, req 
 		writeAccountGroupError(w, accountgroup.ErrConflict)
 		return
 	}
-	if err := accountgroup.SetMembership(db.Instance, user, input.GroupIDs); err != nil {
+	if err := accountgroup.SetMembership(db.Instance, user, input.GroupIDs, accountWriteGuard(ctx, user)); err != nil {
 		writeAccountGroupError(w, err)
 		return
 	}

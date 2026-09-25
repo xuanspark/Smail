@@ -10,6 +10,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/accountgroup"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -64,6 +65,14 @@ func loadManagedSecurityUser(ctx *context.Context, w http.ResponseWriter, userID
 	return &target, true
 }
 
+func writeManagedScopeError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, accountgroup.ErrDenied) || errors.Is(err, accountgroup.ErrConflict) {
+		writeAccountGroupError(w, err)
+		return true
+	}
+	return false
+}
+
 func managedUserIDFromQuery(req *http.Request) int {
 	if req == nil || req.URL == nil {
 		return 0
@@ -112,8 +121,11 @@ func GenerateManagedRecoveryCodes(ctx *context.Context, w http.ResponseWriter, r
 		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
 		return
 	}
-	codes, err := service.GenerateRecoveryCodesContext(recoveryRequestContext(req), target.ID, input.Count)
+	codes, err := service.GenerateRecoveryCodesContext(recoveryRequestContext(req), target.ID, input.Count, accountWriteGuard(ctx, *target))
 	if err != nil {
+		if writeManagedScopeError(w, err) {
+			return
+		}
 		if writePasswordBusy(w, err) {
 			return
 		}
@@ -145,7 +157,10 @@ func RevokeManagedRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req
 		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
 		return
 	}
-	if err := service.RevokeRecoveryCodes(target.ID); err != nil {
+	if err := service.RevokeRecoveryCodes(target.ID, accountWriteGuard(ctx, *target)); err != nil {
+		if writeManagedScopeError(w, err) {
+			return
+		}
 		log.WithContext(ctx).WithError(err).Error("revoke managed recovery codes failed")
 		writeSecurityError(w, response.ServerError, "撤销安全码失败")
 		return
@@ -230,8 +245,11 @@ func ChangeManagedExternalEmail(ctx *context.Context, w http.ResponseWriter, req
 		UserID: target.ID,
 		Email:  normalizedEmail,
 		Type:   emailType,
-	})
+	}, accountWriteGuard(ctx, *target))
 	if err != nil {
+		if writeManagedScopeError(w, err) {
+			return
+		}
 		if errors.Is(err, externalemail.ErrBindingExists) {
 			writeSecurityError(w, response.ParamsError, "该外部邮箱已经绑定或正在被其他账号使用")
 			return
@@ -295,7 +313,10 @@ func VerifyManagedExternalEmail(ctx *context.Context, w http.ResponseWriter, req
 		writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
 		return
 	}
-	if err := runtime.external.VerifyReplacement(target.ID, input.BindingID); err != nil {
+	if err := runtime.external.VerifyReplacement(target.ID, input.BindingID, accountWriteGuard(ctx, *target)); err != nil {
+		if writeManagedScopeError(w, err) {
+			return
+		}
 		log.WithContext(ctx).WithError(err).Error("verify managed external email replacement failed")
 		writeSecurityError(w, response.ParamsError, "外部邮箱替换失败")
 		return

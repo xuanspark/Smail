@@ -172,7 +172,7 @@ func SetNotificationAuthorization(ctx *context.Context, w http.ResponseWriter, r
 	if !ok {
 		return
 	}
-	err := notification.SetAuthorization(db.Instance, *user, input.Version, *input.Enabled, input.MinuteLimit, input.DayLimit)
+	err := notification.SetAuthorization(db.Instance, *user, input.Version, *input.Enabled, input.MinuteLimit, input.DayLimit, accountWriteGuard(ctx, *user))
 	recordNotificationManagement(ctx, user.ID, "设置系统通知授权", err, map[string]any{"enabled": *input.Enabled, "minute_limit": input.MinuteLimit, "day_limit": input.DayLimit})
 	if err != nil {
 		writeNotificationError(w, err)
@@ -191,7 +191,7 @@ func RotateNotificationCredential(ctx *context.Context, w http.ResponseWriter, r
 	if !ok {
 		return
 	}
-	code, err := notification.Rotate(db.Instance, *user, input.Version)
+	code, err := notification.Rotate(db.Instance, *user, input.Version, accountWriteGuard(ctx, *user))
 	recordNotificationManagement(ctx, user.ID, "重置系统通知凭据", err, nil)
 	if err != nil {
 		writeNotificationError(w, err)
@@ -212,6 +212,10 @@ func recordNotificationManagement(ctx *context.Context, userID int, action strin
 }
 
 func writeNotificationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, accountgroup.ErrDenied) || errors.Is(err, accountgroup.ErrConflict) {
+		writeAccountGroupError(w, err)
+		return
+	}
 	switch {
 	case errors.Is(err, notification.ErrConflict):
 		writeSecurityError(w, response.ParamsError, "授权状态已变化，请刷新后重试")
