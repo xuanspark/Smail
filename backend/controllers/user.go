@@ -423,6 +423,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}()
 	updateColumns := []string{"name", "disabled", "role", "is_admin"}
 	if err := accountgroup.CheckWrite(tx, writeGuard); err != nil {
+		_ = tx.Rollback()
 		writeAccountGroupError(w, err)
 		return
 	}
@@ -435,15 +436,18 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	update := tx.ID(user.ID).Where("session_version = ? AND security_version = ?", originalSessionVersion, originalSecurityVersion).Cols(updateColumns...)
 	accountgroup.ApplyScope(update, ctx.UserID, ctx.EffectiveRole())
 	if num, err := update.Update(&user); err != nil {
+		_ = tx.Rollback()
 		log.WithContext(ctx).WithError(err).Error("update user failed")
 		response.NewErrorResponse(response.ServerError, "更新用户失败", "").FPrint(w)
 		return
 	} else if num == 0 {
+		_ = tx.Rollback()
 		response.NewErrorResponse(response.ServerError, "没有可更新的数据", "").FPrint(w)
 		return
 	}
 	if reqData.Password != "" {
 		if err := credentialService.RevokeAllWithSession(tx, user.ID); err != nil {
+			_ = tx.Rollback()
 			log.WithContext(ctx).WithError(err).Error("revoke target credentials failed")
 			response.NewErrorResponse(response.ServerError, "撤销目标用户安全凭据失败", "").FPrint(w)
 			return
@@ -452,15 +456,18 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if user.EffectiveRole() != access.RoleAdmin {
 		count, err := tx.Where("user_id = ?", user.ID).Count(&models.AccountGroupMember{})
 		if err != nil {
+			_ = tx.Rollback()
 			writeAccountGroupError(w, err)
 			return
 		}
 		if count > 1 {
+			_ = tx.Rollback()
 			writeSecurityError(w, response.ParamsError, "请先将账号调整为一个分组，再更改为普通用户")
 			return
 		}
 	}
 	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
 		log.WithContext(ctx).WithError(err).Error("commit user update failed")
 		response.NewErrorResponse(response.ServerError, "更新用户失败", "").FPrint(w)
 		return

@@ -130,20 +130,24 @@ func ModifyPassword(ctx *context.Context, w http.ResponseWriter, req *http.Reque
 	affected, err := tx.Where("id = ? and password = ? and session_version = ? and security_version = ? and disabled = 0", ctx.UserID, currentUser.Password, currentUser.SessionVersion, currentUser.SecurityVersion).Cols("password", "session_version", "security_version", "must_change_password", "password_changed_at").Update(&user)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("update password failed")
+		_ = tx.Rollback()
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
 	}
 	if affected != 1 {
+		_ = tx.Rollback()
 		log.WithContext(ctx).Warn("password changed concurrently")
 		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
 	}
 	if err := credentialService.RevokeAllWithSession(tx, ctx.UserID); err != nil {
+		_ = tx.Rollback()
 		log.WithContext(ctx).WithError(err).Error("revoke credentials after password change failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
 	}
 	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
 		log.WithContext(ctx).WithError(err).Error("commit password change failed")
 		response.NewErrorResponse(response.ServerError, i18n.GetText(ctx.Lang, "unknowError"), "").FPrint(w)
 		return
