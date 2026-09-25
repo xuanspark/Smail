@@ -3,19 +3,18 @@
 }
 
 .settings-header {
-  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .settings-header h3 {
   font-size: 18px;
   font-weight: 600;
   color: var(--pm-text-primary);
-  margin: 0 0 8px 0;
-}
-
-.settings-desc {
-  font-size: 14px;
-  color: var(--pm-text-secondary);
   margin: 0;
 }
 
@@ -175,7 +174,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
 }
 
 .account-group-panel {
@@ -224,12 +222,6 @@
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
   background: var(--pm-bg-secondary);
-}
-
-.membership-options-title {
-  padding: 0 6px;
-  color: var(--pm-text-secondary);
-  font-size: 12px;
 }
 
 .membership-option {
@@ -312,12 +304,4 @@
 .membership-manage-button {
   flex: 0 0 auto;
   margin: 0;
-}
-
-.membership-hint {
-  width: 100%;
-  margin: 8px 0 0;
-  color: var(--pm-text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
 }

@@ -2,8 +2,6 @@
   <div class="settings-card">
     <div class="settings-header">
       <h3>{{ lang.account_management }}</h3>
-      <p class="settings-desc">{{ lang.account_management_desc }}</p>
-      <p class="settings-desc">仅显示权限范围内的成员。新账号默认归入默认分组；分组及成员归属由超级管理员维护。</p>
       <div class="group-toolbar">
         <el-button v-if="canCreateUser" type="primary" :disabled="groupsLoading" @click="createUser">
           <el-icon><Plus /></el-icon> 新建账号
@@ -123,10 +121,11 @@
       <p>账号：{{ membershipUser?.Account }}</p>
       <el-form label-position="top">
         <el-form-item label="所属分组">
-          <fieldset class="membership-options" :disabled="groupSaving">
-            <legend class="membership-options-title">
-              {{ membershipLimit > 1 ? '管理员可勾选多个分组' : '请选择一个分组' }}
-            </legend>
+          <fieldset
+            class="membership-options"
+            :aria-label="membershipLimit > 1 ? '所属分组（可多选）' : '所属分组（单选）'"
+            :disabled="groupSaving"
+          >
             <label
               v-for="group in accountGroups"
               :key="group.id"
@@ -151,11 +150,7 @@
           </fieldset>
         </el-form-item>
       </el-form>
-      <p class="settings-desc">管理员可以多选；普通用户只能选择一个分组。</p>
-      <p v-if="membershipDraft" class="settings-desc">
-        此处仅应用到编辑草稿，点击编辑用户的“确认”后，权限级别和分组才会一起保存。
-      </p>
-      <el-alert title="修改归属会使该账号的旧登录会话和通知发信凭据失效，需要重新登录并配置通知凭据。" type="warning" :closable="false" />
+      <el-alert title="变更分组后需重新登录并重建通知发信凭据。" type="warning" :closable="false" />
       <template #footer>
         <el-button :disabled="groupSaving" @click="membershipVisible = false">取消</el-button>
         <el-button type="primary" :loading="groupSaving" @click="saveMembership">
@@ -240,12 +235,6 @@
                 分组管理
               </el-button>
             </div>
-            <p v-if="canManageGroups" class="membership-hint">
-              分组选择跟随当前权限级别，点击“确认”后与其他修改一起保存；取消则不保存。
-            </p>
-            <p v-else class="membership-hint">
-              仅显示你有权查看的分组，成员归属由超级管理员维护。
-            </p>
           </el-form-item>
 
           <div v-if="editModel === 'edit'" class="security-edit-grid">
