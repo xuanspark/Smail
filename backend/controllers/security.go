@@ -995,8 +995,38 @@ func currentUserPrimaryEmail(userID int, email string) (bool, error) {
 	if db.Instance == nil || userID <= 0 {
 		return false, errors.New("database is unavailable")
 	}
+	normalizedEmail, err := externalemail.NormalizeEmail(email)
+	if err != nil {
+		return false, err
+	}
 	var binding models.UserEmail
-	return db.Instance.Where("user_id = ? AND verified_at IS NOT NULL AND status != ? AND is_primary = 1 AND (address_canonical = ? OR LOWER(address) = ?)", userID, 3, email, email).Limit(1).Get(&binding)
+	owned, err := db.Instance.Where("user_id = ? AND verified_at IS NOT NULL AND status != ? AND is_primary = 1 AND (address_canonical = ? OR LOWER(address) = ?)", userID, 3, normalizedEmail, normalizedEmail).Limit(1).Get(&binding)
+	if err != nil || owned {
+		return owned, err
+	}
+
+	// 本地收信按账号和域名路由，新建账号不一定存在独立的主邮箱绑定记录。
+	parts := strings.SplitN(normalizedEmail, "@", 2)
+	domains := config.CurrentMailDomains()
+	localDomain := strings.EqualFold(parts[1], domains.Primary)
+	for _, domain := range domains.Accepted {
+		if strings.EqualFold(parts[1], domain) {
+			localDomain = true
+			break
+		}
+	}
+	if !localDomain {
+		return false, nil
+	}
+	var user models.User
+	found, err := db.Instance.ID(userID).Get(&user)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, errors.New("user is unavailable")
+	}
+	return strings.EqualFold(parts[0], user.Account), nil
 }
 
 func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
@@ -1008,6 +1038,16 @@ func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.
 	var input verificationCheckRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || input.BindingID <= 0 {
 		writeSecurityError(w, response.ParamsError, "验证失败")
+		return
+	}
+	// 确认时重新检查归属，拒绝修复前创建或域名配置变化后的自身邮箱挑战。
+	owned, err := currentUserPrimaryEmail(ctx.UserID, input.Email)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "验证失败")
+		return
+	}
+	if owned {
+		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
 		return
 	}
 	if err := runtime.verification.VerifyBound(input.ID, ctx.UserAccount, input.Email, input.Code, verification.PurposeExternalEmailBind, input.BindingID, remoteIP(req)); err != nil {
@@ -1036,6 +1076,15 @@ func VerifyOwnExternalEmail(ctx *context.Context, w http.ResponseWriter, req *ht
 	normalizedEmail, err := externalemail.NormalizeEmail(input.Email)
 	if err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
+		return
+	}
+	owned, err := currentUserPrimaryEmail(ctx.UserID, normalizedEmail)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "验证失败")
+		return
+	}
+	if owned {
+		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
 		return
 	}
 	if err := runtime.verification.VerifyBound(

@@ -301,6 +301,15 @@ func VerifyManagedExternalEmail(ctx *context.Context, w http.ResponseWriter, req
 		writeSecurityError(w, response.ParamsError, "验证失败")
 		return
 	}
+	owned, err := currentUserPrimaryEmail(target.ID, normalizedEmail)
+	if err != nil {
+		writeSecurityError(w, response.ParamsError, "验证失败")
+		return
+	}
+	if owned {
+		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
+		return
+	}
 	if err := runtime.verification.VerifyBound(
 		input.ChallengeID,
 		target.Account,
