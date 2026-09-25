@@ -194,13 +194,18 @@
                 <el-tag
                   v-for="group in selectedMembershipGroups"
                   :key="group.id"
-                  effect="plain"
+                  class="membership-tag"
+                  :class="{ 'membership-tag-default': group.id === 0 }"
+                  effect="light"
                 >
                   {{ group.name }}
                 </el-tag>
               </div>
               <el-button
                 v-if="canManageGroups"
+                class="membership-manage-button"
+                type="primary"
+                plain
                 :disabled="submitting || groupSaving || groupsLoading || Boolean(groupsError)"
                 @click="openMembershipDialog"
               >

@@ -225,22 +225,56 @@
   flex-wrap: wrap;
   gap: 12px;
   width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--pm-border-color);
+  border-radius: var(--pm-radius-sm);
+  background: var(--pm-bg-secondary);
 }
 
 .membership-tags {
   display: flex;
+  flex: 1 1 160px;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
 
-.membership-tags :deep(.el-tag) {
+.membership-tags .membership-tag {
   height: auto;
+  min-height: 30px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border-color: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
+.membership-tags .membership-tag-default {
+  color: var(--pm-text-secondary);
+  background: var(--el-fill-color);
+  border-color: var(--pm-border-color);
+}
+
+.membership-tags :deep(.el-tag__content) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.membership-manage-button {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .membership-hint {
+  width: 100%;
   margin: 8px 0 0;
   color: var(--pm-text-secondary);
   font-size: 12px;
