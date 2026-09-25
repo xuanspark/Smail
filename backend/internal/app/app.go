@@ -15,6 +15,11 @@ import (
 
 // Run 启动 Smail 主服务。
 func Run() (err error) {
+	// 版本查询必须先于部署初始化，不能触发配置迁移、日志写入或服务监听。
+	if len(os.Args) == 2 && (os.Args[1] == `--version` || os.Args[1] == `version`) {
+		_, err := fmt.Fprintln(os.Stdout, buildinfo.Current().Version)
+		return err
+	}
 	if err := config.InitializeDeployment(config.ROOT_PATH); err != nil {
 		return err
 	}
