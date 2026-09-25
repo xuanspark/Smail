@@ -3,7 +3,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { isRecentAuthenticationCancelled, requestWithRecentAuthentication } from '@/utils/recentAuthentication'
 
-export function useAccountGroups(globalStatus) {
+export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   const accountGroups = ref([])
   const groupsLoading = ref(false)
   const groupsError = ref('')
@@ -125,6 +125,13 @@ export function useAccountGroups(globalStatus) {
         group_ids: [...membershipSelection.value]
       }))
       if (response?.errorNo !== 0) throw new Error(response?.errorMsg || '保存成员分组失败')
+      const updatedUser = {
+        ...membershipUser.value,
+        GroupIDs: [...membershipSelection.value],
+        MembershipVersion: response.data.membership_version
+      }
+      membershipUser.value = updatedUser
+      onMembershipSaved(updatedUser)
       membershipVisible.value = false
       ElMessage.success('成员分组已更新，目标账号需重新登录')
       await refreshGroups()

@@ -217,3 +217,32 @@
 .membership-select {
   width: 100%;
 }
+
+.membership-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.membership-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.membership-tags :deep(.el-tag) {
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.membership-hint {
+  margin: 8px 0 0;
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}

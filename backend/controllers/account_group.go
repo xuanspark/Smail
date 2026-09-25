@@ -122,7 +122,10 @@ func SetAccountGroupMembership(ctx *context.Context, w http.ResponseWriter, req 
 		return
 	}
 	InvalidateSecurityRuntimeUser(user.ID, user.Account)
-	response.NewSuccessResponse(map[string]any{"user_id": user.ID}).FPrint(w)
+	response.NewSuccessResponse(map[string]any{
+		"user_id":            user.ID,
+		"membership_version": user.SecurityVersion + 1,
+	}).FPrint(w)
 }
 
 func writeAccountGroupError(w http.ResponseWriter, err error) {

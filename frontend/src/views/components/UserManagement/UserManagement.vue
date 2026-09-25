@@ -119,7 +119,7 @@
       </div>
     </section>
 
-    <el-dialog v-model="membershipVisible" title="设置账号所属分组" width="450px" :close-on-click-modal="!groupSaving" :close-on-press-escape="!groupSaving" :show-close="!groupSaving">
+    <el-dialog v-model="membershipVisible" title="设置账号所属分组" width="450px" :close-on-click-modal="!groupSaving" :close-on-press-escape="!groupSaving" :show-close="!groupSaving" append-to-body>
       <p>账号：{{ membershipUser?.Account }}</p>
       <el-form label-position="top">
         <el-form-item label="所属分组">
@@ -186,6 +186,33 @@
             <span v-if="roleChanged && !selectedUser?.RecoveryCodeConfigured" class="role-requirement">
               更改级别前，请先在下方配置该用户的安全码。
             </span>
+          </el-form-item>
+
+          <el-form-item v-if="editModel === 'edit'" label="所属分组">
+            <div class="membership-summary">
+              <div class="membership-tags">
+                <el-tag
+                  v-for="group in selectedMembershipGroups"
+                  :key="group.id"
+                  effect="plain"
+                >
+                  {{ group.name }}
+                </el-tag>
+              </div>
+              <el-button
+                v-if="canManageGroups"
+                :disabled="submitting || groupSaving || groupsLoading || Boolean(groupsError)"
+                @click="openMembershipDialog"
+              >
+                分组管理
+              </el-button>
+            </div>
+            <p v-if="canManageGroups" class="membership-hint">
+              分组单独保存，不会提交本窗口其他修改；选择数量按账号已保存的权限级别校验。
+            </p>
+            <p v-else class="membership-hint">
+              仅显示你有权查看的分组，成员归属由超级管理员维护。
+            </p>
           </el-form-item>
 
           <div v-if="editModel === 'edit'" class="security-edit-grid">
@@ -301,6 +328,8 @@ const {
   roleChanged,
   submitting,
   selectedUser,
+  selectedMembershipGroups,
+  openMembershipDialog,
   editingCurrentUser,
   recoveryCodeWebManaged,
   recoveryCodeDialogVisible,

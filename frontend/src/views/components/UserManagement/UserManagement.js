@@ -48,13 +48,30 @@ export function canManageRecoveryCode(user) {
 export function usePage() {
   const globalStatus = useGlobalStatusStore()
 
-  const groups = useAccountGroups(globalStatus)
+  const groups = useAccountGroups(globalStatus, user => {
+    if (selectedUser.value?.ID === user.ID) selectedUser.value = user
+  })
   
   const userInfoDialog = ref(false)
   
   const editModel = ref("edit")
 
   const selectedUser = ref(null)
+
+  const selectedMembershipGroups = computed(() => {
+    const user = selectedUser.value
+    if (!user) return []
+    return groups.accountGroups.value.filter(group =>
+      groups.canManageGroups.value
+        ? (user.GroupIDs || [0]).includes(group.id)
+        : group.rows.some(member => member.ID === user.ID)
+    )
+  })
+
+  const openMembershipDialog = () => {
+    if (submitting.value || !selectedUser.value) return
+    groups.editMembership(selectedUser.value)
+  }
 
   const recoveryCodeDialogVisible = ref(false)
 
@@ -219,6 +236,8 @@ export function usePage() {
     roleChanged,
     submitting,
     selectedUser,
+    selectedMembershipGroups,
+    openMembershipDialog,
     editingCurrentUser,
     recoveryCodeWebManaged,
     recoveryCodeDialogVisible,
