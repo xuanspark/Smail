@@ -20,6 +20,7 @@ const lazySettings = loader => defineAsyncComponent({
 })
 const SecuritySettings = lazySettings(() => import('../SecuritySettings/SecuritySettings.vue'))
 const ThirdPartyAuthorization = lazySettings(() => import('../ThirdPartyAuthorization/ThirdPartyAuthorization.vue'))
+const SystemNotification = lazySettings(() => import('../SystemNotification/SystemNotification.vue'))
 const ConfigSettings = lazySettings(() => import('../ConfigSettings/ConfigSettings.vue'))
 const GroupSettings = lazySettings(() => import('../GroupSettings/GroupSettings.vue'))
 const RuleSettings = lazySettings(() => import('../RuleSettings/RuleSettings.vue'))
@@ -50,6 +51,7 @@ export function usePage() {
   const settingsMenu = computed(() => [
     { key: 'security', label: lang.security, hint: '账号与登录保护', icon: Lock, component: SecuritySettings, capability: 'password.change_own' },
     { key: 'third-party', label: '邮件客户端', hint: '当前账号协议授权', icon: Connection, component: ThirdPartyAuthorization, capability: 'user.read' },
+    { key: 'system-notification', label: '系统通知发信', hint: '逐账号授权，仅发信', icon: Connection, component: SystemNotification, capability: 'user.read' },
     { key: 'config', label: '配置管理', hint: '服务与运行配置', icon: Setting, component: ConfigSettings, capability: 'config.read' },
     { key: 'group', label: lang.group_settings, hint: '邮箱分组管理', icon: FolderOpened, component: GroupSettings, capability: 'user.read' },
     { key: 'rule', label: lang.rule_setting, hint: '邮件处理规则', icon: Filter, component: RuleSettings, capability: 'user.read' },

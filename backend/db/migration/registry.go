@@ -39,6 +39,7 @@ func DefaultMigrations() []Migration {
 			DialectMySQL:    {configstate.Schema("mysql")},
 			DialectPostgres: {configstate.Schema("postgres")},
 		}),
+		DefineForDialects(25, "create_notification_grants", notificationGrantStatements()),
 	}
 }
 

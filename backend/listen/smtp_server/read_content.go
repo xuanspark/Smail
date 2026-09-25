@@ -22,6 +22,7 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/logstore"
+	"git.pcux.cn/xuans/Smail/services/notification"
 	"git.pcux.cn/xuans/Smail/services/rule"
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/async"
@@ -58,6 +59,9 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 		if s.Ctx.UserID > 0 {
 			direction = "submission"
 			details.Trigger = "SMTP 客户端提交"
+			if s.isNotification() {
+				details.Trigger = "系统通知 SMTP 提交"
+			}
 		}
 		if result == "failure" {
 			details.Outcome = details.Stage + "失败"
@@ -84,13 +88,17 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 
 	log.WithContext(ctx).Debugf("收到邮件")
 
-	emailData, err := io.ReadAll(io.LimitReader(r, maxSMTPMessageBytes+1))
+	messageLimit := int64(maxSMTPMessageBytes)
+	if s.isNotification() {
+		messageLimit = notification.MaxMessageBytes
+	}
+	emailData, err := io.ReadAll(io.LimitReader(r, messageLimit+1))
 	messageBytes = len(emailData)
 	if err != nil {
 		log.WithContext(ctx).Error("邮件内容无法读取", err)
 		return err
 	}
-	if len(emailData) > maxSMTPMessageBytes {
+	if int64(len(emailData)) > messageLimit {
 		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message size exceeds fixed maximum message size"}
 	}
 	// DATA 上传期间也可能撤销授权，读取完成后必须再次复核。
@@ -110,7 +118,7 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 	}
 	log.WithContext(ctx).Debugf("开始执行插件ReceiveParseBefore End！")
 
-	if len(emailData) > maxSMTPMessageBytes {
+	if int64(len(emailData)) > messageLimit {
 		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 3, 4}, Message: "Message size exceeds fixed maximum message size"}
 	}
 	details.Stage = "解析与校验邮件"
@@ -140,7 +148,7 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 	// 判断是收信还是转发，只要是登陆了，都当成转发处理
 	if s.Ctx.UserID > 0 {
 		details.Stage = "校验发件权限"
-		if !authorizedSubmissionEmail(email, s.From, ctx) {
+		if !s.authorizedSubmission(email) {
 			return oerrors.New("No Auth")
 		}
 
@@ -157,12 +165,22 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 		if email == nil {
 			return nil
 		}
-		if !authorizedSubmissionEmail(email, s.From, ctx) {
+		if !s.authorizedSubmission(email) {
 			return oerrors.New("No Auth")
 		}
 
 		details.Stage = "保存并投递客户端邮件"
-		resultErr = s.deliverOutgoingEmail(email, send.Send)
+		sender := outgoingSender(send.Send)
+		if s.isNotification() {
+			details.Stage = "校验系统通知配额并投递"
+			if err := s.prepareNotification(email, len(emailData)); err != nil {
+				return err
+			}
+			sender = func(ctx *context.Context, email *parsemail.Email) (error, map[string]error) {
+				return send.SendTriggered(ctx, email, "系统通知 SMTP 发信")
+			}
+		}
+		resultErr = s.deliverOutgoingEmail(email, sender)
 		if resultErr == nil {
 			result = "accepted"
 		}

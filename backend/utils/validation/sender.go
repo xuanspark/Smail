@@ -6,6 +6,9 @@ import (
 )
 
 func IsAuthorizedSender(address, account string, allowLocalAlias bool, domains []string) bool {
+	if IsNotificationAddress(address, domains) {
+		return false
+	}
 	address = strings.TrimSpace(address)
 	parsed, err := mail.ParseAddress(address)
 	if err != nil || parsed.Address != address {

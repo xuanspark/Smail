@@ -9,6 +9,8 @@ type Endpoint struct {
 }
 
 var managementEndpoints = []Endpoint{
+	{Method: "POST", Path: "/api/v1/system/notification/authorization", Capability: CapabilityNotificationManage},
+	{Method: "POST", Path: "/api/v1/system/notification/credential", Capability: CapabilityNotificationManage},
 	{Method: "POST", Path: "/api/settings/modify_password", Capability: CapabilityPasswordChangeOwn},
 	{Method: "POST", Path: "/api/user/create", Capability: CapabilityUserCreate},
 	{Method: "POST", Path: "/api/user/profile", Capability: CapabilityProfileWriteOwn},

@@ -63,6 +63,10 @@ func Authorize(request Request) error {
 
 func authorizeResource(request Request) error {
 	switch request.Capability {
+	case CapabilityNotificationManage:
+		if !CanManageNotification(request.ActorRole, request.TargetRole, request.OwnResource) {
+			return deny(CodeTargetRoleDenied)
+		}
 	case CapabilityPasswordChangeOwn, CapabilityPluginWriteOwn, CapabilityProfileWriteOwn:
 		if !request.OwnResource {
 			return deny(CodeAccessDenied)
@@ -110,6 +114,11 @@ func canManageAccountTarget(actor Role, target Role) bool {
 	default:
 		return false
 	}
+}
+
+// 通知授权不改变账号角色；管理员只管理本人和普通用户，不能操作其他管理员。
+func CanManageNotification(actor, target Role, own bool) bool {
+	return target.Valid() && (actor == RoleSuperAdmin || actor == RoleAdmin && (target == RoleUser || own && target == RoleAdmin))
 }
 
 func canManagePluginTarget(actor Role, target Role) bool {

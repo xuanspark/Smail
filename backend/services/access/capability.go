@@ -25,6 +25,7 @@ const (
 	CapabilityPasswordReset      Capability = "password.reset"
 	CapabilityAuditRead          Capability = "audit.read"
 	CapabilityAuditExport        Capability = "audit.export"
+	CapabilityNotificationManage Capability = "notification.manage"
 )
 
 type Policy struct {
@@ -36,6 +37,7 @@ type Policy struct {
 }
 
 var policies = map[Capability]Policy{
+	CapabilityNotificationManage: {Capability: CapabilityNotificationManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityConfigRead:         {Capability: CapabilityConfigRead},
 	CapabilityConfigWriteGlobal:  {Capability: CapabilityConfigWriteGlobal, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
 	CapabilityConfigRollback:     {Capability: CapabilityConfigRollback, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
@@ -62,6 +64,7 @@ var policies = map[Capability]Policy{
 
 var grants = map[Role]map[Capability]struct{}{
 	RoleSuperAdmin: grant(
+		CapabilityNotificationManage,
 		CapabilityPluginReadGlobal, CapabilityUserCreate, CapabilityProfileWriteOwn,
 		CapabilityConfigRead, CapabilityConfigWriteGlobal, CapabilityConfigRollback,
 		CapabilityDatabaseMigrate, CapabilityPluginRead, CapabilityPluginControl,
@@ -71,6 +74,7 @@ var grants = map[Role]map[Capability]struct{}{
 		CapabilityAuditRead, CapabilityAuditExport,
 	),
 	RoleAdmin: grant(
+		CapabilityNotificationManage,
 		CapabilityPluginReadGlobal, CapabilityPluginRead, CapabilityPluginWriteGlobal, CapabilityProfileWriteOwn,
 		CapabilityPluginWriteAnyUser, CapabilityPluginWriteOwn, CapabilityUserRead,
 		CapabilityUserManage, CapabilityUserSecurityManage, CapabilityPasswordChangeOwn, CapabilityPasswordReset,

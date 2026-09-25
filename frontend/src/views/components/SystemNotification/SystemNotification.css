@@ -1,0 +1,61 @@
+.notification-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  color: var(--el-text-color-primary);
+}
+
+.notification-header,
+.notification-heading,
+.notification-actions,
+.notification-limits {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.notification-header,
+.notification-heading {
+  justify-content: space-between;
+}
+
+.notification-settings h2,
+.notification-settings h3 {
+  margin: 0 0 10px;
+}
+
+.notification-header p,
+.notification-hint {
+  margin: 6px 0 14px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.notification-panel {
+  min-height: 80px;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 10px;
+  background: var(--el-bg-color);
+}
+
+.notification-actions {
+  margin-bottom: 22px;
+}
+
+.notification-warning {
+  color: var(--el-color-warning-dark-2);
+}
+
+.notification-panel code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.notification-panel .el-pagination,
+.notification-secret {
+  margin-top: 16px;
+}

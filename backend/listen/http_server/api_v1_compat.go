@@ -11,6 +11,7 @@ import (
 
 // registerV1Routes 注册业务 API 的稳定版本入口。旧入口仍然保留，便于已有客户端平滑迁移。
 func registerV1Routes(mux *http.ServeMux) {
+	registerNotificationRoutes(mux)
 	registerV1MethodRoute(mux, "/api/v1/security/setup/acknowledge", "/api/security/setup/acknowledge", http.MethodPost, 4<<10, controllers.AcknowledgeSecuritySetup)
 	registerV1MethodRoute(mux, "/api/v1/login", "/api/login", http.MethodPost, 64<<10, controllers.Login)
 	registerV1MethodRoute(mux, "/api/v1/security/reauth", "/api/security/reauth", http.MethodPost, 4<<10, controllers.ReauthenticateCurrentUser)
@@ -99,6 +100,13 @@ func registerV1MethodRoute(mux *http.ServeMux, path string, legacyPath string, m
 		wrapped = limitBody(maxBody, wrapped)
 	}
 	mux.HandleFunc(path, onlyMethod(method, wrapped))
+}
+
+func registerNotificationRoutes(mux *http.ServeMux) {
+	registerV1MethodRoute(mux, "/api/v1/system/notification/status", "/api/system/notification/status", http.MethodGet, 0, controllers.GetNotificationStatus)
+	registerV1MethodRoute(mux, "/api/v1/system/notification/accounts", "/api/system/notification/accounts", http.MethodGet, 0, controllers.ListNotificationAccounts)
+	registerV1MethodRoute(mux, "/api/v1/system/notification/authorization", "/api/system/notification/authorization", http.MethodPost, 4<<10, controllers.SetNotificationAuthorization)
+	registerV1MethodRoute(mux, "/api/v1/system/notification/credential", "/api/system/notification/credential", http.MethodPost, 4<<10, controllers.RotateNotificationCredential)
 }
 
 func registerV1SenderFiltersRoute(mux *http.ServeMux) {

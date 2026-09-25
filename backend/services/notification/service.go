@@ -1,0 +1,192 @@
+package notification
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"strings"
+	"time"
+
+	"git.pcux.cn/xuans/Smail/models"
+	"xorm.io/xorm"
+)
+
+const (
+	UsernamePrefix = "notify:"
+	DefaultMinuteLimit = 10
+	DefaultDayLimit = 100
+	MaxRecipients = 10
+	MaxMessageBytes = 1 << 20
+)
+
+var (
+	ErrDenied = errors.New("notification authorization denied")
+	ErrConflict = errors.New("notification authorization changed")
+	ErrQuota = errors.New("notification quota exceeded")
+	ErrUnavailable = errors.New("notification authorization unavailable")
+	ErrLimits = errors.New("invalid notification limits")
+)
+
+func IsUsername(username string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(username)), UsernamePrefix)
+}
+
+func Load(engine *xorm.Engine, userID int) (models.NotificationGrant, error) {
+	var item models.NotificationGrant
+	if engine == nil || userID <= 0 {
+		return item, ErrUnavailable
+	}
+	found, err := engine.ID(userID).Get(&item)
+	if err == nil && !found {
+		item = models.NotificationGrant{UserID: userID, MinuteLimit: DefaultMinuteLimit, DayLimit: DefaultDayLimit}
+	}
+	return item, err
+}
+
+func Configured(item models.NotificationGrant, user models.User) bool {
+	return item.Enabled == 1 && item.CodeHash != "" && user.Disabled == 0 && user.MustChangePassword == 0 &&
+		item.SessionVersion == user.SessionVersion && item.SecurityVersion == user.SecurityVersion
+}
+
+// SetAuthorization 使用版本条件避免覆盖其他管理员的修改；关闭时永久清除旧凭据。
+func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabled bool, minuteLimit, dayLimit int) error {
+	if minuteLimit < 1 || minuteLimit > 100 || dayLimit < minuteLimit || dayLimit > 10000 {
+		return ErrLimits
+	}
+	if enabled && (user.Disabled != 0 || user.MustChangePassword != 0) {
+		return ErrDenied
+	}
+	item, err := Load(engine, user.ID)
+	if err != nil {
+		return err
+	}
+	if item.CodeVersion != expected {
+		return ErrConflict
+	}
+	item.Enabled = 0
+	if enabled {
+		item.Enabled = 1
+	} else {
+		item.CodeHash = ""
+	}
+	item.MinuteLimit, item.DayLimit = minuteLimit, dayLimit
+	item.CodeVersion++
+	if expected == 0 {
+		_, err = engine.Insert(&item)
+		return err
+	}
+	affected, err := engine.ID(user.ID).Where("code_version = ?", expected).
+		Cols("enabled", "code_hash", "code_version", "minute_limit", "day_limit").Update(&item)
+	if err == nil && affected != 1 {
+		return ErrConflict
+	}
+	return err
+}
+
+// Rotate 仅返回一次明文。随机凭据具有 256 位熵，数据库只保存 SHA-256 摘要。
+func Rotate(engine *xorm.Engine, user models.User, expected int) (string, error) {
+	item, err := Load(engine, user.ID)
+	if err != nil {
+		return "", err
+	}
+	if item.Enabled != 1 || user.Disabled != 0 || user.MustChangePassword != 0 {
+		return "", ErrDenied
+	}
+	if item.CodeVersion != expected {
+		return "", ErrConflict
+	}
+	var entropy [32]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
+		return "", err
+	}
+	code := "sn_" + base64.RawURLEncoding.EncodeToString(entropy[:])
+	item.CodeHash = digest(code)
+	item.CodeVersion++
+	item.SessionVersion, item.SecurityVersion = user.SessionVersion, user.SecurityVersion
+	affected, err := engine.ID(user.ID).Where("code_version = ? AND enabled = 1", expected).
+		Cols("code_hash", "code_version", "session_version", "security_version").Update(&item)
+	if err != nil {
+		return "", err
+	}
+	if affected != 1 {
+		return "", ErrConflict
+	}
+	return code, nil
+}
+
+type Grant struct {
+	engine *xorm.Engine
+	userID int
+	version int
+	hash string
+	sessionVersion int
+	securityVersion int
+}
+
+func Authenticate(engine *xorm.Engine, user models.User, plain string) (*Grant, error) {
+	if len(plain) != 46 || !strings.HasPrefix(plain, "sn_") {
+		return nil, ErrDenied
+	}
+	item, err := Load(engine, user.ID)
+	if err != nil || !Configured(item, user) {
+		return nil, ErrDenied
+	}
+	if subtle.ConstantTimeCompare([]byte(item.CodeHash), []byte(digest(plain))) != 1 {
+		return nil, ErrDenied
+	}
+	return &Grant{engine, user.ID, item.CodeVersion, item.CodeHash, item.SessionVersion, item.SecurityVersion}, nil
+}
+
+func (g *Grant) Valid(engine *xorm.Engine) bool {
+	if g == nil || engine == nil || engine != g.engine {
+		return false
+	}
+	valid, err := engine.ID(g.userID).Where("enabled = 1 AND code_version = ? AND code_hash = ?", g.version, g.hash).
+		Exist(&models.NotificationGrant{})
+	if err != nil || !valid {
+		return false
+	}
+	valid, err = engine.ID(g.userID).Where("disabled = 0 AND must_change_password = 0 AND session_version = ? AND security_version = ?", g.sessionVersion, g.securityVersion).
+		Exist(&models.User{})
+	return err == nil && valid
+}
+
+// Reserve 将收件人数计入配额，重试和失败也计数；并发连接和服务重启不能绕过限制。
+func (g *Grant) Reserve(engine *xorm.Engine, recipients int, now time.Time) error {
+	if !g.Valid(engine) {
+		return ErrDenied
+	}
+	if recipients < 1 || recipients > MaxRecipients {
+		return ErrLimits
+	}
+	minute, day := now.UTC().Format("2006-01-02T15:04"), now.UTC().Format("2006-01-02")
+	result, err := engine.Exec(`UPDATE notification_grant SET
+		minute_count = CASE WHEN minute_key = ? THEN minute_count + ? ELSE ? END,
+		day_count = CASE WHEN day_key = ? THEN day_count + ? ELSE ? END,
+		minute_key = ?, day_key = ?
+		WHERE user_id = ? AND enabled = 1 AND code_version = ? AND code_hash = ?
+		AND ? <= minute_limit AND ? <= day_limit
+		AND (minute_key <> ? OR minute_count + ? <= minute_limit)
+		AND (day_key <> ? OR day_count + ? <= day_limit)`,
+		minute, recipients, recipients, day, recipients, recipients, minute, day,
+		g.userID, g.version, g.hash, recipients, recipients, minute, recipients, day, recipients)
+	if err != nil {
+		return ErrUnavailable
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ErrUnavailable
+	}
+	if affected != 1 {
+		return ErrQuota
+	}
+	return nil
+}
+
+func digest(plain string) string {
+	hash := sha256.Sum256([]byte(plain))
+	return hex.EncodeToString(hash[:])
+}

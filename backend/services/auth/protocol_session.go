@@ -7,16 +7,21 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/notification"
 )
 
 // ProtocolSession 保存不可变身份与凭据快照，拒绝后的连接不能通过重新启用恢复权限。
 type ProtocolSession struct {
 	user    models.User
 	grant   *credentials.ProtocolGrant
+	notification *notification.Grant
 	invalid atomic.Bool
 }
 
 func AuthenticateProtocolSession(protocol, remoteAddress, account, plain string) (*models.User, *ProtocolSession, error) {
+	if notification.IsUsername(account) {
+		return authenticateNotification(protocol, remoteAddress, account, plain)
+	}
 	var grant *credentials.ProtocolGrant
 	user, err := authenticateProtocol(protocol, remoteAddress, account, plain, &grant)
 	if err != nil {
@@ -36,7 +41,8 @@ func (s *ProtocolSession) Check() error {
 		return denied
 	}
 	engine := db.Instance
-	if engine != nil && s.grant.Valid(engine) {
+	validGrant := engine != nil && (s.grant.Valid(engine) || s.notification.Valid(engine))
+	if validGrant {
 		var user models.User
 		has, err := engine.ID(s.user.ID).Where("disabled = 0").Get(&user)
 		if err == nil && has && user.Account == s.user.Account && user.Password == s.user.Password &&

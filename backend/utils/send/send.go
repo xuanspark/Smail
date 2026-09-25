@@ -13,6 +13,7 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/consts"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/smtp"
+	"git.pcux.cn/xuans/Smail/utils/validation"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"net/mail"
@@ -134,6 +135,9 @@ func parseRecipientAddress(user *parsemail.User) (string, string, error) {
 		return "", "", errors.New("recipient is nil")
 	}
 	address := strings.TrimSpace(user.EmailAddress)
+	if validation.IsNotificationAddress(address, config.CurrentMailDomains().Accepted) {
+		return address, "", errors.New("notification address does not accept mail")
+	}
 	if address == "" || address != user.EmailAddress {
 		return address, "", errors.New("recipient address is empty or contains surrounding whitespace")
 	}

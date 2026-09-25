@@ -2,11 +2,15 @@ package smtp_server
 
 import (
 	"errors"
+	"strings"
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/services/notification"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/id"
 	"git.pcux.cn/xuans/Smail/utils/password"
+	"git.pcux.cn/xuans/Smail/utils/validation"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	log "github.com/sirupsen/logrus"
@@ -91,6 +95,9 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	if err := s.checkAuthorization(); err != nil {
 		return err
 	}
+	if s.isNotification() && !strings.EqualFold(from, validation.NotificationAddress(config.CurrentMailDomains().Primary)) {
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Notification sender is not authorized"}
+	}
 	log.WithContext(s.Ctx).Debug("SMTP MAIL accepted")
 	s.From = from
 	return nil
@@ -99,6 +106,12 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	if err := s.checkAuthorization(); err != nil {
 		return err
+	}
+	if validation.IsNotificationAddress(to, config.CurrentMailDomains().Accepted) {
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "Notification address does not accept mail"}
+	}
+	if s.isNotification() && len(s.To) >= notification.MaxRecipients {
+		return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 5, 3}, Message: "Too many notification recipients"}
 	}
 	log.WithContext(s.Ctx).Debug("SMTP RCPT accepted")
 
