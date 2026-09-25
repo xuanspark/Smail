@@ -1,4 +1,5 @@
 import axios from 'axios'
+import {useGlobalStatusStore} from '@/stores/useGlobalStatusStore';
 import lang from '../i18n/i18n';
 import {router} from "@/router";
 import {createLoginRedirectHandler} from "@/utils/navigation.mjs";
@@ -21,6 +22,11 @@ const http = axios.create({
 let redirectToLogin = null;
 
 function handleLoginRedirect() {
+    const currentRoute = router.currentRoute.value;
+    if (currentRoute?.name === 'login' || currentRoute?.name === 'login-verification') {
+        return Promise.resolve(false);
+    }
+    useGlobalStatusStore().clear();
     if (!redirectToLogin) {
         redirectToLogin = createLoginRedirectHandler(router);
     }
