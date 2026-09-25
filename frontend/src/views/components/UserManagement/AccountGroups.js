@@ -12,7 +12,13 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   const membershipVisible = ref(false)
   const membershipUser = ref(null)
   const membershipSelection = ref([])
+  const membershipDraft = ref(false)
+  let applyMembershipDraft = null
   const membershipLimit = computed(() => membershipUser.value?.Role === 'admin' ? 100 : 1)
+  const membershipSingleSelection = computed({
+    get: () => membershipSelection.value.length === 1 ? membershipSelection.value[0] : null,
+    set: value => { membershipSelection.value = [value] }
+  })
   let generation = 0
   let alive = true
   onBeforeUnmount(() => { alive = false; generation++ })
@@ -107,16 +113,27 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
     }
   }
 
-  const editMembership = user => {
+  const editMembership = (user, options = {}) => {
     if (!canManageGroups.value || groupSaving.value) return
-    membershipUser.value = user
-    membershipSelection.value = [...(user.GroupIDs || [0])]
+    membershipUser.value = { ...user, Role: options.role || user.Role }
+    membershipSelection.value = [...(options.groupIDs || user.GroupIDs || [0])]
+    applyMembershipDraft = options.onApply || null
+    membershipDraft.value = Boolean(applyMembershipDraft)
     membershipVisible.value = true
   }
 
   const saveMembership = async () => {
     if (!canManageGroups.value || groupSaving.value || !membershipUser.value) return
     if (membershipSelection.value.length === 0) membershipSelection.value = [0]
+    if (membershipSelection.value.length > membershipLimit.value) {
+      ElMessage.error('普通用户只能选择一个分组，请重新选择')
+      return
+    }
+    if (applyMembershipDraft) {
+      applyMembershipDraft([...membershipSelection.value])
+      membershipVisible.value = false
+      return
+    }
     groupSaving.value = true
     try {
       const response = await requestWithRecentAuthentication(() => http.post('/api/v1/user/groups/membership', {
@@ -145,6 +162,7 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   return {
     accountGroups, groupsLoading, groupsError, canManageGroups, groupSaving,
     membershipVisible, membershipUser, membershipSelection, membershipLimit,
+    membershipDraft, membershipSingleSelection,
     refreshGroups, loadGroup, toggleGroup, saveGroup, editMembership, saveMembership
   }
 }

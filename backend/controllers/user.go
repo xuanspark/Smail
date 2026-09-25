@@ -52,6 +52,12 @@ type userCreateRequest struct {
 	Role     string `json:"role"`
 }
 
+type userEditRequest struct {
+	userCreateRequest
+	GroupIDs          *[]int `json:"group_ids"`
+	MembershipVersion int    `json:"membership_version"`
+}
+
 func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	targetRole := access.RoleUser
 	var reqData userCreateRequest
@@ -283,7 +289,7 @@ func Info(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 }
 
 func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	var reqData userCreateRequest
+	var reqData userEditRequest
 	if err := decodeUserRequest(w, req, &reqData); err != nil {
 		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
 		return
@@ -321,6 +327,15 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	targetRole := user.EffectiveRole()
 	writeGuard := accountWriteGuard(ctx, user)
+	if reqData.GroupIDs != nil {
+		if !requireAccountGroupManagement(ctx, w) {
+			return
+		}
+		if reqData.MembershipVersion < 1 || reqData.MembershipVersion != user.SecurityVersion {
+			writeAccountGroupError(w, accountgroup.ErrConflict)
+			return
+		}
+	}
 	if !requireAccountScope(ctx, w, user.ID) {
 		return
 	}
@@ -394,7 +409,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		now := time.Now().UTC()
 		user.PasswordChangedAt = &now
 	}
-	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole {
+	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole || reqData.GroupIDs != nil {
 		user.SessionVersion = originalSessionVersion + 1
 		user.SecurityVersion = originalSecurityVersion + 1
 	}
@@ -430,7 +445,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData.Password != "" {
 		updateColumns = append(updateColumns, "password", "must_change_password", "password_changed_at")
 	}
-	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole {
+	if reqData.Password != "" || user.Disabled != originalDisabled || user.EffectiveRole() != originalRole || reqData.GroupIDs != nil {
 		updateColumns = append(updateColumns, "session_version", "security_version")
 	}
 	update := tx.ID(user.ID).Where("session_version = ? AND security_version = ?", originalSessionVersion, originalSecurityVersion).Cols(updateColumns...)
@@ -450,6 +465,18 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			_ = tx.Rollback()
 			log.WithContext(ctx).WithError(err).Error("revoke target credentials failed")
 			response.NewErrorResponse(response.ServerError, "撤销目标用户安全凭据失败", "").FPrint(w)
+			return
+		}
+	}
+	// 角色和分组在同一事务中校验与更新，任何失败均不能留下部分修改。
+	if reqData.GroupIDs != nil {
+		ids, err := accountgroup.ValidateMembership(tx, user.EffectiveRole(), *reqData.GroupIDs)
+		if err == nil {
+			err = accountgroup.ReplaceMembership(tx, user.ID, ids)
+		}
+		if err != nil {
+			_ = tx.Rollback()
+			writeAccountGroupError(w, err)
 			return
 		}
 	}

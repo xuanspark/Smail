@@ -57,20 +57,31 @@ export function usePage() {
   const editModel = ref("edit")
 
   const selectedUser = ref(null)
+  const editingGroupIDs = ref([0])
+  const editingMembershipVersion = ref(0)
+  const membershipChanged = computed(() => {
+    const saved = selectedUser.value?.GroupIDs || [0]
+    return saved.length !== editingGroupIDs.value.length
+      || saved.some(id => !editingGroupIDs.value.includes(id))
+  })
 
   const selectedMembershipGroups = computed(() => {
     const user = selectedUser.value
     if (!user) return []
     return groups.accountGroups.value.filter(group =>
       groups.canManageGroups.value
-        ? (user.GroupIDs || [0]).includes(group.id)
+        ? editingGroupIDs.value.includes(group.id)
         : group.rows.some(member => member.ID === user.ID)
     )
   })
 
   const openMembershipDialog = () => {
     if (submitting.value || !selectedUser.value) return
-    groups.editMembership(selectedUser.value)
+    groups.editMembership(selectedUser.value, {
+      role: editUserInfo.role,
+      groupIDs: editingGroupIDs.value,
+      onApply: ids => { editingGroupIDs.value = ids }
+    })
   }
 
   const recoveryCodeDialogVisible = ref(false)
@@ -122,6 +133,8 @@ export function usePage() {
   const handleEdit = function (idx, row) {
     if (!canEditUser(row)) return
     selectedUser.value = row
+    editingGroupIDs.value = [...(row.GroupIDs || [0])]
+    editingMembershipVersion.value = row.MembershipVersion
     editUserInfo.account = row.Account
     editUserInfo.name = row.Name
     editUserInfo.disabled = row.Disabled === 1
@@ -193,6 +206,13 @@ export function usePage() {
       }
       if (creating || roleChanged.value) newData.role = editUserInfo.role
       if (creating || editUserInfo.password !== '') newData.password = editUserInfo.password
+      if (!creating && groups.canManageGroups.value && (membershipChanged.value || roleChanged.value)) {
+        if (editUserInfo.role !== 'admin' && editingGroupIDs.value.length !== 1) {
+          throw new Error('普通用户只能属于一个分组，请在分组管理中选择一个分组')
+        }
+        newData.group_ids = [...editingGroupIDs.value]
+        newData.membership_version = editingMembershipVersion.value
+      }
       const res = await requestWithRecentAuthentication(() => creating
         ? http.post('/api/v1/user/create', newData)
         : http.post('/api/v1/user/edit', newData))

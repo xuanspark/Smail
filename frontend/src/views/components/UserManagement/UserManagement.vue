@@ -123,16 +123,44 @@
       <p>账号：{{ membershipUser?.Account }}</p>
       <el-form label-position="top">
         <el-form-item label="所属分组">
-          <el-select v-model="membershipSelection" multiple :multiple-limit="membershipLimit" :disabled="groupSaving" placeholder="未选择时归入默认分组" class="membership-select">
-            <el-option v-for="group in accountGroups" :key="group.id" :label="group.name" :value="group.id" />
-          </el-select>
+          <fieldset class="membership-options" :disabled="groupSaving">
+            <legend class="membership-options-title">
+              {{ membershipLimit > 1 ? '管理员可勾选多个分组' : '请选择一个分组' }}
+            </legend>
+            <label
+              v-for="group in accountGroups"
+              :key="group.id"
+              class="membership-option"
+            >
+              <input
+                v-if="membershipLimit > 1"
+                v-model="membershipSelection"
+                type="checkbox"
+                :value="group.id"
+                :disabled="membershipSelection.length >= membershipLimit && !membershipSelection.includes(group.id)"
+              />
+              <input
+                v-else
+                v-model="membershipSingleSelection"
+                type="radio"
+                name="account-membership"
+                :value="group.id"
+              />
+              <span>{{ group.name }}</span>
+            </label>
+          </fieldset>
         </el-form-item>
       </el-form>
       <p class="settings-desc">管理员可以多选；普通用户只能选择一个分组。</p>
+      <p v-if="membershipDraft" class="settings-desc">
+        此处仅应用到编辑草稿，点击编辑用户的“确认”后，权限级别和分组才会一起保存。
+      </p>
       <el-alert title="修改归属会使该账号的旧登录会话和通知发信凭据失效，需要重新登录并配置通知凭据。" type="warning" :closable="false" />
       <template #footer>
         <el-button :disabled="groupSaving" @click="membershipVisible = false">取消</el-button>
-        <el-button type="primary" :loading="groupSaving" @click="saveMembership">保存分组</el-button>
+        <el-button type="primary" :loading="groupSaving" @click="saveMembership">
+          {{ membershipDraft ? '应用到编辑' : '保存分组' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -213,7 +241,7 @@
               </el-button>
             </div>
             <p v-if="canManageGroups" class="membership-hint">
-              分组单独保存，不会提交本窗口其他修改；选择数量按账号已保存的权限级别校验。
+              分组选择跟随当前权限级别，点击“确认”后与其他修改一起保存；取消则不保存。
             </p>
             <p v-else class="membership-hint">
               仅显示你有权查看的分组，成员归属由超级管理员维护。
@@ -312,6 +340,8 @@ const {
   membershipUser,
   membershipSelection,
   membershipLimit,
+  membershipDraft,
+  membershipSingleSelection,
   loadGroup,
   toggleGroup,
   saveGroup,
