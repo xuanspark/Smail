@@ -333,6 +333,48 @@
   animation: pm-rise-in 0.46s var(--pm-ease-out);
 }
 
+.dns-address-controls {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dns-address-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.dns-address-form .el-button + .el-button {
+  margin-left: 0;
+}
+
+.dns-address-input {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.dns-address-note,
+.dns-address-warning {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dns-address-note {
+  color: var(--pm-text-secondary);
+}
+
+.dns-address-warning,
+.dns-value.dns-value-unavailable {
+  color: var(--el-color-warning-dark-2, #b45309);
+  font-family: inherit;
+}
+
 .dns-header {
   display: flex;
   align-items: flex-start;

@@ -119,6 +119,14 @@ export function usePage() {
   const dnsChallengeNotice = ref("")
 
   const dnsInfos = ref({})
+  const dnsMailIPv4 = ref('')
+  const dnsAppliedIPv4 = ref('')
+  const dnsLoading = ref(false)
+  const dnsError = ref('')
+  const dnsInputPending = computed(() => dnsMailIPv4.value.trim() !== dnsAppliedIPv4.value)
+  const hasUnavailableDNS = computed(() => Object.values(dnsInfos.value).some((records) =>
+    records.some((record) => record.unavailableReason || !record.value)
+  ))
 
   const hasDNSIPv6 = computed(() => Object.values(dnsInfos.value).some((records) =>
     records.some((record) => record.type === 'AAAA')
@@ -304,15 +312,34 @@ export function usePage() {
     }
   }
 
-  const getDNSConfig = () => {
-    return setupRequest({"action": "get", "step": "dns"}).then((res) => {
+  const getDNSConfig = async () => {
+    if (dnsLoading.value) return null
+    dnsLoading.value = true
+    dnsError.value = ''
+    const mailIPv4 = dnsMailIPv4.value.trim()
+    try {
+      const res = await setupRequest({action: 'get', step: 'dns', mail_ipv4: mailIPv4})
       assertSetupSuccess(res)
       dnsInfos.value = res.data
+      dnsAppliedIPv4.value = mailIPv4
       return res
-    }).catch((error) => {
-      showSetupError(error)
+    } catch (error) {
+      dnsInfos.value = {}
+      dnsError.value = showSetupError(error)
       return null
-    })
+    } finally {
+      dnsLoading.value = false
+    }
+  }
+
+  const detectDNSConfig = () => {
+    dnsMailIPv4.value = ''
+    return getDNSConfig()
+  }
+
+  const copyDNSRecord = (record) => {
+    if (dnsLoading.value || dnsInputPending.value || record.unavailableReason || !record.value) return
+    return copyDNSValue(record.value)
   }
 
   const copyDNSValue = async (value) => {
@@ -736,6 +763,13 @@ export function usePage() {
     port,
     proxyHTTPS,
     dnsInfos,
+    dnsMailIPv4,
+    dnsAppliedIPv4,
+    dnsLoading,
+    dnsError,
+    dnsInputPending,
+    hasUnavailableDNS,
+    detectDNSConfig,
     hasDNSIPv6,
     addDomain,
     setPassword,
@@ -748,6 +782,7 @@ export function usePage() {
     clearDatabaseError,
     getDNSConfig,
     formatDNSRecordTTL,
+    copyDNSRecord,
     copyDNSValue,
     getSSLConfig,
     setSSLConfig,

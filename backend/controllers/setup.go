@@ -196,7 +196,11 @@ func Setup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	if reqData["step"] == "dns" && reqData["action"] == "get" {
-		dnsInfos, err := setup.GetDNSSettings(ctx)
+		dnsInfos, err := setup.GetDNSSettingsWithIPv4(ctx, reqData["mail_ipv4"])
+		if err == setup.ErrInvalidDNSIPv4 {
+			response.NewErrorResponse(response.ParamsError, err.Error(), "").FPrint(w)
+			return
+		}
 		if err != nil {
 			writeSetupError(ctx, w, err)
 			return

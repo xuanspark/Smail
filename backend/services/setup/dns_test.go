@@ -23,9 +23,9 @@ func TestBuildSPFRecordSkipsUnsafeAddresses(t *testing.T) {
 		ipv6 string
 		want string
 	}{
-		{name: "empty", want: "v=spf1 ~all"},
-		{name: "private IPv4", ipv4: "192.168.1.20", want: "v=spf1 ~all"},
-		{name: "link local IPv6", ipv6: "fe80::1", want: "v=spf1 ~all"},
+		{name: "empty", want: ""},
+		{name: "private IPv4", ipv4: "192.168.1.20", want: ""},
+		{name: "link local IPv6", ipv6: "fe80::1", want: ""},
 		{name: "only IPv4", ipv4: "198.51.100.9", want: "v=spf1 ip4:198.51.100.9 ~all"},
 		{name: "only IPv6", ipv6: "2001:db8::9", want: "v=spf1 ip6:2001:db8::9 ~all"},
 	}
@@ -101,7 +101,7 @@ func TestBuildDNSItemsDoesNotReuseMailIPForUnresolvedWebDomain(t *testing.T) {
 	}
 	items := buildDNSItemsWithWebIPv4(cfg, "example.net", "v=DKIM1; k=rsa; p=test", "198.51.100.30", "", "", nil)
 
-	if items[0].Host != "panel" || items[0].Value != unresolvedWebIPv4 {
+	if items[0].Host != "panel" || items[0].Value != "" || items[0].UnavailableReason != unresolvedWebIPv4 {
 		t.Fatalf("unresolved web A record = %#v", items[0])
 	}
 	if items[1].Host != "smtp" || items[1].Value != "198.51.100.30" {
@@ -145,5 +145,28 @@ func TestDNSHostForDomain(t *testing.T) {
 				t.Fatalf("DNS host = %q, want %q", value, item.want)
 			}
 		})
+	}
+}
+
+func TestBuildDNSItemsWithoutPublicIPMarksIncompleteRecords(t *testing.T) {
+	cfg := &config.Config{Domain: "example.com", WebDomain: "panel.example.com"}
+	items := buildDNSItemsWithWebIPv4(cfg, "example.com", "v=DKIM1; k=rsa; p=test", "", "", "", []string{"203.0.113.20"})
+	for _, item := range items {
+		unavailable := (item.Type == "A" && item.Host != "panel") || (item.Type == "TXT" && item.Host == "@")
+		if unavailable {
+			if item.Value != "" || item.UnavailableReason == "" {
+				t.Fatalf("未就绪记录必须留空并提供原因：%#v", item)
+			}
+		} else if item.Value == "" || item.UnavailableReason != "" {
+			t.Fatalf("有效记录不应被禁用：%#v", item)
+		}
+	}
+}
+
+func TestGetDNSSettingsRejectsInvalidManualIPv4BeforeLoadingConfig(t *testing.T) {
+	for _, value := range []string{"127.0.0.1", "192.168.1.1", "::1", "example.com", "203.0.113.20:25", "invalid"} {
+		if _, err := GetDNSSettingsWithIPv4(nil, value); err != ErrInvalidDNSIPv4 {
+			t.Fatalf("无效手工地址 %q 应返回参数错误，实际为 %v", value, err)
+		}
 	}
 }

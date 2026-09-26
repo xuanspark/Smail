@@ -2,6 +2,7 @@ package setup
 
 import (
 	stdcontext "context"
+	stderrors "errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -17,18 +18,30 @@ import (
 )
 
 type DNSItem struct {
-	Type  string `json:"type"`
-	Host  string `json:"host"`
-	Value string `json:"value"`
-	TTL   int    `json:"ttl"`
-	Tips  string `json:"tips"`
+	Type              string `json:"type"`
+	Host              string `json:"host"`
+	Value             string `json:"value"`
+	TTL               int    `json:"ttl"`
+	Tips              string `json:"tips"`
+	UnavailableReason string `json:"unavailableReason,omitempty"`
 }
 
 const dnsRecordTTL = 600
 
 const unresolvedWebIPv4 = "[未解析到 Web 域名公网 IPv4]"
 
+var ErrInvalidDNSIPv4 = stderrors.New("请输入有效的邮件服务器公网 IPv4 地址，不支持内网地址、域名或端口")
+
 func GetDNSSettings(ctx *context.Context) (map[string][]*DNSItem, error) {
+	return GetDNSSettingsWithIPv4(ctx, "")
+}
+
+// 手工地址只用于本次生成 DNS 建议，不写入配置，也不替代 Web 域名解析。
+func GetDNSSettingsWithIPv4(ctx *context.Context, manualIPv4 string) (map[string][]*DNSItem, error) {
+	ipv4 := normalizeDNSAddress(manualIPv4)
+	if strings.TrimSpace(manualIPv4) != "" && ipv4 == "" {
+		return nil, ErrInvalidDNSIPv4
+	}
 	configData, err := config.ReadConfig()
 	if err != nil {
 		return nil, errors.Wrap(err)
@@ -39,7 +52,9 @@ func GetDNSSettings(ctx *context.Context) (map[string][]*DNSItem, error) {
 		return nil, errors.Wrap(err)
 	}
 
-	ipv4 := ip.GetIPv4()
+	if ipv4 == "" {
+		ipv4 = ip.GetIPv4()
+	}
 	ipv6 := ip.GetIPv6()
 	webIPv4 := resolvePublicIPv4(configData.WebDomain)
 	ipTips := i18n.GetText(ctx.Lang, "ip_taps")
@@ -57,8 +72,9 @@ func buildDNSItems(configData *config.Config, domain, dkimPublicKey, ipv4, ipv6,
 
 func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, ipv4, ipv6, ipTips string, webIPv4 []string) []*DNSItem {
 	address := normalizeDNSAddress(ipv4)
+	unavailableReason := ""
 	if address == "" {
-		address = "[未检测到公网 IPv4]"
+		unavailableReason = "未检测到公网 IPv4，请重新探测或手工填写"
 	}
 
 	items := make([]*DNSItem, 0, 14)
@@ -69,11 +85,12 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 			}
 		}
 		items = append(items, &DNSItem{
-			Type:  "A",
-			Host:  host,
-			Value: address,
-			TTL:   dnsRecordTTL,
-			Tips:  ipTips,
+			Type:              "A",
+			Host:              host,
+			Value:             address,
+			TTL:               dnsRecordTTL,
+			Tips:              ipTips,
+			UnavailableReason: unavailableReason,
 		})
 	}
 	appendAAAARecord := func(host, address string) {
@@ -106,11 +123,12 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 		}
 	} else {
 		items = append(items, &DNSItem{
-			Type:  "A",
-			Host:  webHost,
-			Value: unresolvedWebIPv4,
-			TTL:   dnsRecordTTL,
-			Tips:  "Web 域名未解析到公网 IPv4，请确认域名解析状态",
+			Type:              "A",
+			Host:              webHost,
+			Value:             "",
+			TTL:               dnsRecordTTL,
+			Tips:              "Web 域名未解析到公网 IPv4，请确认域名解析状态",
+			UnavailableReason: unresolvedWebIPv4,
 		})
 	}
 	appendARecord("smtp")
@@ -126,9 +144,13 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 	}
 	appendARecord("*")
 
+	spf := &DNSItem{Type: "TXT", Host: "@", Value: buildSPFRecord(ipv4, ipv6), TTL: dnsRecordTTL}
+	if spf.Value == "" {
+		spf.UnavailableReason = "缺少公网 IP，暂不能生成 SPF"
+	}
 	items = append(items,
 		&DNSItem{Type: "MX", Host: "@", Value: fmt.Sprintf("smtp.%s | 1", domain), TTL: dnsRecordTTL},
-		&DNSItem{Type: "TXT", Host: "@", Value: buildSPFRecord(ipv4, ipv6), TTL: dnsRecordTTL},
+		spf,
 		&DNSItem{Type: "TXT", Host: "_dmarc", Value: buildDMARCRecord(domain), TTL: dnsRecordTTL},
 		&DNSItem{Type: "TXT", Host: "default._domainkey", Value: dkimPublicKey, TTL: dnsRecordTTL},
 	)
@@ -142,6 +164,9 @@ func buildSPFRecord(ipv4, ipv6 string) string {
 	}
 	if mechanism := buildSPFAddressMechanism(ipv6); mechanism != "" {
 		mechanisms = append(mechanisms, mechanism)
+	}
+	if len(mechanisms) == 1 {
+		return ""
 	}
 	mechanisms = append(mechanisms, "~all")
 	return strings.Join(mechanisms, " ")

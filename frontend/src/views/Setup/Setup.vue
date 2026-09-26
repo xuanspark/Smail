@@ -205,7 +205,29 @@
         </div>
       </div>
 
-      <div v-if="Object.keys(dnsInfos).length > 0" class="dns-domain-list">
+      <div class="dns-address-controls">
+        <div class="dns-address-form">
+          <label for="dns-mail-ipv4">邮件服务器公网 IPv4</label>
+          <el-input
+            id="dns-mail-ipv4"
+            v-model="dnsMailIPv4"
+            class="dns-address-input"
+            placeholder="留空自动探测，失败时可手工填写"
+            :disabled="dnsLoading"
+            clearable
+            @keyup.enter="getDNSConfig()"
+          />
+          <el-button type="primary" :loading="dnsLoading" @click="getDNSConfig()">生成记录</el-button>
+          <el-button :disabled="dnsLoading" @click="detectDNSConfig()">重新自动探测</el-button>
+        </div>
+        <p class="dns-address-note">仅生成解析建议，不会修改真实 DNS；后台地址独立解析，MX、SPF、DKIM、DMARC 仍需保留。</p>
+        <p v-if="dnsError" class="dns-address-warning" role="alert">{{ dnsError }}</p>
+        <p v-else-if="dnsInputPending" class="dns-address-warning" role="status">地址已修改，请生成记录后再复制。</p>
+        <p v-else-if="hasUnavailableDNS" class="dns-address-warning" role="status">部分记录尚未就绪，已禁用复制。请补充公网 IP 或检查后台域名解析；已自行配置 DNS 的用户仍可继续。</p>
+        <p v-else-if="dnsAppliedIPv4" class="dns-address-note" role="status">当前建议使用手工地址：{{ dnsAppliedIPv4 }}。请确认它是邮件服务器实际使用的公网地址。</p>
+      </div>
+
+      <div v-if="Object.keys(dnsInfos).length > 0" class="dns-domain-list" :aria-busy="dnsLoading">
         <section class="dns-domain-card" v-for="(info, domain) in dnsInfos" :key="domain">
           <div class="dns-domain-header">
             <div>
@@ -253,7 +275,10 @@
             >
               <template #default="scope">
                 <div class="dns-value-cell">
-                  <el-tooltip :content="scope.row.tips" placement="top" v-if="scope.row.tips">
+                  <span v-if="scope.row.unavailableReason || !scope.row.value" class="dns-value dns-value-unavailable">
+                    {{ scope.row.unavailableReason || '记录尚未就绪' }}
+                  </span>
+                  <el-tooltip :content="scope.row.tips" placement="top" v-else-if="scope.row.tips">
                     <span :class="['dns-value', { 'dns-value-long': scope.row.value.length > 80 }]">
                       {{ scope.row.value }}
                     </span>
@@ -261,7 +286,13 @@
                   <span v-else :class="['dns-value', { 'dns-value-long': scope.row.value.length > 80 }]">
                     {{ scope.row.value }}
                   </span>
-                  <el-button class="dns-copy-button" link type="primary" @click.stop="copyDNSValue(scope.row.value)">
+                  <el-button
+                    class="dns-copy-button"
+                    link
+                    type="primary"
+                    :disabled="dnsLoading || dnsInputPending || !!scope.row.unavailableReason || !scope.row.value"
+                    @click.stop="copyDNSRecord(scope.row)"
+                  >
                     {{ lang.dns_copy }}
                   </el-button>
                 </div>
