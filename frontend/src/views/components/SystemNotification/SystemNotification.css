@@ -59,3 +59,118 @@
 .notification-secret {
   margin-top: 16px;
 }
+
+.notification-compact {
+  gap: 10px;
+  padding: 0;
+}
+
+.notification-compact .notification-header {
+  justify-content: flex-end;
+}
+
+.notification-compact .notification-panel {
+  padding: 0;
+  border: 0;
+}
+
+.notification-compact .notification-heading {
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.notification-compact h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-compact .notification-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 12px 22px;
+  align-items: start;
+}
+
+.notification-compact .notification-columns > :deep(.el-form) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.notification-compact .notification-columns > :deep(.el-descriptions) {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+}
+
+.notification-compact .notification-columns > :deep(.el-descriptions ~ .el-descriptions) {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.notification-compact .notification-hint {
+  grid-column: 1;
+  grid-row: 3;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notification-compact .notification-columns > :deep(.el-descriptions ~ .el-descriptions + .notification-hint) {
+  grid-column: 2;
+}
+
+.notification-compact .notification-columns > :deep(.el-alert) {
+  grid-column: 1 / -1;
+}
+
+.notification-compact .notification-limits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.notification-compact :deep(.el-form-item) {
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.notification-compact :deep(.el-input-number) {
+  width: 100%;
+}
+
+.notification-compact .notification-actions {
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.notification-compact .notification-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.notification-compact :deep(.el-descriptions__header) {
+  margin-bottom: 8px;
+}
+
+.notification-compact :deep(.el-descriptions__table) {
+  table-layout: fixed;
+}
+
+.notification-compact :deep(.el-descriptions__label) {
+  width: 118px;
+}
+
+.notification-compact :deep(.el-descriptions__cell) {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .notification-compact .notification-columns {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .notification-compact .notification-columns > * {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}

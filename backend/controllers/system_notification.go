@@ -13,6 +13,7 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/accountgroup"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/services/notification"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -101,6 +102,8 @@ func GetNotificationStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 	response.NewSuccessResponse(map[string]any{
 		"user_id": user.ID, "account": user.Account, "enabled": item.Enabled == 1,
 		"configured": notification.Configured(item, *user), "version": item.CodeVersion,
+		"can_reveal": notification.Configured(item, *user) && item.CodeCiphertext != "" &&
+			access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), ctx.UserID == user.ID),
 		"account_available": user.Disabled == 0 && user.MustChangePassword == 0,
 		"can_manage":        access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), ctx.UserID == user.ID),
 		"minute_limit":      item.MinuteLimit, "day_limit": item.DayLimit,
@@ -191,13 +194,47 @@ func RotateNotificationCredential(ctx *context.Context, w http.ResponseWriter, r
 	if !ok {
 		return
 	}
-	code, err := notification.Rotate(db.Instance, *user, input.Version, accountWriteGuard(ctx, *user))
+	code, err := notification.Rotate(db.Instance, *user, input.Version, config.ROOT_PATH, accountWriteGuard(ctx, *user))
 	recordNotificationManagement(ctx, user.ID, "重置系统通知凭据", err, nil)
 	if err != nil {
 		writeNotificationError(w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	response.NewSuccessResponse(map[string]any{"code": code, "user_id": user.ID}).FPrint(w)
+}
+
+// RevealNotificationCredential 每次查看都验证操作人密码，日志不得包含密码或凭据。
+func RevealNotificationCredential(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	var input struct {
+		UserID   int    `json:"user_id"`
+		Version  int    `json:"version"`
+		Password string `json:"password"`
+	}
+	if decodeJSONRequest(w, req, &input) != nil || input.Version < 1 || input.Password == "" {
+		writeSecurityError(w, response.ParamsError, "请填写当前登录密码并选择有效账号")
+		return
+	}
+	user, ok := loadNotificationUser(ctx, w, input.UserID, true)
+	if !ok {
+		return
+	}
+	_, err := auth.AuthenticateUserByID(ctx.UserID, input.Password)
+	input.Password = ""
+	if err != nil {
+		recordNotificationManagement(ctx, user.ID, "查看系统通知凭据", err, nil)
+		if !writePasswordBusy(w, err) {
+			writeSecurityError(w, response.ParamsError, "密码验证失败")
+		}
+		return
+	}
+	code, err := notification.Reveal(db.Instance, *user, input.Version, config.ROOT_PATH, accountWriteGuard(ctx, *user))
+	recordNotificationManagement(ctx, user.ID, "查看系统通知凭据", err, nil)
+	if err != nil {
+		writeNotificationError(w, err)
+		return
+	}
 	response.NewSuccessResponse(map[string]any{"code": code, "user_id": user.ID}).FPrint(w)
 }
 
@@ -217,6 +254,8 @@ func writeNotificationError(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, notification.ErrNoCiphertext):
+		writeSecurityError(w, response.ParamsError, "旧凭据未保留加密密文，请重新生成后再查看")
 	case errors.Is(err, notification.ErrConflict):
 		writeSecurityError(w, response.ParamsError, "授权状态已变化，请刷新后重试")
 	case errors.Is(err, notification.ErrDenied):

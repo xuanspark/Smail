@@ -15,6 +15,7 @@ import (
 
 // loggedOperations 注册显式的静态状态变更路由，仅记录状态变更操作，不将列表查询误认为操作，也不复制请求或响应载荷。
 var loggedOperations = map[string]string{
+	"/api/system/notification/credential/reveal":        "查看系统通知发信凭据",
 	"/api/system/notification/authorization":            "修改系统通知发信权限",
 	"/api/system/notification/credential":               "生成系统通知发信凭据",
 	"/api/email/draft/save":                             "保存邮件草稿",

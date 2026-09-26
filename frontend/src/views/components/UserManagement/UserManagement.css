@@ -331,6 +331,26 @@
   grid-column: 1 / -1;
 }
 
+:global(.notification-dialog) {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  max-height: 90dvh;
+  margin-bottom: 5vh;
+  box-sizing: border-box;
+}
+
+:global(.notification-dialog > .el-dialog__header) {
+  flex: 0 0 auto;
+}
+
+:global(.notification-dialog > .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .account-form > :deep(.el-form-item) {
   min-width: 0;
 }

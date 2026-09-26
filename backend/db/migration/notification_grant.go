@@ -1,5 +1,11 @@
 package migration
 
+import "context"
+
+func applyNotificationCiphertextSchema(ctx context.Context, exec executor, dialect Dialect) error {
+	return ensureColumn(ctx, exec, dialect, "notification_grant", "code_ciphertext", "VARCHAR(512) NULL")
+}
+
 func notificationGrantStatements() map[Dialect][]string {
 	// 不依赖自增、布尔或日期方言；计数窗口统一使用 UTC 字符串。
 	statement := `CREATE TABLE IF NOT EXISTS notification_grant (

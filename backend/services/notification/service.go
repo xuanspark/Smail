@@ -7,11 +7,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/accountgroup"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 	"xorm.io/xorm"
 )
 
@@ -29,6 +31,7 @@ var (
 	ErrQuota       = errors.New("notification quota exceeded")
 	ErrUnavailable = errors.New("notification authorization unavailable")
 	ErrLimits      = errors.New("invalid notification limits")
+	ErrNoCiphertext = errors.New("notification credential must be regenerated before reveal")
 )
 
 func IsUsername(username string) bool {
@@ -88,6 +91,7 @@ func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabl
 		item.Enabled = 1
 	} else {
 		item.CodeHash = ""
+		item.CodeCiphertext = ""
 	}
 	item.MinuteLimit, item.DayLimit = minuteLimit, dayLimit
 	item.CodeVersion++
@@ -98,7 +102,7 @@ func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabl
 		return tx.Commit()
 	}
 	affected, err := tx.ID(user.ID).Where("code_version = ?", expected).
-		Cols("enabled", "code_hash", "code_version", "minute_limit", "day_limit").Update(&item)
+		Cols("enabled", "code_hash", "code_ciphertext", "code_version", "minute_limit", "day_limit").Update(&item)
 	if err != nil {
 		return err
 	}
@@ -108,9 +112,9 @@ func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabl
 	return tx.Commit()
 }
 
-// Rotate 仅返回一次明文。随机凭据具有 256 位熵，数据库只保存 SHA-256 摘要。
-func Rotate(engine *xorm.Engine, user models.User, expected int, guards ...accountgroup.WriteGuard) (string, error) {
-	if engine == nil || user.ID <= 0 {
+// Rotate 生成独立随机凭据；加密绑定账号，关闭授权时同时清除摘要与密文。
+func Rotate(engine *xorm.Engine, user models.User, expected int, root string, guards ...accountgroup.WriteGuard) (string, error) {
+	if engine == nil || user.ID <= 0 || strings.TrimSpace(root) == "" {
 		return "", ErrUnavailable
 	}
 	tx := engine.NewSession()
@@ -138,16 +142,64 @@ func Rotate(engine *xorm.Engine, user models.User, expected int, guards ...accou
 		return "", err
 	}
 	code := "sn_" + base64.RawURLEncoding.EncodeToString(entropy[:])
+	ciphertext, err := credential.Encrypt(root, strconv.Itoa(user.ID)+":"+code)
+	if err != nil {
+		return "", ErrUnavailable
+	}
 	item.CodeHash = digest(code)
+	item.CodeCiphertext = ciphertext
 	item.CodeVersion++
 	item.SessionVersion, item.SecurityVersion = user.SessionVersion, user.SecurityVersion
 	affected, err := tx.ID(user.ID).Where("code_version = ? AND enabled = 1", expected).
-		Cols("code_hash", "code_version", "session_version", "security_version").Update(&item)
+		Cols("code_hash", "code_ciphertext", "code_version", "session_version", "security_version").Update(&item)
 	if err != nil {
 		return "", err
 	}
 	if affected != 1 {
 		return "", ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// Reveal 在事务内复核管理范围、账号安全版本和凭据版本，绝不重置用量或凭据。
+func Reveal(engine *xorm.Engine, user models.User, expected int, root string, guards ...accountgroup.WriteGuard) (string, error) {
+	if engine == nil || user.ID <= 0 || strings.TrimSpace(root) == "" {
+		return "", ErrUnavailable
+	}
+	tx := engine.NewSession()
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	if err := accountgroup.CheckWrite(tx, guards...); err != nil {
+		return "", err
+	}
+	var item models.NotificationGrant
+	found, err := tx.ID(user.ID).Get(&item)
+	if err != nil {
+		return "", err
+	}
+	if !found || !Configured(item, user) {
+		return "", ErrDenied
+	}
+	if item.CodeVersion != expected {
+		return "", ErrConflict
+	}
+	if item.CodeCiphertext == "" {
+		return "", ErrNoCiphertext
+	}
+	plain, err := credential.Decrypt(root, item.CodeCiphertext)
+	if err != nil {
+		return "", ErrUnavailable
+	}
+	account, code, ok := strings.Cut(plain, ":")
+	if !ok || account != strconv.Itoa(user.ID) || len(code) != 46 || !strings.HasPrefix(code, "sn_") ||
+		subtle.ConstantTimeCompare([]byte(item.CodeHash), []byte(digest(code))) != 1 {
+		return "", ErrUnavailable
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err

@@ -110,6 +110,7 @@ func registerNotificationRoutes(mux *http.ServeMux) {
 	registerV1MethodRoute(mux, "/api/v1/system/notification/accounts", "/api/system/notification/accounts", http.MethodGet, 0, controllers.ListNotificationAccounts)
 	registerV1MethodRoute(mux, "/api/v1/system/notification/authorization", "/api/system/notification/authorization", http.MethodPost, 4<<10, controllers.SetNotificationAuthorization)
 	registerV1MethodRoute(mux, "/api/v1/system/notification/credential", "/api/system/notification/credential", http.MethodPost, 4<<10, controllers.RotateNotificationCredential)
+	registerV1MethodRoute(mux, "/api/v1/system/notification/credential/reveal", "/api/system/notification/credential/reveal", http.MethodPost, 4<<10, controllers.RevealNotificationCredential)
 }
 
 func registerV1SenderFiltersRoute(mux *http.ServeMux) {
