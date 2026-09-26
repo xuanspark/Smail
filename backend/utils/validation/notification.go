@@ -1,6 +1,11 @@
 package validation
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
+
+var ErrNotificationRecipient = errors.New("notification address does not accept mail")
 
 // 加号不属于可注册账号字符，保留地址不会占用普通用户的邮箱。
 const NotificationLocalPart = "notification+system"

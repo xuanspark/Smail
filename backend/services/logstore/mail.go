@@ -9,6 +9,8 @@ import (
 	"net/textproto"
 	"strconv"
 	"time"
+
+	"git.pcux.cn/xuans/Smail/utils/validation"
 )
 
 type MailDetails struct {
@@ -25,6 +27,8 @@ func MailFailureReason(err error) string {
 	var protocol *textproto.Error
 	var network net.Error
 	switch {
+	case errors.Is(err, validation.ErrNotificationRecipient):
+		return "系统通知地址仅用于发信，不接受收信，请改用普通邮箱地址"
 	case errors.As(err, &certificate):
 		return "对端证书验证失败"
 	case errors.As(err, &dns):

@@ -136,7 +136,7 @@ func parseRecipientAddress(user *parsemail.User) (string, string, error) {
 	}
 	address := strings.TrimSpace(user.EmailAddress)
 	if validation.IsNotificationAddress(address, config.CurrentMailDomains().Accepted) {
-		return address, "", errors.New("notification address does not accept mail")
+		return address, "", validation.ErrNotificationRecipient
 	}
 	if address == "" || address != user.EmailAddress {
 		return address, "", errors.New("recipient address is empty or contains surrounding whitespace")
