@@ -325,7 +325,9 @@
     <el-dialog
       v-model="notificationDialogVisible"
       title="系统通知发信"
-      width="min(760px, 94vw)"
+      class="notification-dialog"
+      width="min(980px, 94vw)"
+      top="5vh"
       append-to-body
       destroy-on-close
       :before-close="closeNotificationDialog"
@@ -334,6 +336,8 @@
         v-if="notificationDialogVisible && selectedUser?.ID"
         :key="selectedUser.ID"
         ref="notificationPanel"
+        class="notification-compact"
+        compact
         :user-id="selectedUser.ID"
       />
     </el-dialog>

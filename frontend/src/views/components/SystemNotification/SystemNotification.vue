@@ -1,7 +1,7 @@
 <template>
   <section class="notification-settings" aria-label="系统通知发信">
     <header class="notification-header">
-      <div>
+      <div v-if="!compact">
         <h2>系统通知发信</h2>
         <p>按账号授权的 SMTP 发信服务，与普通邮箱登录和收发信独立。</p>
       </div>
@@ -9,6 +9,7 @@
     </header>
 
     <el-alert
+      v-if="!compact"
       title="默认关闭，逐账号授权"
       :description="manager ? '只有管理范围内的账号可以授权。管理员修改授权前需要身份确认；关闭时永久撤销旧凭据。' : '普通用户只能查看自己的状态和连接参数。需要开启或重置凭据时，请联系管理员。'"
       type="info"
@@ -53,6 +54,7 @@
         </div>
         <p v-if="!status.account_available" class="notification-warning">账号已禁用或尚未修改临时密码，不能生成或使用通知凭据。</p>
 
+        <div class="notification-columns">
         <el-form v-if="canManage" label-position="top" :disabled="submitting || loading" @submit.prevent="save">
           <el-form-item label="允许该账号通过 SMTP 发送系统通知">
             <el-switch v-model="form.enabled" active-text="开启" inactive-text="关闭" />
@@ -92,6 +94,7 @@
         </el-descriptions>
         <p class="notification-hint">必须启用加密和证书校验。服务器名需正确解析且由证书覆盖；此处显示配置，不代表公网连通性已验收。</p>
         <el-alert title="仅发信，不提供收件箱" description="通知地址拒收邮件；通知凭据不能用于网页登录、IMAP 或 POP3。普通邮箱及其原有凭据不受影响。" type="warning" :closable="false" show-icon />
+        </div>
       </template>
       <el-empty v-else-if="!loading && !error" description="尚未读取账号状态" />
     </div>
@@ -111,7 +114,10 @@
 <script setup>
 import { usePage } from './SystemNotification.js'
 
-const props = defineProps({ userId: { type: Number, default: 0 } })
+const props = defineProps({
+  userId: { type: Number, default: 0 },
+  compact: { type: Boolean, default: false }
+})
 
 const {
   manager, loading, submitting, error, status, accounts, page, total, form,
