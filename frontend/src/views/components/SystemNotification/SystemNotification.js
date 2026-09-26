@@ -4,7 +4,7 @@ import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { isRecentAuthenticationCancelled, requestWithRecentAuthentication } from '@/utils/recentAuthentication'
 
-export function usePage() {
+export function usePage(props = {}) {
   const globalStatus = useGlobalStatusStore()
   const manager = computed(() => globalStatus.hasCapability('notification.manage'))
   const loading = ref(false)
@@ -14,7 +14,7 @@ export function usePage() {
   const accounts = ref([])
   const page = ref(1)
   const total = ref(0)
-  const selectedID = ref(Number(globalStatus.userInfos?.id || 0))
+  const selectedID = ref(Number(props.userId || globalStatus.userInfos?.id || 0))
   const form = reactive({ enabled: false, minute_limit: 10, day_limit: 100 })
   const secret = ref('')
   const secretAccount = ref('')
@@ -70,7 +70,7 @@ export function usePage() {
     }
   }
   const loadAccounts = async () => {
-    if (!manager.value) return
+    if (!manager.value || props.userId) return
     const sequence = ++accountsSequence
     try {
       const data = dataOf(await http.get('/api/v1/system/notification/accounts', { params: { page: page.value } }))

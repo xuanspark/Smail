@@ -16,7 +16,7 @@
       :closable="false"
     />
 
-    <div v-if="manager" class="notification-panel">
+    <div v-if="manager && !userId" class="notification-panel">
       <h3>账号授权管理</h3>
       <el-table :data="accounts" stripe>
         <el-table-column prop="account" label="账号" min-width="110" />
@@ -111,11 +111,13 @@
 <script setup>
 import { usePage } from './SystemNotification.js'
 
+const props = defineProps({ userId: { type: Number, default: 0 } })
+
 const {
   manager, loading, submitting, error, status, accounts, page, total, form,
   secret, secretAccount, secretVisible, seconds, canManage, stateText, dirty,
   loadAccounts, selectAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave
-} = usePage()
+} = usePage(props)
 
 defineExpose({ beforeLeave })
 </script>

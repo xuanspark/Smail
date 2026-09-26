@@ -305,3 +305,23 @@
   flex: 0 0 auto;
   margin: 0;
 }
+
+.account-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.account-form-wide {
+  grid-column: 1 / -1;
+}
+
+.account-form > :deep(.el-form-item) {
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .account-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

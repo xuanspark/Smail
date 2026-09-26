@@ -44,6 +44,7 @@ func decodeUserRequest(w http.ResponseWriter, req *http.Request, dst any) error 
 }
 
 type userCreateRequest struct {
+	GroupIDs *[]int `json:"group_ids"`
 	Id       int    `json:"id"`
 	Account  string `json:"account"`
 	Username string `json:"username"`
@@ -93,6 +94,15 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 	}
 	user := models.User{Name: username, Account: account, Disabled: reqData.Disabled, SessionVersion: 1, SecurityVersion: 1}
 	user.ApplyRole(targetRole)
+	groupIDs := []int{0}
+	if reqData.GroupIDs != nil {
+		groupIDs = *reqData.GroupIDs
+	}
+	if len(groupIDs) > 0 && (len(groupIDs) != 1 || groupIDs[0] != 0) {
+		if !requireAccountGroupManagement(ctx, w) {
+			return
+		}
+	}
 	if err := auth.SetPassword(&user, reqData.Password); err != nil {
 		if writePasswordBusy(w, err) {
 			return
@@ -105,12 +115,46 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 		response.NewErrorResponse(response.ServerError, "密码设置失败", "").FPrint(w)
 		return
 	}
-	if _, err := db.Instance.Insert(&user); err != nil {
+	if db.Instance == nil {
+		writeAccountGroupError(w, accountgroup.ErrDenied)
+		return
+	}
+	tx := db.Instance.NewSession()
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
+	defer tx.Rollback()
+	actor := models.User{ID: ctx.UserID, SessionVersion: ctx.SessionVersion, SecurityVersion: ctx.SecurityVersion}
+	actor.ApplyRole(ctx.EffectiveRole())
+	if err := accountgroup.CheckWrite(tx, accountWriteGuard(ctx, actor)); err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
+	groupIDs, err = accountgroup.ValidateMembership(tx, user.EffectiveRole(), groupIDs)
+	if err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
+	if _, err := tx.Insert(&user); err != nil {
 		log.WithContext(ctx).WithError(err).Error("create user failed")
 		response.NewErrorResponse(response.ServerError, "创建用户失败", "").FPrint(w)
 		return
 	}
-	response.NewSuccessResponse(user).FPrint(w)
+	if err := accountgroup.ReplaceMembership(tx, user.ID, groupIDs); err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
+	response.NewSuccessResponse(struct {
+		models.User
+		GroupIDs          []int
+		MembershipVersion int
+	}{user, groupIDs, user.SecurityVersion}).FPrint(w)
 }
 
 type userListRequest struct {

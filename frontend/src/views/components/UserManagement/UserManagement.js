@@ -67,7 +67,7 @@ export function usePage() {
 
   const selectedMembershipGroups = computed(() => {
     const user = selectedUser.value
-    if (!user) return []
+    if (!user && editModel.value !== 'create') return []
     return groups.accountGroups.value.filter(group =>
       groups.canManageGroups.value
         ? editingGroupIDs.value.includes(group.id)
@@ -76,8 +76,8 @@ export function usePage() {
   })
 
   const openMembershipDialog = () => {
-    if (submitting.value || !selectedUser.value) return
-    groups.editMembership(selectedUser.value, {
+    if (submitting.value || (!selectedUser.value && editModel.value !== 'create')) return
+    groups.editMembership(selectedUser.value || { Role: editUserInfo.role }, {
       role: editUserInfo.role,
       groupIDs: editingGroupIDs.value,
       onApply: ids => { editingGroupIDs.value = ids }
@@ -87,6 +87,13 @@ export function usePage() {
   const recoveryCodeDialogVisible = ref(false)
 
   const externalEmailDialogVisible = ref(false)
+
+  const notificationDialogVisible = ref(false)
+  const notificationPanel = ref(null)
+  const canManageNotification = computed(() => globalStatus.hasCapability('notification.manage'))
+  const closeNotificationDialog = async done => {
+    if (await notificationPanel.value?.beforeLeave()) done()
+  }
 
   const securityDialogOpening = ref('')
 
@@ -148,6 +155,8 @@ export function usePage() {
   const createUser = function () {
     if (!canCreateUser.value) return
     selectedUser.value = null
+    editingGroupIDs.value = [0]
+    editingMembershipVersion.value = 0
     editUserInfo.account = ""
     editUserInfo.name = ""
     editUserInfo.disabled = false
@@ -206,12 +215,12 @@ export function usePage() {
       }
       if (creating || roleChanged.value) newData.role = editUserInfo.role
       if (creating || editUserInfo.password !== '') newData.password = editUserInfo.password
-      if (!creating && groups.canManageGroups.value && (membershipChanged.value || roleChanged.value)) {
+      if (groups.canManageGroups.value && (creating || membershipChanged.value || roleChanged.value)) {
         if (editUserInfo.role !== 'admin' && editingGroupIDs.value.length !== 1) {
           throw new Error('普通用户只能属于一个分组，请在分组管理中选择一个分组')
         }
         newData.group_ids = [...editingGroupIDs.value]
-        newData.membership_version = editingMembershipVersion.value
+        if (!creating) newData.membership_version = editingMembershipVersion.value
       }
       const res = await requestWithRecentAuthentication(() => creating
         ? http.post('/api/v1/user/create', newData)
@@ -221,8 +230,12 @@ export function usePage() {
       }
       ElNotification({ title: lang.succ, message: '用户信息已保存', type: 'success' })
       editUserInfo.password = ''
-      reflushList()
-      userInfoDialog.value = false
+      if (creating) {
+        handleEdit(0, res.data)
+      } else {
+        userInfoDialog.value = false
+      }
+      await reflushList()
     } catch (error) {
       if (!isRecentAuthenticationCancelled(error)) {
         ElNotification({
@@ -262,6 +275,10 @@ export function usePage() {
     recoveryCodeWebManaged,
     recoveryCodeDialogVisible,
     externalEmailDialogVisible,
+    notificationDialogVisible,
+    notificationPanel,
+    canManageNotification,
+    closeNotificationDialog,
     securityDialogOpening,
     openRecoveryCodeDialog,
     openExternalEmailDialog,

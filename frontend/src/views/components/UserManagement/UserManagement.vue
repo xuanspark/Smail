@@ -162,14 +162,14 @@
     <el-dialog
       v-model="userInfoDialog"
       :title="title"
-      width="450px"
+      width="min(640px, 94vw)"
       class="premium-dialog"
       :close-on-click-modal="!submitting"
       :close-on-press-escape="!submitting"
       :show-close="!submitting"
     >
       <div class="dialog-content">
-        <el-form label-position="top">
+        <el-form label-position="top" class="account-form">
           <el-form-item :label="lang.account">
             <el-input :disabled="editModel === 'edit' || submitting" v-model="editUserInfo.account" />
           </el-form-item>
@@ -211,7 +211,7 @@
             </span>
           </el-form-item>
 
-          <el-form-item v-if="editModel === 'edit'" label="所属分组">
+          <el-form-item label="所属分组" class="account-form-wide">
             <div class="membership-summary">
               <div class="membership-tags">
                 <el-tag
@@ -237,21 +237,24 @@
             </div>
           </el-form-item>
 
-          <div v-if="editModel === 'edit'" class="security-edit-grid">
+          <div class="security-edit-grid account-form-wide">
+            <el-tag v-if="editModel === 'create'" class="account-form-wide" type="info">
+              创建后配置安全与发信
+            </el-tag>
             <div class="security-edit-item">
               <div>
                 <strong>安全码</strong>
                 <span v-if="recoveryCodeWebManaged">
                   {{ recoveryCodeMeta(selectedUser?.RecoveryCodeConfigured).label }}
                 </span>
-                <span v-else>部署端管理</span>
+                <span v-else-if="editModel === 'edit'">部署端管理</span>
               </div>
               <el-button
                 :disabled="!recoveryCodeWebManaged || submitting"
                 :loading="securityDialogOpening === 'recovery-code'"
                 @click="openRecoveryCodeDialog"
               >
-                {{ recoveryCodeWebManaged ? '管理安全码' : '仅支持本机管理' }}
+                {{ recoveryCodeWebManaged || editModel === 'create' ? '管理安全码' : '仅支持本机管理' }}
               </el-button>
             </div>
             <div class="security-edit-item">
@@ -264,16 +267,23 @@
                 </span>
               </div>
               <el-button
-                :disabled="submitting"
+                :disabled="!selectedUser?.ID || submitting"
                 :loading="securityDialogOpening === 'external-email'"
                 @click="openExternalEmailDialog"
               >
                 编辑外部邮箱
               </el-button>
             </div>
+            <div v-if="canManageNotification" class="security-edit-item account-form-wide">
+              <strong>系统通知发信</strong>
+              <el-button
+                :disabled="!selectedUser?.ID || submitting"
+                @click="notificationDialogVisible = true"
+              >管理发信授权</el-button>
+            </div>
           </div>
 
-          <el-form-item>
+          <el-form-item class="account-form-wide">
             <div class="status-switch">
               <span class="switch-label">{{ lang.status }}</span>
               <el-switch
@@ -293,10 +303,26 @@
         <span class="dialog-footer">
           <el-button :disabled="submitting" @click="userInfoDialog = false">{{ lang.cancel }}</el-button>
           <el-button type="primary" :disabled="!canEditSelectedUser" :loading="submitting" @click="submit">
-            {{ lang.confirm }}
+            {{ editModel === 'create' ? '创建并继续配置' : lang.confirm }}
           </el-button>
         </span>
       </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="notificationDialogVisible"
+      title="系统通知发信"
+      width="min(760px, 94vw)"
+      append-to-body
+      destroy-on-close
+      :before-close="closeNotificationDialog"
+    >
+      <SystemNotification
+        v-if="notificationDialogVisible && selectedUser?.ID"
+        :key="selectedUser.ID"
+        ref="notificationPanel"
+        :user-id="selectedUser.ID"
+      />
     </el-dialog>
 
     <RecoveryCodeDialog
@@ -317,6 +343,7 @@
 import { usePage, Plus } from "./UserManagement.js";
 import RecoveryCodeDialog from "./RecoveryCodeDialog/RecoveryCodeDialog.vue";
 import UserExternalEmailDialog from "./UserExternalEmailDialog/UserExternalEmailDialog.vue";
+import SystemNotification from "../SystemNotification/SystemNotification.vue";
 
 const {
   lang,
@@ -358,6 +385,10 @@ const {
   recoveryCodeWebManaged,
   recoveryCodeDialogVisible,
   externalEmailDialogVisible,
+  notificationDialogVisible,
+  notificationPanel,
+  canManageNotification,
+  closeNotificationDialog,
   securityDialogOpening,
   openRecoveryCodeDialog,
   openExternalEmailDialog,
