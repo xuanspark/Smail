@@ -95,8 +95,17 @@ export function usePage(props = {}) {
       if (disposed || sequence !== secretSequence || target.user_id !== status.value?.user_id) return
       clearVerification()
       showSecret(data.code, target.account)
-    } catch (cause) { showError(cause) }
-    finally {
+    } catch (cause) {
+      if (disposed || sequence !== secretSequence) return
+      verifyPassword.value = ''
+      showError(cause)
+      await Promise.all([loadStatus(), loadAccounts()])
+      if (disposed || sequence !== secretSequence) return
+      if (!canReveal.value || target.user_id !== status.value?.user_id || target.version !== status.value?.version) {
+        clearSecret()
+        clearVerification()
+      }
+    } finally {
       verifyPassword.value = ''
       submitting.value = false
     }
