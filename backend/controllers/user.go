@@ -150,14 +150,17 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 		writeAccountGroupError(w, err)
 		return
 	}
-	response.NewSuccessResponse(struct {
-		models.User
-		GroupIDs          []int
-		MembershipVersion int
-	}{user, groupIDs, user.SecurityVersion}).FPrint(w)
+	response.NewSuccessResponse(userListItem{
+		ID: user.ID, Account: user.Account, Name: user.Name,
+		Disabled: user.Disabled, Role: user.EffectiveRole(), IsAdmin: user.IsAdmin,
+		GroupIDs: groupIDs, MembershipVersion: user.SecurityVersion,
+		MustChangePassword:   user.MustChangePassword,
+		ExternalEmailEnabled: user.ExternalEmailEnabled == 1,
+	}).FPrint(w)
 }
 
 type userListRequest struct {
+	UserID      int  `json:"user_id"`
 	GroupID     *int `json:"group_id"`
 	CurrentPage int  `json:"current_page"`
 	PageSize    int  `json:"page_size"`
@@ -231,6 +234,9 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	query := db.Instance.Table(&models.User{})
 	defer query.Close()
 	accountgroup.ApplyScope(query, ctx.UserID, ctx.EffectiveRole())
+	if reqData.UserID != 0 {
+		query.And("id = ?", reqData.UserID)
+	}
 	if reqData.GroupID != nil {
 		groups, err := accountgroup.VisibleGroups(db.Instance, ctx.UserID, ctx.EffectiveRole())
 		if err != nil {

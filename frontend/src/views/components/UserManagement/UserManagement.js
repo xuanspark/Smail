@@ -130,10 +130,30 @@ export function usePage() {
   const title = ref(lang.editUser)
   
   const reflushList = async function () {
+    const selectedID = selectedUser.value?.ID
     await groups.refreshGroups()
-    if (selectedUser.value?.ID) {
+    if (selectedID && selectedUser.value?.ID === selectedID) {
       const users = groups.accountGroups.value.flatMap(group => group.rows)
-      selectedUser.value = users.find(item => item.ID === selectedUser.value.ID) || selectedUser.value
+      let current = users.find(item => item.ID === selectedID)
+      if (!current) {
+        const response = await http.post('/api/v1/user/list', { user_id: selectedID, page_size: 1 })
+        if (response?.errorNo !== 0) throw new Error(response?.errorMsg || lang.fail)
+        current = response.data?.list?.find(item => item.ID === selectedID)
+      }
+      if (selectedUser.value?.ID !== selectedID) return
+      if (!current) {
+        selectedUser.value = null
+        userInfoDialog.value = false
+        return
+      }
+      const savedGroups = selectedUser.value.GroupIDs || [0]
+      const currentGroups = current.GroupIDs || [0]
+      if (current.Role === selectedUser.value.Role
+        && currentGroups.length === savedGroups.length
+        && savedGroups.every(id => currentGroups.includes(id))) {
+        editingMembershipVersion.value = current.MembershipVersion
+      }
+      selectedUser.value = current
     }
   }
   
@@ -199,8 +219,12 @@ export function usePage() {
     externalEmailDialogVisible.value = true
   }
 
-  const handleSecurityChanged = function () {
-    reflushList()
+  const handleSecurityChanged = async function () {
+    try {
+      await reflushList()
+    } catch (error) {
+      ElNotification({ title: lang.fail, message: error?.message || lang.fail, type: 'error' })
+    }
   }
   
   const submit = async function () {
