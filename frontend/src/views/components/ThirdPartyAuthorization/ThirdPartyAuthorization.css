@@ -233,12 +233,13 @@
 /* 通用协议指引网格 */
 .proto-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 12px;
 }
 
 .proto-card {
-  padding: 14px 16px;
+  min-width: 0;
+  padding: 12px;
   background: var(--pm-bg-primary);
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
@@ -265,6 +266,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.proto-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .proto-name {
@@ -273,7 +285,15 @@
   color: var(--pm-text-primary);
 }
 
+.proto-service {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pm-text-primary);
+}
+
 .btn-card-copy {
+  flex-shrink: 0;
+  padding-inline: 0;
   font-weight: 600;
 }
 
@@ -284,11 +304,12 @@
 }
 
 .field-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
   font-size: 13px;
   gap: 8px;
+  line-height: 1.5;
 }
 
 .field-k {
@@ -297,9 +318,11 @@
 }
 
 .field-v {
+  min-width: 0;
   color: var(--pm-text-primary);
   text-align: right;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 
 .font-mono {
@@ -326,9 +349,6 @@
 }
 
 @media (max-width: 960px) {
-  .proto-grid {
-    grid-template-columns: 1fr;
-  }
   .card-header-bar {
     flex-direction: column;
     align-items: stretch;

@@ -145,7 +145,10 @@
           <div class="proto-card">
             <div class="proto-header">
               <div class="proto-name-badge">
-                <span class="proto-name">IMAP 收信服务</span>
+                <div class="proto-title">
+                  <span class="proto-name">IMAP</span>
+                  <span class="proto-service">收信服务</span>
+                </div>
                 <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
               </div>
               <el-button
@@ -161,15 +164,15 @@
 
             <div class="proto-fields">
               <div class="field-item">
-                <span class="field-k">服务器地址：</span>
+                <span class="field-k">服务器</span>
                 <span class="field-v font-mono">imap.{{ currentDomain || 'solit.cn' }}</span>
               </div>
               <div class="field-item">
-                <span class="field-k">服务端口：</span>
+                <span class="field-k">端口</span>
                 <span class="field-v font-mono highlight">993</span>
               </div>
               <div class="field-item">
-                <span class="field-k">加密方式：</span>
+                <span class="field-k">加密</span>
                 <span class="field-v">SSL / TLS 隐式加密</span>
               </div>
             </div>
@@ -179,7 +182,10 @@
           <div class="proto-card">
             <div class="proto-header">
               <div class="proto-name-badge">
-                <span class="proto-name">POP3 收信服务</span>
+                <div class="proto-title">
+                  <span class="proto-name">POP3</span>
+                  <span class="proto-service">收信服务</span>
+                </div>
                 <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
               </div>
               <el-button
@@ -195,15 +201,15 @@
 
             <div class="proto-fields">
               <div class="field-item">
-                <span class="field-k">服务器地址：</span>
+                <span class="field-k">服务器</span>
                 <span class="field-v font-mono">pop.{{ currentDomain || 'solit.cn' }}</span>
               </div>
               <div class="field-item">
-                <span class="field-k">服务端口：</span>
+                <span class="field-k">端口</span>
                 <span class="field-v font-mono highlight">995</span>
               </div>
               <div class="field-item">
-                <span class="field-k">加密方式：</span>
+                <span class="field-k">加密</span>
                 <span class="field-v">SSL / TLS 隐式加密</span>
               </div>
             </div>
@@ -213,7 +219,10 @@
           <div class="proto-card">
             <div class="proto-header">
               <div class="proto-name-badge">
-                <span class="proto-name">SMTP 发信服务</span>
+                <div class="proto-title">
+                  <span class="proto-name">SMTP</span>
+                  <span class="proto-service">发信服务</span>
+                </div>
                 <el-tag size="small" type="primary" effect="light">SSL / STARTTLS</el-tag>
               </div>
               <el-button
@@ -229,15 +238,15 @@
 
             <div class="proto-fields">
               <div class="field-item">
-                <span class="field-k">服务器地址：</span>
+                <span class="field-k">服务器</span>
                 <span class="field-v font-mono">smtp.{{ currentDomain || 'solit.cn' }}</span>
               </div>
               <div class="field-item">
-                <span class="field-k">服务端口：</span>
+                <span class="field-k">端口</span>
                 <span class="field-v font-mono highlight">465 (SSL) / 587</span>
               </div>
               <div class="field-item">
-                <span class="field-k">加密方式：</span>
+                <span class="field-k">加密</span>
                 <span class="field-v">SSL 隐式加密 / STARTTLS</span>
               </div>
             </div>
