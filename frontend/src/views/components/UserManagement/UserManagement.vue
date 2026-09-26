@@ -121,6 +121,19 @@
       <p>账号：{{ membershipUser?.Account }}</p>
       <el-form label-position="top">
         <el-form-item label="所属分组">
+          <div class="membership-selector-header">
+            <span>{{ membershipLimit > 1 ? '可选择多个分组' : '只能选择一个分组' }}</span>
+            <el-button
+              v-if="canManageGroups"
+              type="primary"
+              text
+              size="small"
+              :disabled="groupSaving"
+              @click="createMembershipGroup"
+            >
+              新建分组
+            </el-button>
+          </div>
           <fieldset
             class="membership-options"
             :aria-label="membershipLimit > 1 ? '所属分组（可多选）' : '所属分组（单选）'"
@@ -358,6 +371,7 @@ const {
   membershipLimit,
   membershipDraft,
   membershipSingleSelection,
+  createMembershipGroup,
   loadGroup,
   toggleGroup,
   saveGroup,

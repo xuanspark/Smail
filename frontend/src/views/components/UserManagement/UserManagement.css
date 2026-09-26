@@ -224,6 +224,21 @@
   background: var(--pm-bg-secondary);
 }
 
+.membership-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--pm-text-secondary);
+  font-size: 12px;
+}
+
+.membership-selector-header :deep(.el-button) {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .membership-option {
   display: flex;
   align-items: center;

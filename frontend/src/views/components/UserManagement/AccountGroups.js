@@ -106,11 +106,25 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
       if (response?.errorNo !== 0) throw new Error(response?.errorMsg || '保存分组失败')
       ElMessage.success('账号分组已保存')
       await refreshGroups()
+      return response.data || null
     } catch (error) {
       if (error !== 'cancel' && error !== 'close' && !isRecentAuthenticationCancelled(error)) ElMessage.error(error?.message || '保存分组失败')
     } finally {
       groupSaving.value = false
     }
+  }
+
+  const createMembershipGroup = async () => {
+    if (!membershipVisible.value || !canManageGroups.value || groupSaving.value) return
+    const group = await saveGroup()
+    if (!group?.id) return
+    if (membershipLimit.value === 1) {
+      membershipSelection.value = [group.id]
+      return
+    }
+    const selectedGroups = membershipSelection.value.filter(id => id !== 0)
+    if (!selectedGroups.includes(group.id)) selectedGroups.push(group.id)
+    membershipSelection.value = selectedGroups
   }
 
   const editMembership = (user, options = {}) => {
@@ -163,6 +177,6 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
     accountGroups, groupsLoading, groupsError, canManageGroups, groupSaving,
     membershipVisible, membershipUser, membershipSelection, membershipLimit,
     membershipDraft, membershipSingleSelection,
-    refreshGroups, loadGroup, toggleGroup, saveGroup, editMembership, saveMembership
+    refreshGroups, loadGroup, toggleGroup, saveGroup, createMembershipGroup, editMembership, saveMembership
   }
 }
