@@ -6,7 +6,6 @@ import (
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/internal/buildinfo"
-	"git.pcux.cn/xuans/Smail/listen/cron_server"
 	"git.pcux.cn/xuans/Smail/res_init"
 	"git.pcux.cn/xuans/Smail/services/runtimelog"
 	"git.pcux.cn/xuans/Smail/utils/runtimepath"
@@ -37,7 +36,6 @@ func Run() (err error) {
 		return fmt.Errorf("启动运行日志失败: %w", err)
 	}
 	defer finishRuntimeLogs(runtimeLogs, &err)
-	config.MaintainManagedSSLHistory()
 
 	build := buildinfo.Current()
 	if build.Version == "dev" {
@@ -45,9 +43,6 @@ func Run() (err error) {
 	}
 
 	log.WithFields(log.Fields{"action": "启动主服务", "object": "Smail", "result": "started"}).Infof("服务启动，版本：%s", build.Version)
-
-	// 启动定时任务。
-	go cron_server.Start()
 
 	// 启动核心服务。
 	if err := res_init.Init(build.Version); err != nil {

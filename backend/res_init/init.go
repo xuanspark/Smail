@@ -16,6 +16,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/hooks"
+	"git.pcux.cn/xuans/Smail/listen/cron_server"
 	"git.pcux.cn/xuans/Smail/listen/http_server"
 	"git.pcux.cn/xuans/Smail/listen/imap_server"
 	"git.pcux.cn/xuans/Smail/listen/pop3_server"
@@ -52,6 +53,7 @@ var credentialService *credentials.Service
 var webAuthnRuntimeService *webauthnservice.Service
 var logRuntime *logstore.Runtime
 var outboxRuntime *outbox.Runtime
+var certificateRuntime *cron_server.Runtime
 
 func startConfigManager() error {
 	root := filepath.Join(config.ROOT_PATH, "config")
@@ -261,6 +263,7 @@ func Init(serverVersion string) error {
 		}
 
 		log.WithFields(log.Fields{"action": "启动邮箱监听", "object": "SMTP / IMAP / POP3", "result": "started"}).Info("邮箱监听任务已提交，具体监听结果由各服务报告")
+		certificateRuntime = cron_server.Start()
 		restart.SetCurrent(restart.NewSignalTrigger(signal.RestartChan))
 
 		select {
@@ -293,6 +296,14 @@ func startService(serviceErrors chan<- error, name string, service func() error)
 
 func stopServices() error {
 	restart.SetCurrent(nil)
+	// 先结束证书维护，再关闭其依赖；超时直接上报，禁止进入下一轮配置恢复。
+	certificateCtx, certificateCancel := context.WithTimeout(context.Background(), 25*time.Second)
+	certificateErr := certificateRuntime.Stop(certificateCtx)
+	certificateCancel()
+	if certificateErr != nil {
+		return fmt.Errorf("certificate maintenance did not stop; dependencies retained: %w", certificateErr)
+	}
+	certificateRuntime = nil
 	stopAdminResetControl()
 	smtp_server.Stop()
 	http_server.HttpsStop()
