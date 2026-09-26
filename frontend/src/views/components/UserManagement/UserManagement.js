@@ -77,7 +77,11 @@ export function usePage() {
 
   const openMembershipDialog = () => {
     if (submitting.value || (!selectedUser.value && editModel.value !== 'create')) return
-    groups.editMembership(selectedUser.value || { Role: editUserInfo.role }, {
+    const membershipUser = selectedUser.value || {
+      Account: editUserInfo.account,
+      Role: editUserInfo.role
+    }
+    groups.editMembership(membershipUser, {
       role: editUserInfo.role,
       groupIDs: editingGroupIDs.value,
       onApply: ids => { editingGroupIDs.value = ids }
