@@ -20,12 +20,17 @@ export function usePage(props = {}) {
   const secretAccount = ref('')
   const secretVisible = ref(false)
   const seconds = ref(0)
+  const verifyVisible = ref(false)
+  const verifyPassword = ref('')
+  let verifyTarget = null
+  let secretSequence = 0
   let secretTimer = null
   let requestSequence = 0
   let accountsSequence = 0
   let disposed = false
 
   const canManage = computed(() => manager.value && Boolean(status.value?.can_manage))
+  const canReveal = computed(() => Boolean(status.value?.can_reveal))
   const stateText = computed(() => {
     if (!status.value?.enabled) return '未开启'
     if (!status.value.account_available) return '账号不可用'
@@ -44,12 +49,62 @@ export function usePage(props = {}) {
     ElNotification({ title: '操作失败', message: cause?.message || '请稍后重试', type: 'error' })
   }
   const clearSecret = () => {
+    secretSequence += 1
     if (secretTimer) clearInterval(secretTimer)
     secretTimer = null
     secret.value = ''
     secretAccount.value = ''
     seconds.value = 0
     secretVisible.value = false
+  }
+
+  const clearVerification = () => {
+    verifyPassword.value = ''
+    verifyTarget = null
+    verifyVisible.value = false
+  }
+  const showSecret = (code, account) => {
+    clearSecret()
+    if (!code || document.hidden) return
+    secret.value = code
+    secretAccount.value = account
+    secretVisible.value = true
+    const expiresAt = Date.now() + 60000
+    seconds.value = 60
+    secretTimer = setInterval(() => {
+      seconds.value = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+      if (seconds.value === 0) clearSecret()
+    }, 250)
+  }
+  const openVerify = () => {
+    if (!canReveal.value || loading.value || submitting.value || dirty.value) return
+    clearSecret()
+    verifyPassword.value = ''
+    verifyTarget = status.value
+    verifyVisible.value = true
+  }
+  const verifyAndReveal = async () => {
+    if (!verifyTarget || !verifyPassword.value || submitting.value || !canReveal.value) return
+    const target = verifyTarget
+    const sequence = ++secretSequence
+    submitting.value = true
+    try {
+      const data = dataOf(await http.post('/api/v1/system/notification/credential/reveal', {
+        user_id: target.user_id, version: target.version, password: verifyPassword.value
+      }))
+      if (disposed || sequence !== secretSequence || target.user_id !== status.value?.user_id) return
+      clearVerification()
+      showSecret(data.code, target.account)
+    } catch (cause) { showError(cause) }
+    finally {
+      verifyPassword.value = ''
+      submitting.value = false
+    }
+  }
+  const hideOnBackground = () => {
+    if (!document.hidden) return
+    clearSecret()
+    clearVerification()
   }
 
   const loadStatus = async () => {
@@ -103,6 +158,7 @@ export function usePage(props = {}) {
   }
   const refresh = async () => {
     if (!(await beforeLeave())) return
+    clearSecret()
     await Promise.all([loadStatus(), loadAccounts()])
   }
   const save = async () => {
@@ -135,19 +191,12 @@ export function usePage(props = {}) {
         confirmButtonText: '生成新凭据', cancelButtonText: '取消', type: 'warning'
       })
       submitting.value = true
+      const sequence = ++secretSequence
       const data = dataOf(await requestWithRecentAuthentication(() => http.post('/api/v1/system/notification/credential', {
         user_id: target.user_id, version: target.version
       })))
       if (disposed) return
-      clearSecret()
-      secret.value = data.code
-      secretAccount.value = target.account
-      seconds.value = 60
-      secretVisible.value = true
-      secretTimer = setInterval(() => {
-        seconds.value -= 1
-        if (seconds.value <= 0) clearSecret()
-      }, 1000)
+      if (sequence === secretSequence) showSecret(data.code, target.account)
       await Promise.all([loadStatus(), loadAccounts()])
     } catch (cause) { showError(cause) }
     finally { submitting.value = false }
@@ -160,12 +209,24 @@ export function usePage(props = {}) {
     } catch { showError(new Error('复制失败，请手动复制授权码')) }
   }
 
-  onMounted(() => { loadStatus(); loadAccounts() })
-  onUnmounted(() => { disposed = true; requestSequence += 1; accountsSequence += 1; clearSecret() })
+  onMounted(() => {
+    loadStatus()
+    loadAccounts()
+    document.addEventListener('visibilitychange', hideOnBackground)
+  })
+  onUnmounted(() => {
+    disposed = true
+    requestSequence += 1
+    accountsSequence += 1
+    clearSecret()
+    clearVerification()
+    document.removeEventListener('visibilitychange', hideOnBackground)
+  })
 
   return {
     manager, loading, submitting, error, status, accounts, page, total, form,
     secret, secretAccount, secretVisible, seconds, canManage, stateText, dirty,
+    canReveal, verifyVisible, verifyPassword, openVerify, verifyAndReveal, clearVerification,
     loadAccounts, selectAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave
   }
 }

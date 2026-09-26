@@ -103,7 +103,7 @@ func GetNotificationStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 		"user_id": user.ID, "account": user.Account, "enabled": item.Enabled == 1,
 		"configured": notification.Configured(item, *user), "version": item.CodeVersion,
 		"can_reveal": notification.Configured(item, *user) && item.CodeCiphertext != "" &&
-			access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), ctx.UserID == user.ID),
+			(ctx.UserID == user.ID || access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), false)),
 		"account_available": user.Disabled == 0 && user.MustChangePassword == 0,
 		"can_manage":        access.CanManageNotification(ctx.EffectiveRole(), user.EffectiveRole(), ctx.UserID == user.ID),
 		"minute_limit":      item.MinuteLimit, "day_limit": item.DayLimit,
@@ -216,20 +216,48 @@ func RevealNotificationCredential(ctx *context.Context, w http.ResponseWriter, r
 		writeSecurityError(w, response.ParamsError, "请填写当前登录密码并选择有效账号")
 		return
 	}
-	user, ok := loadNotificationUser(ctx, w, input.UserID, true)
+	user, ok := loadNotificationUser(ctx, w, input.UserID, false)
 	if !ok {
 		return
 	}
-	_, err := auth.AuthenticateUserByID(ctx.UserID, input.Password)
+	if err := authorizeCapability(ctx, access.CapabilityNotificationReveal, user.EffectiveRole(), ctx.UserID == user.ID); err != nil {
+		writeSecurityError(w, response.NoAccessPrivileges, "无权查看该账号的通知发信凭据")
+		return
+	}
+	userKey := reauthUserAttempts.accountKey(strconv.Itoa(ctx.UserID))
+	ipKey := reauthIPAttempts.ipKey(req)
+	if reauthUserAttempts.blocked(userKey) || reauthIPAttempts.blocked(ipKey) {
+		writeReauthError(w, http.StatusTooManyRequests, "REAUTH_RATE_LIMITED", "尝试次数过多，请稍后再试")
+		return
+	}
+	actor, err := auth.AuthenticateUserByID(ctx.UserID, input.Password)
 	input.Password = ""
 	if err != nil {
 		recordNotificationManagement(ctx, user.ID, "查看系统通知凭据", err, nil)
 		if !writePasswordBusy(w, err) {
+			reauthUserAttempts.recordFailure(userKey)
+			reauthIPAttempts.recordFailure(ipKey)
 			writeSecurityError(w, response.ParamsError, "密码验证失败")
 		}
 		return
 	}
-	code, err := notification.Reveal(db.Instance, *user, input.Version, config.ROOT_PATH, accountWriteGuard(ctx, *user))
+	if actor.SessionVersion != ctx.SessionVersion || actor.SecurityVersion != ctx.SecurityVersion || actor.EffectiveRole() != ctx.EffectiveRole() {
+		writeSecurityError(w, response.NeedLogin, "登录状态已变化，请重新登录")
+		return
+	}
+	guard := accountgroup.OwnGuard(ctx.UserID, ctx.EffectiveRole(), ctx.SessionVersion, ctx.SecurityVersion)
+	if ctx.UserID != user.ID {
+		verified := *ctx
+		verified.RecentAuth = true
+		if _, ok := loadNotificationUser(&verified, w, user.ID, true); !ok {
+			return
+		}
+		guard = accountWriteGuard(ctx, *user)
+	}
+	code, err := notification.Reveal(db.Instance, *user, input.Version, config.ROOT_PATH, guard)
+	if err == nil {
+		reauthUserAttempts.clear(userKey)
+	}
 	recordNotificationManagement(ctx, user.ID, "查看系统通知凭据", err, nil)
 	if err != nil {
 		writeNotificationError(w, err)

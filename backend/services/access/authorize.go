@@ -63,6 +63,10 @@ func Authorize(request Request) error {
 
 func authorizeResource(request Request) error {
 	switch request.Capability {
+	case CapabilityNotificationReveal:
+		if !request.OwnResource && !CanManageNotification(request.ActorRole, request.TargetRole, false) {
+			return deny(CodeAccessDenied)
+		}
 	case CapabilityNotificationManage:
 		if !CanManageNotification(request.ActorRole, request.TargetRole, request.OwnResource) {
 			return deny(CodeTargetRoleDenied)

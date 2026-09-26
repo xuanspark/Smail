@@ -26,11 +26,11 @@ const (
 )
 
 var (
-	ErrDenied      = errors.New("notification authorization denied")
-	ErrConflict    = errors.New("notification authorization changed")
-	ErrQuota       = errors.New("notification quota exceeded")
-	ErrUnavailable = errors.New("notification authorization unavailable")
-	ErrLimits      = errors.New("invalid notification limits")
+	ErrDenied       = errors.New("notification authorization denied")
+	ErrConflict     = errors.New("notification authorization changed")
+	ErrQuota        = errors.New("notification quota exceeded")
+	ErrUnavailable  = errors.New("notification authorization unavailable")
+	ErrLimits       = errors.New("invalid notification limits")
 	ErrNoCiphertext = errors.New("notification credential must be regenerated before reveal")
 )
 

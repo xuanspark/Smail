@@ -60,6 +60,51 @@
   margin-top: 16px;
 }
 
+.notification-credential {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 12px 0;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.notification-credential-label {
+  font-weight: 500;
+}
+
+.notification-credential-code {
+  flex: 1 1 320px;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.notification-credential-mask {
+  letter-spacing: 2px;
+  color: var(--el-text-color-secondary);
+}
+
+.notification-credential-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notification-credential-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.notification-countdown {
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .notification-compact {
   gap: 10px;
   padding: 0;

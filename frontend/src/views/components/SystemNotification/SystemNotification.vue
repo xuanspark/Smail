@@ -11,7 +11,7 @@
     <el-alert
       v-if="!compact"
       title="默认关闭，逐账号授权"
-      :description="manager ? '只有管理范围内的账号可以授权。管理员修改授权前需要身份确认；关闭时永久撤销旧凭据。' : '普通用户只能查看自己的状态和连接参数。需要开启或重置凭据时，请联系管理员。'"
+      :description="manager ? '只有管理范围内的账号可以授权。管理员修改授权前需要身份确认；关闭时永久撤销旧凭据。' : '可查看自己的状态，并验证本人密码查看通知凭据。开启或重置凭据请联系管理员。'"
       type="info"
       show-icon
       :closable="false"
@@ -53,6 +53,30 @@
           <el-tag :type="status.enabled && status.configured ? 'success' : 'info'">{{ stateText }}</el-tag>
         </div>
         <p v-if="!status.account_available" class="notification-warning">账号已禁用或尚未修改临时密码，不能生成或使用通知凭据。</p>
+
+        <div v-if="status.configured" class="notification-credential">
+          <span class="notification-credential-label">通知发信凭据</span>
+          <template v-if="secretVisible && secret">
+            <code class="notification-credential-code">{{ secret }}</code>
+            <div class="notification-credential-actions">
+              <el-button size="small" type="primary" @click="copySecret">复制凭据</el-button>
+              <el-button size="small" @click="clearSecret">隐藏</el-button>
+              <span class="notification-countdown" role="status">{{ seconds }} 秒后自动隐藏</span>
+            </div>
+          </template>
+          <template v-else>
+            <span class="notification-credential-mask" aria-label="凭据已隐藏">••••••••••••••••</span>
+            <el-button
+              v-if="canReveal"
+              size="small"
+              type="primary"
+              plain
+              :disabled="submitting || loading || dirty"
+              @click="openVerify"
+            >安全验证查看明文</el-button>
+            <span v-else class="notification-hint">旧凭据未保留密文，请联系管理员重新生成。</span>
+          </template>
+        </div>
 
         <div class="notification-columns">
         <el-form v-if="canManage" label-position="top" :disabled="submitting || loading" @submit.prevent="save">
@@ -99,13 +123,34 @@
       <el-empty v-else-if="!loading && !error" description="尚未读取账号状态" />
     </div>
 
-    <el-dialog v-model="secretVisible" title="通知发信凭据（仅显示一次）" width="min(560px, 92vw)" destroy-on-close @closed="clearSecret">
-      <p>账号：{{ secretAccount }}。请安全保存并交付给该账号的使用者。</p>
-      <el-alert :title="`${seconds} 秒后自动隐藏；关闭后无法再次查看，只能重新生成。`" type="warning" :closable="false" show-icon />
-      <el-input :model-value="secret" readonly aria-label="新通知发信凭据" class="notification-secret" />
+    <el-dialog
+      v-model="verifyVisible"
+      title="安全验证"
+      width="min(420px, 92vw)"
+      append-to-body
+      destroy-on-close
+      :close-on-click-modal="false"
+      :close-on-press-escape="!submitting"
+      :show-close="!submitting"
+      @closed="clearVerification"
+    >
+      <el-form label-position="top" @submit.prevent="verifyAndReveal">
+        <el-form-item label="当前登录密码">
+          <el-input
+            v-model="verifyPassword"
+            type="password"
+            autocomplete="current-password"
+            placeholder="请输入本人登录密码"
+            :disabled="submitting"
+            aria-label="当前登录密码"
+          />
+        </el-form-item>
+        <p class="notification-hint">验证后显示 60 秒，隐藏后可重新验证查看。</p>
+        <button type="submit" hidden></button>
+      </el-form>
       <template #footer>
-        <el-button @click="copySecret">复制凭据</el-button>
-        <el-button type="primary" @click="clearSecret">已保存，关闭</el-button>
+        <el-button :disabled="submitting" @click="clearVerification">取消</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="!verifyPassword" @click="verifyAndReveal">验证并查看</el-button>
       </template>
     </el-dialog>
   </section>
@@ -122,6 +167,7 @@ const props = defineProps({
 const {
   manager, loading, submitting, error, status, accounts, page, total, form,
   secret, secretAccount, secretVisible, seconds, canManage, stateText, dirty,
+  canReveal, verifyVisible, verifyPassword, openVerify, verifyAndReveal, clearVerification,
   loadAccounts, selectAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave
 } = usePage(props)
 

@@ -9,8 +9,8 @@ type Endpoint struct {
 }
 
 var managementEndpoints = []Endpoint{
-	{Method: "POST", Path: "/api/system/notification/credential/reveal", Capability: CapabilityNotificationManage},
-	{Method: "POST", Path: "/api/v1/system/notification/credential/reveal", Capability: CapabilityNotificationManage},
+	{Method: "POST", Path: "/api/system/notification/credential/reveal", Capability: CapabilityNotificationReveal},
+	{Method: "POST", Path: "/api/v1/system/notification/credential/reveal", Capability: CapabilityNotificationReveal},
 	{Method: "POST", Path: "/api/system/notification/authorization", Capability: CapabilityNotificationManage},
 	{Method: "POST", Path: "/api/system/notification/credential", Capability: CapabilityNotificationManage},
 	{Method: "POST", Path: "/api/v1/user/groups/save", Capability: CapabilityAccountGroupManage},

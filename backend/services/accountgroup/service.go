@@ -186,6 +186,28 @@ func ReplaceMembership(tx *xorm.Session, userID int, ids []int) error {
 
 type WriteGuard func(*xorm.Session) error
 
+// OwnGuard 只锁定并复核当前账号，不授予管理本人或其他账号的能力。
+func OwnGuard(actorID int, role access.Role, sessionVersion, securityVersion int) WriteGuard {
+	return func(tx *xorm.Session) error {
+		if tx == nil || actorID <= 0 || !role.Valid() {
+			return ErrDenied
+		}
+		if _, err := tx.ID(actorID).SetExpr("session_version", "session_version").Update(&models.User{}); err != nil {
+			return err
+		}
+		var current models.User
+		found, err := tx.ID(actorID).Get(&current)
+		if err != nil {
+			return err
+		}
+		if !found || current.Disabled != 0 || current.MustChangePassword != 0 || current.EffectiveRole() != role ||
+			current.SessionVersion != sessionVersion || current.SecurityVersion != securityVersion {
+			return ErrDenied
+		}
+		return nil
+	}
+}
+
 func CheckWrite(tx *xorm.Session, guards ...WriteGuard) error {
 	for _, guard := range guards {
 		if guard == nil {
