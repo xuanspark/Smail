@@ -225,8 +225,35 @@
   display: grid;
   grid-template-columns: minmax(240px, 0.82fr) minmax(320px, 1.18fr);
   align-items: start;
-  gap: 12px;
+  gap: 8px 10px;
   min-width: 0;
+  padding: 12px 14px;
+}
+
+.notification-settings:has(> .notification-manager-panel) .notification-header p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.notification-settings:has(> .notification-manager-panel) .notification-header h2,
+.notification-settings:has(> .notification-manager-panel) .notification-header h3 {
+  margin-bottom: 4px;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .el-alert {
+  padding: 8px 12px;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .el-alert :deep(.el-alert__title) {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .el-alert :deep(.el-alert__description) {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-header,
@@ -237,12 +264,13 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel {
   grid-column: 1;
   min-width: 0;
+  padding: 10px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel {
   grid-column: 2;
   min-width: 0;
-  padding: 14px;
+  padding: 10px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel h3 {
@@ -250,12 +278,13 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) :deep(.el-table .cell) {
-  padding-inline: 8px;
-  line-height: 1.35;
+  padding-inline: 6px;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .notification-settings:has(> .notification-manager-panel) :deep(.el-table__cell) {
-  padding-block: 7px;
+  padding-block: 5px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel .el-pagination {
@@ -263,18 +292,19 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-heading {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-credential {
-  margin: 8px 0;
-  padding: 8px 10px;
+  margin: 6px 0;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: 10px 14px;
+  gap: 6px 10px;
   align-items: start;
 }
 
@@ -310,19 +340,50 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-form-item) {
-  margin-bottom: 10px;
-}
-
-.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-limits {
-  gap: 8px;
-}
-
-.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__header) {
   margin-bottom: 6px;
 }
 
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-form-item__label) {
+  margin-bottom: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-limits {
+  gap: 6px;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__header) {
+  margin-bottom: 4px;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__title) {
+  font-size: 13px;
+}
+
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__cell) {
-  padding: 7px 10px;
+  padding: 4px 7px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__label) {
+  width: 96px;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-hint {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel > .el-alert {
+  padding: 6px 10px;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel > .el-alert :deep(.el-alert__title),
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel > .el-alert :deep(.el-alert__description) {
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 @media (max-width: 920px) {
