@@ -1,15 +1,12 @@
 package smtp_server
 
 import (
-	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"net/textproto"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,49 +18,129 @@ import (
 	"git.pcux.cn/xuans/Smail/hooks"
 	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/services/credentials"
 	listservice "git.pcux.cn/xuans/Smail/services/list"
+	"git.pcux.cn/xuans/Smail/services/outbox"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	smtp "github.com/emersion/go-smtp"
-	log "github.com/sirupsen/logrus"
 	_ "modernc.org/sqlite"
 	"xorm.io/xorm"
 )
 
-func TestOutgoingAuditInsertFailureDoesNotDeliver(t *testing.T) {
-	engine, dsn := newAuditTestEngine(t)
-	blocker := beginAuditReadTransaction(t, dsn)
-
-	var deliveries atomic.Int32
-	session := newAuditTestSession()
-	err := session.deliverOutgoingEmail(newAuditTestEmail("insert-busy@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		return nil, nil
-	})
-
-	assertSMTPCode(t, err, 451)
-	if got := deliveries.Load(); got != 0 {
-		t.Fatalf("downstream deliveries = %d, want 0", got)
+func newAuthorizedAuditSession(t *testing.T, engine *xorm.Engine) (*Session, string) {
+	t.Helper()
+	user := models.User{ID: 1, Account: "sender", Password: "test-hash", Role: "user", SessionVersion: 1, SecurityVersion: 1}
+	if _, err := engine.Insert(&user); err != nil {
+		t.Fatal(err)
 	}
-	assertAuditCounts(t, engine, 0, 0)
+	service, err := credentials.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetProtocolEnabled(user.ID, "smtp", true); err != nil {
+		t.Fatal(err)
+	}
+	code, err := service.GenerateProtocolCode(user.ID, "smtp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, grant, err := auth.AuthenticateProtocolSession("smtp", "192.0.2.93:1234", "sender@example.com", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := newAuditTestSession()
+	session.authorization = grant
+	session.From = "sender@example.com"
+	session.To = []string{"recipient@example.net"}
+	return session, code
+}
 
+func auditQueue(t *testing.T, engine *xorm.Engine) []models.OutboundDelivery {
+	t.Helper()
+	var jobs []models.OutboundDelivery
+	if err := engine.Asc("id").Find(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	return jobs
+}
+
+func TestSMTPSubmissionQueuesOnlyAcceptedEnvelope(t *testing.T) {
+	engine, _ := newAuditTestEngine(t)
+	session, code := newAuthorizedAuditSession(t, engine)
+	session.From = "sender@EXAMPLE.com"
+	session.To = []string{"envelope@example.net", "envelope@EXAMPLE.net"}
+	email := newAuditTestEmail("envelope-queue@example.com")
+	email.Date = "2026-09-27T12:30:00+08:00"
+	if err := session.deliverOutgoingEmail(email, "SMTP"); err != nil {
+		t.Fatal(err)
+	}
+	jobs := auditQueue(t, engine)
+	if len(jobs) != 1 || jobs[0].Recipient != "envelope@example.net" || jobs[0].State != "queued" || jobs[0].Attempts != 0 {
+		t.Fatalf("queued envelope jobs = %+v", jobs)
+	}
+	var submission outbox.Submission
+	if err := json.Unmarshal([]byte(jobs[0].Submission), &submission); err != nil {
+		t.Fatal(err)
+	}
+	if submission.EnvelopeFrom != session.From || submission.Date != email.Date || submission.Authorization.Kind != "smtp" || submission.Trigger != "SMTP" {
+		t.Fatal("SMTP envelope or authorization metadata was not preserved")
+	}
+	if strings.Contains(jobs[0].Submission, code) || strings.Contains(jobs[0].Submission, "test-hash") {
+		t.Fatal("submission persisted reusable credentials")
+	}
+	if email.To[0].EmailAddress != "recipient@example.net" || email.MessageId <= 0 {
+		t.Fatal("queue changed message headers or lost stored identity")
+	}
+	var saved models.Email
+	if found, err := engine.ID(jobs[0].EmailID).Get(&saved); err != nil || !found {
+		t.Fatalf("saved message: found=%v err=%v", found, err)
+	}
+	expectedDate, err := time.Parse(time.RFC3339, email.Date)
+	if err != nil || !saved.SendDate.Equal(expectedDate) {
+		t.Fatalf("stored message date = %v, want %v", saved.SendDate, expectedDate)
+	}
+	assertAuditCounts(t, engine, 1, 1)
+	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
+}
+
+func TestSMTPQueueInsertFailureRollsBackWholeSubmission(t *testing.T) {
+	engine, _ := newAuditTestEngine(t)
+	session, _ := newAuthorizedAuditSession(t, engine)
+	if _, err := engine.Exec(`CREATE TRIGGER fail_queue_insert BEFORE INSERT ON outbound_delivery
+		BEGIN SELECT RAISE(ABORT, 'forced queue insert failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	email := newAuditTestEmail("queue-failure@example.com")
+	assertSMTPCode(t, session.deliverOutgoingEmail(email, "SMTP"), 451)
+	assertAuditCounts(t, engine, 0, 0)
+	if len(auditQueue(t, engine)) != 0 || email.MessageId != 0 {
+		t.Fatal("failed submission left partial durable state")
+	}
+}
+
+func TestSMTPQueueBusyFailureDoesNotAcceptSubmission(t *testing.T) {
+	engine, dsn := newAuditTestEngine(t)
+	session, _ := newAuthorizedAuditSession(t, engine)
+	blocker := beginAuditReadTransaction(t, dsn)
+	assertSMTPCode(t, session.deliverOutgoingEmail(newAuditTestEmail("busy@example.com"), "SMTP"), 451)
+	assertAuditCounts(t, engine, 0, 0)
+	if len(auditQueue(t, engine)) != 0 {
+		t.Fatal("failed transaction left delivery tasks")
+	}
 	if err := blocker.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.deliverOutgoingEmail(newAuditTestEmail("insert-busy@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		return nil, nil
-	}); err != nil {
-		t.Fatalf("delivery after lock release failed: %v", err)
-	}
-	if got := deliveries.Load(); got != 1 {
-		t.Fatalf("downstream deliveries after recovery = %d, want 1", got)
+	if err := session.deliverOutgoingEmail(newAuditTestEmail("busy@example.com"), "SMTP"); err != nil {
+		t.Fatal(err)
 	}
 	assertAuditCounts(t, engine, 1, 1)
-	assertAuditStatuses(t, engine, consts.EmailStatusSent)
+	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
 }
 
-func TestOutgoingAuditRetriesBusyInitialInsertBeforeDeliver(t *testing.T) {
+func TestSMTPQueueRetriesInitialTransactionBeforeAccepting(t *testing.T) {
 	engine, dsn := newAuditTestEngine(t)
+	session, _ := newAuthorizedAuditSession(t, engine)
 	blocker := beginAuditReadTransaction(t, dsn)
 	released := make(chan struct{})
 	go func() {
@@ -71,21 +148,75 @@ func TestOutgoingAuditRetriesBusyInitialInsertBeforeDeliver(t *testing.T) {
 		_ = blocker.Rollback()
 		close(released)
 	}()
-
-	var deliveries atomic.Int32
-	err := newAuditTestSession().deliverOutgoingEmail(newAuditTestEmail("initial-retry@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		return nil, nil
-	})
+	err := session.deliverOutgoingEmail(newAuditTestEmail("busy-retry@example.com"), "SMTP")
 	<-released
 	if err != nil {
-		t.Fatalf("deliverOutgoingEmail() error = %v", err)
-	}
-	if got := deliveries.Load(); got != 1 {
-		t.Fatalf("downstream deliveries = %d, want 1", got)
+		t.Fatal(err)
 	}
 	assertAuditCounts(t, engine, 1, 1)
-	assertAuditStatuses(t, engine, consts.EmailStatusSent)
+	if len(auditQueue(t, engine)) != 1 {
+		t.Fatal("transaction retry duplicated delivery tasks")
+	}
+}
+
+func TestSMTPQueueRequiresCurrentAuthorization(t *testing.T) {
+	for _, revoke := range []bool{false, true} {
+		t.Run(fmt.Sprintf("revoke=%t", revoke), func(t *testing.T) {
+			engine, _ := newAuditTestEngine(t)
+			session := newAuditTestSession()
+			if revoke {
+				session, _ = newAuthorizedAuditSession(t, engine)
+				if _, err := engine.Where("user_id = ?", 1).Cols("enabled").Update(&models.ProtocolCredential{Enabled: false}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			assertSMTPCode(t, session.deliverOutgoingEmail(newAuditTestEmail("revoked@example.com"), "SMTP"), 535)
+			assertAuditCounts(t, engine, 0, 0)
+			if len(auditQueue(t, engine)) != 0 {
+				t.Fatal("unauthorized submission was queued")
+			}
+		})
+	}
+}
+
+func TestSameMessageIDCreatesIndependentQueuedSubmissions(t *testing.T) {
+	engine, _ := newAuditTestEngine(t)
+	session, _ := newAuthorizedAuditSession(t, engine)
+	for i := 0; i < 2; i++ {
+		email := newAuditTestEmail("reused-message-id@example.com")
+		email.Text = []byte(fmt.Sprintf("body %d", i))
+		if err := session.deliverOutgoingEmail(email, "SMTP"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertAuditCounts(t, engine, 2, 2)
+	assertMessageIDCount(t, engine, "reused-message-id@example.com", 2)
+	if len(auditQueue(t, engine)) != 2 {
+		t.Fatal("independent submissions were merged by Message-ID")
+	}
+}
+
+func TestSMTPAcceptanceDoesNotInvokeDeliveryCompletionHooks(t *testing.T) {
+	engine, _ := newAuditTestEngine(t)
+	session, _ := newAuthorizedAuditSession(t, engine)
+	hook := &queuedAuditHook{authenticationCaptureHook: &authenticationCaptureHook{}}
+	hooks.HookList = map[string]framework.EmailHook{"queued": hook}
+	if err := session.deliverOutgoingEmail(newAuditTestEmail("deferred-hook@example.com"), "SMTP"); err != nil {
+		t.Fatal(err)
+	}
+	if hook.called {
+		t.Fatal("SendAfter was called before the queue delivered the message")
+	}
+	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
+}
+
+type queuedAuditHook struct {
+	*authenticationCaptureHook
+	called bool
+}
+
+func (h *queuedAuditHook) SendAfter(*context.Context, *parsemail.Email, map[string]error) {
+	h.called = true
 }
 
 func TestOutgoingAuditRelationInsertRollsBackEmail(t *testing.T) {
@@ -139,237 +270,6 @@ func TestIncomingAuditRelationInsertRollsBackEmail(t *testing.T) {
 	assertAuditCounts(t, engine, 0, 0)
 }
 
-func TestOutgoingAuditRetriesBusyFinalUpdateAtomically(t *testing.T) {
-	engine, dsn := newAuditTestEngine(t)
-	var blocker *sql.Tx
-
-	session := newAuditTestSession()
-	err := session.deliverOutgoingEmail(newAuditTestEmail("final-retry@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		blocker = beginAuditReadTransaction(t, dsn)
-		go func() {
-			time.Sleep(35 * time.Millisecond)
-			_ = blocker.Rollback()
-		}()
-		return nil, nil
-	})
-	if err != nil {
-		t.Fatalf("deliverOutgoingEmail() error = %v", err)
-	}
-	assertAuditStatuses(t, engine, consts.EmailStatusSent)
-	assertAuditError(t, engine, "", false)
-}
-
-func TestOutgoingAuditFinalUpdateIsAtomic(t *testing.T) {
-	engine, _ := newAuditTestEngine(t)
-	if _, err := engine.Exec(fmt.Sprintf(`CREATE TRIGGER fail_user_email_success
-		BEFORE UPDATE OF status ON user_email
-		WHEN NEW.status = %d
-		BEGIN
-			SELECT RAISE(ABORT, 'forced user_email update failure');
-		END`, consts.EmailStatusSent)); err != nil {
-		t.Fatal(err)
-	}
-
-	session := newAuditTestSession()
-	err := session.deliverOutgoingEmail(newAuditTestEmail("atomic-update@example.com"), successfulAuditSender)
-	if err != nil {
-		t.Fatalf("accepted delivery must remain successful, got %v", err)
-	}
-	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
-	assertAuditError(t, engine, deliveryPendingError, true)
-}
-
-func TestAcceptedDeliveryWithPermanentAuditLockReturnsSuccessAndAlerts(t *testing.T) {
-	engine, dsn := newAuditTestEngine(t)
-	var blocker *sql.Tx
-	var deliveries atomic.Int32
-
-	oldOutput := log.StandardLogger().Out
-	oldLevel := log.GetLevel()
-	var logs bytes.Buffer
-	log.SetOutput(&logs)
-	log.SetLevel(log.ErrorLevel)
-	t.Cleanup(func() {
-		log.SetOutput(oldOutput)
-		log.SetLevel(oldLevel)
-	})
-
-	err := newAuditTestSession().deliverOutgoingEmail(newAuditTestEmail("accepted-unknown@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		blocker = beginAuditReadTransaction(t, dsn)
-		return nil, nil
-	})
-	if err != nil {
-		t.Fatalf("accepted delivery must remain successful, got %v", err)
-	}
-	if got := deliveries.Load(); got != 1 {
-		t.Fatalf("downstream deliveries = %d, want 1", got)
-	}
-	if !strings.Contains(logs.String(), "audit_event=delivery_result_persist_failed") {
-		t.Fatalf("missing CRITICAL persistence alert in logs: %s", logs.String())
-	}
-	if err = blocker.Rollback(); err != nil {
-		t.Fatal(err)
-	}
-	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
-	assertAuditError(t, engine, deliveryPendingError, true)
-}
-
-func TestTemporaryDeliveryFailureWithUnpersistedResultCanRetryAsNewAttempt(t *testing.T) {
-	engine, dsn := newAuditTestEngine(t)
-	var blocker *sql.Tx
-	var deliveries atomic.Int32
-	session := newAuditTestSession()
-	messageID := "temporary-unpersisted@example.com"
-
-	err := session.deliverOutgoingEmail(newAuditTestEmail(messageID), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		blocker = beginAuditReadTransaction(t, dsn)
-		return errors.New("delivery failed"), map[string]error{
-			"example.net": &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
-		}
-	})
-	assertSMTPCode(t, err, 451)
-	if err = blocker.Rollback(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err = session.deliverOutgoingEmail(newAuditTestEmail(messageID), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		return nil, nil
-	}); err != nil {
-		t.Fatalf("retry after temporary failure: %v", err)
-	}
-	if got := deliveries.Load(); got != 2 {
-		t.Fatalf("downstream deliveries = %d, want 2", got)
-	}
-	assertAuditCounts(t, engine, 2, 2)
-	assertMessageIDCount(t, engine, messageID, 2)
-}
-
-func TestOutgoingAuditPersistsDeliveryFailure(t *testing.T) {
-	tests := []struct {
-		name      string
-		domainErr error
-		wantCode  int
-	}{
-		{
-			name:      "temporary",
-			domainErr: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
-			wantCode:  451,
-		},
-		{
-			name:      "permanent",
-			domainErr: &textproto.Error{Code: 550, Msg: "mailbox unavailable"},
-			wantCode:  550,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			engine, _ := newAuditTestEngine(t)
-			deliveryErr := errors.New("delivery failed")
-			err := newAuditTestSession().deliverOutgoingEmail(newAuditTestEmail(tt.name+"-failure@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-				return deliveryErr, map[string]error{"example.net": tt.domainErr}
-			})
-			assertSMTPCode(t, err, tt.wantCode)
-			assertAuditStatuses(t, engine, consts.EmailStatusFail)
-			assertAuditError(t, engine, deliveryErr.Error(), true)
-		})
-	}
-}
-
-func TestPermanentDeliveryFailureSurvivesFinalAuditLock(t *testing.T) {
-	engine, dsn := newAuditTestEngine(t)
-	var blocker *sql.Tx
-	err := newAuditTestSession().deliverOutgoingEmail(newAuditTestEmail("permanent-failure@example.com"), func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		blocker = beginAuditReadTransaction(t, dsn)
-		failure := &textproto.Error{Code: 550, Msg: "mailbox unavailable"}
-		return errors.New("delivery failed"), map[string]error{"example.net": failure}
-	})
-	assertSMTPCode(t, err, 550)
-	if err = blocker.Rollback(); err != nil {
-		t.Fatal(err)
-	}
-	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
-	assertAuditError(t, engine, deliveryPendingError, true)
-}
-
-func TestSameMessageIDCreatesIndependentSubmissions(t *testing.T) {
-	engine, _ := newAuditTestEngine(t)
-	var deliveries atomic.Int32
-	sender := func(*context.Context, *parsemail.Email) (error, map[string]error) {
-		deliveries.Add(1)
-		return nil, nil
-	}
-
-	session := newAuditTestSession()
-	for i := 0; i < 2; i++ {
-		email := newAuditTestEmail("reused-message-id@example.com")
-		email.Text = []byte(fmt.Sprintf("body %d", i))
-		if err := session.deliverOutgoingEmail(email, sender); err != nil {
-			t.Fatalf("submission %d: %v", i+1, err)
-		}
-	}
-	if got := deliveries.Load(); got != 2 {
-		t.Fatalf("downstream deliveries = %d, want 2", got)
-	}
-	assertAuditCounts(t, engine, 2, 2)
-	assertMessageIDCount(t, engine, "reused-message-id@example.com", 2)
-}
-
-func TestSendAfterHookCompletesBeforeFinalPersistAndSMTPResult(t *testing.T) {
-	engine, _ := newAuditTestEngine(t)
-	hook := &blockingSendAfterHook{
-		authenticationCaptureHook: &authenticationCaptureHook{},
-		started:                   make(chan struct{}),
-		release:                   make(chan struct{}),
-		done:                      make(chan struct{}),
-	}
-	hooks.HookList = map[string]framework.EmailHook{"blocking": hook}
-
-	result := make(chan error, 1)
-	go func() {
-		result <- newAuditTestSession().deliverOutgoingEmail(newAuditTestEmail("sync-hook@example.com"), successfulAuditSender)
-	}()
-	t.Cleanup(func() {
-		select {
-		case <-hook.release:
-		default:
-			close(hook.release)
-		}
-	})
-
-	select {
-	case <-hook.started:
-	case <-time.After(time.Second):
-		t.Fatal("SendAfter hook was not started")
-	}
-	assertAuditStatuses(t, engine, consts.EmailStatusDeliveryPending)
-
-	select {
-	case err := <-result:
-		t.Fatalf("delivery returned before SendAfter hook completed: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
-	close(hook.release)
-
-	select {
-	case <-hook.done:
-	case <-time.After(time.Second):
-		t.Fatal("SendAfter hook did not finish")
-	}
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Fatalf("deliverOutgoingEmail() error = %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("delivery did not return after SendAfter hook completed")
-	}
-	assertAuditStatuses(t, engine, consts.EmailStatusSent)
-}
-
 func TestOutgoingPendingAuditMailboxVisibility(t *testing.T) {
 	engine, _ := newAuditTestEngine(t)
 	session := newAuditTestSession()
@@ -417,19 +317,6 @@ func TestOutgoingPendingAuditMailboxVisibility(t *testing.T) {
 	}
 }
 
-type blockingSendAfterHook struct {
-	*authenticationCaptureHook
-	started chan struct{}
-	release chan struct{}
-	done    chan struct{}
-}
-
-func (h *blockingSendAfterHook) SendAfter(*context.Context, *parsemail.Email, map[string]error) {
-	defer close(h.done)
-	close(h.started)
-	<-h.release
-}
-
 func newAuditTestEngine(t *testing.T) (*xorm.Engine, string) {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "audit.db") + "?_pragma=busy_timeout(20)"
@@ -439,7 +326,7 @@ func newAuditTestEngine(t *testing.T) (*xorm.Engine, string) {
 	}
 	engine.SetMaxOpenConns(1)
 	engine.SetMaxIdleConns(1)
-	if err = engine.Sync2(&models.User{}, &models.Email{}, &models.UserEmail{}); err != nil {
+	if err = engine.Sync2(&models.User{}, &models.Email{}, &models.UserEmail{}, &models.OutboundDelivery{}, &models.ProtocolCredential{}, &models.ClientCredential{}); err != nil {
 		engine.Close()
 		t.Fatal(err)
 	}

@@ -2,18 +2,24 @@ package outbox
 
 import (
 	stdcontext "context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/hooks"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/dbmigration"
+	"git.pcux.cn/xuans/Smail/services/notification"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/send"
 	"git.pcux.cn/xuans/Smail/utils/smtp"
+	"git.pcux.cn/xuans/Smail/utils/validation"
 	log "github.com/sirupsen/logrus"
 	"xorm.io/xorm"
 )
@@ -121,6 +127,17 @@ func (r *Runtime) processWritable(job models.OutboundDelivery) error {
 			return err
 		}
 	}
+	var submission Submission
+	authorized := true
+	if job.Submission != "" {
+		authorized = userFound && json.Unmarshal([]byte(job.Submission), &submission) == nil
+		if authorized {
+			authorized, err = submission.Authorization.Check(r.engine, user)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	owned, err := claim(r.engine, &job)
 	if err != nil || !owned {
 		return err
@@ -144,11 +161,38 @@ func (r *Runtime) processWritable(job models.OutboundDelivery) error {
 		if err != nil {
 			return err
 		}
+		if job.Submission != "" {
+			if !authorized || !authorizedQueuedSender(submission, message, user) {
+				return notification.ErrDenied
+			}
+			message.EnvelopeFrom = submission.EnvelopeFrom
+			if submission.Date != "" {
+				message.Date = submission.Date
+			}
+			message.EnvelopeTo = []*parsemail.User{{EmailAddress: job.Recipient}}
+			message.DeliveryTrigger = submission.Trigger
+		}
 		return r.deliver(ctx, message, job.Recipient)
 	}()
 	// 固定首次结果及退避时间，后续只重试落库，绝不再次调用 SMTP。
 	r.pending = &pendingResult{job: deliveryResult(job, deliveryErr), ctx: ctx, message: message}
 	return r.flushResult()
+}
+
+func authorizedQueuedSender(submission Submission, message *parsemail.Email, user models.User) bool {
+	if message == nil || message.From == nil || message.Sender == nil || submission.Trigger == "" {
+		return false
+	}
+	domains := config.CurrentMailDomains()
+	if submission.Authorization.Kind == "notification" {
+		sender := validation.NotificationAddress(domains.Primary)
+		return sender != "" && strings.EqualFold(submission.EnvelopeFrom, sender) &&
+			strings.EqualFold(message.From.EmailAddress, sender) && strings.EqualFold(message.Sender.EmailAddress, sender)
+	}
+	allowAlias := user.EffectiveRole() == access.RoleSuperAdmin
+	return validation.IsAuthorizedSender(message.From.EmailAddress, user.Account, allowAlias, domains.Accepted) &&
+		validation.IsAuthorizedSender(message.Sender.EmailAddress, user.Account, allowAlias, domains.Accepted) &&
+		(submission.EnvelopeFrom == "" || validation.IsAuthorizedSender(submission.EnvelopeFrom, user.Account, allowAlias, domains.Accepted))
 }
 
 func (r *Runtime) flushResult() error {

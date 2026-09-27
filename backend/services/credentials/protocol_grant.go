@@ -1,6 +1,9 @@
 package credentials
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+
 	"git.pcux.cn/xuans/Smail/models"
 	"xorm.io/xorm"
 )
@@ -15,6 +18,18 @@ type ProtocolGrant struct {
 	id       int
 	version  int
 	hash     string
+}
+
+func (g *ProtocolGrant) QueueBinding() (string, int, int, string) {
+	if g == nil || g.protocol != "smtp" {
+		return "", 0, 0, ""
+	}
+	kind := "smtp"
+	if g.client {
+		kind = "client"
+	}
+	hash := sha256.Sum256([]byte(g.hash))
+	return kind, g.id, g.version, hex.EncodeToString(hash[:])
 }
 
 func (g *ProtocolGrant) Valid(engine *xorm.Engine) bool {

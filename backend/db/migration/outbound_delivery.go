@@ -1,5 +1,11 @@
 package migration
 
+import "context"
+
+func applyOutboundSubmissionSchema(ctx context.Context, exec executor, dialect Dialect) error {
+	return ensureColumn(ctx, exec, dialect, "outbound_delivery", "submission", "TEXT NULL")
+}
+
 func outboundDeliveryStatements() map[Dialect][]string {
 	return map[Dialect][]string{
 		DialectSQLite: {

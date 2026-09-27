@@ -216,6 +216,13 @@ type Grant struct {
 	securityVersion int
 }
 
+func (g *Grant) QueueBinding() (string, int, int, string) {
+	if g == nil {
+		return "", 0, 0, ""
+	}
+	return "notification", g.userID, g.version, digest(g.hash)
+}
+
 func Authenticate(engine *xorm.Engine, user models.User, plain string) (*Grant, error) {
 	if len(plain) != 46 || !strings.HasPrefix(plain, "sn_") {
 		return nil, ErrDenied

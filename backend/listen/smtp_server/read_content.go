@@ -27,7 +27,6 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/array"
 	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/context"
-	"git.pcux.cn/xuans/Smail/utils/send"
 	"git.pcux.cn/xuans/Smail/utils/validation"
 	"github.com/emersion/go-smtp"
 	"github.com/mileusna/spf"
@@ -170,23 +169,21 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 		}
 
 		details.Stage = "保存并投递客户端邮件"
-		sender := outgoingSender(send.Send)
+		trigger := "SMTP"
 		if s.isNotification() {
 			details.Stage = "校验系统通知配额并投递"
 			if err := s.prepareNotification(email, len(emailData)); err != nil {
 				return err
 			}
-			sender = func(ctx *context.Context, email *parsemail.Email) (error, map[string]error) {
-				return send.SendTriggered(ctx, email, "系统通知 SMTP 发信")
-			}
+			trigger = "系统通知 SMTP 发信"
 		}
 		email.EnvelopeTo = make([]*parsemail.User, len(s.To))
 		for index, address := range s.To {
 			email.EnvelopeTo[index] = &parsemail.User{EmailAddress: address}
 		}
-		resultErr = s.deliverOutgoingEmail(email, sender)
+		resultErr = s.deliverOutgoingEmail(email, trigger)
 		if resultErr == nil {
-			result = "accepted"
+			result = "success"
 		}
 		return resultErr
 
@@ -337,7 +334,7 @@ func authorizedSubmissionEmail(email *parsemail.Email, envelopeFrom string, ctx 
 	return envelopeFrom == "" || validation.IsAuthorizedSender(envelopeFrom, ctx.UserAccount, allowLocalAlias, domains.Accepted)
 }
 
-func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserID int, emailType int, reallyTo []string, SPFStatus, dkimStatus bool) ([]*models.User, *models.Email, error) {
+func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserID int, emailType int, reallyTo []string, SPFStatus, dkimStatus bool, enqueue ...auditEnqueuer) ([]*models.User, *models.Email, error) {
 	if email == nil {
 		return nil, nil, oerrors.New("email is missing")
 	}
@@ -396,6 +393,10 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 		return users, nil, fmt.Errorf("encode stored email fields: %w", err)
 	}
 
+	sendDate := time.Now()
+	if parsed, parseErr := time.Parse(time.RFC3339, email.Date); parseErr == nil {
+		sendDate = parsed
+	}
 	modelEmail := models.Email{
 		Type:             cast.ToInt8(emailType),
 		Subject:          email.Subject,
@@ -415,7 +416,7 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 		SPFCheck:         boolInt8(SPFStatus),
 		DKIMCheck:        boolInt8(dkimStatus),
 		SendUserID:       sendUserID,
-		SendDate:         time.Now(),
+		SendDate:         sendDate,
 		Status:           cast.ToInt8(email.Status),
 		CreateTime:       time.Now(),
 		CronSendTime:     time.Now(),
@@ -434,7 +435,7 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 	}
 
 	log.WithContext(ctx).Debugf("开始入库！")
-	saved, err := persistInitialAudit(ctx, modelEmail, userIDs)
+	saved, err := persistInitialAudit(ctx, modelEmail, userIDs, enqueue...)
 	if err != nil {
 		return users, nil, err
 	}

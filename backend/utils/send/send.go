@@ -95,7 +95,15 @@ func SendTriggered(ctx *context.Context, e *parsemail.Email, trigger string) (er
 
 // SendRecipientTriggered 保留原邮件头，只向当前队列收件人发送 SMTP 信封。
 func SendRecipientTriggered(ctx *context.Context, e *parsemail.Email, recipient string) error {
+	if e.DeliveryTrigger != "" {
+		err, failures := sendRecipients(ctx, e, []*parsemail.User{{EmailAddress: recipient}}, e.DeliveryTrigger)
+		return recipientDeliveryError(err, failures)
+	}
 	err, failures := sendRecipients(ctx, e, []*parsemail.User{{EmailAddress: recipient}}, "网页写信")
+	return recipientDeliveryError(err, failures)
+}
+
+func recipientDeliveryError(err error, failures map[string]error) error {
 	if err != nil {
 		for _, cause := range failures {
 			if cause != nil {
@@ -122,7 +130,11 @@ func sendRecipients(ctx *context.Context, e *parsemail.Email, recipients []*pars
 
 	to := deliveryRecipients(e, recipients)
 
-	return doSend(ctx, fromDomain, b, to, e.From.EmailAddress, trigger)
+	from := e.From.EmailAddress
+	if e.EnvelopeTo != nil {
+		from = e.EnvelopeFrom
+	}
+	return doSend(ctx, fromDomain, b, to, from, trigger)
 
 }
 

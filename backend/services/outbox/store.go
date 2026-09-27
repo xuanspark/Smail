@@ -2,8 +2,10 @@ package outbox
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/utils/send"
 	"git.pcux.cn/xuans/Smail/utils/smtp"
@@ -34,6 +37,32 @@ func Enqueue(session *xorm.Session, email models.Email) error {
 	if err != nil {
 		return err
 	}
+	return enqueueRecipients(session, email, message, "")
+}
+
+type Submission struct {
+	EnvelopeFrom  string                   `json:"envelope_from"`
+	Date          string                   `json:"date"`
+	Trigger       string                   `json:"trigger"`
+	Authorization auth.QueuedAuthorization `json:"authorization"`
+}
+
+func EnqueueSMTP(session *xorm.Session, email models.Email, recipients []string, submission Submission) error {
+	if submission.Authorization.Kind == "" || submission.Authorization.ID <= 0 || submission.Authorization.UserID != email.SendUserID || submission.Trigger == "" {
+		return errors.New("SMTP submission authorization is missing")
+	}
+	encoded, err := json.Marshal(submission)
+	if err != nil {
+		return err
+	}
+	message := &parsemail.Email{To: make([]*parsemail.User, len(recipients))}
+	for index, address := range recipients {
+		message.To[index] = &parsemail.User{EmailAddress: address}
+	}
+	return enqueueRecipients(session, email, message, string(encoded))
+}
+
+func enqueueRecipients(session *xorm.Session, email models.Email, message *parsemail.Email, submission string) error {
 	seen := make(map[string]bool)
 	for _, user := range append(append(message.To, message.Cc...), message.Bcc...) {
 		if user == nil || user.EmailAddress == "" {
@@ -41,6 +70,10 @@ func Enqueue(session *xorm.Session, email models.Email) error {
 		}
 		// 本地部分保留大小写，仅合并完全相同的 SMTP 信封地址。
 		address := user.EmailAddress
+		parsed, err := mail.ParseAddress(address)
+		if err != nil || parsed.Address != address || len(address) > 320 {
+			return errors.New("invalid queue recipient")
+		}
 		if at := strings.LastIndexByte(address, '@'); at >= 0 {
 			address = address[:at+1] + strings.ToLower(address[at+1:])
 		}
@@ -48,7 +81,7 @@ func Enqueue(session *xorm.Session, email models.Email) error {
 			continue
 		}
 		seen[address] = true
-		job := models.OutboundDelivery{EmailID: email.Id, Recipient: address, State: queued}
+		job := models.OutboundDelivery{EmailID: email.Id, Recipient: address, State: queued, Submission: submission}
 		if _, err := session.Insert(&job); err != nil {
 			return err
 		}

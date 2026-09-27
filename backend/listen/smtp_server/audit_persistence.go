@@ -1,20 +1,16 @@
 package smtp_server
 
 import (
-	"database/sql"
 	stderrors "errors"
-	"fmt"
 	"strings"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/consts"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
-	"git.pcux.cn/xuans/Smail/hooks"
-	"git.pcux.cn/xuans/Smail/hooks/framework"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/outbox"
 	"git.pcux.cn/xuans/Smail/utils/array"
-	"git.pcux.cn/xuans/Smail/utils/async"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	smtp "github.com/emersion/go-smtp"
 	log "github.com/sirupsen/logrus"
@@ -24,83 +20,26 @@ import (
 
 const deliveryPendingError = "delivery result pending; outcome unknown after interruption"
 
-type outgoingSender func(*context.Context, *parsemail.Email) (error, map[string]error)
+type auditEnqueuer func(*xorm.Session, models.Email) error
 
-func (s *Session) deliverOutgoingEmail(email *parsemail.Email, sender outgoingSender) error {
+func (s *Session) deliverOutgoingEmail(email *parsemail.Email, trigger string) error {
 	if err := validateOutgoingEmail(email); err != nil {
 		return err
 	}
-	ctx := s.Ctx
-	_, saved, err := saveEmail(ctx, email.Size, email, ctx.UserID, int(consts.EmailTypeSend), nil, true, true)
+	authorization, err := s.authorization.QueueAuthorization()
+	if err != nil || s.Ctx == nil || authorization.UserID != s.Ctx.UserID {
+		return &smtp.SMTPError{Code: 535, EnhancedCode: smtp.EnhancedCode{5, 7, 8}, Message: "Authentication credentials revoked"}
+	}
+	submission := outbox.Submission{
+		EnvelopeFrom: s.From, Date: email.Date, Trigger: trigger, Authorization: authorization,
+	}
+	enqueue := func(session *xorm.Session, saved models.Email) error {
+		return outbox.EnqueueSMTP(session, saved, s.To, submission)
+	}
+	_, _, err = saveEmail(s.Ctx, email.Size, email, s.Ctx.UserID, int(consts.EmailTypeSend), nil, true, true, enqueue)
 	if err != nil {
-		log.WithContext(ctx).Errorf("CRITICAL audit_event=initial_persist_failed direction=outbound msg_id=%q error=%v", email.MsgID, err)
+		log.WithContext(s.Ctx).Errorf("CRITICAL audit_event=submission_enqueue_failed direction=outbound msg_id=%q error=%v", email.MsgID, err)
 		return localPersistenceSMTPError()
-	}
-
-	deliveryErr, domainErrors := sender(ctx, email)
-	runSendAfterHooks(ctx, email, domainErrors)
-
-	targetStatus := consts.EmailStatusSent
-	var errorText any
-	if deliveryErr != nil {
-		targetStatus = consts.EmailStatusFail
-		errorText = deliveryErr.Error()
-	}
-
-	if err = persistDeliveryResult(ctx, saved.Id, targetStatus, errorText); err != nil {
-		log.WithContext(ctx).Errorf(
-			"CRITICAL audit_event=delivery_result_persist_failed email_id=%d msg_id=%q target_status=%d downstream_accepted=%t error=%v",
-			saved.Id, saved.MsgID, targetStatus, deliveryErr == nil, err,
-		)
-	}
-
-	// If the remote MX accepted DATA, returning a local 451 here would cause a
-	// duplicate delivery. The persistence failure is retained as pending state
-	// and a CRITICAL log; the SMTP result must still reflect the remote result.
-	return downstreamDeliverySMTPError(deliveryErr, domainErrors)
-}
-
-func runSendAfterHooks(ctx *context.Context, email *parsemail.Email, domainErrors map[string]error) {
-	process := async.New(ctx)
-	for _, hook := range hooks.Snapshot() {
-		if hook == nil {
-			continue
-		}
-		process.WaitProcess(func(value any) {
-			value.(framework.EmailHook).SendAfter(ctx, email, domainErrors)
-		}, hook)
-	}
-	process.Wait()
-}
-
-func persistDeliveryResult(ctx *context.Context, emailID int, status int8, errorText any) error {
-	return db.Transaction(db.Instance, func(session *xorm.Session) error {
-		result, err := session.Exec(db.WithContext(ctx, `update email
-			set status=?, error=?, update_time=CURRENT_TIMESTAMP
-			where id=?`), status, errorText, emailID)
-		if err != nil {
-			return err
-		}
-		if err = requireOneAffected(result, "update email delivery result"); err != nil {
-			return err
-		}
-
-		result, err = session.Exec(db.WithContext(ctx, `update user_email
-			set status=? where email_id=?`), status, emailID)
-		if err != nil {
-			return err
-		}
-		return requireOneAffected(result, "update user_email delivery result")
-	})
-}
-
-func requireOneAffected(result sql.Result, operation string) error {
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("%s: read affected rows: %w", operation, err)
-	}
-	if affected != 1 {
-		return fmt.Errorf("%s: affected %d rows, want 1", operation, affected)
 	}
 	return nil
 }
@@ -113,7 +52,7 @@ func localPersistenceSMTPError() error {
 	}
 }
 
-func persistInitialAudit(ctx *context.Context, modelEmail models.Email, userIDs []int) (*models.Email, error) {
+func persistInitialAudit(ctx *context.Context, modelEmail models.Email, userIDs []int, enqueue ...auditEnqueuer) (*models.Email, error) {
 	var saved models.Email
 	err := db.Transaction(db.Instance, func(session *xorm.Session) error {
 		candidate := modelEmail
@@ -127,6 +66,11 @@ func persistInitialAudit(ctx *context.Context, modelEmail models.Email, userIDs 
 		for _, userID := range userIDs {
 			relation := models.UserEmail{EmailID: candidate.Id, UserID: userID, Status: candidate.Status}
 			if _, err := session.Insert(&relation); err != nil {
+				return err
+			}
+		}
+		for _, persist := range enqueue {
+			if err := persist(session, candidate); err != nil {
 				return err
 			}
 		}

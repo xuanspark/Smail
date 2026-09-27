@@ -2,6 +2,7 @@ package outbox
 
 import (
 	stdcontext "context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/textproto"
@@ -10,10 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/consts"
 	"git.pcux.cn/xuans/Smail/db"
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
+	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"git.pcux.cn/xuans/Smail/utils/smtp"
 	"xorm.io/xorm"
@@ -55,6 +59,131 @@ func queueFixture(t *testing.T) (*xorm.Engine, models.Email, []models.OutboundDe
 		t.Fatalf("duplicate recipient: %v", jobs)
 	}
 	return engine, email, jobs
+}
+
+func smtpQueueFixture(t *testing.T) (*xorm.Engine, []models.OutboundDelivery, *credentials.Service) {
+	t.Helper()
+	engine, email, jobs := queueFixture(t)
+	oldDB, oldConfig := db.Instance, config.Instance
+	db.Instance = engine
+	config.Instance = &config.Config{Domain: "example.com", Domains: []string{"example.com"}}
+	t.Cleanup(func() { db.Instance, config.Instance = oldDB, oldConfig })
+	if err := engine.Sync2(&models.ProtocolCredential{}, &models.ClientCredential{}); err != nil {
+		t.Fatal(err)
+	}
+	service, err := credentials.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetProtocolEnabled(email.SendUserID, "smtp", true); err != nil {
+		t.Fatal(err)
+	}
+	code, err := service.GenerateProtocolCode(email.SendUserID, "smtp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, session, err := auth.AuthenticateProtocolSession("smtp", "192.0.2.95:1234", "sender@example.com", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization, err := session.QueueAuthorization()
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission, err := json.Marshal(Submission{
+		EnvelopeFrom: "sender@example.com", Date: "2026-09-27T12:30:00+08:00",
+		Trigger: "SMTP", Authorization: authorization,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	email.Sender = `{"EmailAddress":"sender@example.com"}`
+	if _, err := engine.ID(email.Id).Cols("sender").Update(&email); err != nil {
+		t.Fatal(err)
+	}
+	for index := range jobs {
+		jobs[index].Submission = string(submission)
+		if _, err := engine.ID(jobs[index].ID).Cols("submission").Update(&jobs[index]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return engine, jobs, service
+}
+
+func TestSMTPQueueRestoresEnvelopeWithoutRewritingHeaders(t *testing.T) {
+	engine, jobs, _ := smtpQueueFixture(t)
+	calls := 0
+	r := &Runtime{engine: engine, deliver: func(ctx *context.Context, message *parsemail.Email, recipient string) error {
+		calls++
+		if ctx.UserAccount != "sender" || recipient != jobs[0].Recipient || message.EnvelopeFrom != "sender@example.com" {
+			t.Fatal("worker did not restore SMTP identity or envelope")
+		}
+		if len(message.EnvelopeTo) != 1 || message.EnvelopeTo[0].EmailAddress != recipient || len(message.To) != 2 {
+			t.Fatal("envelope recipients leaked into message headers")
+		}
+		if message.MsgID != "stable@example.com" || message.Date != "2026-09-27T12:30:00+08:00" || message.DeliveryTrigger != "SMTP" {
+			t.Fatal("worker lost immutable submission metadata")
+		}
+		return nil
+	}}
+	if err := r.process(jobs[0]); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("deliveries = %d, want 1", calls)
+	}
+}
+
+func TestSMTPQueueRejectsStaleAuthorizationBeforeDelivery(t *testing.T) {
+	for _, change := range []string{"revoke", "disable", "rotate", "malformed", "sender", "database_failure"} {
+		t.Run(change, func(t *testing.T) {
+			engine, jobs, service := smtpQueueFixture(t)
+			var err error
+			switch change {
+			case "revoke":
+				err = service.RevokeProtocolCode(1, "smtp")
+			case "disable":
+				err = service.SetProtocolEnabled(1, "smtp", false)
+			case "rotate":
+				_, err = service.GenerateProtocolCode(1, "smtp")
+			case "malformed":
+				jobs[0].Submission = "{"
+			case "sender":
+				var submission Submission
+				if err := json.Unmarshal([]byte(jobs[0].Submission), &submission); err != nil {
+					t.Fatal(err)
+				}
+				submission.EnvelopeFrom = "other@example.com"
+				var encoded []byte
+				encoded, err = json.Marshal(submission)
+				jobs[0].Submission = string(encoded)
+			case "database_failure":
+				_, err = engine.Exec("ALTER TABLE protocol_credential RENAME TO unavailable_credential")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := &Runtime{engine: engine, deliver: func(*context.Context, *parsemail.Email, string) error {
+				t.Fatal("worker delivered without current authorization")
+				return nil
+			}}
+			err = r.process(jobs[0])
+			if (change == "database_failure") != (err != nil) {
+				t.Fatalf("process error = %v", err)
+			}
+			var stored models.OutboundDelivery
+			if found, err := engine.ID(jobs[0].ID).Get(&stored); err != nil || !found {
+				t.Fatalf("read queued job: found=%v err=%v", found, err)
+			}
+			if change == "database_failure" {
+				if stored.State != queued || stored.Attempts != 0 {
+					t.Fatal("database read failure consumed a delivery attempt")
+				}
+			} else if stored.State != failed {
+				t.Fatalf("revoked submission state = %s", stored.State)
+			}
+		})
+	}
 }
 
 func assertStatus(t *testing.T, engine *xorm.Engine, emailID int, status int8) {

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,8 +12,73 @@ import (
 	"git.pcux.cn/xuans/Smail/internal/passwordtest"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/credentials"
+	"git.pcux.cn/xuans/Smail/services/notification"
 	"xorm.io/xorm"
 )
+
+func TestQueuedNotificationAuthorizationTracksCredentialVersion(t *testing.T) {
+	oldDB := db.Instance
+	engine, err := xorm.NewEngine("sqlite", filepath.Join(t.TempDir(), "notification.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close(); db.Instance = oldDB })
+	db.Instance = engine
+	if err := engine.Sync2(&models.User{}, &models.NotificationGrant{}); err != nil {
+		t.Fatal(err)
+	}
+	user := models.User{Account: "sender", Password: "test-hash", Role: "user", SessionVersion: 1, SecurityVersion: 1}
+	if _, err := engine.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+	code := "sn_" + strings.Repeat("A", 43)
+	item := models.NotificationGrant{
+		UserID: user.ID, Enabled: 1, CodeVersion: 2, CodeHash: queuedDigest(code),
+		SessionVersion: user.SessionVersion, SecurityVersion: user.SecurityVersion,
+	}
+	if _, err := engine.Insert(&item); err != nil {
+		t.Fatal(err)
+	}
+	grant, err := notification.Authenticate(engine, user, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &ProtocolSession{user: user, notification: grant}
+	snapshot, err := session.QueueAuthorization()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Kind != "notification" || snapshot.ID != user.ID || snapshot.Version != item.CodeVersion ||
+		snapshot.Credential == code || snapshot.Credential == item.CodeHash {
+		t.Fatal("notification snapshot is not bound to the original credential")
+	}
+	if valid, err := snapshot.Check(engine, user); err != nil || !valid {
+		t.Fatalf("notification queue authorization = %v, %v", valid, err)
+	}
+	for _, change := range []string{"disable", "version", "hash", "session", "security"} {
+		t.Run(change, func(t *testing.T) {
+			updated := item
+			switch change {
+			case "disable":
+				updated.Enabled = 0
+			case "version":
+				updated.CodeVersion++
+			case "hash":
+				updated.CodeHash = queuedDigest("replacement")
+			case "session":
+				updated.SessionVersion++
+			case "security":
+				updated.SecurityVersion++
+			}
+			if _, err := engine.ID(user.ID).Cols("enabled", "code_version", "code_hash", "session_version", "security_version").Update(&updated); err != nil {
+				t.Fatal(err)
+			}
+			if valid, err := snapshot.Check(engine, user); err != nil || valid {
+				t.Fatalf("stale notification queue authorization = %v, %v", valid, err)
+			}
+		})
+	}
+}
 
 func TestProtocolSessionRechecksUserAndCredential(t *testing.T) {
 	for _, kind := range []string{"protocol", "client"} {
@@ -62,6 +128,16 @@ func TestProtocolSessionRechecksUserAndCredential(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				queued, err := session.QueueAuthorization()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if valid, err := queued.Check(engine, user); err != nil || !valid {
+					t.Fatalf("new queued authorization = %v, %v", valid, err)
+				}
+				if queued.Credential == code || queued.Identity == user.Password || queued.Kind == "" {
+					t.Fatal("queued authorization contains reusable credentials or has no kind")
+				}
 				// 命令复核不占用密码哈希容量，也不累加登录失败计数。
 				release := passwordtest.Hold(t)
 				if err := session.Check(); err != nil {
@@ -92,6 +168,17 @@ func TestProtocolSessionRechecksUserAndCredential(t *testing.T) {
 				}
 				if err != nil {
 					t.Fatal(err)
+				}
+				current := user
+				if change != "database_failure" {
+					current = models.User{}
+					if _, err := engine.ID(user.ID).Get(&current); err != nil {
+						t.Fatal(err)
+					}
+				}
+				valid, checkErr := queued.Check(engine, current)
+				if valid || (change == "database_failure") != (checkErr != nil) {
+					t.Fatalf("stale queued authorization = %v, %v", valid, checkErr)
 				}
 				var wait sync.WaitGroup
 				for range 4 {

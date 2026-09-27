@@ -8,6 +8,7 @@ type OutboundDelivery struct {
 	Attempts    int    `xorm:"notnull"`
 	NextAttempt int64  `xorm:"notnull"`
 	LastError   string `xorm:"text"`
+	Submission  string `xorm:"text" json:"-"`
 }
 
 func (OutboundDelivery) TableName() string { return "outbound_delivery" }
