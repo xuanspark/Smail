@@ -299,6 +299,9 @@ func buildWeChatMessage(email *parsemail.Email) string {
 	if email == nil {
 		return ""
 	}
+	if code, ok := extractWeChatVerificationCode(email); ok {
+		return "验证码：" + code
+	}
 	const prefix = "<<"
 	const separator = ">>  "
 	subjectLimit := maxWeChatMessageBytes - len(prefix) - len(separator)
