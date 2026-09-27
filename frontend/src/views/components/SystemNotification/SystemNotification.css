@@ -223,7 +223,7 @@
 /* Desktop manager layout: keep the authorization list and selected account settings visible together. */
 .notification-settings:has(> .notification-manager-panel) {
   display: grid;
-  grid-template-columns: minmax(240px, 0.44fr) minmax(580px, 1.56fr);
+  grid-template-columns: minmax(220px, 0.44fr) minmax(0, 1.56fr);
   align-items: start;
   gap: 8px 10px;
   min-width: 0;
@@ -303,7 +303,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns {
   display: grid;
-  grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1.28fr);
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
   gap: 6px 10px;
   align-items: start;
 }
@@ -535,4 +535,72 @@
   .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) .el-descriptions__body > table > tbody > tr {
     display: table-row;
   }
+}
+/* Keep the manager table and SMTP summary inside the available dialog width. */
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table),
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table__header-wrapper table),
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table__body-wrapper table) {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(1)) {
+  width: 27% !important;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(2)) {
+  width: 21% !important;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(3)) {
+  width: 31% !important;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(4)) {
+  width: 21% !important;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .cell) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .el-tag) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions__body),
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions__table) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) .el-descriptions__body > table > tbody,
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) .el-descriptions__body > table > tbody > tr {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) .el-descriptions__body > table > tbody > tr > td {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) code {
+  display: inline;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
