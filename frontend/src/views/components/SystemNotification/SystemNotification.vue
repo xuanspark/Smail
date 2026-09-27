@@ -79,6 +79,7 @@
         </div>
 
         <div class="notification-columns">
+          <div class="notification-control-column">
         <el-form v-if="canManage" label-position="top" :disabled="submitting || loading" @submit.prevent="save">
           <el-form-item label="允许该账号通过 SMTP 发送系统通知">
             <el-switch v-model="form.enabled" active-text="开启" inactive-text="关闭" />
@@ -100,13 +101,17 @@
           </div>
         </el-form>
 
+        <div class="notification-usage-block">
         <el-descriptions title="使用状态" :column="1" border>
           <el-descriptions-item label="本分钟用量">{{ status.minute_used }} / {{ status.minute_limit }} 个收件人</el-descriptions-item>
           <el-descriptions-item label="今日用量（UTC）">{{ status.day_used }} / {{ status.day_limit }} 个收件人</el-descriptions-item>
           <el-descriptions-item label="单封限制">最多 {{ status.max_recipients }} 个收件人，最大 {{ status.max_message_bytes / 1048576 }} MiB</el-descriptions-item>
         </el-descriptions>
         <p class="notification-hint">配额按提交的收件人数计算，失败和重试也计数；更换凭据或重启不会清空配额。</p>
+        </div>
+        </div>
 
+        <div class="notification-service-column">
         <el-descriptions title="应用 SMTP 配置" :column="1" border>
           <el-descriptions-item label="服务器">{{ status.host }}</el-descriptions-item>
           <el-descriptions-item label="隐式 TLS 端口">{{ status.tls_port || '未启用' }}</el-descriptions-item>
@@ -117,7 +122,8 @@
           <el-descriptions-item label="发件名称">{{ status.sender_name }}（服务端固定）</el-descriptions-item>
         </el-descriptions>
         <p class="notification-hint">必须启用加密和证书校验。服务器名需正确解析且由证书覆盖；此处显示配置，不代表公网连通性已验收。</p>
-        <el-alert title="仅发信，不提供收件箱" description="通知地址拒收邮件；通知凭据不能用于网页登录、IMAP 或 POP3。普通邮箱及其原有凭据不受影响。" type="warning" :closable="false" show-icon />
+        </div>
+        <el-alert class="notification-send-only-alert" title="仅发信，不提供收件箱" description="通知地址拒收邮件；通知凭据不能用于网页登录、IMAP 或 POP3。普通邮箱及其原有凭据不受影响。" type="warning" :closable="false" show-icon />
         </div>
       </template>
       <el-empty v-else-if="!loading && !error" description="尚未读取账号状态" />
