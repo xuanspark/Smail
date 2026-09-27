@@ -20,7 +20,7 @@
   <!-- 设置抽屉保留右侧导航，一级分类不影响内部标签页。 -->
   <el-drawer
     v-model="globalStatus.settingsDrawerVisible"
-    :size="isMobile ? '100%' : 'min(100vw, max(56vw, 880px))'"
+    :size="isMobile ? '100%' : 'min(100vw, max(72vw, 1100px))'"
     :title="lang.settings"
     class="settings-drawer"
     :with-header="true"
