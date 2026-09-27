@@ -23,6 +23,7 @@ const plainBody = message => {
 }
 
 export function prepareReply(message, identity) {
+  if (message.type !== 0) throw new Error(lang.fail)
   const replyTo = readAddresses(message.reply_to)
   const recipients = replyTo.length ? replyTo : [{EmailAddress: message.from_address, Name: message.from_name}]
   if (!recipients.length || recipients.some(item => !item.EmailAddress || /[\r\n]/.test(item.EmailAddress))) {

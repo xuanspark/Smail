@@ -1,5 +1,6 @@
 // 管理后台统一使用中文。
 const lang = {
+    "mail_reply": "回复",
     "mail_no_subject": "（无主题）",
     "draft_save": "保存草稿",
     "draft_saved": "草稿已保存",

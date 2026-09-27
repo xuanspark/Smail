@@ -5,6 +5,13 @@
         <el-icon><Back /></el-icon>
       </el-button>
       <div v-if="!loading && !loadError" class="action-buttons">
+        <el-button
+          v-if="detailData.type === 0"
+          type="primary"
+          @click="handleReply"
+        >
+          {{ lang.mail_reply }}
+        </el-button>
         <el-button plain @click="handleDelete" aria-label="删除邮件">
           <el-icon><Delete /></el-icon>
         </el-button>
@@ -90,6 +97,7 @@
 import { usePage, Back, Delete, Document, Download } from './EmailDetail.js'
 
 const {
+  handleReply,
   handleDelete,
   loading,
   loadError,

@@ -18,7 +18,7 @@ func applyReplyThread(ctx *context.Context, input sendRequest, message *parsemai
 	if id == 0 {
 		return nil
 	}
-	if id < 0 || ctx == nil || ctx.UserID <= 0 || db.Instance == nil || message == nil {
+	if id < 0 || ctx == nil || ctx.UserID <= 0 || db.Instance == nil {
 		return validation.ErrInvalidEmail
 	}
 	if input.DraftID > 0 {
@@ -37,6 +37,7 @@ func applyReplyThread(ctx *context.Context, input sendRequest, message *parsemai
 	var original models.Email
 	found, err := db.Instance.ID(id).
 		Where("status <> ?", consts.EmailStatusDrafts).
+		And("type = ?", consts.EmailTypeReceive).
 		And("EXISTS (SELECT 1 FROM user_email WHERE email_id = ? AND user_id = ? AND is_deleted = 0)", id, ctx.UserID).
 		Get(&original)
 	if err != nil {

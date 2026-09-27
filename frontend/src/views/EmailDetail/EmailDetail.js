@@ -93,7 +93,7 @@ export function usePage() {
   const backToList = () => router.push({name: 'list'})
   const handleReply = () => {
     const id = Number(detailData.value.id)
-    if (loading.value || loadError.value || !Number.isSafeInteger(id) || id <= 0) return
+    if (loading.value || loadError.value || detailData.value.type !== 0 || !Number.isSafeInteger(id) || id <= 0) return
     return router.push({name: 'editer', query: {reply: String(id)}})
   }
   
