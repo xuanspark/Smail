@@ -105,7 +105,7 @@ export function useRecoveryCodeDialog(props, emit) {
         if (!isCurrentView(version, userID)) return null
         const result = await http.post('/api/v1/user/security/recovery-codes/generate', {
           user_id: userID,
-          count: 10,
+          count: 12,
         })
         return assertSuccess(result, '安全码生成失败')
       })

@@ -35,22 +35,34 @@
 
 .recovery-code-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-md);
   background: var(--pm-bg-secondary);
 }
 
 .recovery-code-list code {
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 4px;
   border-radius: 8px;
   color: var(--pm-text-primary);
   background: var(--pm-bg-primary);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
   text-align: center;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
+  white-space: nowrap;
+  user-select: all;
 }
 
 .recovery-prompt-actions {
@@ -59,7 +71,13 @@
   gap: 10px;
 }
 
-@media (max-width: 520px) {
+@media (max-width: 760px) {
+  .recovery-code-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
   .recovery-code-list {
     grid-template-columns: 1fr;
   }

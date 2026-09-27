@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="visible"
     title="管理安全码"
-    width="min(560px, calc(100vw - 32px))"
+    width="min(800px, calc(100vw - 32px))"
     :close-on-click-modal="false"
     :close-on-press-escape="!busy"
     :show-close="!busy"

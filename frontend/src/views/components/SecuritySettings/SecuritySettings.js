@@ -251,7 +251,7 @@ export function usePage() {
     try {
       await ElMessageBox.confirm('生成新恢复码会撤销当前仍有效的恢复码，请确认已准备好安全保存。', '生成离线恢复码', { type: 'warning' })
       if (!isRecoveryViewCurrent(version)) return
-      const res = await requestRecoveryAction('generate', { count: 10 }, version)
+      const res = await requestRecoveryAction('generate', { count: 12 }, version)
       if (!isRecoveryViewCurrent(version)) return
       if (res.errorNo !== 0 || !Array.isArray(res.data?.codes)) throw new Error(res.errorMsg || '离线恢复码生成失败')
       generatedCodes.value = res.data.codes

@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="完善账户安全"
-    width="min(520px, calc(100vw - 32px))"
+    width="min(800px, calc(100vw - 32px))"
     :close-on-click-modal="false"
     class="recovery-setup-dialog"
     @close="dismiss"
@@ -11,7 +11,7 @@
       <div class="recovery-prompt-icon">盾</div>
       <h3>建议立即配置离线恢复码</h3>
       <p>
-        离线恢复码可以在外部邮箱不可用时帮助您完成账户恢复。恢复码只会显示一次，生成后请保存到安全位置。
+        离线恢复码可以在外部邮箱不可用时帮助您完成账户恢复。请妥善保存，后续可在安全设置中验证本人密码后再次查看有效恢复码。
       </p>
       <el-alert
         v-if="generatedCodes.length === 0"
@@ -22,7 +22,7 @@
       />
       <div v-else class="recovery-code-result">
         <el-alert
-          title="恢复码已生成，请立即复制并妥善保存。离开此提示后将无法再次读取。"
+          title="恢复码已生成，请妥善保存；验证本人密码后可再次查看有效恢复码。"
           type="success"
           :closable="false"
           show-icon
@@ -85,7 +85,7 @@ const generateRecoveryCodes = async () => {
   }
   loading.value = true
   try {
-    const response = await http.post("/api/v1/security/credentials/recovery-codes/generate", { count: 10 })
+    const response = await http.post("/api/v1/security/credentials/recovery-codes/generate", { count: 12 })
     if (response.errorNo !== 0 || !Array.isArray(response.data?.codes)) {
       throw new Error(response.errorMsg || "离线恢复码生成失败")
     }

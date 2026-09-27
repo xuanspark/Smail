@@ -31,7 +31,7 @@ var (
 )
 
 const (
-	defaultCodeCount = 10
+	defaultCodeCount = 12
 	minCodeCount     = 5
 	maxCodeCount     = 20
 )
