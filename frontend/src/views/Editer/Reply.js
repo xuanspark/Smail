@@ -47,6 +47,6 @@ export function prepareReply(message, identity) {
     names,
     pickedDomain,
     subject: /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`,
-    html: `<p><br></p><blockquote><p>${escapeHTML(quote).replace(/\r?\n/g, '<br>')}</p></blockquote>`
+    html: `<p><br></p><blockquote>${escapeHTML(quote).replace(/\r?\n/g, '<br>')}</blockquote>`
   }
 }
