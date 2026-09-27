@@ -22,9 +22,13 @@
     </div>
 
     <div v-if="codes.length" class="recovery-code-result">
-      <div class="result-title">
+      <div v-if="!revealed" class="result-title">
         <strong>新安全码仅显示这一次</strong>
         <span>请立即交给用户妥善保存，关闭弹窗后无法再次查看。</span>
+      </div>
+      <div v-else class="result-title">
+        <strong>当前有效安全码</strong>
+        <span>60 秒后自动隐藏；关闭弹窗后，需再次验证密码才能查看。</span>
       </div>
       <div class="recovery-code-grid">
         <code v-for="code in codes" :key="code">{{ code }}</code>
@@ -42,13 +46,24 @@
 
     <template #footer>
       <div class="recovery-dialog-actions">
+        <el-button
+          v-if="configured && !codes.length"
+          :loading="revealing"
+          :disabled="loading || generating || revoking"
+          @click="revealCodes"
+        >
+          验证后查看
+        </el-button>
+        <el-button v-if="codes.length" :disabled="busy" @click="clearCodes">
+          隐藏安全码
+        </el-button>
         <el-button :disabled="busy" @click="close">关闭</el-button>
         <el-button
           v-if="configured && !codes.length"
           type="danger"
           plain
           :loading="revoking"
-          :disabled="generating"
+          :disabled="generating || revealing || loading"
           @click="revokeCodes"
         >
           撤销安全码
@@ -56,7 +71,7 @@
         <el-button
           type="primary"
           :loading="generating"
-          :disabled="revoking"
+          :disabled="revoking || revealing || loading"
           @click="generateCodes"
         >
           {{ configured ? '重新生成安全码' : '生成安全码' }}
@@ -79,12 +94,17 @@ const {
   visible,
   configured,
   codes,
+  loading,
+  revealing,
+  revealed,
+  clearCodes,
   generating,
   revoking,
   busy,
   errorMessage,
   close,
   generateCodes,
+  revealCodes,
   revokeCodes,
   copyCodes,
 } = useRecoveryCodeDialog(props, emit)

@@ -6,11 +6,13 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/accountgroup"
+	"git.pcux.cn/xuans/Smail/utils/credential"
 	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/text/unicode/norm"
@@ -25,6 +27,7 @@ var (
 	ErrInvalidCode     = errors.New("recovery code is invalid")
 	ErrCodeNotFound    = errors.New("recovery code is not valid")
 	ErrCodeConsumed    = errors.New("recovery code is already consumed")
+	ErrNoCiphertext    = errors.New("recovery code ciphertext is unavailable")
 )
 
 const (
@@ -177,6 +180,7 @@ func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count i
 	}()
 	codes = make([]string, 0, count)
 	items := make([]models.RecoveryCode, 0, count)
+	vaultRoot := s.VaultRoot()
 	for i := 0; i < count; i++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -190,7 +194,14 @@ func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count i
 			return nil, fmt.Errorf("hash recovery code: %w", err)
 		}
 		codes = append(codes, plain)
-		items = append(items, models.RecoveryCode{UserID: userID, CodeHash: hash, CodeVersion: 1})
+		ciphertext := ""
+		if vaultRoot != "" {
+			ciphertext, err = credential.Encrypt(vaultRoot, strconv.Itoa(userID)+":"+plain)
+			if err != nil {
+				return nil, fmt.Errorf("protect recovery code: %w", err)
+			}
+		}
+		items = append(items, models.RecoveryCode{UserID: userID, CodeHash: hash, CodeCiphertext: ciphertext, CodeVersion: 1})
 	}
 	phase = "lock"
 	log.WithFields(log.Fields{"action": "生成离线恢复码", "phase": phase, "count": count,
@@ -214,7 +225,7 @@ func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count i
 		return nil, err
 	}
 	now := s.now()
-	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at", "code_ciphertext").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		_ = session.Rollback()
 		return nil, fmt.Errorf("revoke old recovery codes: %w", err)
 	}
@@ -235,6 +246,50 @@ func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count i
 	}
 	phase = "complete"
 	return codes, nil
+}
+
+// RevealRecoveryCodes 解密当前用户有效的安全码，仅在调用方完成安全验证后使用。
+func (s *Service) RevealRecoveryCodes(userID int) ([]string, error) {
+	if s == nil || s.engine == nil {
+		return nil, ErrUnavailable
+	}
+	if userID <= 0 {
+		return nil, ErrInvalidUser
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	vaultRoot := s.vaultRoot
+	if vaultRoot == "" {
+		return nil, ErrNoCiphertext
+	}
+	var items []models.RecoveryCode
+	if err := s.engine.Where("user_id = ? AND used_at IS NULL", userID).Asc("id").Find(&items); err != nil {
+		return nil, fmt.Errorf("load recovery codes for reveal: %w", err)
+	}
+	if len(items) == 0 {
+		return nil, ErrCodeNotFound
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.CodeCiphertext == "" || item.CodeHash == "" {
+			return nil, ErrNoCiphertext
+		}
+		plain, err := credential.Decrypt(vaultRoot, item.CodeCiphertext)
+		if err != nil {
+			return nil, ErrNoCiphertext
+		}
+		account, code, ok := strings.Cut(plain, ":")
+		if !ok || account != strconv.Itoa(userID) || !verifyRecoveryCodeHash(item.CodeHash, code) {
+			return nil, ErrNoCiphertext
+		}
+		result = append(result, code)
+	}
+	return result, nil
+}
+
+func verifyRecoveryCodeHash(encoded, value string) bool {
+	matched, err := password.Check(encoded, value)
+	return err == nil && matched
 }
 
 // ConsumeRecoveryCode 原子消费一个恢复码，成功后该码不可再次使用。
@@ -289,7 +344,7 @@ func (s *Service) consumeRecoveryCode(session recoveryCodeSession, userID int, c
 			continue
 		}
 		now := s.now()
-		affected, err := session.ID(item.ID).Where("used_at IS NULL").Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now})
+		affected, err := session.ID(item.ID).Where("used_at IS NULL").Cols("used_at", "code_ciphertext").Update(&models.RecoveryCode{UsedAt: &now})
 		if err != nil {
 			return fmt.Errorf("consume recovery code: %w", err)
 		}
@@ -336,7 +391,7 @@ func (s *Service) RevokeRecoveryCodes(userID int, guards ...accountgroup.WriteGu
 	if err := accountgroup.CheckWrite(session, guards...); err != nil {
 		return err
 	}
-	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at", "code_ciphertext").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		return fmt.Errorf("revoke recovery codes: %w", err)
 	}
 	return session.Commit()
@@ -364,7 +419,7 @@ func (s *Service) RevokeAllWithSession(session *xorm.Session, userID int) error 
 		return ErrInvalidUser
 	}
 	now := s.now()
-	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at", "code_ciphertext").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
 		return fmt.Errorf("revoke recovery codes: %w", err)
 	}
 	if _, err := session.Where("user_id = ?", userID).Delete(&models.SecurityQuestion{}); err != nil {
@@ -392,7 +447,7 @@ func revokeAllOnSession(session *xorm.Session, now func() time.Time, userID int)
 		return fmt.Errorf("begin credential revocation: %w", err)
 	}
 	when := now()
-	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &when}); err != nil {
+	if _, err := session.Where("user_id = ? AND used_at IS NULL", userID).Cols("used_at", "code_ciphertext").Update(&models.RecoveryCode{UsedAt: &when}); err != nil {
 		_ = session.Rollback()
 		return fmt.Errorf("revoke recovery codes: %w", err)
 	}

@@ -17,12 +17,13 @@ func (SecurityQuestion) TableName() string { return "security_question" }
 
 // RecoveryCode 保存一次性离线恢复码的 Argon2id 哈希，UsedAt 非空表示已经消费或撤销。
 type RecoveryCode struct {
-	ID          int        `xorm:"id bigint unsigned not null pk autoincr" json:"-"`
-	UserID      int        `xorm:"user_id bigint not null index" json:"-"`
-	CodeHash    string     `xorm:"code_hash varchar(255) notnull" json:"-"`
-	CodeVersion int        `xorm:"code_version int notnull default(1)" json:"-"`
-	UsedAt      *time.Time `xorm:"used_at datetime null index" json:"-"`
-	CreatedAt   time.Time  `xorm:"created_at datetime created notnull index" json:"created_at"`
+	ID             int        `xorm:"id bigint unsigned not null pk autoincr" json:"-"`
+	UserID         int        `xorm:"user_id bigint not null index" json:"-"`
+	CodeHash       string     `xorm:"code_hash varchar(255) notnull" json:"-"`
+	CodeCiphertext string     `xorm:"code_ciphertext varchar(512) null" json:"-"`
+	CodeVersion    int        `xorm:"code_version int notnull default(1)" json:"-"`
+	UsedAt         *time.Time `xorm:"used_at datetime null index" json:"-"`
+	CreatedAt      time.Time  `xorm:"created_at datetime created notnull index" json:"created_at"`
 }
 
 func (RecoveryCode) TableName() string { return "recovery_code" }

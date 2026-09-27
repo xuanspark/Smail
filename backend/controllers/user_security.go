@@ -11,6 +11,7 @@ import (
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/accountgroup"
+	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/utils/context"
@@ -103,6 +104,40 @@ func GetManagedRecoveryCodeStatus(ctx *context.Context, w http.ResponseWriter, r
 		"account":    target.Account,
 		"configured": configured,
 	}).FPrint(w)
+}
+
+// RevealManagedRecoveryCodes 在管理员完成近期安全验证后返回目标用户有效安全码。
+func RevealManagedRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	var input managedUserSecurityRequest
+	if err := decodeUserRequest(w, req, &input); err != nil {
+		writeSecurityError(w, response.ParamsError, "请求无效")
+		return
+	}
+	target, ok := loadManagedSecurityUser(ctx, w, input.UserID)
+	if !ok {
+		return
+	}
+	service := credentialRuntime()
+	if service == nil {
+		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
+		return
+	}
+	codes, err := service.RevealRecoveryCodes(target.ID)
+	if err != nil {
+		if errors.Is(err, credentials.ErrNoCiphertext) {
+			writeSecurityError(w, response.ParamsError, "现有安全码无法重新查看，请重新生成安全码")
+			return
+		}
+		if errors.Is(err, credentials.ErrCodeNotFound) {
+			writeSecurityError(w, response.ParamsError, "当前没有有效安全码")
+			return
+		}
+		log.WithContext(ctx).WithError(err).Error("reveal managed recovery codes failed")
+		writeSecurityError(w, response.ServerError, "读取安全码失败")
+		return
+	}
+	response.NewSuccessResponse(map[string]any{"user_id": target.ID, "codes": codes, "revealed": true}).FPrint(w)
 }
 
 // GenerateManagedRecoveryCodes 为目标用户生成只显示一次的安全码。

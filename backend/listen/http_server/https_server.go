@@ -246,6 +246,7 @@ func securitySetupAllowedPath(path, method string) bool {
 	switch normalizedAPIPath(path) {
 	case "/api/user/info", "/api/logout", "/api/security/reauth", "/api/security/setup/acknowledge",
 		"/api/security/totp", "/api/security/credentials/recovery-codes/generate",
+		"/api/security/credentials/recovery-codes/reveal",
 		"/api/security/external-email/bind", "/api/security/external-email/verify":
 		return true
 	case "/api/security/credentials/recovery-codes", "/api/security/external-email/list", "/api/security/credentials/question":

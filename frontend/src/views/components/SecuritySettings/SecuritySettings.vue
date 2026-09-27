@@ -82,15 +82,19 @@
     </section>
 
     <el-divider v-if="selectedSection === 'recovery'" class="settings-divider" />
-    <section v-if="selectedSection === 'recovery'" class="security-section">
+    <section
+      v-if="selectedSection === 'recovery'"
+      v-loading="recoveryLoading"
+      class="security-section"
+    >
       <div class="settings-header security-key-header">
-        <div><h3>安全码</h3><p class="settings-desc">安全码只在生成时显示一次，请妥善保存。</p></div>
-        <div class="section-actions"><el-button type="primary" @click="generateRecoveryCodes">生成新恢复码</el-button><el-button v-if="recoveryConfigured" type="danger" plain @click="revokeRecoveryCodes">撤销</el-button></div>
+        <div><h3>安全码</h3><p class="settings-desc">安全码默认隐藏，完成安全验证后可以重新查看。</p></div>
+        <div class="section-actions"><el-button v-if="recoveryConfigured && !generatedCodes.length" @click="revealRecoveryCodes">验证后查看</el-button><el-button type="primary" @click="generateRecoveryCodes">生成新恢复码</el-button><el-button v-if="recoveryConfigured" type="danger" plain @click="revokeRecoveryCodes">撤销</el-button></div>
       </div>
       <el-alert v-if="recoveryConfigured" title="当前已配置有效离线恢复码" type="success" :closable="false" show-icon />
       <el-alert v-else title="当前未配置有效离线恢复码，高风险操作可能无法进行。" type="warning" :closable="false" show-icon />
       <div v-if="generatedCodes.length" class="recovery-code-panel">
-        <div class="one-time-tip">以下内容只显示本次，请立即复制并妥善保存；离开页面后不会再次读取。</div>
+        <div class="one-time-tip">安全码已通过安全验证显示，仅在当前页面短暂显示，请立即复制并妥善保存。</div>
         <code v-for="code in generatedCodes" :key="code" class="recovery-code">{{ code }}</code>
       </div>
     </section>
@@ -148,10 +152,10 @@ const {
   lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
   globalSecurityPolicyPage,
   passwordEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
-  registering, credentialsLoading, credentials, securityLoading,
+  registering, credentialsLoading, credentials, securityLoading, recoveryLoading,
   securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
   externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
-  saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
+  saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
   handleExternalEmailBound,
   disableExternalEmail, formatTime,
 } = usePage()

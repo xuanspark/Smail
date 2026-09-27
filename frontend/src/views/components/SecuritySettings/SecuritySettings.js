@@ -4,7 +4,11 @@ import { ElMessageBox, ElNotification } from 'element-plus'
 
 import lang from '../../../i18n/i18n'
 import { http } from '@/utils/axios'
-import { requestWithRecentAuthentication } from '@/utils/recentAuthentication'
+import {
+  confirmRecentAuthentication,
+  isRecentAuthenticationCancelled,
+  requestWithRecentAuthentication,
+} from '@/utils/recentAuthentication'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { normalizeCreationOptions, serializeCredential, webAuthnSupported } from '@/utils/webauthn'
 
@@ -56,6 +60,33 @@ export function usePage() {
   const questionForm = reactive({ question: '', answer: '' })
   const recoveryConfigured = ref(false)
   const generatedCodes = ref([])
+  const recoveryLoading = ref(false)
+  let recoveryCodeHideTimer = null
+  let recoveryViewVersion = 0
+  let pageActive = true
+
+  const clearRecoveryCodes = () => {
+    recoveryViewVersion += 1
+    generatedCodes.value = []
+    clearTimeout(recoveryCodeHideTimer)
+    recoveryCodeHideTimer = null
+  }
+
+  const isRecoveryViewCurrent = version => (
+    pageActive && selectedSection.value === 'recovery' && version === recoveryViewVersion
+  )
+
+  const handleVisibilityChange = () => {
+    if (document.hidden) clearRecoveryCodes()
+  }
+
+  const requestRecoveryAction = (action, data, version) => (
+    requestWithRecentAuthentication(() => {
+      if (!isRecoveryViewCurrent(version)) return null
+      return http.post(`/api/v1/security/credentials/recovery-codes/${action}`, data)
+    })
+  )
+
   const externalEmails = ref([])
   const externalListLoading = ref(false)
   const externalDialogVisible = ref(false)
@@ -213,30 +244,79 @@ export function usePage() {
   }
 
   const generateRecoveryCodes = async () => {
+    if (recoveryLoading.value) return
+    clearRecoveryCodes()
+    const version = recoveryViewVersion
+    recoveryLoading.value = true
     try {
       await ElMessageBox.confirm('生成新恢复码会撤销当前仍有效的恢复码，请确认已准备好安全保存。', '生成离线恢复码', { type: 'warning' })
-      const res = await requestWithRecentAuthentication(() => http.post('/api/v1/security/credentials/recovery-codes/generate', { count: 10 }))
+      if (!isRecoveryViewCurrent(version)) return
+      const res = await requestRecoveryAction('generate', { count: 10 }, version)
+      if (!isRecoveryViewCurrent(version)) return
       if (res.errorNo !== 0 || !Array.isArray(res.data?.codes)) throw new Error(res.errorMsg || '离线恢复码生成失败')
       generatedCodes.value = res.data.codes
+      scheduleRecoveryCodeHide()
       recoveryConfigured.value = true
       await globalStatus.refresh()
       notify('恢复码已生成，请仅保存这一次显示的内容', 'success')
     } catch (error) {
+      if (isRecentAuthenticationCancelled(error) || !isRecoveryViewCurrent(version)) return
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '离线恢复码生成失败')
+    } finally {
+      recoveryLoading.value = false
+    }
+  }
+
+  const scheduleRecoveryCodeHide = () => {
+    clearTimeout(recoveryCodeHideTimer)
+    recoveryCodeHideTimer = setTimeout(clearRecoveryCodes, 60000)
+  }
+
+  const revealRecoveryCodes = async () => {
+    if (recoveryLoading.value) return
+    clearRecoveryCodes()
+    const version = recoveryViewVersion
+    recoveryLoading.value = true
+    try {
+      await confirmRecentAuthentication()
+      if (!isRecoveryViewCurrent(version)) return
+      const res = await requestRecoveryAction('reveal', {}, version)
+      if (!isRecoveryViewCurrent(version)) return
+      if (res.errorNo !== 0 || !Array.isArray(res.data?.codes) || !res.data.codes.length) {
+        throw new Error(res.errorMsg || '读取安全码失败')
+      }
+      generatedCodes.value = res.data.codes
+      scheduleRecoveryCodeHide()
+      notify('安全码已显示，60 秒后自动隐藏', 'success')
+    } catch (error) {
+      if (isRecentAuthenticationCancelled(error) || !isRecoveryViewCurrent(version)) return
+      if (error !== 'cancel' && error !== 'close') notify(error?.message || '读取安全码失败')
+    } finally {
+      recoveryLoading.value = false
     }
   }
 
   const revokeRecoveryCodes = async () => {
+    if (recoveryLoading.value) return
+    clearRecoveryCodes()
+    const version = recoveryViewVersion
+    recoveryLoading.value = true
     try {
       await ElMessageBox.confirm('撤销后现有离线恢复码将立即失效，是否继续？', '撤销离线恢复码', { type: 'warning' })
-      const res = await requestWithRecentAuthentication(() => http.post('/api/v1/security/credentials/recovery-codes/revoke', {}))
+      if (!isRecoveryViewCurrent(version)) return
+      const res = await requestRecoveryAction('revoke', {}, version)
+      if (!isRecoveryViewCurrent(version)) return
       if (res.errorNo !== 0) throw new Error(res.errorMsg || '撤销恢复码失败')
       recoveryConfigured.value = false
       generatedCodes.value = []
+      clearTimeout(recoveryCodeHideTimer)
       await globalStatus.refresh()
       notify('离线恢复码已撤销', 'success')
     } catch (error) {
+      if (isRecentAuthenticationCancelled(error) || !isRecoveryViewCurrent(version)) return
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '撤销恢复码失败')
+    } finally {
+      recoveryLoading.value = false
     }
   }
 
@@ -332,9 +412,21 @@ export function usePage() {
     passwordChallenge.value = ''
     ruleForm.code = ''
   })
-  onUnmounted(() => clearInterval(passwordTimer))
+  onUnmounted(() => {
+    pageActive = false
+    clearRecoveryCodes()
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    clearInterval(passwordTimer)
+  })
+
+  watch(selectedSection, section => {
+    if (section !== 'recovery') {
+      clearRecoveryCodes()
+    }
+  })
 
   onMounted(async () => {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     await loadSecurityData()
   })
 
@@ -346,10 +438,10 @@ export function usePage() {
     lang, isSuperAdmin, supported, webAuthnEnabled, sectionOptions, selectedSection, selectSection,
     globalSecurityPolicyPage,
     passwordEmail, passwordSending, passwordSubmitting, passwordCountdown, sendPasswordCode,
-    registering, credentialsLoading, credentials, securityLoading,
+    registering, credentialsLoading, credentials, securityLoading, recoveryLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
     externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
-    saveSecurityQuestion, generateRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
+    saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
     handleExternalEmailBound,
     disableExternalEmail, formatTime,
   }

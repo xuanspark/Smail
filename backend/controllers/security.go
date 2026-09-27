@@ -352,6 +352,39 @@ func GetRecoveryCodeStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 	response.NewSuccessResponse(map[string]any{"configured": configured}).FPrint(w)
 }
 
+// RevealRecoveryCodes 在服务端确认近期安全验证后返回当前用户有效安全码。
+func RevealRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if ctx == nil || ctx.UserID <= 0 {
+		writeSecurityError(w, response.NeedLogin, "请先登录")
+		return
+	}
+	if !ctx.RecentAuth {
+		writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "请先重新验证当前密码", string(access.CodeRecentAuthRequired))
+		return
+	}
+	service := credentialRuntime()
+	if service == nil {
+		writeSecurityError(w, response.ServerError, "安全凭据服务不可用")
+		return
+	}
+	codes, err := service.RevealRecoveryCodes(ctx.UserID)
+	if err != nil {
+		if errors.Is(err, credentials.ErrNoCiphertext) {
+			writeSecurityError(w, response.ParamsError, "现有安全码无法重新查看，请重新生成安全码")
+			return
+		}
+		if errors.Is(err, credentials.ErrCodeNotFound) {
+			writeSecurityError(w, response.ParamsError, "当前没有有效安全码")
+			return
+		}
+		log.WithError(err).Error("reveal recovery codes failed")
+		writeSecurityError(w, response.ServerError, "读取安全码失败")
+		return
+	}
+	response.NewSuccessResponse(map[string]any{"codes": codes, "revealed": true}).FPrint(w)
+}
+
 // RevokeRecoveryCodes 撤销当前用户的全部有效离线恢复码。
 func RevokeRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 {
