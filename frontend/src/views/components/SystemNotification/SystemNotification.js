@@ -22,6 +22,7 @@ export function usePage(props = {}) {
   const seconds = ref(0)
   const verifyVisible = ref(false)
   const verifyPassword = ref('')
+  const manageVisible = ref(false)
   let verifyTarget = null
   let secretSequence = 0
   let secretTimer = null
@@ -82,6 +83,29 @@ export function usePage(props = {}) {
     verifyPassword.value = ''
     verifyTarget = status.value
     verifyVisible.value = true
+  }
+  const openManage = async row => {
+    if (loading.value || submitting.value || !(await beforeLeave())) return
+    clearSecret()
+    status.value = null
+    selectedID.value = row.user_id
+    await loadStatus()
+    if (!disposed) manageVisible.value = true
+  }
+  const closeManage = async () => {
+    if (!(await beforeLeave())) return false
+    manageVisible.value = false
+    clearSecret()
+    return true
+  }
+  const revealAccount = async row => {
+    if (loading.value || submitting.value || !row.configured || !(await beforeLeave())) return
+    clearSecret()
+    status.value = null
+    selectedID.value = row.user_id
+    await loadStatus()
+    if (disposed || !status.value || status.value.user_id !== row.user_id) return
+    if (canReveal.value) openVerify()
   }
   const verifyAndReveal = async () => {
     if (!verifyTarget || !verifyPassword.value || submitting.value || !canReveal.value) return
@@ -229,6 +253,7 @@ export function usePage(props = {}) {
     accountsSequence += 1
     clearSecret()
     clearVerification()
+    manageVisible.value = false
     document.removeEventListener('visibilitychange', hideOnBackground)
   })
 
@@ -236,6 +261,7 @@ export function usePage(props = {}) {
     manager, loading, submitting, error, status, accounts, page, total, form,
     secret, secretAccount, secretVisible, seconds, canManage, stateText, dirty,
     canReveal, verifyVisible, verifyPassword, openVerify, verifyAndReveal, clearVerification,
-    loadAccounts, selectAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave
+    loadAccounts, selectAccount: openManage, openManage, closeManage, revealAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave,
+    manageVisible
   }
 }

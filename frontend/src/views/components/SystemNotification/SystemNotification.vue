@@ -29,9 +29,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90">
+        <el-table-column label="操作" width="170">
           <template #default="{ row }">
-            <el-button link type="primary" :disabled="submitting || loading" @click="selectAccount(row)">管理</el-button>
+            <div class="notification-row-actions">
+              <el-button link type="primary" :disabled="submitting || loading" @click="openManage(row)">管理</el-button>
+              <el-button
+                link
+                type="primary"
+                :disabled="submitting || loading || !row.configured || row.disabled"
+                @click="revealAccount(row)"
+              >查看授权码</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -43,14 +51,36 @@
         :disabled="submitting"
         @current-change="loadAccounts"
       />
+      <div v-if="manager && !userId && secretVisible && secretAccount" class="notification-manager-secret" role="status">
+        <div class="notification-manager-secret-heading">
+          <span>账号 {{ secretAccount }} 的通知授权码</span>
+          <span class="notification-countdown">{{ seconds }} 秒后自动隐藏</span>
+        </div>
+        <code class="notification-credential-code">{{ secret }}</code>
+        <div class="notification-credential-actions">
+          <el-button size="small" type="primary" @click="copySecret">复制授权码</el-button>
+          <el-button size="small" @click="clearSecret">隐藏</el-button>
+        </div>
+      </div>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-    <div v-loading="loading" class="notification-panel notification-detail-panel" aria-live="polite">
+    <div
+      v-if="!manager || userId || manageVisible"
+      class="notification-detail-modal notification-detail-panel"
+      :class="{ 'notification-detail-modal-active': manager && !userId }"
+      role="dialog"
+      :aria-modal="manager && !userId ? 'true' : undefined"
+      @click.self="manager && !userId ? closeManage() : null"
+    >
+      <div v-loading="loading" class="notification-panel notification-detail-dialog" aria-live="polite">
       <template v-if="status">
         <div class="notification-heading">
           <h3>账号：{{ status.account }}</h3>
-          <el-tag :type="status.enabled && status.configured ? 'success' : 'info'">{{ stateText }}</el-tag>
+          <div class="notification-heading-actions">
+            <el-tag :type="status.enabled && status.configured ? 'success' : 'info'">{{ stateText }}</el-tag>
+            <el-button v-if="manager && !userId" link @click="closeManage">关闭</el-button>
+          </div>
         </div>
         <p v-if="!status.account_available" class="notification-warning">账号已禁用或尚未修改临时密码，不能生成或使用通知凭据。</p>
 
@@ -127,6 +157,7 @@
         </div>
       </template>
       <el-empty v-else-if="!loading && !error" description="尚未读取账号状态" />
+      </div>
     </div>
 
     <el-dialog
@@ -174,7 +205,8 @@ const {
   manager, loading, submitting, error, status, accounts, page, total, form,
   secret, secretAccount, secretVisible, seconds, canManage, stateText, dirty,
   canReveal, verifyVisible, verifyPassword, openVerify, verifyAndReveal, clearVerification,
-  loadAccounts, selectAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave
+  loadAccounts, openManage, closeManage, revealAccount, manageVisible,
+  refresh, save, rotate, clearSecret, copySecret, beforeLeave
 } = usePage(props)
 
 defineExpose({ beforeLeave })

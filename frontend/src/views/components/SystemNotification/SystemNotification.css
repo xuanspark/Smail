@@ -335,6 +335,84 @@
   margin-top: 0;
 }
 
+.notification-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.notification-row-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.notification-manager-secret {
+  flex: 1 0 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--el-color-success-light-5);
+  border-radius: 10px;
+  background: var(--el-color-success-light-9);
+}
+
+.notification-manager-secret-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-manager-secret .notification-credential-code {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 6px;
+  background: var(--el-bg-color);
+}
+
+.notification-manager-secret .notification-credential-actions {
+  grid-column: 1 / -1;
+}
+
+.notification-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-detail-modal-active {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 0;
+  max-height: 100vh;
+  padding: 24px !important;
+  border: 0;
+  border-radius: 0;
+  background: rgb(15 23 42 / 42%) !important;
+}
+
+.notification-detail-modal-active > .notification-detail-dialog {
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgb(15 23 42 / 22%);
+}
+
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel {
   display: flex;
   flex-direction: column;
@@ -508,6 +586,10 @@
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel .el-pagination {
     margin-left: auto;
   }
+
+  .notification-row-actions {
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 820px) {
@@ -517,6 +599,16 @@
 
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel,
   .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel {
+    padding: 12px;
+  }
+
+  .notification-detail-modal-active {
+    align-items: flex-start;
+    padding: 12px !important;
+  }
+
+  .notification-detail-modal-active > .notification-detail-dialog {
+    max-height: calc(100vh - 24px);
     padding: 12px;
   }
 
@@ -558,5 +650,15 @@
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .cell) {
     padding-inline: 4px;
     font-size: 12px;
+  }
+
+  .notification-row-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .notification-manager-secret {
+    grid-template-columns: 1fr;
   }
 }
