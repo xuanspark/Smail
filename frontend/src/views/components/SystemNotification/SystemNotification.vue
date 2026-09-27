@@ -150,7 +150,7 @@
           <el-descriptions-item label="隐式 TLS 端口">{{ status.tls_port || '未启用' }}</el-descriptions-item>
           <el-descriptions-item label="STARTTLS 端口">{{ status.starttls_port || '未启用' }}</el-descriptions-item>
           <el-descriptions-item label="SMTP 用户名"><code>{{ status.username }}</code></el-descriptions-item>
-          <el-descriptions-item label="SMTP 密码">管理员生成的独立发信凭据，不是网页登录密码或普通客户端授权码</el-descriptions-item>
+          <el-descriptions-item label="SMTP 密码">独立发信凭据</el-descriptions-item>
           <el-descriptions-item label="发件邮箱"><code>{{ status.sender }}</code></el-descriptions-item>
           <el-descriptions-item label="发件名称">{{ status.sender_name }}（服务端固定）</el-descriptions-item>
         </el-descriptions>
