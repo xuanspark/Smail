@@ -84,7 +84,7 @@
         </div>
         <p v-if="!status.account_available" class="notification-warning">账号已禁用或尚未修改临时密码，不能生成或使用通知凭据。</p>
 
-        <div v-if="status.configured" class="notification-credential">
+        <div v-if="status.configured && (!manager || userId)" class="notification-credential">
           <span class="notification-credential-label">通知发信凭据</span>
           <template v-if="secretVisible && secret">
             <code class="notification-credential-code">{{ secret }}</code>

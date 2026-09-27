@@ -229,7 +229,8 @@ export function usePage(props = {}) {
         user_id: target.user_id, version: target.version
       })))
       if (disposed) return
-      if (sequence === secretSequence) showSecret(data.code, target.account)
+      if (sequence === secretSequence && (!manager.value || props.userId)) showSecret(data.code, target.account)
+      else clearSecret()
       await Promise.all([loadStatus(), loadAccounts()])
     } catch (cause) { showError(cause) }
     finally { submitting.value = false }
