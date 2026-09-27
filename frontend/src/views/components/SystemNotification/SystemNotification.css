@@ -223,7 +223,7 @@
 /* Desktop manager layout: keep the authorization list and selected account settings visible together. */
 .notification-settings:has(> .notification-manager-panel) {
   display: grid;
-  grid-template-columns: minmax(220px, 0.44fr) minmax(0, 1.56fr);
+  grid-template-columns: minmax(260px, 0.44fr) minmax(0, 1.56fr);
   align-items: start;
   gap: 8px 10px;
   min-width: 0;
@@ -546,26 +546,28 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(1)) {
-  width: 27% !important;
+  width: 26% !important;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(2)) {
-  width: 21% !important;
+  width: 24% !important;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(3)) {
-  width: 31% !important;
+  width: 28% !important;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table col:nth-child(4)) {
-  width: 21% !important;
+  width: 22% !important;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .cell) {
   min-width: 0;
+  padding-inline: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .el-tag) {
