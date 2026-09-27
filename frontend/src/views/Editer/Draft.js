@@ -47,10 +47,30 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
   })
   const isDirty = () => !sent.value && savedSnapshot !== '' && snapshot() !== savedSnapshot
 
+  const resetMessage = () => {
+    draftID.value = 0
+    draftVersion.value = ''
+    replyTo.value = []
+    replyEmailID.value = 0
+    envelopeSender = null
+    originalFrom = ''
+    recipientNames = new Map()
+    ruleForm.receivers = []
+    ruleForm.cc = []
+    ruleForm.bcc = []
+    ruleForm.subject = ''
+    valueHtml.value = '<p><br></p>'
+    fileList.splice(0)
+    showCcBcc.value = false
+    sent.value = false
+    savedSnapshot = ''
+  }
+
   const loadDraft = async () => {
     const sequence = ++loadSequence
     isLoading.value = true
     loadFailed.value = false
+    resetMessage()
     const rawID = route.query.draft
     const rawReplyID = route.query.reply
     try {
@@ -59,21 +79,6 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
       if (disposed || sequence !== loadSequence) return
       Object.assign(ruleForm, identity)
       if (rawID === undefined) {
-        draftID.value = 0
-        draftVersion.value = ''
-        replyTo.value = []
-        replyEmailID.value = 0
-        envelopeSender = null
-        originalFrom = ''
-        recipientNames = new Map()
-        ruleForm.receivers = []
-        ruleForm.cc = []
-        ruleForm.bcc = []
-        ruleForm.subject = ''
-        valueHtml.value = '<p><br></p>'
-        fileList.splice(0)
-        showCcBcc.value = false
-        sent.value = false
         if (rawReplyID !== undefined) {
           if (typeof rawReplyID !== 'string' || !/^[1-9]\d*$/.test(rawReplyID)) throw new Error(lang.fail)
           const id = Number(rawReplyID)
@@ -126,6 +131,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
       sent.value = false
     } catch (error) {
       if (disposed || sequence !== loadSequence) return
+      resetMessage()
       loadFailed.value = true
       ElMessage.error(error.message || lang.draft_load_failed)
     } finally {
@@ -177,9 +183,9 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
   onBeforeRouteUpdate((to, from) =>
     to.query.draft === from.query.draft && to.query.reply === from.query.reply ? true : confirmLeave()
   )
-  watch(() => [route.query.draft, route.query.reply], ([draft, reply], [, previousReply]) => {
-    if (reply === undefined && String(draft || '') === String(draftID.value || '') &&
-      (draftID.value > 0 || previousReply === undefined)) return
+  watch(() => [route.query.draft, route.query.reply], ([draft, reply]) => {
+    if (!loadFailed.value && !isLoading.value && reply === undefined &&
+      draftID.value > 0 && draft === String(draftID.value)) return
     loadDraft()
   })
   watch([editorRef, isBusy], ([editor, busy]) => {
