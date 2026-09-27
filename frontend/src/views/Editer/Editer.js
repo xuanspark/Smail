@@ -173,7 +173,7 @@ export function usePage() {
   const pendingFiles = ref(0)
   const readers = new Set()
   const draft = useDraft({
-    router, groupStore, ruleForm, valueHtml, fileList, editorRef,
+    router, groupStore, ruleForm, ruleFormRef, valueHtml, fileList, editorRef,
     showCcBcc, isSending, pendingFiles, prepareIdentity
   })
   const init = () => {

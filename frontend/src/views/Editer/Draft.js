@@ -5,7 +5,7 @@ import {http} from '@/utils/axios'
 import lang from '../../i18n/i18n'
 import {prepareReply} from './Reply'
 
-export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, editorRef, showCcBcc, isSending, pendingFiles, prepareIdentity}) {
+export function useDraft({router, groupStore, ruleForm, ruleFormRef, valueHtml, fileList, editorRef, showCcBcc, isSending, pendingFiles, prepareIdentity}) {
   const route = useRoute()
   const draftID = ref(0)
   const draftVersion = ref('')
@@ -137,6 +137,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     } finally {
       await nextTick()
       if (!disposed && sequence === loadSequence) {
+        ruleFormRef.value?.clearValidate()
         if (!loadFailed.value) savedSnapshot = snapshot()
         isLoading.value = false
       }
