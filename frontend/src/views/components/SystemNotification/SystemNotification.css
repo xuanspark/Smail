@@ -271,7 +271,8 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
 }
 
@@ -284,7 +285,7 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table) {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   width: 100% !important;
   min-width: 0 !important;
 }
@@ -332,6 +333,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel .el-pagination {
   flex: 0 0 auto;
+  align-self: flex-end;
   margin-top: 0;
 }
 
@@ -347,9 +349,10 @@
 }
 
 .notification-manager-secret {
-  flex: 1 0 100%;
+  flex: 0 0 auto;
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px 14px;
   align-items: center;
   padding: 10px 12px;
@@ -572,7 +575,7 @@
 @media (max-width: 980px) {
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel {
     align-items: stretch;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel h3 {
@@ -580,7 +583,7 @@
   }
 
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table) {
-    flex-basis: 100%;
+    flex-basis: auto;
   }
 
   .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel .el-pagination {
