@@ -223,7 +223,7 @@
 /* Desktop manager layout: keep the authorization list and selected account settings visible together. */
 .notification-settings:has(> .notification-manager-panel) {
   display: grid;
-  grid-template-columns: minmax(220px, 0.68fr) minmax(420px, 1.32fr);
+  grid-template-columns: minmax(240px, 0.44fr) minmax(580px, 1.56fr);
   align-items: start;
   gap: 8px 10px;
   min-width: 0;
@@ -303,7 +303,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns {
   display: grid;
-  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  grid-template-columns: minmax(260px, 0.72fr) minmax(360px, 1.28fr);
   gap: 6px 10px;
   align-items: start;
 }
@@ -369,6 +369,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__label) {
   width: 96px;
+  white-space: nowrap;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-hint {
@@ -506,7 +507,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) .el-descriptions__body > table > tbody > tr {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
+  grid-template-columns: 96px minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -514,6 +515,12 @@
   min-width: 0;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns > :deep(.el-descriptions ~ .el-descriptions) code {
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
 }
 
 @media (max-width: 920px) {
