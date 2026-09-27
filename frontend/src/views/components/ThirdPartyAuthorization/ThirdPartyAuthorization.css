@@ -263,23 +263,20 @@
 }
 
 .proto-name-badge {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  position: relative;
   min-width: 0;
 }
 
 .proto-name-badge > .el-tag {
-  flex: 0 0 auto;
-  align-self: flex-end;
+  position: absolute;
+  top: 0;
+  right: 0;
   padding-inline: 4px;
   font-size: 10px;
   white-space: nowrap;
 }
 
 .proto-title {
-  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
