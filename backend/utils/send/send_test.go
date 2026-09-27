@@ -158,3 +158,43 @@ func TestDoSendRejectsEmptyRecipientList(t *testing.T) {
 		t.Fatalf("failure count = %d, want 1", len(failures))
 	}
 }
+
+func TestDeliveryRecipientsKeepsEnvelopeSeparateFromHeaders(t *testing.T) {
+	to := &parsemail.User{EmailAddress: "header-to@example.com"}
+	cc := &parsemail.User{EmailAddress: "header-cc@example.com"}
+	bcc := &parsemail.User{EmailAddress: "header-bcc@example.com"}
+	envelope := &parsemail.User{EmailAddress: "envelope@example.com"}
+	queued := &parsemail.User{EmailAddress: "queued@example.com"}
+	tests := []struct {
+		name     string
+		envelope []*parsemail.User
+		override []*parsemail.User
+		want     []*parsemail.User
+	}{
+		{name: "web message uses header recipients", want: []*parsemail.User{to, cc, bcc}},
+		{name: "smtp uses accepted envelope only", envelope: []*parsemail.User{envelope}, want: []*parsemail.User{envelope}},
+		{name: "empty envelope never falls back to headers", envelope: []*parsemail.User{}},
+		{name: "queue uses its single recipient", envelope: []*parsemail.User{envelope}, override: []*parsemail.User{queued}, want: []*parsemail.User{queued}},
+		{name: "explicit empty override never falls back", envelope: []*parsemail.User{envelope}, override: []*parsemail.User{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			message := &parsemail.Email{
+				To: []*parsemail.User{to}, Cc: []*parsemail.User{cc}, Bcc: []*parsemail.User{bcc},
+				EnvelopeTo: tt.envelope,
+			}
+			got := deliveryRecipients(message, tt.override)
+			if len(got) != len(tt.want) {
+				t.Fatalf("recipient count = %d, want %d", len(got), len(tt.want))
+			}
+			for index := range got {
+				if got[index] != tt.want[index] {
+					t.Fatalf("recipient %d = %v, want %v", index, got[index], tt.want[index])
+				}
+			}
+			if len(message.To) != 1 || message.To[0] != to || len(message.Cc) != 1 || message.Cc[0] != cc || len(message.Bcc) != 1 || message.Bcc[0] != bcc {
+				t.Fatal("delivery routing changed the message headers")
+			}
+		})
+	}
+}

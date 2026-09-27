@@ -120,14 +120,21 @@ func sendRecipients(ctx *context.Context, e *parsemail.Email, recipients []*pars
 		return fmt.Errorf("build message: %w", err), nil
 	}
 
-	var to []*parsemail.User
-	to = append(append(append(to, e.To...), e.Cc...), e.Bcc...)
-	if recipients != nil {
-		to = recipients
-	}
+	to := deliveryRecipients(e, recipients)
 
 	return doSend(ctx, fromDomain, b, to, e.From.EmailAddress, trigger)
 
+}
+
+func deliveryRecipients(e *parsemail.Email, recipients []*parsemail.User) []*parsemail.User {
+	if recipients != nil {
+		return recipients
+	}
+	if e.EnvelopeTo != nil {
+		return e.EnvelopeTo
+	}
+	var targets []*parsemail.User
+	return append(append(append(targets, e.To...), e.Cc...), e.Bcc...)
 }
 
 func parseRecipientAddress(user *parsemail.User) (string, string, error) {

@@ -180,6 +180,10 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 				return send.SendTriggered(ctx, email, "系统通知 SMTP 发信")
 			}
 		}
+		email.EnvelopeTo = make([]*parsemail.User, len(s.To))
+		for index, address := range s.To {
+			email.EnvelopeTo[index] = &parsemail.User{EmailAddress: address}
+		}
 		resultErr = s.deliverOutgoingEmail(email, sender)
 		if resultErr == nil {
 			result = "accepted"

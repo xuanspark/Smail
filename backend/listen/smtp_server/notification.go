@@ -50,7 +50,7 @@ func (s *Session) prepareNotification(email *parsemail.Email, rawBytes int) erro
 			return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Notification recipient is not authorized by envelope"}
 		}
 	}
-	if err := s.authorization.ReserveNotification(len(recipients)); err != nil {
+	if err := s.authorization.ReserveNotification(len(s.To)); err != nil {
 		if errors.Is(err, notification.ErrQuota) {
 			return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "Notification sending quota exceeded"}
 		}

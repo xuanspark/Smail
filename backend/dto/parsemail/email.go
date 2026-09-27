@@ -76,6 +76,7 @@ type Email struct {
 	InReplyTo        string
 	ThreadReferences string
 	EnvelopeFrom     string
+	EnvelopeTo       []*User `json:"-"`
 	ReplyTo          []*User
 	From             *User
 	To               []*User
