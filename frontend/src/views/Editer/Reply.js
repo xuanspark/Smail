@@ -37,7 +37,7 @@ export function prepareReply(message, identity) {
     item.EmailAddress.toLowerCase() === `${identity.sender}@${domain}`.toLowerCase()
   )) || identity.pickedDomain
   const metadata = [
-    `${lang.sender}: ${message.from_name || ''} <${message.from_address || ''}>`,
+    `${lang.sender}: ${message.from_name || ''} (${message.from_address || ''})`,
     `${lang.date}: ${message.send_date || ''}`,
     `${lang.title}: ${subject}`
   ]
