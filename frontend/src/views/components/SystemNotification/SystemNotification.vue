@@ -17,7 +17,7 @@
       :closable="false"
     />
 
-    <div v-if="manager && !userId" class="notification-panel">
+    <div v-if="manager && !userId" class="notification-panel notification-manager-panel">
       <h3>账号授权管理</h3>
       <el-table :data="accounts" stripe>
         <el-table-column prop="account" label="账号" min-width="110" />
@@ -46,7 +46,7 @@
     </div>
 
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-    <div v-loading="loading" class="notification-panel" aria-live="polite">
+    <div v-loading="loading" class="notification-panel notification-detail-panel" aria-live="polite">
       <template v-if="status">
         <div class="notification-heading">
           <h3>账号：{{ status.account }}</h3>
