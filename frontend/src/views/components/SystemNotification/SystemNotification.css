@@ -236,10 +236,7 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) .notification-header p {
-  margin: 4px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.45;
+  display: none;
 }
 
 .notification-settings:has(> .notification-manager-panel) .notification-header h2 {
@@ -259,9 +256,7 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .el-alert :deep(.el-alert__description) {
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.45;
+  display: none;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel,
@@ -269,7 +264,7 @@
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 16px;
+  padding: 12px 14px;
   border-radius: 14px;
   background: var(--el-bg-color);
 }
@@ -277,12 +272,12 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel h3 {
   flex: 0 0 auto;
-  min-width: 132px;
+  min-width: 142px;
   margin: 0;
   font-size: 16px;
   line-height: 1.4;
@@ -320,7 +315,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .cell) {
   min-width: 0;
-  padding-inline: 8px;
+  padding-inline: 6px;
   overflow-wrap: anywhere;
   white-space: normal;
   font-size: 13px;
@@ -328,7 +323,7 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table__cell) {
-  padding-block: 8px;
+  padding-block: 5px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-manager-panel :deep(.el-table .el-tag) {
@@ -343,12 +338,12 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-heading {
   margin: 0;
-  padding-bottom: 12px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
@@ -367,14 +362,14 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns {
   display: grid;
   grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.22fr);
-  gap: 16px;
+  gap: 12px;
   align-items: start;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-control-column,
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column {
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 12px;
   background: var(--el-fill-color-blank);
@@ -383,20 +378,20 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-control-column {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-control-column > :deep(.el-form) {
-  padding-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-form-item) {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-form-item__label) {
-  margin-bottom: 5px;
+  margin-bottom: 3px;
   color: var(--el-text-color-primary);
   font-size: 13px;
   line-height: 1.35;
@@ -405,7 +400,7 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-limits {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-input-number) {
@@ -427,7 +422,7 @@
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__header),
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-usage-block :deep(.el-descriptions__header) {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__title) {
@@ -441,14 +436,14 @@
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__label) {
-  width: 132px;
+  width: 112px;
   color: var(--el-text-color-secondary);
   white-space: nowrap;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel :deep(.el-descriptions__cell) {
   min-width: 0;
-  padding: 9px 10px;
+  padding: 6px 8px;
   overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.45;
@@ -459,8 +454,28 @@
   overflow-wrap: anywhere;
 }
 
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table) {
+  display: block;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr) {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr > td) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-hint {
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.55;
 }
@@ -468,6 +483,7 @@
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-send-only-alert {
   grid-column: 1 / -1;
   margin: 0;
+  padding: 8px 10px;
 }
 
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-send-only-alert :deep(.el-alert__title),
@@ -506,6 +522,18 @@
 
   .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-columns {
     grid-template-columns: 1fr;
+  }
+
+  .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table) {
+    display: table;
+  }
+
+  .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody) {
+    display: table-row-group;
+  }
+
+  .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr) {
+    display: table-row;
   }
 
   .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-send-only-alert {
