@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"golang.org/x/net/html"
@@ -23,17 +24,27 @@ func extractWeChatVerificationCode(email *parsemail.Email) (string, bool) {
 		return "", false
 	}
 	// 分别检查标题和各正文，避免跨字段拼接出不存在的验证码。
-	if code, ok := findWeChatVerificationCode(truncateWeChatText(email.Subject, maxWeChatVerificationScanBytes)); ok {
+	if code, ok := findWeChatVerificationCode(boundedWeChatVerificationText(email.Subject)); ok {
 		return code, true
 	}
 	text := email.Text[:min(len(email.Text), maxWeChatVerificationScanBytes)]
-	if code, ok := findWeChatVerificationCode(string(text)); ok {
+	plain := string(text)
+	if len(email.Text) > len(text) {
+		plain += "_"
+	}
+	if code, ok := findWeChatVerificationCode(plain); ok {
 		return code, true
 	}
 	return findWeChatVerificationCode(weChatHTMLNotificationText(email.HTML))
 }
 
 func findWeChatVerificationCode(content string) (string, bool) {
+	content = strings.Map(func(char rune) rune {
+		if unicode.IsSpace(char) {
+			return ' '
+		}
+		return char
+	}, content)
 	for _, pattern := range weChatVerificationPatterns {
 		for _, match := range pattern.FindAllStringSubmatch(content, -1) {
 			code := match[1]
@@ -46,8 +57,17 @@ func findWeChatVerificationCode(content string) (string, bool) {
 	return "", false
 }
 
+func boundedWeChatVerificationText(content string) string {
+	if len(content) > maxWeChatVerificationScanBytes {
+		// 用标识符边界阻止截断的长串被误识别为完整验证码，不进入通知正文。
+		return truncateWeChatText(content, maxWeChatVerificationScanBytes) + "_"
+	}
+	return content
+}
+
 func weChatHTMLNotificationText(content []byte) string {
 	// 限制原始输入，避免大邮件在通知提取阶段产生无界扫描和额外分配。
+	truncated := len(content) > maxWeChatVerificationScanBytes
 	content = content[:min(len(content), maxWeChatVerificationScanBytes)]
 	tokenizer := html.NewTokenizer(bytes.NewReader(content))
 	var text strings.Builder
@@ -55,8 +75,11 @@ func weChatHTMLNotificationText(content []byte) string {
 	for {
 		switch tokenizer.Next() {
 		case html.ErrorToken:
+			if truncated {
+				text.WriteByte('_')
+			}
 			return text.String()
-		case html.StartTagToken:
+		case html.StartTagToken, html.SelfClosingTagToken:
 			name, _ := tokenizer.TagName()
 			if weChatHiddenHTMLTag(string(name)) {
 				hiddenDepth++
@@ -69,8 +92,8 @@ func weChatHTMLNotificationText(content []byte) string {
 		case html.TextToken:
 			if hiddenDepth == 0 {
 				// 分词器负责解码实体；不读取属性、注释、脚本及样式中的内容。
-				text.Write(tokenizer.Text())
 				text.WriteByte(' ')
+				text.Write(tokenizer.Text())
 			}
 		}
 	}

@@ -113,6 +113,115 @@ func TestWeChatRuntimeConfigRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestFindWeChatVerificationCode(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{name: "chinese", content: "您的验证码为：123456，请勿泄露", want: "123456"},
+		{name: "before keyword", content: "847291 是您的验证码", want: "847291"},
+		{name: "english", content: "Your verification code is A7B9C2", want: "A7B9C2"},
+		{name: "leading zero", content: "验证码：001234", want: "001234"},
+		{name: "four characters", content: "校验码：a1B2", want: "a1B2"},
+		{name: "eight characters", content: "动态码：a1B2c3D4", want: "a1B2c3D4"},
+		{name: "one time password", content: "一次性密码：123456", want: "123456"},
+		{name: "english security", content: "SECURITY CODE: a1B2c3", want: "a1B2c3"},
+		{name: "english before", content: "123456 is your verification code", want: "123456"},
+		{name: "otp", content: "OTP: 123456", want: "123456"},
+		{name: "nonbreaking space", content: "verification code:\u00a0123456", want: "123456"},
+		{name: "three characters", content: "验证码：123"},
+		{name: "nine characters", content: "验证码：123456789"},
+		{name: "letters only", content: "verification code: secure"},
+		{name: "no keyword", content: "订单号 123456"},
+		{name: "year", content: "2026 年验证码安全规则更新"},
+		{name: "identifier suffix", content: "验证码：123456_value"},
+		{name: "identifier prefix", content: "验证码：value_123456"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := findWeChatVerificationCode(tt.content)
+			if got != tt.want || ok != (tt.want != "") {
+				t.Fatalf("验证码 = %q，匹配 = %v，期望 %q", got, ok, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildWeChatMessageVerificationContent(t *testing.T) {
+	tests := []struct {
+		name  string
+		email *parsemail.Email
+		want  string
+	}{
+		{
+			name:  "html entities",
+			email: &parsemail.Email{HTML: []byte("<p>验证码：&nbsp;<b>654321</b></p>")},
+			want:  "验证码：654321",
+		},
+		{
+			name:  "subject priority",
+			email: &parsemail.Email{Subject: "验证码：123456", Text: []byte("验证码：654321")},
+			want:  "验证码：123456",
+		},
+		{
+			name:  "text priority",
+			email: &parsemail.Email{Text: []byte("验证码：123456"), HTML: []byte("验证码：654321")},
+			want:  "验证码：123456",
+		},
+		{
+			name:  "ordinary email unchanged",
+			email: &parsemail.Email{Subject: "项目进度 2026", Text: []byte("今天已完成开发")},
+			want:  "<<项目进度 2026>>  今天已完成开发",
+		},
+		{
+			name:  "do not combine parts",
+			email: &parsemail.Email{Subject: "验证码", Text: []byte("123456")},
+			want:  "<<验证码>>  123456",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildWeChatMessage(tt.email); got != tt.want {
+				t.Fatalf("通知内容 = %q，期望 %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractWeChatVerificationCodeBoundsInput(t *testing.T) {
+	inputs := map[string]string{
+		"past limit": strings.Repeat(" ", maxWeChatVerificationScanBytes) + "验证码：123456",
+		"partial code": strings.Repeat(" ", maxWeChatVerificationScanBytes-len("验证码：123456")) +
+			"验证码：123456789",
+	}
+	for name, content := range inputs {
+		t.Run(name, func(t *testing.T) {
+			parts := map[string]*parsemail.Email{
+				"subject": {Subject: content},
+				"text":    {Text: []byte(content)},
+				"html":    {HTML: []byte(content)},
+			}
+			for part, email := range parts {
+				if code, ok := extractWeChatVerificationCode(email); ok || code != "" {
+					t.Fatalf("%s 不应提取扫描范围外或被截断的验证码：%q", part, code)
+				}
+			}
+		})
+	}
+}
+
+func TestWeChatHTMLNotificationTextIgnoresAttributes(t *testing.T) {
+	email := &parsemail.Email{
+		Subject: "通知",
+		Text:    []byte("查看邮件"),
+		HTML:    []byte(`<img alt="验证码：123456"><p>普通消息</p>`),
+	}
+	if got := buildWeChatMessage(email); got != "<<通知>>  查看邮件" {
+		t.Fatalf("HTML 属性不应作为验证码来源：%q", got)
+	}
+}
+
 func TestBuildWeChatMessageLimitsContent(t *testing.T) {
 	message := buildWeChatMessage(&parsemail.Email{
 		Subject: strings.Repeat("界", maxWeChatMessageBytes),
