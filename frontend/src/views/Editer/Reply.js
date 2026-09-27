@@ -9,6 +9,7 @@ const escapeHTML = value => String(value ?? '')
 
 const readAddresses = value => {
   const addresses = JSON.parse(value || '[]')
+  if (addresses === null) return []
   if (!Array.isArray(addresses)) throw new Error(lang.fail)
   return addresses.filter(item => item && typeof item.EmailAddress === 'string' && item.EmailAddress.trim())
 }
