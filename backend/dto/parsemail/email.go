@@ -73,25 +73,27 @@ func NewEmailAuthentication(spfPassed, dkimPassed bool) *EmailAuthentication {
 
 // Email is the type used for email messages
 type Email struct {
-	EnvelopeFrom   string
-	ReplyTo        []*User
-	From           *User
-	To             []*User
-	Bcc            []*User
-	Cc             []*User
-	Subject        string
-	Text           []byte // Plaintext message (optional)
-	HTML           []byte // Html message (optional)
-	Sender         *User  // override From as SMTP envelope sender (optional)
-	Headers        textproto.MIMEHeader
-	Attachments    []*Attachment
-	ReadReceipt    []string
-	Date           string
-	Status         int // 0未发送，1已发送，2发送失败，3删除，5广告邮件
-	MessageId      int64
-	MsgID          string // RFC-compliant Message-ID, persisted in DB
-	Size           int
-	Authentication *EmailAuthentication
+	InReplyTo        string
+	ThreadReferences string
+	EnvelopeFrom     string
+	ReplyTo          []*User
+	From             *User
+	To               []*User
+	Bcc              []*User
+	Cc               []*User
+	Subject          string
+	Text             []byte // Plaintext message (optional)
+	HTML             []byte // Html message (optional)
+	Sender           *User  // override From as SMTP envelope sender (optional)
+	Headers          textproto.MIMEHeader
+	Attachments      []*Attachment
+	ReadReceipt      []string
+	Date             string
+	Status           int // 0未发送，1已发送，2发送失败，3删除，5广告邮件
+	MessageId        int64
+	MsgID            string // RFC-compliant Message-ID, persisted in DB
+	Size             int
+	Authentication   *EmailAuthentication
 }
 
 func (e *Email) SenderFilterAddresses() []string {
@@ -344,8 +346,10 @@ func NewEmailFromModel(d models.Email) (*Email, error) {
 	}
 
 	ret := &Email{
-		MessageId: cast.ToInt64(d.Id),
-		MsgID:     d.MsgID,
+		MessageId:        cast.ToInt64(d.Id),
+		InReplyTo:        NormalizeThreadHeader(d.InReplyTo),
+		ThreadReferences: NormalizeThreadHeader(d.ThreadReferences),
+		MsgID:            d.MsgID,
 		From: &User{
 			Name:         d.FromName,
 			EmailAddress: d.FromAddress,
@@ -387,6 +391,8 @@ func NewEmailFromReader(to []string, r io.Reader, size int) (*Email, error) {
 	}
 
 	ret.Size = size
+	ret.InReplyTo = NormalizeThreadHeader(m.Header.Get("In-Reply-To"))
+	ret.ThreadReferences = NormalizeThreadHeader(m.Header.Get("References"))
 	// Preserve the original Message-ID from the sender so it is stored and reused consistently.
 	if mid := m.Header.Get("Message-Id"); mid != "" {
 		ret.MsgID = strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(mid), ">"), "<")
@@ -845,6 +851,8 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) ([]byte, error) {
 		h.SetMessageID(fmt.Sprintf("%d@%s", e.MessageId, cfg.Domain))
 	}
 	h.SetAddressList("From", from)
+	h.SetMsgIDList("In-Reply-To", ThreadMessageIDs(e.InReplyTo))
+	h.SetMsgIDList("References", ThreadMessageIDs(e.ThreadReferences))
 	h.SetAddressList("Sender", from)
 	h.SetAddressList("To", to)
 	h.SetText("Subject", e.Subject)

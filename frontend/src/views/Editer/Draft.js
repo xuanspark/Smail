@@ -3,6 +3,7 @@ import {onBeforeRouteLeave, onBeforeRouteUpdate, useRoute} from 'vue-router'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {http} from '@/utils/axios'
 import lang from '../../i18n/i18n'
+import {prepareReply} from './Reply'
 
 export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, editorRef, showCcBcc, isSending, pendingFiles, prepareIdentity}) {
   const route = useRoute()
@@ -13,6 +14,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
   const loadFailed = ref(false)
   const sent = ref(false)
   const replyTo = ref([])
+  const replyEmailID = ref(0)
   let envelopeSender = null
   let originalFrom = ''
   let recipientNames = new Map()
@@ -24,6 +26,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
   const buildMessage = () => ({
     draft_id: draftID.value,
     draft_version: draftVersion.value,
+    reply_email_id: replyEmailID.value,
     from: {name: ruleForm.nickName, email: `${ruleForm.sender}@${ruleForm.pickedDomain}`},
     to: ruleForm.receivers.map(email => ({name: recipientNames.get(email) || '', email})),
     cc: ruleForm.cc.map(email => ({name: recipientNames.get(email) || '', email})),
@@ -37,6 +40,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
   })
 
   const snapshot = () => JSON.stringify({
+    replyEmailID: replyEmailID.value,
     from: [ruleForm.nickName, ruleForm.sender, ruleForm.pickedDomain],
     to: ruleForm.receivers, cc: ruleForm.cc, bcc: ruleForm.bcc,
     subject: ruleForm.subject, html: valueHtml.value, attrs: fileList
@@ -48,7 +52,9 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     isLoading.value = true
     loadFailed.value = false
     const rawID = route.query.draft
+    const rawReplyID = route.query.reply
     try {
+      if (rawID !== undefined && rawReplyID !== undefined) throw new Error(lang.fail)
       const identity = await prepareIdentity()
       if (disposed || sequence !== loadSequence) return
       Object.assign(ruleForm, identity)
@@ -56,6 +62,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
         draftID.value = 0
         draftVersion.value = ''
         replyTo.value = []
+        replyEmailID.value = 0
         envelopeSender = null
         originalFrom = ''
         recipientNames = new Map()
@@ -67,6 +74,21 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
         fileList.splice(0)
         showCcBcc.value = false
         sent.value = false
+        if (rawReplyID !== undefined) {
+          if (typeof rawReplyID !== 'string' || !/^[1-9]\d*$/.test(rawReplyID)) throw new Error(lang.fail)
+          const id = Number(rawReplyID)
+          if (!Number.isSafeInteger(id)) throw new Error(lang.fail)
+          const result = await http.post('/api/v1/email/detail', {id})
+          if (disposed || sequence !== loadSequence) return
+          if (result.errorNo !== 0 || Number(result.data?.id) !== id) throw new Error(result.errorMsg || lang.fail)
+          const reply = prepareReply(result.data, identity)
+          replyEmailID.value = id
+          ruleForm.receivers = reply.recipients
+          ruleForm.pickedDomain = reply.pickedDomain
+          ruleForm.subject = reply.subject
+          recipientNames = reply.names
+          valueHtml.value = reply.html
+        }
         return
       }
       if (typeof rawID !== 'string' || !/^[1-9]\d*$/.test(rawID)) throw new Error(lang.draft_load_failed)
@@ -95,6 +117,7 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
       ruleForm.cc = (message.cc || []).map(item => item.email)
       ruleForm.bcc = (message.bcc || []).map(item => item.email)
       replyTo.value = message.reply_to || []
+      replyEmailID.value = message.reply_email_id || 0
       ruleForm.subject = message.subject || ''
       const plainText = (message.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, '<br>')
       valueHtml.value = message.html || (plainText ? `<p>${plainText}</p>` : '<p><br></p>')
@@ -151,9 +174,13 @@ export function useDraft({router, groupStore, ruleForm, valueHtml, fileList, edi
     }
   }
   onBeforeRouteLeave(confirmLeave)
-  onBeforeRouteUpdate((to, from) => to.query.draft === from.query.draft ? true : confirmLeave())
-  watch(() => route.query.draft, value => {
-    if (String(value || '') !== String(draftID.value || '')) loadDraft()
+  onBeforeRouteUpdate((to, from) =>
+    to.query.draft === from.query.draft && to.query.reply === from.query.reply ? true : confirmLeave()
+  )
+  watch(() => [route.query.draft, route.query.reply], ([draft, reply], [, previousReply]) => {
+    if (reply === undefined && String(draft || '') === String(draftID.value || '') &&
+      (draftID.value > 0 || previousReply === undefined)) return
+    loadDraft()
   })
   watch([editorRef, isBusy], ([editor, busy]) => {
     if (!editor || disposed) return

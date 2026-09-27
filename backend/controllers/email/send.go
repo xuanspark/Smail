@@ -37,6 +37,7 @@ const (
 )
 
 type sendRequest struct {
+	ReplyEmailID int          `json:"reply_email_id"`
 	DraftID      int          `json:"draft_id"`
 	DraftVersion string       `json:"draft_version"`
 	ReplyTo      []user       `json:"reply_to"`
@@ -122,6 +123,11 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	e := &parsemail.Email{}
+	if err := applyReplyThread(ctx, reqData, e); err != nil {
+		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "send_fail"), "").FPrint(w)
+		return
+	}
+	inReplyTo, threadReferences := e.InReplyTo, e.ThreadReferences
 
 	for _, to := range reqData.To {
 		e.To = append(e.To, &parsemail.User{
@@ -216,6 +222,7 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	e.InReplyTo, e.ThreadReferences = inReplyTo, threadReferences
 	msgID, err := parsemail.GenerateMsgID(domains.Primary)
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("generate outgoing message ID failed")
@@ -236,27 +243,30 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		messageSize += len(item.Content)
 	}
 	modelEmail := models.Email{
-		Type:         consts.EmailTypeSend,
-		Subject:      e.Subject,
-		ReplyTo:      storedFields.ReplyTo,
-		FromName:     e.From.Name,
-		FromAddress:  e.From.EmailAddress,
-		To:           storedFields.To,
-		Bcc:          storedFields.Bcc,
-		Cc:           storedFields.Cc,
-		Text:         sql.NullString{String: string(e.Text), Valid: true},
-		Html:         sql.NullString{String: string(e.HTML), Valid: true},
-		Sender:       storedFields.Sender,
-		Attachments:  storedFields.Attachments,
-		SPFCheck:     1,
-		DKIMCheck:    1,
-		SendUserID:   ctx.UserID,
-		SendDate:     now,
-		CronSendTime: now,
-		Status:       consts.EmailStatusDeliveryPending,
-		CreateTime:   now,
-		MsgID:        msgID,
-		Size:         messageSize,
+		Type:             consts.EmailTypeSend,
+		Subject:          e.Subject,
+		ReplyTo:          storedFields.ReplyTo,
+		ReplyEmailID:     reqData.ReplyEmailID,
+		InReplyTo:        e.InReplyTo,
+		ThreadReferences: e.ThreadReferences,
+		FromName:         e.From.Name,
+		FromAddress:      e.From.EmailAddress,
+		To:               storedFields.To,
+		Bcc:              storedFields.Bcc,
+		Cc:               storedFields.Cc,
+		Text:             sql.NullString{String: string(e.Text), Valid: true},
+		Html:             sql.NullString{String: string(e.HTML), Valid: true},
+		Sender:           storedFields.Sender,
+		Attachments:      storedFields.Attachments,
+		SPFCheck:         1,
+		DKIMCheck:        1,
+		SendUserID:       ctx.UserID,
+		SendDate:         now,
+		CronSendTime:     now,
+		Status:           consts.EmailStatusDeliveryPending,
+		CreateTime:       now,
+		MsgID:            msgID,
+		Size:             messageSize,
 	}
 
 	err = persistOutgoingEmailWithDraft(db.Instance, ctx.UserID, &modelEmail, reqData.DraftID, reqData.DraftVersion)

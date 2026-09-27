@@ -102,6 +102,7 @@ func buildEnvelope(email *response.EmailResponseData, traEmail *parsemail.Email)
 		Cc:        usersToAddresses(traEmail.Cc),
 		Bcc:       usersToAddresses(traEmail.Bcc),
 		MessageID: messageID,
+		InReplyTo: parsemail.ThreadMessageIDs(email.InReplyTo),
 		// InReplyTo 和 References 暂不支持
 	}
 }

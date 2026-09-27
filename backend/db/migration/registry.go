@@ -43,6 +43,7 @@ func DefaultMigrations() []Migration {
 		DefineForDialects(26, "create_account_groups", accountGroupStatements()),
 		DefineCustom(27, "expand_notification_ciphertext", "expand_notification_ciphertext_v1", applyNotificationCiphertextSchema),
 		DefineCustom(28, "expand_recovery_code_ciphertext", "expand_recovery_code_ciphertext_v1", applyRecoveryCodeCiphertextSchema),
+		DefineCustom(29, "expand_email_thread", "expand_email_thread_v1", applyEmailThreadSchema),
 	}
 }
 

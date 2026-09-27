@@ -29,6 +29,7 @@ var errDraftConflict = errors.New("draft missing, changed or no longer editable"
 const ownedDraftRelation = "EXISTS (SELECT 1 FROM user_email WHERE user_id = ? AND email_id = ? AND status = ? AND is_deleted = 0)"
 
 var draftColumns = []string{
+	"reply_email_id", "in_reply_to", "thread_references",
 	"subject", "reply_to", "from_name", "from_address", "to", "bcc", "cc",
 	"text", "html", "sender", "attachments", "spf_check", "dkim_check",
 	"status", "send_date", "cron_send_time", "msg_id", "size", "error",
@@ -113,6 +114,9 @@ func buildDraft(ctx *context.Context, input sendRequest) (*models.Email, error) 
 		Text:    []byte(parsemail.SanitizeText(input.Text)), HTML: []byte(parsemail.SanitizeHTML(input.HTML)),
 	}
 	total := 0
+	if err := applyReplyThread(ctx, input, message); err != nil {
+		return nil, err
+	}
 	for _, item := range input.Attachments {
 		contentType, content, err := decodeAttachment(item.Data)
 		if err != nil {
@@ -149,6 +153,7 @@ func buildDraft(ctx *context.Context, input sendRequest) (*models.Email, error) 
 	now := time.Now()
 	return &models.Email{
 		Type: consts.EmailTypeSend, Status: consts.EmailStatusDrafts, SendUserID: ctx.UserID,
+		ReplyEmailID: input.ReplyEmailID, InReplyTo: message.InReplyTo, ThreadReferences: message.ThreadReferences,
 		Subject: message.Subject, FromName: message.From.Name, FromAddress: message.From.EmailAddress,
 		ReplyTo: fields.ReplyTo, To: fields.To, Cc: fields.Cc, Bcc: fields.Bcc, Sender: fields.Sender,
 		Text: sql.NullString{String: string(message.Text), Valid: true},
@@ -231,8 +236,9 @@ func persistDraft(engine *xorm.Engine, userID int, draft *models.Email, id int, 
 func draftMessage(draft models.Email) (sendRequest, error) {
 	message := sendRequest{
 		DraftID: draft.Id, DraftVersion: draft.MsgID,
-		From:    user{Name: draft.FromName, Email: draft.FromAddress},
-		Subject: draft.Subject, Text: draft.Text.String, HTML: draft.Html.String,
+		ReplyEmailID: draft.ReplyEmailID,
+		From:         user{Name: draft.FromName, Email: draft.FromAddress},
+		Subject:      draft.Subject, Text: draft.Text.String, HTML: draft.Html.String,
 		Attachments: []attachment{},
 	}
 	var sender *parsemail.User

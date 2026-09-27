@@ -91,6 +91,11 @@ export function usePage() {
   })
 
   const backToList = () => router.push({name: 'list'})
+  const handleReply = () => {
+    const id = Number(detailData.value.id)
+    if (loading.value || loadError.value || !Number.isSafeInteger(id) || id <= 0) return
+    return router.push({name: 'editer', query: {reply: String(id)}})
+  }
   
   const getInitial = (name) => {
     if (!name) return '?';
@@ -164,6 +169,7 @@ export function usePage() {
     loadError,
     loadDetail,
     backToList,
+    handleReply,
     getInitial,
     formatDetailDate,
     handleDelete
