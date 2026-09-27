@@ -68,7 +68,10 @@
     <div
       v-if="!manager || userId || manageVisible"
       class="notification-detail-modal notification-detail-panel"
-      :class="{ 'notification-detail-modal-active': manager && !userId }"
+      :class="{
+        'notification-detail-modal-active': manager && !userId,
+        'notification-personal-panel': !manager && !userId
+      }"
       role="dialog"
       :aria-modal="manager && !userId ? 'true' : undefined"
       @click.self="manager && !userId ? closeManage() : null"
