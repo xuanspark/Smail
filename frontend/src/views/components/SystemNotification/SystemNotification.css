@@ -55,6 +55,22 @@
   user-select: all;
 }
 
+.notification-detail-panel :deep(.el-descriptions__cell) {
+  text-align: center;
+  vertical-align: middle;
+  word-break: normal;
+}
+
+.notification-detail-panel .notification-hint {
+  text-align: center;
+}
+
+.notification-service-column code {
+  font-family: inherit;
+  font-size: inherit;
+  word-break: normal;
+}
+
 .notification-panel .el-pagination,
 .notification-secret {
   margin-top: 16px;
@@ -182,9 +198,9 @@
 
 .notification-personal-panel .notification-columns {
   display: grid;
-  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.2fr);
   grid-template-rows: auto 1fr;
-  gap: 22px 32px;
+  gap: 22px 24px;
   align-items: start;
 }
 
@@ -246,7 +262,7 @@
 }
 
 .notification-personal-panel :deep(.el-descriptions__content) {
-  padding-left: 12px !important;
+  padding-inline: 8px !important;
 }
 
 .notification-personal-panel :deep(.el-descriptions__body) {
@@ -721,7 +737,15 @@
   min-width: 0;
 }
 
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr:first-child),
+.notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr:nth-child(n + 4)) {
+  grid-column: 1 / -1;
+}
+
 .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr > td) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -800,6 +824,10 @@
 
   .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr) {
     display: table-row;
+  }
+
+  .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-service-column :deep(.el-descriptions__body > table > tbody > tr > td) {
+    display: table-cell;
   }
 
   .notification-settings:has(> .notification-manager-panel) > .notification-detail-panel .notification-send-only-alert {
