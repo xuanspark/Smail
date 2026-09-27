@@ -20,7 +20,7 @@
             <el-tag size="small" effect="plain" class="action-tag">{{ ActionName[scope.row.action] }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="params" :label="lang.rule_params" min-width="150" show-overflow-tooltip/>
+        <el-table-column prop="params" :label="lang.rule_params" :formatter="formatRuleParams" min-width="150" show-overflow-tooltip/>
         <el-table-column prop="sort" :label="lang.rule_priority" width="100"/>
         <el-table-column width="100" align="right">
           <template #default="scope">
@@ -29,7 +29,7 @@
               <el-popconfirm confirm-button-text="确认" cancel-button-text="取消" :icon="InfoFilled"
                              @confirm="delRule(scope.row.id)" icon-color="#ef4444" :title="lang.del_rule_confirm">
                 <template #reference>
-                  <el-button size="small" type="danger" :icon="Delete" circle text/>
+                  <el-button size="small" type="danger" :icon="Delete" :aria-label="lang.delete" circle text/>
                 </template>
               </el-popconfirm>
             </div>
@@ -147,6 +147,7 @@ const {
   FORWARD,
   reflushGroupInfos,
   groupData,
+  formatRuleParams,
   canReadGlobalPolicy
 } = usePage()
 const { currentPage, pageCount, pageItems } = usePagination(data, 6)

@@ -55,6 +55,12 @@ export function usePage() {
   }
   
   reflushGroupInfos()
+
+  const formatRuleParams = (row) => {
+    if (Number(row.action) !== MOVE) return row.params
+    const target = groupData.list.find(group => String(group.id) === String(row.params))
+    return target?.name || row.params
+  }
   
   const newRuleForm = () => ({
     "id": 0,
@@ -78,7 +84,7 @@ export function usePage() {
     http.post("/api/v1/rule/del", {"id": id}).then((res) => {
       ElNotification({
         title: res.errorNo === 0 ? lang.succ : lang.fail,
-        message: res.data,
+        message: res.errorNo === 0 ? lang.deleted_successfully : res.data,
         type: res.errorNo === 0 ? 'success' : 'error',
       })
       init()
@@ -148,6 +154,7 @@ export function usePage() {
     ActionName,
     init,
     groupData,
+    formatRuleParams,
     reflushGroupInfos,
     addRuleForm,
     delRule,
