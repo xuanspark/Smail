@@ -300,7 +300,7 @@ func SetSecurityQuestion(ctx *context.Context, w http.ResponseWriter, req *http.
 	response.NewSuccessResponse(map[string]any{"configured": true}).FPrint(w)
 }
 
-// GenerateRecoveryCodes 生成一组只显示一次的离线恢复码。
+// GenerateRecoveryCodes 生成一组离线恢复码，未使用的有效恢复码可在安全验证后再次查看。
 func GenerateRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")

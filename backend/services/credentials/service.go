@@ -143,7 +143,7 @@ func (s *Service) VerifySecurityQuestion(userID int, answer string) (bool, error
 	return password.Check(item.AnswerHash, answer)
 }
 
-// GenerateRecoveryCodes 撤销旧码并生成一组只返回一次的离线恢复码。
+// GenerateRecoveryCodes 撤销旧码并生成一组离线恢复码，保存哈希和受保护的密文以支持安全验证后再次查看。
 func (s *Service) GenerateRecoveryCodes(userID int, count int) ([]string, error) {
 	return s.GenerateRecoveryCodesContext(context.Background(), userID, count)
 }

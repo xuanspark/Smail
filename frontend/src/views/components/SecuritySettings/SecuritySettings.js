@@ -258,7 +258,7 @@ export function usePage() {
       scheduleRecoveryCodeHide()
       recoveryConfigured.value = true
       await globalStatus.refresh()
-      notify('恢复码已生成，请仅保存这一次显示的内容', 'success')
+      notify('恢复码已生成，请妥善保存；验证本人密码后可再次查看有效恢复码', 'success')
     } catch (error) {
       if (isRecentAuthenticationCancelled(error) || !isRecoveryViewCurrent(version)) return
       if (error !== 'cancel' && error !== 'close') notify(error?.message || '离线恢复码生成失败')

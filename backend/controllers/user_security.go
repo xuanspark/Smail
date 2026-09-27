@@ -140,7 +140,7 @@ func RevealManagedRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req
 	response.NewSuccessResponse(map[string]any{"user_id": target.ID, "codes": codes, "revealed": true}).FPrint(w)
 }
 
-// GenerateManagedRecoveryCodes 为目标用户生成只显示一次的安全码。
+// GenerateManagedRecoveryCodes 为目标用户生成安全码，有管理权限的管理员可在安全验证后再次查看有效安全码。
 func GenerateManagedRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	var input managedUserSecurityRequest
 	if err := decodeUserRequest(w, req, &input); err != nil {

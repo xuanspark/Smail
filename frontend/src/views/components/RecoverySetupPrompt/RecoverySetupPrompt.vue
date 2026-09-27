@@ -92,7 +92,7 @@ const generateRecoveryCodes = async () => {
     generatedCodes.value = response.data.codes
     globalStatus.userInfos.recoveryCodesConfigured = true
     globalStatus.userInfos.showRecoverySetupPrompt = false
-    ElMessage.success("恢复码已生成，请仅保存这一次显示的内容")
+    ElMessage.success("恢复码已生成，请妥善保存；可在安全设置中验证本人密码后再次查看有效恢复码")
   } catch (error) {
     ElMessage.error(error?.message || "离线恢复码生成失败，请稍后重试")
   } finally {

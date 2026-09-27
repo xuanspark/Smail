@@ -23,8 +23,8 @@
 
     <div v-if="codes.length" class="recovery-code-result">
       <div v-if="!revealed" class="result-title">
-        <strong>新安全码仅显示这一次</strong>
-        <span>请立即交给用户妥善保存，关闭弹窗后无法再次查看。</span>
+        <strong>新安全码已生成</strong>
+        <span>请交给用户妥善保存。60 秒后自动隐藏，验证当前管理员密码后可再次查看有效安全码。</span>
       </div>
       <div v-else class="result-title">
         <strong>当前有效安全码</strong>

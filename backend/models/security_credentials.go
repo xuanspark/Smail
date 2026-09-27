@@ -15,7 +15,8 @@ type SecurityQuestion struct {
 
 func (SecurityQuestion) TableName() string { return "security_question" }
 
-// RecoveryCode 保存一次性离线恢复码的 Argon2id 哈希，UsedAt 非空表示已经消费或撤销。
+// RecoveryCode 保存一次性离线恢复码的 Argon2id 哈希和用于安全验证后查看的密文。
+// UsedAt 非空表示已经消费或撤销，此时密文会被清除，不再允许查看或使用。
 type RecoveryCode struct {
 	ID             int        `xorm:"id bigint unsigned not null pk autoincr" json:"-"`
 	UserID         int        `xorm:"user_id bigint not null index" json:"-"`
