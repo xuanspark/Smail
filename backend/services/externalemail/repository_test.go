@@ -196,8 +196,12 @@ func TestRepositoryRebindsDisabledEmailWithFreshVerification(t *testing.T) {
 			bind := repo.Bind
 			verify := repo.Verify
 			if replacement {
-				bind = repo.BeginReplacement
-				verify = repo.VerifyReplacement
+				bind = func(request BindRequest) (*models.ExternalEmail, error) {
+					return repo.BeginReplacement(request)
+				}
+				verify = func(userID, id int) error {
+					return repo.VerifyReplacement(userID, id)
+				}
 			}
 			request := BindRequest{UserID: 1, Email: "OWNER@example.com", Type: models.ExternalEmailTypePrimary}
 			if _, err := bind(request); err != ErrBindingExists {
