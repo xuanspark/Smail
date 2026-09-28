@@ -134,7 +134,9 @@ type TelegramCallbackStatus struct {
 }
 
 func (s *ConfigService) TelegramBindingAvailability() (bool, string) {
-	if _, err := s.telegramConfiguration(); err != nil { return false, err.Error() }
+	if _, err := s.telegramConfiguration(); err != nil {
+		return false, err.Error()
+	}
 	return true, ""
 }
 
@@ -388,12 +390,17 @@ func (s *ConfigService) TelegramBindingNeedsRebind(settings TelegramUserSettings
 	if settings.ChatID == "" {
 		return false
 	}
-	configuration, err := s.telegramConfiguration()
-	return err != nil || !settings.Verified || settings.BotID != configuration.BotID
+	if s == nil || s.vault == nil || s.engine == nil {
+		return true
+	}
+	token, err := s.openSecretForPlugin(telegramPluginID, "botToken")
+	parts := telegramTokenPattern.FindStringSubmatch(token)
+	return err != nil || len(parts) != 2 || !settings.Verified || settings.BotID != parts[1]
 }
 
 func (s *ConfigService) TelegramCanNotify(settings TelegramUserSettings) bool {
-	return settings.ChatID != "" && !settings.Disabled && !s.TelegramBindingNeedsRebind(settings)
+	configuration, err := s.telegramConfiguration()
+	return err == nil && settings.ChatID != "" && settings.Verified && !settings.Disabled && settings.BotID == configuration.BotID
 }
 
 func (s *ConfigService) UpdateOwnTelegramPreferences(userID int, preferences TelegramUserSettings, unbind bool, expectedVersion uint64) (UserSettingsStatus, error) {

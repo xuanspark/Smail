@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -378,6 +379,118 @@ func TestConfigServiceBulkTicketIsBoundOneTimeAndVersioned(t *testing.T) {
 	service.now = func() time.Time { return base.Add(6 * time.Minute) }
 	if err = service.ExecuteBulkTelegramSettings(super.ID, expiring.Ticket); !errors.Is(err, ErrPluginBulkTicketInvalid) {
 		t.Fatalf("expired ticket error = %v", err)
+	}
+}
+
+func TestEveryRoleKeepsIndependentOwnTelegramBinding(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	var users []models.User
+	for _, role := range []access.Role{access.RoleSuperAdmin, access.RoleAdmin, access.RoleUser} {
+		user := insertPluginTestUser(t, engine, "telegram-own-"+string(role), role)
+		users = append(users, user)
+		status, err := service.GetOwnTelegramSettings(user.ID)
+		if err != nil || status.Settings.ChatID != "" || status.Version != 0 {
+			t.Fatalf("角色 %s 不应自动继承系统接收人：%v", role, err)
+		}
+		if _, err := service.UpdateOwnTelegramPreferences(user.ID, TelegramUserSettings{}, false, 0); !errors.Is(err, ErrTelegramBinding) {
+			t.Fatal("未完成绑定时不应直接启用通知")
+		}
+		identity := TelegramUserSettings{ChatID: strconv.Itoa(10000 + user.ID), BotID: "123456", Verified: true, DisableLinkPreview: true}
+		if _, err := service.UpdateOwnTelegramSettings(user.ID, identity, 0); !errors.Is(err, ErrTelegramBinding) {
+			t.Fatal("任何角色都不能通过偏好设置伪造已授权身份")
+		}
+		if _, err := service.updateTelegramSettings(user.ID, identity, 0); err != nil {
+			t.Fatal(err)
+		}
+		status, err = service.UpdateOwnTelegramPreferences(user.ID, TelegramUserSettings{Disabled: true}, false, 1)
+		if err != nil || status.Settings.ChatID != identity.ChatID || !status.Settings.Verified || !status.Settings.Disabled || status.Version != 2 {
+			t.Fatalf("角色 %s 停用通知时应保留本人绑定：%v", role, err)
+		}
+	}
+	if _, err := service.UpdateOwnTelegramPreferences(users[0].ID, TelegramUserSettings{}, true, 2); err != nil {
+		t.Fatal(err)
+	}
+	for index, user := range users {
+		status, err := service.GetOwnTelegramSettings(user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			if status.Settings.ChatID != "" || status.Settings.Verified || status.Version != 3 {
+				t.Fatal("超级管理员应能单独解绑本人身份")
+			}
+		} else if status.Settings.ChatID != strconv.Itoa(10000+user.ID) || status.Version != 2 {
+			t.Fatal("超级管理员解绑不得改动其他账户的身份")
+		}
+	}
+}
+
+func TestTelegramBindingTracksBotIdentityNotRuntimeAvailability(t *testing.T) {
+	service, _ := newPluginConfigService(t)
+	settings := TelegramUserSettings{ChatID: "456789", BotID: "123456", Verified: true}
+	for index, botID := range []string{"123456", "123456", "987654"} {
+		_, err := service.ChangeSecret(telegramPluginID, "botToken", config.SecretChange{
+			Operation: config.SecretReplace,
+			Value:     &config.SecretInput{Plaintext: botID + ":" + strings.Repeat(string(rune('a'+index)), 32)},
+		}, uint64(index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := service.TelegramBindingNeedsRebind(settings); got != (index == 2) {
+			t.Fatal("同一机器人轮换令牌或临时停用不应强制重绑，更换机器人必须重绑")
+		}
+	}
+	settings.Verified = false
+	if !service.TelegramBindingNeedsRebind(settings) {
+		t.Fatal("旧版手填身份必须重新授权")
+	}
+	if service.TelegramBindingNeedsRebind(TelegramUserSettings{}) {
+		t.Fatal("尚未绑定不应显示为需要重新绑定")
+	}
+}
+
+func TestTelegramBindingCancellationRemainsAccountAndSessionScoped(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	super := insertPluginTestUser(t, engine, "telegram-cancel-super", access.RoleSuperAdmin)
+	user := insertPluginTestUser(t, engine, "telegram-cancel-user", access.RoleUser)
+	actor := NotificationBindingActor{UserID: super.ID, SessionHash: strings.Repeat("a", 64),
+		SessionVersion: super.SessionVersion, SecurityVersion: super.SecurityVersion}
+	now := time.Now().UTC()
+	service.now = func() time.Time { return now }
+	service.telegramBindings = map[string]telegramBinding{"ticket": {Actor: actor,
+		Status: TelegramBindingStatus{Phase: "waiting", ExpiresAt: now.Add(time.Minute)}}}
+	if _, err := service.GetTelegramBinding(actor, "ticket"); err != nil {
+		t.Fatal(err)
+	}
+	other := actor
+	other.SessionHash = strings.Repeat("b", 64)
+	if err := service.CancelTelegramBinding(other, "ticket"); !errors.Is(err, ErrTelegramBinding) {
+		t.Fatal("同一账户的其他会话不能取消绑定")
+	}
+	other = NotificationBindingActor{UserID: user.ID, SessionHash: strings.Repeat("c", 64),
+		SessionVersion: user.SessionVersion, SecurityVersion: user.SecurityVersion}
+	if _, err := service.GetTelegramBinding(other, "ticket"); !errors.Is(err, ErrTelegramBinding) {
+		t.Fatal("其他账户不能读取超级管理员的绑定请求")
+	}
+	if err := service.CancelTelegramBinding(other, "ticket"); !errors.Is(err, ErrTelegramBinding) {
+		t.Fatal("其他账户不能取消超级管理员的绑定请求")
+	}
+	now = now.Add(2 * time.Minute)
+	if _, err := service.GetTelegramBinding(actor, "ticket"); !errors.Is(err, ErrTelegramBinding) {
+		t.Fatal("过期请求不能继续确认")
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := service.CancelTelegramBinding(actor, "ticket"); err != nil {
+			t.Fatal("本人的过期请求应能幂等取消", err)
+		}
+	}
+	service.telegramBindings["revoked"] = telegramBinding{Actor: actor,
+		Status: TelegramBindingStatus{Phase: "waiting", ExpiresAt: now.Add(time.Minute)}}
+	if _, err := engine.ID(super.ID).Cols("security_version").Update(&models.User{SecurityVersion: super.SecurityVersion + 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GetTelegramBinding(actor, "revoked"); !errors.Is(err, ErrTelegramBinding) {
+		t.Fatal("安全版本变化必须撤销旧会话的绑定权限")
 	}
 }
 

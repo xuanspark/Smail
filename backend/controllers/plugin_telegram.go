@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -23,7 +24,9 @@ func telegramRequestService(ctx *appcontext.Context, w http.ResponseWriter, rece
 		return nil
 	}
 	service := hooks.PluginConfigService()
-	if service == nil { response.NewErrorResponse(response.ServerError, "通知配置服务不可用", "").FPrint(w) }
+	if service == nil {
+		response.NewErrorResponse(response.ServerError, "通知配置服务不可用", "").FPrint(w)
+	}
 	return service
 }
 
@@ -32,7 +35,7 @@ func telegramPublicSettings(service *pluginservice.ConfigService, status plugins
 	return map[string]any{
 		"version": status.Version, "bound": settings.ChatID != "", "displayName": settings.DisplayName,
 		"needsRebind": service.TelegramBindingNeedsRebind(settings),
-		"enabled": settings.ChatID != "" && settings.Verified && !settings.Disabled,
+		"enabled":     settings.ChatID != "" && settings.Verified && !settings.Disabled,
 		"showContent": settings.ShowContent, "spoilerContent": settings.SpoilerContent,
 		"sendAttachments": settings.SendAttachments, "disableLinkPreview": settings.DisableLinkPreview,
 	}
@@ -47,14 +50,21 @@ func writeTelegramUserSettings(w http.ResponseWriter, service *pluginservice.Con
 // TelegramUserSettings 的接收身份只能来自授权流程，页面仅维护本人偏好。
 func TelegramUserSettings(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
 	service := telegramRequestService(ctx, w, req.Method != http.MethodGet)
-	if service == nil { return }
+	if service == nil {
+		return
+	}
 	if req.Method == http.MethodGet {
 		status, err := service.GetOwnTelegramSettings(ctx.UserID)
-		if err != nil { writeTelegramSettingsError(w, err); return }
+		if err != nil {
+			writeTelegramSettingsError(w, err)
+			return
+		}
 		data := telegramPublicSettings(service, status)
 		configured, message := service.TelegramBindingAvailability()
 		_, running := hooks.GetHook("telegram_push")
-		if configured && !running { message = "Telegram 推送插件未运行，请联系超级管理员" }
+		if configured && !running {
+			message = "Telegram 推送插件未运行，请联系超级管理员"
+		}
 		data["configured"], data["running"], data["available"], data["message"] = configured, running, configured && running, message
 		response.NewSuccessResponse(data).FPrint(w)
 		return
@@ -65,28 +75,43 @@ func TelegramUserSettings(ctx *appcontext.Context, w http.ResponseWriter, req *h
 		return
 	}
 	var input struct {
-		Version uint64 `json:"version"`
-		Enabled bool `json:"enabled"`
-		ShowContent bool `json:"showContent"`
-		SpoilerContent bool `json:"spoilerContent"`
-		SendAttachments bool `json:"sendAttachments"`
-		DisableLinkPreview bool `json:"disableLinkPreview"`
+		Version            uint64 `json:"version"`
+		Enabled            bool   `json:"enabled"`
+		ShowContent        bool   `json:"showContent"`
+		SpoilerContent     bool   `json:"spoilerContent"`
+		SendAttachments    bool   `json:"sendAttachments"`
+		DisableLinkPreview bool   `json:"disableLinkPreview"`
 	}
-	if !decodePluginJSONBody(w, req, &input) { return }
+	if !decodePluginJSONBody(w, req, &input) {
+		return
+	}
 	preferences := pluginservice.TelegramUserSettings{Disabled: !input.Enabled, ShowContent: input.ShowContent,
 		SpoilerContent: input.SpoilerContent, SendAttachments: input.SendAttachments, DisableLinkPreview: input.DisableLinkPreview}
 	status, err := service.UpdateOwnTelegramPreferences(ctx.UserID, preferences, req.Method == http.MethodDelete, input.Version)
-	if err != nil { writeTelegramSettingsError(w, err); return }
+	if err != nil {
+		writeTelegramSettingsError(w, err)
+		return
+	}
 	writeTelegramUserSettings(w, service, ctx.UserID, status)
 }
 
 func TelegramBinding(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
-	var input struct { Action string `json:"action"`; Ticket string `json:"ticket"` }
-	if !decodePluginJSONBody(w, req, &input) { return }
+	var input struct {
+		Action string `json:"action"`
+		Ticket string `json:"ticket"`
+	}
+	if !decodePluginJSONBody(w, req, &input) {
+		return
+	}
 	service := telegramRequestService(ctx, w, input.Action == "begin" || input.Action == "confirm")
-	if service == nil { return }
+	if service == nil {
+		return
+	}
 	actor, err := notificationBindingActor(ctx)
-	if err != nil { writeTelegramSettingsError(w, pluginservice.ErrTelegramBinding); return }
+	if err != nil {
+		writeTelegramSettingsError(w, pluginservice.ErrTelegramBinding)
+		return
+	}
 	var result any
 	switch input.Action {
 	case "begin":
@@ -102,11 +127,17 @@ func TelegramBinding(ctx *appcontext.Context, w http.ResponseWriter, req *http.R
 	case "confirm":
 		var status pluginservice.UserSettingsStatus
 		status, err = service.ConfirmTelegramBinding(actor, input.Ticket)
-		if err == nil { writeTelegramUserSettings(w, service, ctx.UserID, status); return }
+		if err == nil {
+			writeTelegramUserSettings(w, service, ctx.UserID, status)
+			return
+		}
 	default:
 		err = pluginservice.TelegramNotice("不支持的绑定操作")
 	}
-	if err != nil { writeTelegramSettingsError(w, err); return }
+	if err != nil {
+		writeTelegramSettingsError(w, err)
+		return
+	}
 	response.NewSuccessResponse(result).FPrint(w)
 }
 
@@ -116,7 +147,9 @@ func TelegramCallbackSettings(ctx *appcontext.Context, w http.ResponseWriter, re
 		return
 	}
 	service := telegramRequestService(ctx, w, req.Method == http.MethodPost)
-	if service == nil { return }
+	if service == nil {
+		return
+	}
 	var status pluginservice.TelegramCallbackStatus
 	var err error
 	switch req.Method {
@@ -129,7 +162,10 @@ func TelegramCallbackSettings(ctx *appcontext.Context, w http.ResponseWriter, re
 		http.Error(w, "请求方法不支持", http.StatusMethodNotAllowed)
 		return
 	}
-	if err != nil { writeTelegramSettingsError(w, err); return }
+	if err != nil {
+		writeTelegramSettingsError(w, err)
+		return
+	}
 	response.NewSuccessResponse(status).FPrint(w)
 }
 
@@ -138,10 +174,16 @@ func TelegramBindingCallback(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	service := hooks.PluginConfigService()
-	if !config.IsSetupReady() || service == nil { http.Error(w, "服务未就绪", http.StatusServiceUnavailable); return }
+	if !config.IsSetupReady() || service == nil {
+		http.Error(w, "服务未就绪", http.StatusServiceUnavailable)
+		return
+	}
 	var update pluginservice.TelegramBindingUpdate
 	decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, 64<<10))
-	if decoder.Decode(&update) != nil { http.Error(w, "回调格式无效", http.StatusBadRequest); return }
+	if decoder.Decode(&update) != nil || decoder.Decode(new(any)) != io.EOF {
+		http.Error(w, "回调格式无效", http.StatusBadRequest)
+		return
+	}
 	if err := service.ClaimTelegramBinding(req.Header.Get("X-Telegram-Bot-Api-Secret-Token"), update); err != nil {
 		http.Error(w, "回调认证失败", http.StatusForbidden)
 		return
@@ -151,7 +193,9 @@ func TelegramBindingCallback(w http.ResponseWriter, req *http.Request) {
 
 func TestBoundTelegramMessage(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
 	service := telegramRequestService(ctx, w, true)
-	if service == nil { return }
+	if service == nil {
+		return
+	}
 	status, err := service.GetOwnTelegramSettings(ctx.UserID)
 	if err != nil || !service.TelegramCanNotify(status.Settings) {
 		writeTelegramSettingsError(w, pluginservice.TelegramNotice("请先绑定本人 Telegram 并启用通知"))
@@ -159,8 +203,14 @@ func TestBoundTelegramMessage(ctx *appcontext.Context, w http.ResponseWriter, re
 	}
 	hook, _ := hooks.GetHook("telegram_push")
 	provider, ok := hook.(framework.TestMessageProvider)
-	if !ok { writeTelegramSettingsError(w, pluginservice.TelegramNotice("Telegram 推送插件未运行，请联系超级管理员")); return }
-	if err := service.ReserveTelegramTest(ctx.UserID); err != nil { writeTelegramSettingsError(w, err); return }
+	if !ok {
+		writeTelegramSettingsError(w, pluginservice.TelegramNotice("Telegram 推送插件未运行，请联系超级管理员"))
+		return
+	}
+	if err := service.ReserveTelegramTest(ctx.UserID); err != nil {
+		writeTelegramSettingsError(w, err)
+		return
+	}
 	if provider.TestMessage(pluginservice.TelegramDeliverySettings(status.Settings)) != nil {
 		writeTelegramSettingsError(w, pluginservice.TelegramNotice("测试消息发送失败，请确认没有屏蔽机器人"))
 		return
