@@ -52,6 +52,10 @@ type SecretStatus struct {
 // TelegramUserSettings 是 Telegram 插件唯一允许由用户维护的设置。
 type TelegramUserSettings struct {
 	ChatID             string `json:"chatId"`
+	BotID              string `json:"botId,omitempty"`
+	DisplayName        string `json:"displayName,omitempty"`
+	Verified           bool   `json:"verified,omitempty"`
+	Disabled           bool   `json:"disabled,omitempty"`
 	ShowContent        bool   `json:"showContent"`
 	SpoilerContent     bool   `json:"spoilerContent"`
 	SendAttachments    bool   `json:"sendAttachments"`
@@ -111,6 +115,9 @@ type ConfigService struct {
 	wechatBindings     map[string]weChatBinding
 	weChatTestMu       sync.Mutex
 	weChatTestAttempts map[int]time.Time
+	telegramBindings   map[string]telegramBinding
+	telegramAttempts   map[string]time.Time
+	telegramSetupMu    sync.Mutex
 }
 
 func NewConfigService(engine *xorm.Engine, vault *credential.Vault) (*ConfigService, error) {
@@ -310,8 +317,8 @@ func (s *ConfigService) openSecretForPlugin(pluginID, fieldName string) (string,
 }
 
 func (s *ConfigService) GetOwnTelegramSettings(actorUserID int) (UserSettingsStatus, error) {
-	if actorUserID <= 0 {
-		return UserSettingsStatus{}, ErrPluginStoreUnavailable
+	if _, err := s.activeNotificationUser(actorUserID); err != nil {
+		return UserSettingsStatus{}, err
 	}
 	return s.getTelegramSettings(actorUserID)
 }
@@ -377,11 +384,21 @@ func (s *ConfigService) UpdateOwnTelegramSettings(actorUserID int, settings Tele
 
 	}
 
-	return s.updateTelegramSettings(actorUserID, settings, expectedVersion)
+	// 旧写入口不能伪造授权身份，也不能把任意聊天 ID 作为接收人。
+	current, err := s.GetOwnTelegramSettings(actorUserID)
+	if err != nil { return UserSettingsStatus{}, err }
+	if settings.Verified || settings.BotID != "" || settings.DisplayName != "" ||
+		(settings.ChatID != "" && settings.ChatID != current.Settings.ChatID) {
+		return UserSettingsStatus{}, ErrTelegramBinding
+	}
+	return s.UpdateOwnTelegramPreferences(actorUserID, settings, settings.ChatID == "", expectedVersion)
 }
 
 // UpdateTelegramSettingsForUser 查询目标账户的当前角色后才进行跨用户授权。
 func (s *ConfigService) UpdateTelegramSettingsForUser(actor models.User, targetUserID int, settings TelegramUserSettings, expectedVersion uint64) (UserSettingsStatus, error) {
+	if settings.ChatID != "" || settings.Verified || settings.BotID != "" || settings.DisplayName != "" {
+		return UserSettingsStatus{}, ErrTelegramBinding
+	}
 	if s == nil || !accountgroup.CanAccess(s.engine, actor.ID, actor.EffectiveRole(), targetUserID) {
 		return UserSettingsStatus{}, &access.Denial{Code: access.CodeAccessDenied}
 	}
@@ -404,6 +421,9 @@ func (s *ConfigService) UpdateTelegramSettingsForUser(actor models.User, targetU
 }
 
 func (s *ConfigService) PreviewBulkTelegramSettings(actor models.User, targetUserIDs []int, settings TelegramUserSettings, overwrite bool) (BulkPreview, error) {
+	if settings.ChatID != "" || settings.Verified || settings.BotID != "" || settings.DisplayName != "" {
+		return BulkPreview{}, ErrTelegramBinding
+	}
 	if actor.ID <= 0 || actor.EffectiveRole() != access.RoleSuperAdmin {
 		return BulkPreview{}, ErrPluginBulkPreviewDenied
 	}

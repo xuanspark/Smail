@@ -118,6 +118,19 @@ func (h *HookSender) callHook(ctx *context.Context, endpoint string, dto framewo
 }
 
 func (h *HookSender) ReceiveSaveAfter(ctx *context.Context, email *parsemail.Email, ue []*models.UserEmail) {
+	if h.name == "telegram_push" {
+		if pluginConfigService == nil { return }
+		allowed := make([]*models.UserEmail, 0, len(ue))
+		for _, recipient := range ue {
+			if recipient == nil || recipient.UserID <= 0 { continue }
+			status, err := pluginConfigService.GetOwnTelegramSettings(recipient.UserID)
+			if err != nil || !pluginConfigService.TelegramCanNotify(status.Settings) { continue }
+			if h.ConfigureUserSettings(recipient.UserID, pluginservice.TelegramDeliverySettings(status.Settings)) != nil { continue }
+			allowed = append(allowed, recipient)
+		}
+		if len(allowed) == 0 { return }
+		ue = allowed
+	}
 	if h.name == "wechat_push" {
 		if pluginConfigService == nil {
 			return
@@ -488,11 +501,8 @@ func SyncTelegramUserSettings(userID int, settings pluginservice.TelegramUserSet
 	if !ok {
 		return errors.New("telegram plugin does not support user settings")
 	}
-	payload, err := json.Marshal(settings)
-	if err != nil {
-		return err
-	}
-	return configurer.ConfigureUserSettings(userID, payload)
+	if pluginConfigService == nil || !pluginConfigService.TelegramCanNotify(settings) { settings.Disabled = true }
+	return configurer.ConfigureUserSettings(userID, pluginservice.TelegramDeliverySettings(settings))
 }
 func syncTelegramUserSettings(logicalID string, hook *HookSender) error {
 	if logicalID != "telegram_push" {
@@ -518,11 +528,8 @@ func syncTelegramUserSetting(hook *HookSender, userID int, settings pluginservic
 	if hook == nil || userID <= 0 {
 		return errors.New("invalid plugin user settings target")
 	}
-	payload, err := json.Marshal(settings)
-	if err != nil {
-		return err
-	}
-	return hook.ConfigureUserSettings(userID, payload)
+	if pluginConfigService == nil || !pluginConfigService.TelegramCanNotify(settings) { settings.Disabled = true }
+	return hook.ConfigureUserSettings(userID, pluginservice.TelegramDeliverySettings(settings))
 }
 func pluginInstanceForStartup(logicalID string) (config.PluginInstance, uint64, bool) {
 	manager := config.CurrentManager()

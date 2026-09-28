@@ -164,6 +164,11 @@ func decodePluginJSONBody(w http.ResponseWriter, req *http.Request, target any) 
 }
 
 func writeTelegramSettingsError(w http.ResponseWriter, err error) {
+	var notice pluginservice.TelegramNotice
+	if errors.Is(err, pluginservice.ErrTelegramBinding) || errors.As(err, &notice) {
+		response.NewErrorResponse(response.ParamsError, err.Error(), "").FPrint(w)
+		return
+	}
 	if errors.Is(err, pluginservice.ErrInvalidTelegramChatID) {
 		response.NewErrorResponse(response.ParamsError, "Telegram 聊天 ID 格式不正确", "").FPrint(w)
 		return

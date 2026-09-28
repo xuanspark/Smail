@@ -164,6 +164,9 @@ func registerV1TOTPRoute(mux *http.ServeMux) {
 }
 
 func registerV1PluginRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/binding", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.TelegramBinding))))
+	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/callback", limitBody(4<<10, contextIterceptor(controllers.TelegramCallbackSettings)))
+	mux.HandleFunc("/api/v1/plugin/binding/telegram/callback", onlyMethod(http.MethodPost, limitBody(64<<10, controllers.TelegramBindingCallback)))
 	mux.HandleFunc("/api/v1/plugin/settings/wechat_push/user", limitBody(4<<10, contextIterceptor(controllers.WeChatUserSettings)))
 	mux.HandleFunc("/api/v1/plugin/settings/wechat_push/binding", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.WeChatBinding))))
 	mux.HandleFunc("/api/v1/plugin/settings/wechat_push/test", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.TestWeChatMessage))))
@@ -171,21 +174,9 @@ func registerV1PluginRoutes(mux *http.ServeMux) {
 	for _, id := range []string{"telegram_push", "wechat_push"} {
 		mux.HandleFunc("/api/v1/plugin/secrets/"+id, limitBody(16<<10, contextIterceptor(controllers.PluginSecret)))
 	}
-	getUserSettings := contextIterceptor(controllers.GetTelegramUserSettings)
-	updateUserSettings := limitBody(16<<10, contextIterceptor(controllers.UpdateTelegramUserSettings))
-	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/user", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			getUserSettings.ServeHTTP(w, r)
-		case http.MethodPut:
-			updateUserSettings.ServeHTTP(w, r)
-		default:
-			w.Header().Set("Allow", "GET, PUT")
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
+	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/user", limitBody(4<<10, contextIterceptor(controllers.TelegramUserSettings)))
 	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/bot", onlyMethod(http.MethodGet, contextIterceptor(controllers.GetTelegramBotInfo)))
-	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/test", onlyMethod(http.MethodPost, limitBody(16<<10, contextIterceptor(controllers.TestTelegramMessage))))
+	mux.HandleFunc("/api/v1/plugin/settings/telegram_push/test", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.TestBoundTelegramMessage))))
 	mux.HandleFunc("/api/v1/plugin/settings/", contextIterceptor(rewriteV1PathPrefix("/api/plugin/settings/", controllers.SettingsHtml)))
 	registerV1MethodRoute(mux, "/api/v1/plugin/list", "/api/plugin/list", http.MethodGet, 0, controllers.GetPluginList)
 }
