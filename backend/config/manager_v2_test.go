@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1717,6 +1718,71 @@ func TestConfigManagerRollbackTicketIsBoundAndSingleUse(t *testing.T) {
 	}
 	if _, err := manager.RollbackWithTicket(context.Background(), ticket, actor); !errors.Is(err, ErrAuthorizationRequired) {
 		t.Fatalf("replayed ticket error = %v, want authorization required", err)
+	}
+}
+
+func TestConfigManagerRollbackPreviewChangedSections(t *testing.T) {
+	tests := []struct {
+		name     string
+		sections []Section
+		mutate   bool
+		want     []Section
+	}{
+		{name: "root_only", sections: []Section{SectionRoot}, mutate: true, want: []Section{SectionRoot}},
+		{name: "email_only", sections: []Section{SectionEmail}, mutate: true, want: []Section{SectionEmail}},
+		{name: "stable_order", sections: []Section{SectionEmail, SectionRoot}, mutate: true, want: []Section{SectionRoot, SectionEmail}},
+		{name: "metadata_only", sections: []Section{SectionEmail}, want: []Section{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeRuntimeFixture(t, root, validRuntimeConfig())
+			options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}
+			manager, err := NewConfigManager(root, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, section := range test.sections {
+				current := manager.Snapshot()
+				var value any
+				switch section {
+				case SectionRoot:
+					if test.mutate {
+						current.Root.LogLevel = "warn"
+					}
+					value = current.Root
+				case SectionEmail:
+					if test.mutate {
+						current.Email.Policy.MaxMessageBytes = 8 << 20
+					}
+					value = current.Email
+				}
+				payload, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				updated, err := manager.Update(context.Background(), UpdateRequest{
+					Section: section, ExpectedGeneration: current.Generation,
+					Payload: payload, Actor: authorizedConfigActor(),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := manager.Apply(context.Background(), updated.Generation); err != nil {
+					t.Fatal(err)
+				}
+			}
+			preview, err := manager.PreviewRollback(context.Background(), 1, authorizedConfigActor())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(preview.ChangedSections, test.want) {
+				t.Fatalf("changed sections = %v, want %v", preview.ChangedSections, test.want)
+			}
+			if preview.ChangedSections == nil {
+				t.Fatal("changed sections must be an array, not null")
+			}
+		})
 	}
 }
 

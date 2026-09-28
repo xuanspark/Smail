@@ -528,7 +528,8 @@ func (m *ConfigManager) PreviewRollback(ctx context.Context, generation uint64, 
 		return nil, err
 	}
 	m.mu.RLock()
-	currentGeneration := m.current.Generation
+	current := cloneRuntimeConfig(m.current)
+	currentGeneration := current.Generation
 	pending := m.pending != nil
 	m.mu.RUnlock()
 	if pending || generation >= currentGeneration {
@@ -547,11 +548,22 @@ func (m *ConfigManager) PreviewRollback(ctx context.Context, generation uint64, 
 	if err := validateRollbackSSL(m.loader.root, backup); err != nil {
 		return nil, err
 	}
+	changed := make(map[Section]bool)
+	for _, change := range AuditChanges(current, backup) {
+		section, _, _ := strings.Cut(change.Field, ".")
+		changed[Section(section)] = true
+	}
+	changedSections := make([]Section, 0, len(changed))
+	for _, section := range []Section{SectionRoot, SectionSMTP, SectionEmail, SectionSSL, SectionPlugins} {
+		if changed[section] {
+			changedSections = append(changedSections, section)
+		}
+	}
 	return &RollbackPreview{
 		CurrentGeneration:   currentGeneration,
 		TargetGeneration:    generation,
 		CandidateGeneration: currentGeneration + 1,
-		ChangedSections:     RequiredPartitionSections(),
+		ChangedSections:     changedSections,
 	}, nil
 }
 
