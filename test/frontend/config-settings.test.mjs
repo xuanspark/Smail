@@ -55,8 +55,17 @@ function fixture(get, pageKey = 'base', options = {}) {
       get: path => path.endsWith('/pending') && !options.pendingGet ? Promise.resolve({ errorNo: 0, data: null }) : get(path),
       ...options.http
     },
-    () => ({ hasCapability: options.hasCapability || (() => true) }), pageKey, callback => { dispose = callback })
+    () => ({ role: options.role || 'super_admin', hasCapability: options.hasCapability || (() => true) }), pageKey, callback => { dispose = callback })
   return { page, messages, successes, dispose: () => dispose() }
+}
+
+for (const pageKey of ['telegram_push', 'wechat_push']) {
+  for (const role of ['super_admin', 'admin', 'user']) {
+    test(`${role} 的 ${pageKey} 系统配置写权限只对超级管理员开放`, () => {
+      const { page } = fixture(async () => ({ errorNo: 0, data: {} }), pageKey, { role })
+      assert.equal(page.canWrite.value, role === 'super_admin')
+    })
+  }
 }
 
 function deferred() {

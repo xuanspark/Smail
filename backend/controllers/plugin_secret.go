@@ -25,7 +25,8 @@ func PluginSecret(ctx *appcontext.Context, w http.ResponseWriter, req *http.Requ
 	if req.Method == http.MethodPut {
 		capability = access.CapabilityPluginWriteGlobal
 	}
-	if ctx == nil || ctx.UserID <= 0 {
+	// 共享公众号和机器人密钥不属于分组管理员权限，首次配置和后续维护使用同一边界。
+	if ctx == nil || ctx.UserID <= 0 || ctx.EffectiveRole() != access.RoleSuperAdmin {
 		writeConfigAccessError(w, &access.Denial{Code: access.CodeAccessDenied})
 		return
 	}

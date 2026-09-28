@@ -91,6 +91,36 @@ func TestConfigServiceAllowsEmptyTelegramChatIDToDisablePush(t *testing.T) {
 	}
 }
 
+func TestEveryRoleKeepsIndependentOwnTelegramSettings(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	var users []models.User
+	for _, role := range []access.Role{access.RoleSuperAdmin, access.RoleAdmin, access.RoleUser} {
+		user := insertPluginTestUser(t, engine, "own-"+string(role), role)
+		users = append(users, user)
+		status, err := service.GetOwnTelegramSettings(user.ID)
+		if err != nil || status.Settings.ChatID != "" || status.Version != 0 {
+			t.Fatalf("角色=%s，不应自动绑定系统接收身份：%v", role, err)
+		}
+	}
+	chatIDs := []string{"10101", "20202", "30303"}
+	for index, user := range users {
+		status, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: chatIDs[index]}, 0)
+		if err != nil || status.Settings.ChatID != chatIDs[index] || status.Version != 1 {
+			t.Fatalf("角色=%s，本人通知设置保存失败：%v", user.EffectiveRole(), err)
+		}
+	}
+	if _, err := service.UpdateOwnTelegramSettings(users[0].ID, TelegramUserSettings{ChatID: "40404"}, 1); err != nil {
+		t.Fatalf("超级管理员不能修改本人的通知设置：%v", err)
+	}
+	chatIDs[0] = "40404"
+	for index, user := range users {
+		status, err := service.GetOwnTelegramSettings(user.ID)
+		if err != nil || status.Settings.ChatID != chatIDs[index] {
+			t.Fatalf("角色=%s，个人通知设置发生跨账户串用：%v", user.EffectiveRole(), err)
+		}
+	}
+}
+
 func TestConfigServiceRejectsTrailingTelegramSettingsJSON(t *testing.T) {
 	service, engine := newPluginConfigService(t)
 	user := insertPluginTestUser(t, engine, "trailing-json", access.RoleUser)

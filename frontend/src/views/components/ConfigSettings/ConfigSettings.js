@@ -151,7 +151,10 @@ export function usePage(pageKey = 'base') {
   const hasChanges = computed(() => editorText.value !== loadedText.value || !!secretValue.value || !!savedGeneration.value)
   const hasConfigChanges = computed(() => editorText.value !== loadedText.value || (!pluginSecretPage.value && !!secretValue.value) || !!savedGeneration.value)
 
-  const canWrite = computed(() => globalStatus.hasCapability(apiSection() === 'plugins' ? 'plugin.write_global' : 'config.write_global'))
+  const canWrite = computed(() => {
+    if (pluginSecretPage.value && globalStatus.role !== 'super_admin') return false
+    return globalStatus.hasCapability(apiSection() === 'plugins' ? 'plugin.write_global' : 'config.write_global')
+  })
   const canRollback = computed(() => globalStatus.hasCapability('config.rollback'))
   const canMigrate = computed(() => globalStatus.hasCapability('database.migrate'))
   const canRestart = computed(() => globalStatus.hasCapability('service.restart'))

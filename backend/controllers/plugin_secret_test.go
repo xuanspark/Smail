@@ -32,13 +32,16 @@ func TestPluginSecretAuthorization(t *testing.T) {
 		{"anonymous", nil, "ACCESS_DENIED"},
 		{"no session user", &appcontext.Context{Role: access.RoleSuperAdmin, RecentAuth: true, RecoveryCodeConfigured: true}, "ACCESS_DENIED"},
 		{"ordinary user", &appcontext.Context{UserID: 3, Role: access.RoleUser, RecentAuth: true, RecoveryCodeConfigured: true}, "ACCESS_DENIED"},
-		{"missing recent authentication", &appcontext.Context{UserID: 2, Role: access.RoleAdmin, RecoveryCodeConfigured: true}, "RECENT_AUTH_REQUIRED"},
-		{"missing recovery code", &appcontext.Context{UserID: 2, Role: access.RoleAdmin, RecentAuth: true}, "RECOVERY_CODE_REQUIRED"},
+		{"authenticated administrator", &appcontext.Context{UserID: 2, Role: access.RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}, "ACCESS_DENIED"},
+		{"missing recent authentication", &appcontext.Context{UserID: 1, Role: access.RoleSuperAdmin, RecoveryCodeConfigured: true}, "RECENT_AUTH_REQUIRED"},
+		{"administrator without recovery code", &appcontext.Context{UserID: 2, Role: access.RoleAdmin, RecentAuth: true}, "ACCESS_DENIED"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := callPluginSecret(tc.ctx, http.MethodPut, "telegram_push", `{"version":0,"change":{"operation":"replace","value":{"plaintext":"test-only-secret"}}}`)
-			if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), tc.code) {
-				t.Fatalf("status=%d response=%s", recorder.Code, recorder.Body.String())
+			for _, id := range []string{"telegram_push", "wechat_push"} {
+				recorder := callPluginSecret(tc.ctx, http.MethodPut, id, `{"version":0,"change":{"operation":"replace","value":{"plaintext":"test-only-secret"}}}`)
+				if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), tc.code) {
+					t.Fatalf("渠道=%s，状态=%d，响应=%s", id, recorder.Code, recorder.Body.String())
+				}
 			}
 		})
 	}
@@ -46,10 +49,18 @@ func TestPluginSecretAuthorization(t *testing.T) {
 	if err != nil || count != 0 {
 		t.Fatalf("denied writes changed secrets: count=%d err=%v", count, err)
 	}
-	for _, role := range []access.Role{access.RoleAdmin, access.RoleSuperAdmin} {
-		recorder := callPluginSecret(&appcontext.Context{UserID: 2, Role: role}, http.MethodGet, "telegram_push", "")
-		if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"configured":false`) {
-			t.Fatalf("read role=%s status=%d body=%s", role, recorder.Code, recorder.Body.String())
+	for _, id := range []string{"telegram_push", "wechat_push"} {
+		for _, role := range []access.Role{access.RoleUser, access.RoleAdmin, access.RoleSuperAdmin} {
+			recorder := callPluginSecret(&appcontext.Context{UserID: 2, Role: role}, http.MethodGet, id, "")
+			if role != access.RoleSuperAdmin {
+				if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "ACCESS_DENIED") {
+					t.Fatalf("角色=%s 不应读取系统渠道 %s 的密钥状态", role, id)
+				}
+				continue
+			}
+			if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"configured":false`) {
+				t.Fatalf("超级管理员读取渠道=%s，状态=%d", id, recorder.Code)
+			}
 		}
 	}
 	recorder := callPluginSecret(&appcontext.Context{UserID: 3, Role: access.RoleUser}, http.MethodGet, "telegram_push", "")
@@ -63,7 +74,7 @@ func TestPluginSecretEncryptedLifecycleAndValidation(t *testing.T) {
 	previous := hooks.PluginConfigService()
 	hooks.SetPluginConfigService(service)
 	t.Cleanup(func() { hooks.SetPluginConfigService(previous) })
-	ctx := &appcontext.Context{UserID: 2, Role: access.RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true}
+	ctx := &appcontext.Context{UserID: 1, Role: access.RoleSuperAdmin, RecentAuth: true, RecoveryCodeConfigured: true}
 	for _, id := range []string{"telegram_push", "wechat_push"} {
 		t.Run(id, func(t *testing.T) {
 			for _, body := range []string{

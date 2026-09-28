@@ -16,8 +16,10 @@ export function usePage() {
   // 全局配置不依赖正在运行的插件列表，未启用的插件也必须可以配置。
   const sectionOptions = computed(() => store.hasCapability('plugin.read_global') ? [
     { value: 'spam_block', label: '垃圾邮件拦截', kind: 'config' },
-    { value: 'telegram_push', label: 'Telegram 推送', kind: 'config' },
-    { value: 'wechat_push', label: '微信推送', kind: 'config' }
+    ...(store.role === 'super_admin' ? [
+      { value: 'telegram_push', label: '系统 Telegram 推送', kind: 'config' },
+      { value: 'wechat_push', label: '系统微信推送', kind: 'config' }
+    ] : [])
   ] : [])
   const accountOptions = computed(() => store.hasCapability('plugin.read') && store.hasCapability('plugin.write_own')
     ? [{ value: 'telegram-user', label: 'Telegram 通知', kind: 'account' }]

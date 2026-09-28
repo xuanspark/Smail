@@ -11,15 +11,43 @@ const createPage = compileFunction(
   ['computed', 'nextTick', 'onMounted', 'onBeforeUnmount', 'ref', 'http', 'useGlobalStatusStore']
 )
 
-function fixture(capabilities = ['config.read', 'plugin.read_global', 'plugin.read', 'plugin.write_own'], get = async () => ({ errorNo: 0, data: [] })) {
+function fixture(capabilities = ['config.read', 'plugin.read_global', 'plugin.read', 'plugin.write_own'], get = async () => ({ errorNo: 0, data: [] }), role = 'super_admin') {
   const allowed = reactive(new Set(capabilities))
+  const store = reactive({ role, hasCapability: value => allowed.has(value) })
   const requests = []
   let mount, dispose
   const page = createPage(computed, async () => {}, fn => { mount = fn }, fn => { dispose = fn }, ref,
     { get: async url => { requests.push(url); return get(url) } },
-    () => ({ hasCapability: value => allowed.has(value) }))
-  return { page, allowed, requests, mount, dispose }
+    () => store)
+  return { page, allowed, requests, mount, dispose, store }
 }
+
+for (const role of ['super_admin', 'admin', 'user']) {
+  test(`${role} 保留本人通知入口，只有超级管理员可进入系统公众号和机器人配置`, async () => {
+    const capabilities = role === 'user'
+      ? ['plugin.read', 'plugin.write_own']
+      : ['plugin.read_global', 'plugin.read', 'plugin.write_own']
+    const { page } = fixture(capabilities, undefined, role)
+    assert.deepEqual(page.sectionOptions.value.map(item => item.value), role === 'super_admin'
+      ? ['spam_block', 'telegram_push', 'wechat_push']
+      : role === 'admin' ? ['spam_block'] : [])
+    assert.deepEqual(page.accountOptions.value.map(item => item.value), ['telegram-user'])
+    await page.selectSection('telegram-user')
+    assert.equal(page.activePage.value.kind, 'account')
+    await page.selectSection('wechat_push')
+    assert.equal(page.selectedSection.value, role === 'super_admin' ? 'wechat_push' : 'telegram-user')
+  })
+}
+
+test('超级管理员降级后隐藏系统通知配置但保留本人通知入口', async () => {
+  const { page, store } = fixture()
+  await page.selectSection('telegram_push')
+  store.role = 'admin'
+  assert.equal(page.activePage.value, undefined)
+  assert.deepEqual(page.sectionOptions.value.map(item => item.value), ['spam_block'])
+  await page.selectSection('telegram-user')
+  assert.equal(page.activePage.value.kind, 'account')
+})
 
 test('独立插件配置包含三个运行配置页，停用插件不依赖运行列表也能配置', async () => {
   const { page, mount } = fixture()

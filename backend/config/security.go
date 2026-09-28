@@ -182,7 +182,7 @@ func DefaultConfigAuthorization(_ context.Context, actor AuditActor, operation C
 	return nil
 }
 
-// AuthorizePluginChanges 限制管理员只能修改已有插件参数，不允许安装、替换程序或提升权限。
+// AuthorizePluginChanges 限制管理员只能修改普通插件参数；公众号和机器人始终由超级管理员配置。
 func AuthorizePluginChanges(actor AuditActor, current, candidate RuntimeConfig) error {
 	if actor.Role == string(access.RoleSuperAdmin) {
 		return nil
@@ -195,8 +195,33 @@ func AuthorizePluginChanges(actor AuditActor, current, candidate RuntimeConfig) 
 		if !ok || next.Executable != previous.Executable || !reflect.DeepEqual(next.Permissions, previous.Permissions) {
 			return ErrAuthorizationRequired
 		}
+		if id == "wechat_push" || id == "telegram_push" {
+			// 允许普通插件保存时原样携带共享配置，但不允许借整个分区绕过权限。
+			if !sameNotificationPlugin(previous, next) {
+				return ErrAuthorizationRequired
+			}
+		}
 	}
 	return nil
+}
+
+func sameNotificationPlugin(previous, next PluginInstance) bool {
+	var settings [2]any
+	for index, data := range []json.RawMessage{previous.Settings, next.Settings} {
+		if len(data) == 0 {
+			continue
+		}
+		if !json.Valid(data) {
+			return false
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(data)))
+		decoder.UseNumber()
+		if err := decoder.Decode(&settings[index]); err != nil {
+			return false
+		}
+	}
+	previous.Settings, next.Settings = nil, nil
+	return reflect.DeepEqual(previous, next) && reflect.DeepEqual(settings[0], settings[1])
 }
 
 func DefaultConfigConfirmation(_ context.Context, _ AuditActor, confirmation StepUpConfirmation, operation ConfigOperation, _ Section) error {
