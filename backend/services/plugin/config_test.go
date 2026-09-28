@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,6 +200,40 @@ func TestWeChatTestMessagesAreRateLimitedPerAccount(t *testing.T) {
 	now = now.Add(30 * time.Second)
 	if err := service.ReserveWeChatTest(first.ID); err != nil {
 		t.Fatalf("冷却结束后应允许重试：%v", err)
+	}
+}
+
+func TestWeChatBindingCancellationAllowsExpiredAndMissingTickets(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	user := insertPluginTestUser(t, engine, "wechat-cancel", access.RoleSuperAdmin)
+	actor := NotificationBindingActor{UserID: user.ID, SessionHash: strings.Repeat("a", 64),
+		SessionVersion: user.SessionVersion, SecurityVersion: user.SecurityVersion}
+	service.wechatBindings = map[string]weChatBinding{
+		"expired": {Actor: actor, Status: WeChatBindingStatus{ExpiresAt: time.Now().Add(-time.Minute)}},
+	}
+	otherActor := actor
+	otherActor.SessionHash = strings.Repeat("b", 64)
+	if err := service.CancelWeChatBinding(otherActor, "expired"); !errors.Is(err, ErrWeChatBinding) {
+		t.Fatalf("不得撤销其他会话的绑定：%v", err)
+	}
+	if len(service.wechatBindings) != 1 {
+		t.Fatal("其他会话的取消请求不应删除原绑定")
+	}
+	if err := service.CancelWeChatBinding(actor, "expired"); err != nil {
+		t.Fatalf("过期请求应允许取消：%v", err)
+	}
+	if len(service.wechatBindings) != 0 {
+		t.Fatal("已取消的绑定不应残留")
+	}
+	if err := service.CancelWeChatBinding(actor, "expired"); err != nil {
+		t.Fatalf("重复取消应保持幂等：%v", err)
+	}
+	if err := service.CancelWeChatBinding(actor, "missing"); err != nil {
+		t.Fatalf("不存在的请求应允许关闭：%v", err)
+	}
+	actor.SecurityVersion++
+	if err := service.CancelWeChatBinding(actor, "missing"); !errors.Is(err, ErrWeChatBinding) {
+		t.Fatalf("幂等取消仍必须验证当前账户和会话：%v", err)
 	}
 }
 

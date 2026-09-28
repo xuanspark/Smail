@@ -152,12 +152,16 @@ func (s *ConfigService) GetWeChatBinding(actor NotificationBindingActor, ticket 
 }
 
 func (s *ConfigService) CancelWeChatBinding(actor NotificationBindingActor, ticket string) error {
-	if _, err := s.GetWeChatBinding(actor, ticket); err != nil {
+	if err := s.validateBindingActor(actor); err != nil {
 		return err
 	}
 	s.bindingMu.Lock()
+	defer s.bindingMu.Unlock()
+	// 过期、回调失败或重复取消都允许关闭页面，但不得撤销其他会话的请求。
+	if binding, found := s.wechatBindings[ticket]; found && binding.Actor != actor {
+		return ErrWeChatBinding
+	}
 	delete(s.wechatBindings, ticket)
-	s.bindingMu.Unlock()
 	return nil
 }
 

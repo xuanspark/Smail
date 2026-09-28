@@ -121,6 +121,8 @@ test('未知插件只使用安全名称生成隔离页面，内置插件别名�
   assert.doesNotMatch(template, /allow-same-origin|v-for=".*pluginEntries/)
   assert.match(template, /:key="selectedSection"[\s\S]*:page-key="selectedSection"/)
   assert.match(template, /defineExpose\(\{ beforeLeave \}\)/)
+  assert.match(template, /<TelegramSettings v-else-if="activePage\?\.value === 'telegram-user'"/)
+  assert.match(template, /<WeChatSettings v-else-if="activePage\?\.value === 'wechat-user'"/)
 })
 
 test('插件列表故障不隐藏三个运行配置页，支持重试并丢弃卸载后的响应', async () => {
