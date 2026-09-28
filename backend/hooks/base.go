@@ -129,7 +129,7 @@ func (h *HookSender) ReceiveSaveAfter(ctx *context.Context, email *parsemail.Ema
 			}
 			// 发信前重新读取，停用、解绑或禁用账户后不能继续使用插件缓存中的旧接收人。
 			status, err := pluginConfigService.GetOwnWeChatSettings(recipient.UserID)
-			if err != nil || !status.Settings.Enabled || status.Settings.OpenID == "" {
+			if err != nil || !status.Settings.Enabled || status.Settings.OpenID == "" || status.NeedsRebind {
 				continue
 			}
 			payload, err := json.Marshal(status.Settings)

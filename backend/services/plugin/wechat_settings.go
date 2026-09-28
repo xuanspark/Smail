@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/utils/credential"
@@ -29,8 +30,9 @@ type WeChatUserSettings struct {
 }
 
 type WeChatUserSettingsStatus struct {
-	Settings WeChatUserSettings
-	Version  uint64
+	Settings    WeChatUserSettings
+	Version     uint64
+	NeedsRebind bool
 }
 
 type WeChatUserSettingsEntry struct {
@@ -61,7 +63,27 @@ func (s *ConfigService) GetOwnWeChatSettings(userID int) (WeChatUserSettingsStat
 		return WeChatUserSettingsStatus{}, err
 	}
 	settings, err := s.decodeWeChatSettings(record)
-	return WeChatUserSettingsStatus{Settings: settings, Version: record.Version}, err
+	return WeChatUserSettingsStatus{Settings: settings, Version: record.Version,
+		NeedsRebind: weChatBindingNeedsRebind(settings, currentWeChatAppID())}, err
+}
+
+func currentWeChatAppID() string {
+	manager := config.CurrentManager()
+	if manager == nil {
+		return ""
+	}
+	instance, found := manager.Snapshot().Plugins.Plugins[weChatPluginID]
+	var settings struct {
+		AppID string `json:"appId"`
+	}
+	if !found || json.Unmarshal(instance.Settings, &settings) != nil {
+		return ""
+	}
+	return settings.AppID
+}
+
+func weChatBindingNeedsRebind(settings WeChatUserSettings, appID string) bool {
+	return settings.OpenID != "" && (!validWeChatIdentity(appID) || settings.AppID != appID)
 }
 
 func (s *ConfigService) decodeWeChatSettings(record models.PluginUserSetting) (WeChatUserSettings, error) {
@@ -147,7 +169,8 @@ func (s *ConfigService) saveWeChatSettings(userID int, settings WeChatUserSettin
 			return WeChatUserSettingsStatus{}, ErrPluginSettingConflict
 		}
 	}
-	return WeChatUserSettingsStatus{Settings: settings, Version: record.Version}, nil
+	return WeChatUserSettingsStatus{Settings: settings, Version: record.Version,
+		NeedsRebind: weChatBindingNeedsRebind(settings, currentWeChatAppID())}, nil
 }
 
 func (s *ConfigService) UpdateOwnWeChatPreferences(userID int, enabled, showContent, unbind bool, expectedVersion uint64) (WeChatUserSettingsStatus, error) {
@@ -156,6 +179,9 @@ func (s *ConfigService) UpdateOwnWeChatPreferences(userID int, enabled, showCont
 		return current, err
 	}
 	settings := current.Settings
+	if !unbind && enabled && current.NeedsRebind {
+		return current, ErrWeChatBinding
+	}
 	if unbind {
 		settings = WeChatUserSettings{}
 	} else {

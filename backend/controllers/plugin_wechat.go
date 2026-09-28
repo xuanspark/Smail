@@ -57,7 +57,8 @@ func weChatRequestService(ctx *appcontext.Context, w http.ResponseWriter, recent
 
 func weChatPublicSettings(status pluginservice.WeChatUserSettingsStatus) map[string]any {
 	return map[string]any{"version": status.Version, "bound": status.Settings.OpenID != "", "enabled": status.Settings.Enabled,
-		"showContent": status.Settings.ShowContent, "displayName": status.Settings.DisplayName}
+		"showContent": status.Settings.ShowContent, "displayName": status.Settings.DisplayName,
+		"needsRebind": status.NeedsRebind}
 }
 
 func writeWeChatSettings(w http.ResponseWriter, userID int, status pluginservice.WeChatUserSettingsStatus) {
@@ -175,7 +176,7 @@ func TestWeChatMessage(ctx *appcontext.Context, w http.ResponseWriter, req *http
 		return
 	}
 	status, err := service.GetOwnWeChatSettings(ctx.UserID)
-	if err != nil || status.Settings.OpenID == "" {
+	if err != nil || status.Settings.OpenID == "" || status.NeedsRebind {
 		writeWeChatError(w, pluginservice.WeChatNotice("请先绑定本人的微信"))
 		return
 	}

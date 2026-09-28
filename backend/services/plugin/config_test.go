@@ -127,6 +127,28 @@ func TestEveryRoleKeepsIndependentOwnWeChatSettings(t *testing.T) {
 	}
 }
 
+func TestWeChatBindingIdentityMustMatchCurrentApplication(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		settings WeChatUserSettings
+		appID    string
+		want     bool
+	}{
+		{name: "unbound"},
+		{name: "same-app", settings: WeChatUserSettings{AppID: "wx-original-app", OpenID: "openid-test-user", Enabled: true}, appID: "wx-original-app"},
+		{name: "changed-app", settings: WeChatUserSettings{AppID: "wx-original-app", OpenID: "openid-test-user", Enabled: true}, appID: "wx-replacement-app", want: true},
+		{name: "missing-app", settings: WeChatUserSettings{AppID: "wx-original-app", OpenID: "openid-test-user"}, want: true},
+		{name: "invalid-app", settings: WeChatUserSettings{AppID: "wx-original-app", OpenID: "openid-test-user"}, appID: "invalid", want: true},
+		{name: "disabled-same-app", settings: WeChatUserSettings{AppID: "wx-original-app", OpenID: "openid-test-user"}, appID: "wx-original-app"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := weChatBindingNeedsRebind(test.settings, test.appID); got != test.want {
+				t.Fatal(got, test.want)
+			}
+		})
+	}
+}
+
 func TestWeChatBindingStatusRejectsOtherSessionsAndRevokedAccounts(t *testing.T) {
 	service, engine := newPluginConfigService(t)
 	user := insertPluginTestUser(t, engine, "wechat-binding", access.RoleSuperAdmin)
