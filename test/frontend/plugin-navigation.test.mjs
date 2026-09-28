@@ -31,11 +31,14 @@ for (const role of ['super_admin', 'admin', 'user']) {
     assert.deepEqual(page.sectionOptions.value.map(item => item.value), role === 'super_admin'
       ? ['spam_block', 'telegram_push', 'wechat_push']
       : role === 'admin' ? ['spam_block'] : [])
-    assert.deepEqual(page.accountOptions.value.map(item => item.value), ['telegram-user'])
+    assert.deepEqual(page.accountOptions.value.map(item => item.value), ['telegram-user', 'wechat-user'])
     await page.selectSection('telegram-user')
     assert.equal(page.activePage.value.kind, 'account')
+    await page.selectSection('wechat-user')
+    assert.equal(page.activePage.value.kind, 'account')
+    assert.equal(page.activePage.value.value, 'wechat-user')
     await page.selectSection('wechat_push')
-    assert.equal(page.selectedSection.value, role === 'super_admin' ? 'wechat_push' : 'telegram-user')
+    assert.equal(page.selectedSection.value, role === 'super_admin' ? 'wechat_push' : 'wechat-user')
   })
 }
 
@@ -59,7 +62,7 @@ test('独立插件配置包含三个运行配置页，停用插件不依赖运�
     assert.equal(page.activePage.value.kind, 'config')
     assert.equal(page.activePage.value.value, key)
   }
-  assert.deepEqual(page.accountOptions.value.map(item => item.value), ['telegram-user'])
+  assert.deepEqual(page.accountOptions.value.map(item => item.value), ['telegram-user', 'wechat-user'])
 })
 
 test('普通账号只保留本人通知设置，不读取或进入全局配置和管理员插件列表', async () => {

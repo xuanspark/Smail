@@ -22,7 +22,10 @@ export function usePage() {
     ] : [])
   ] : [])
   const accountOptions = computed(() => store.hasCapability('plugin.read') && store.hasCapability('plugin.write_own')
-    ? [{ value: 'telegram-user', label: 'Telegram 通知', kind: 'account' }]
+    ? [
+        { value: 'telegram-user', label: 'Telegram 通知', kind: 'account' },
+        { value: 'wechat-user', label: '微信通知', kind: 'account' }
+      ]
     : [])
   const canReadExternal = () => store.hasCapability('config.read') && store.hasCapability('plugin.read')
   const externalOptions = computed(() => canReadExternal() ? externalPlugins.value : [])

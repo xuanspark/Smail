@@ -233,7 +233,6 @@ const pluginDefinitions = {
   wechat_push: { label: '微信推送', fields: [
     field('appId', '应用编号（App ID）'),
     field('templateId', '消息模板编号'),
-    field('userId', '接收用户编号'),
     field('webDomain', '网页域名')
   ] }
 }

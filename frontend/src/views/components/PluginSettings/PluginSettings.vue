@@ -37,7 +37,8 @@
           ref="currentPage"
           :page-key="selectedSection"
         />
-        <TelegramSettings v-else-if="activePage?.kind === 'account'" ref="currentPage" />
+        <TelegramSettings v-else-if="activePage?.value === 'telegram-user'" ref="currentPage" />
+        <WeChatSettings v-else-if="activePage?.value === 'wechat-user'" ref="currentPage" />
         <section v-else-if="activePage?.kind === 'external'" class="plugin-section">
           <header class="plugin-section-header"><h3>{{ activePage.label }}</h3></header>
           <div class="iframe-wrapper">
@@ -61,6 +62,7 @@ import { usePage } from './PluginSettings.js'
 import SettingsSubmenu from '../SettingsSubmenu/SettingsSubmenu.vue'
 import PluginsConfig from '../ConfigSettings/PluginsConfig/PluginsConfig.vue'
 import TelegramSettings from './TelegramSettings/TelegramSettings.vue'
+import WeChatSettings from './WeChatSettings/WeChatSettings.vue'
 
 const {
   sectionOptions, accountOptions, externalOptions, selectedSection, activePage,
