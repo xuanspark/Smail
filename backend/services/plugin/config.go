@@ -102,11 +102,15 @@ type bulkTarget struct {
 // ConfigService 是插件全局 Secret 和用户设置的唯一写服务。
 // HTTP 路由在 CG-025 完成能力接入前不得直接暴露本服务的写方法。
 type ConfigService struct {
-	engine    *xorm.Engine
-	vault     *credential.Vault
-	now       func() time.Time
-	ticketsMu sync.Mutex
-	tickets   map[string]pluginBulkTicket
+	engine             *xorm.Engine
+	vault              *credential.Vault
+	now                func() time.Time
+	ticketsMu          sync.Mutex
+	tickets            map[string]pluginBulkTicket
+	bindingMu          sync.Mutex
+	wechatBindings     map[string]weChatBinding
+	weChatTestMu       sync.Mutex
+	weChatTestAttempts map[int]time.Time
 }
 
 func NewConfigService(engine *xorm.Engine, vault *credential.Vault) (*ConfigService, error) {

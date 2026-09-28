@@ -118,6 +118,31 @@ func (h *HookSender) callHook(ctx *context.Context, endpoint string, dto framewo
 }
 
 func (h *HookSender) ReceiveSaveAfter(ctx *context.Context, email *parsemail.Email, ue []*models.UserEmail) {
+	if h.name == "wechat_push" {
+		if pluginConfigService == nil {
+			return
+		}
+		allowed := make([]*models.UserEmail, 0, len(ue))
+		for _, recipient := range ue {
+			if recipient == nil || recipient.UserID <= 0 {
+				continue
+			}
+			// 发信前重新读取，停用、解绑或禁用账户后不能继续使用插件缓存中的旧接收人。
+			status, err := pluginConfigService.GetOwnWeChatSettings(recipient.UserID)
+			if err != nil || !status.Settings.Enabled || status.Settings.OpenID == "" {
+				continue
+			}
+			payload, err := json.Marshal(status.Settings)
+			if err != nil || h.ConfigureUserSettings(recipient.UserID, payload) != nil {
+				continue
+			}
+			allowed = append(allowed, recipient)
+		}
+		if len(allowed) == 0 {
+			return
+		}
+		ue = allowed
+	}
 	_, _ = h.callHook(ctx, "ReceiveSaveAfter", framework.HookDTO{Ctx: ctx, Email: email, UserEmail: ue})
 }
 
@@ -385,6 +410,11 @@ func Init(serverVersion string) {
 			_ = process.Kill()
 			continue
 		}
+		if syncErr := syncWeChatUserSettings(logicalID, hook); syncErr != nil {
+			log.Warnf("[%s] 微信个人设置恢复失败，插件未启用", logicalID)
+			_ = process.Kill()
+			continue
+		}
 		if healthErr := hook.Health(); healthErr != nil {
 			log.Warnf("[%s] Plugin health check failed", logicalID)
 			_ = process.Kill()
@@ -399,6 +429,48 @@ func Init(serverVersion string) {
 		}
 		log.Infof("[%s] Plugin load success", hookName)
 	}
+}
+
+func SyncWeChatUserSettings(userID int, settings pluginservice.WeChatUserSettings) error {
+	var target framework.EmailHook
+	for _, name := range []string{"wechat_push", "WeChatPushHook", "WechatPush"} {
+		if hook, found := GetHook(name); found {
+			target = hook
+			break
+		}
+	}
+	configurer, ok := target.(framework.UserSettingsConfigurer)
+	if !ok || userID <= 0 {
+		return errors.New("微信插件不可用")
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	return configurer.ConfigureUserSettings(userID, payload)
+}
+
+func syncWeChatUserSettings(logicalID string, hook *HookSender) error {
+	if logicalID != "wechat_push" {
+		return nil
+	}
+	if hook == nil || pluginConfigService == nil {
+		return pluginservice.ErrPluginStoreUnavailable
+	}
+	entries, err := pluginConfigService.ListWeChatUserSettings()
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		payload, err := json.Marshal(entry.Settings)
+		if err != nil {
+			return err
+		}
+		if err := hook.ConfigureUserSettings(entry.UserID, payload); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func SyncTelegramUserSettings(userID int, settings pluginservice.TelegramUserSettings) error {

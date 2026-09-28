@@ -91,6 +91,95 @@ func TestConfigServiceAllowsEmptyTelegramChatIDToDisablePush(t *testing.T) {
 	}
 }
 
+func TestEveryRoleKeepsIndependentOwnWeChatSettings(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	for _, role := range []access.Role{access.RoleSuperAdmin, access.RoleAdmin, access.RoleUser} {
+		t.Run(string(role), func(t *testing.T) {
+			user := insertPluginTestUser(t, engine, "wechat-"+string(role), role)
+			status, err := service.GetOwnWeChatSettings(user.ID)
+			if err != nil || status.Settings.OpenID != "" || status.Version != 0 {
+				t.Fatalf("角色=%s，不应自动继承系统接收人：%v", role, err)
+			}
+			if _, err := service.UpdateOwnWeChatPreferences(user.ID, true, false, false, 0); !errors.Is(err, ErrWeChatBinding) {
+				t.Fatal("未绑定身份时不应直接启用微信推送")
+			}
+			settings := WeChatUserSettings{AppID: "wx-test-application", OpenID: "openid-" + string(role), Enabled: true}
+			status, err = service.saveWeChatSettings(user.ID, settings, 0)
+			if err != nil || status.Settings != settings || status.Version != 1 {
+				t.Fatalf("角色=%s，保存独立接收人失败：%v", role, err)
+			}
+			record, found, err := service.findUserSetting(weChatPluginID, user.ID)
+			if err != nil || !found || record.SettingsCiphertext == "" || record.SettingsCiphertext == settings.OpenID {
+				t.Fatal("微信个人身份必须加密保存")
+			}
+			if _, err := service.UpdateOwnWeChatPreferences(user.ID, false, false, false, 0); !errors.Is(err, ErrPluginSettingConflict) {
+				t.Fatal("旧版本不应覆盖绑定设置")
+			}
+			status, err = service.UpdateOwnWeChatPreferences(user.ID, false, false, false, 1)
+			if err != nil || status.Settings.OpenID != settings.OpenID || status.Settings.Enabled {
+				t.Fatal("停用推送应保留本人绑定")
+			}
+			status, err = service.UpdateOwnWeChatPreferences(user.ID, false, false, true, 2)
+			if err != nil || status.Settings.OpenID != "" || status.Settings.Enabled || status.Version != 3 {
+				t.Fatal("解绑应清除本人接收身份")
+			}
+		})
+	}
+}
+
+func TestWeChatBindingStatusRejectsOtherSessionsAndRevokedAccounts(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	user := insertPluginTestUser(t, engine, "wechat-binding", access.RoleSuperAdmin)
+	other := insertPluginTestUser(t, engine, "wechat-other", access.RoleUser)
+	actor := NotificationBindingActor{UserID: user.ID, SessionVersion: user.SessionVersion,
+		SecurityVersion: user.SecurityVersion, SessionHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+	now := time.Now().UTC()
+	service.now = func() time.Time { return now }
+	service.wechatBindings = map[string]weChatBinding{"ticket": {Actor: actor, Status: WeChatBindingStatus{Phase: "waiting", ExpiresAt: now.Add(time.Minute)}}}
+	if _, err := service.GetWeChatBinding(actor, "ticket"); err != nil {
+		t.Fatalf("本人会话应能读取绑定状态：%v", err)
+	}
+	otherActor := actor
+	otherActor.UserID = other.ID
+	if _, err := service.GetWeChatBinding(otherActor, "ticket"); !errors.Is(err, ErrWeChatBinding) {
+		t.Fatal("其他账户不应读取绑定请求")
+	}
+	otherActor = actor
+	otherActor.SessionHash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	if _, err := service.GetWeChatBinding(otherActor, "ticket"); !errors.Is(err, ErrWeChatBinding) {
+		t.Fatal("同一账户的其他会话不应接管绑定")
+	}
+	now = now.Add(2 * time.Minute)
+	if _, err := service.GetWeChatBinding(actor, "ticket"); !errors.Is(err, ErrWeChatBinding) {
+		t.Fatal("过期绑定不应继续使用")
+	}
+	now = now.Add(-2 * time.Minute)
+	if _, err := engine.ID(user.ID).Cols("disabled").Update(&models.User{Disabled: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GetWeChatBinding(actor, "ticket"); !errors.Is(err, ErrWeChatBinding) {
+		t.Fatal("被禁用账户的绑定必须立即失效")
+	}
+}
+
+func TestWeChatTestMessagesAreRateLimitedPerAccount(t *testing.T) {
+	service, engine := newPluginConfigService(t)
+	first := insertPluginTestUser(t, engine, "wechat-rate-first", access.RoleUser)
+	second := insertPluginTestUser(t, engine, "wechat-rate-second", access.RoleUser)
+	now := time.Now().UTC()
+	service.now = func() time.Time { return now }
+	if service.ReserveWeChatTest(first.ID) != nil || service.ReserveWeChatTest(second.ID) != nil {
+		t.Fatal("不同账户首次测试应相互独立")
+	}
+	if service.ReserveWeChatTest(first.ID) == nil {
+		t.Fatal("短时间内不应重复发送测试消息")
+	}
+	now = now.Add(30 * time.Second)
+	if err := service.ReserveWeChatTest(first.ID); err != nil {
+		t.Fatalf("冷却结束后应允许重试：%v", err)
+	}
+}
+
 func TestEveryRoleKeepsIndependentOwnTelegramSettings(t *testing.T) {
 	service, engine := newPluginConfigService(t)
 	var users []models.User

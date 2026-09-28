@@ -13,6 +13,8 @@ import (
 
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/hooks/framework"
+	"git.pcux.cn/xuans/Smail/models"
+	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 )
 
 type weChatRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -50,6 +52,50 @@ func TestWeChatRuntimeConfigAcceptsAuthorizedPayload(t *testing.T) {
 	}
 	if hook.appId != "app-id" || hook.secret != "app-secret" || hook.webDomain != "mail.example.com" {
 		t.Fatalf("unexpected runtime configuration: %+v", hook)
+	}
+}
+
+func TestWeChatRoutesOnlyToBoundActualRecipients(t *testing.T) {
+	hook := NewWechatPushHook()
+	if err := hook.Configure(validWeChatRuntimePayload()); err != nil {
+		t.Fatal(err)
+	}
+	hook.token, hook.tokenExpires = "test-access-token", time.Now().Add(time.Hour).Unix()
+	var recipients []string
+	hook.httpClient = &http.Client{Transport: weChatRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var payload sendMsgRequest
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		recipients = append(recipients, payload.Touser)
+		if payload.Data.Content.Value != "您收到一封新邮件，请登录邮箱查看。" {
+			t.Fatal("默认通知不应泄露正文或验证码")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"errcode":0}`))}, nil
+	})}
+	ctx := &appcontext.Context{}
+	email := &parsemail.Email{MessageId: 12, Subject: "private subject"}
+	hook.ReceiveSaveAfter(ctx, email, []*models.UserEmail{{UserID: 1}})
+	if len(recipients) != 0 {
+		t.Fatal("未绑定的用户一不应触发旧版全局收件人通知")
+	}
+	for id, recipient := range map[int]string{17: "openid-first", 29: "openid-second"} {
+		payload, err := json.Marshal(weChatUserSettings{AppID: "app-id", OpenID: recipient, Enabled: true})
+		if err != nil || hook.ConfigureUserSettings(id, payload) != nil {
+			t.Fatal("个人绑定配置失败")
+		}
+	}
+	hook.ReceiveSaveAfter(ctx, email, []*models.UserEmail{{UserID: 17}, {UserID: 17}, {UserID: 29, IsRead: 1}, {UserID: 1}})
+	if len(recipients) != 1 || recipients[0] != "openid-first" {
+		t.Fatalf("实际通知收件人错误：%v", recipients)
+	}
+	payload, _ := json.Marshal(weChatUserSettings{AppID: "app-id", OpenID: "openid-first", Enabled: false})
+	if err := hook.ConfigureUserSettings(17, payload); err != nil {
+		t.Fatal(err)
+	}
+	hook.ReceiveSaveAfter(ctx, email, []*models.UserEmail{{UserID: 17}, {UserID: 29}})
+	if len(recipients) != 2 || recipients[1] != "openid-second" {
+		t.Fatal("停用本人推送不应影响其他收件账户")
 	}
 }
 

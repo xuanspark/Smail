@@ -164,6 +164,10 @@ func registerV1TOTPRoute(mux *http.ServeMux) {
 }
 
 func registerV1PluginRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/plugin/settings/wechat_push/user", limitBody(4<<10, contextIterceptor(controllers.WeChatUserSettings)))
+	mux.HandleFunc("/api/v1/plugin/settings/wechat_push/binding", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.WeChatBinding))))
+	mux.HandleFunc("/api/v1/plugin/settings/wechat_push/test", onlyMethod(http.MethodPost, limitBody(4<<10, contextIterceptor(controllers.TestWeChatMessage))))
+	mux.HandleFunc("/api/v1/plugin/binding/wechat/callback", onlyMethod(http.MethodGet, controllers.WeChatBindingCallback))
 	for _, id := range []string{"telegram_push", "wechat_push"} {
 		mux.HandleFunc("/api/v1/plugin/secrets/"+id, limitBody(16<<10, contextIterceptor(controllers.PluginSecret)))
 	}

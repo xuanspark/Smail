@@ -43,6 +43,48 @@ type WeChatPushHook struct {
 	pushUser     string
 	webDomain    string
 	httpClient   *http.Client
+	userSettings map[int]weChatUserSettings
+}
+
+type weChatUserSettings struct {
+	AppID       string `json:"appId"`
+	OpenID      string `json:"openId"`
+	DisplayName string `json:"displayName"`
+	Enabled     bool   `json:"enabled"`
+	ShowContent bool   `json:"showContent"`
+}
+
+func (w *WeChatPushHook) ConfigureUserSettings(userID int, data json.RawMessage) error {
+	if userID <= 0 || len(data) > 4096 || !json.Valid(data) {
+		return fmt.Errorf("微信个人配置无效")
+	}
+	var settings weChatUserSettings
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&settings); err != nil || settings.Enabled && (settings.OpenID == "" || settings.AppID == "") {
+		return fmt.Errorf("微信个人配置无效")
+	}
+	w.tokenMu.Lock()
+	defer w.tokenMu.Unlock()
+	if w.userSettings == nil {
+		w.userSettings = make(map[int]weChatUserSettings)
+	}
+	w.userSettings[userID] = settings
+	return nil
+}
+
+func (w *WeChatPushHook) TestMessage(data json.RawMessage) error {
+	var settings weChatUserSettings
+	if len(data) > 4096 || json.Unmarshal(data, &settings) != nil || settings.OpenID == "" {
+		return fmt.Errorf("请先绑定本人的微信")
+	}
+	w.tokenMu.Lock()
+	appID := w.appId
+	w.tokenMu.Unlock()
+	if appID == "" || settings.AppID != appID {
+		return fmt.Errorf("系统公众号已变更，请重新绑定")
+	}
+	return w.sendUserMsg(&context.Context{}, settings.OpenID, "这是一条 Smail 微信通知测试消息。")
 }
 
 func (w *WeChatPushHook) GetName(ctx *context.Context) string {
@@ -106,7 +148,7 @@ func (w *WeChatPushHook) Health() error {
 		return fmt.Errorf("微信插件不可用")
 	}
 	w.tokenMu.Lock()
-	configured := w.appId != "" && w.secret != "" && w.templateId != "" && w.pushUser != "" && w.webDomain != "" && w.httpClient != nil
+	configured := w.appId != "" && w.secret != "" && w.templateId != "" && w.webDomain != "" && w.httpClient != nil
 	w.tokenMu.Unlock()
 	if !configured {
 		return fmt.Errorf("微信插件尚未完成运行时配置")
@@ -127,19 +169,29 @@ func (w *WeChatPushHook) ReceiveSaveAfter(ctx *context.Context, email *parsemail
 	w.tokenMu.Lock()
 	appID := w.appId
 	secret := w.secret
-	pushUser := w.pushUser
 	w.tokenMu.Unlock()
-	if email == nil || appID == "" || secret == "" || pushUser == "" {
+	if email == nil || appID == "" || secret == "" || email.MessageId <= 0 {
 		return
 	}
 
+	seen := make(map[int]bool)
 	for _, u := range ue {
-		if u == nil {
+		if u == nil || u.UserID <= 0 || u.IsRead != 0 || u.Status != 0 || seen[u.UserID] {
 			continue
 		}
-		// 管理员（Uid=1）收到邮件且非已读、非已删除 触发通知
-		if u.UserID == 1 && u.IsRead == 0 && u.Status == 0 && email.MessageId > 0 {
-			w.sendUserMsg(ctx, pushUser, buildWeChatMessage(email))
+		seen[u.UserID] = true
+		w.tokenMu.Lock()
+		settings := w.userSettings[u.UserID]
+		w.tokenMu.Unlock()
+		if !settings.Enabled || settings.OpenID == "" || settings.AppID != appID {
+			continue
+		}
+		content := "您收到一封新邮件，请登录邮箱查看。"
+		if settings.ShowContent {
+			content = buildWeChatMessage(email)
+		}
+		if err := w.sendUserMsg(ctx, settings.OpenID, content); err != nil {
+			log.WithContext(ctx).Warn("微信个人通知发送失败")
 		}
 	}
 
@@ -226,7 +278,7 @@ type DataItem struct {
 	Color string `json:"color"`
 }
 
-func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, content string) {
+func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, content string) error {
 	content = truncateWeChatText(content, maxWeChatMessageBytes)
 	w.tokenMu.Lock()
 	webDomain := w.webDomain
@@ -246,12 +298,12 @@ func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, conten
 	})
 	if err != nil {
 		log.WithContext(ctx).Error("wechat push request build failed")
-		return
+		return fmt.Errorf("微信推送请求构造失败")
 	}
 	token := w.getWxAccessToken()
 	if token == "" {
 		log.WithContext(ctx).Error("wechat push authentication failed")
-		return
+		return fmt.Errorf("微信公众号认证失败")
 	}
 	endpoint, _ := urlpkg.Parse("https://api.weixin.qq.com/cgi-bin/message/template/send")
 	query := endpoint.Query()
@@ -260,18 +312,18 @@ func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, conten
 	request, err := http.NewRequest(http.MethodPost, endpoint.String(), bytes.NewReader(sendMsgReq))
 	if err != nil {
 		log.WithContext(ctx).Error("wechat push request build failed")
-		return
+		return fmt.Errorf("微信推送请求构造失败")
 	}
 	request.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(request)
 	if err != nil || resp == nil {
 		log.WithContext(ctx).Error("wechat push request failed")
-		return
+		return fmt.Errorf("微信推送请求失败")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		log.WithContext(ctx).Error("wechat push request was rejected")
-		return
+		return fmt.Errorf("微信推送请求被拒绝")
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxWeChatResponseBytes+1))
 	var result struct {
@@ -279,7 +331,7 @@ func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, conten
 	}
 	if err != nil || len(body) > maxWeChatResponseBytes || json.Unmarshal(body, &result) != nil || result.ErrorCode == nil {
 		log.WithContext(ctx).Error("微信推送响应无效或超过大小限制")
-		return
+		return fmt.Errorf("微信推送响应无效")
 	}
 	if *result.ErrorCode != 0 {
 		// 只记录业务码，不能输出可能含凭据或收件人信息的响应正文。
@@ -292,7 +344,9 @@ func (w *WeChatPushHook) sendUserMsg(ctx *context.Context, userId string, conten
 			}
 			w.tokenMu.Unlock()
 		}
+		return fmt.Errorf("微信推送失败，业务码：%d", *result.ErrorCode)
 	}
+	return nil
 }
 
 func buildWeChatMessage(email *parsemail.Email) string {
@@ -362,10 +416,6 @@ func parseWeChatRuntimeConfig(data json.RawMessage) (weChatRuntimeConfig, weChat
 	if err != nil {
 		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信模板 ID 无效")
 	}
-	userID, err := credential.ValidateSecret(settings.UserID, 256)
-	if err != nil {
-		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信用户 ID 无效")
-	}
 	webDomain, err := normalizeWeChatWebDomain(settings.WebDomain)
 	if err != nil {
 		return weChatRuntimeConfig{}, weChatSettings{}, "", fmt.Errorf("微信回调域名无效")
@@ -384,7 +434,6 @@ func parseWeChatRuntimeConfig(data json.RawMessage) (weChatRuntimeConfig, weChat
 	}
 	settings.AppID = appID
 	settings.TemplateID = templateID
-	settings.UserID = userID
 	settings.WebDomain = webDomain
 	return payload, settings, secret, nil
 }
