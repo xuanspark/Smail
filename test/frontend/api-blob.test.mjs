@@ -17,7 +17,7 @@ function fixture() {
   let failure
   let redirects = 0
   const http = { interceptors: { response: { use: (left, right) => { success = left; failure = right } } } }
-  createInterceptors({ create: () => http }, { lang: 'zh' }, {}, () => async () => { redirects++ }, decodeBlobAPIError, () => ({ clear() {} }))
+  createInterceptors({ create: () => http }, { lang: 'zh' }, { currentRoute: { value: {} } }, () => async () => { redirects++ }, decodeBlobAPIError, () => ({ clear() {} }))
   return { success, failure, redirects: () => redirects }
 }
 

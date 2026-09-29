@@ -50,14 +50,14 @@ test('一级菜单保留能力过滤和当前分类标题联动', () => {
   })
   const page = createPage(computed, ref, () => {}, () => {}, { innerWidth: 1440 }, () => store,
     { security: '安全', plugin_settings: '插件配置' }, () => ({}), ...names.map(name => ({ name })))
-  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'group', 'rule', 'sender-filter'])
+  assert.deepEqual(page.settingsMenu.value.map(item => item.key), ['security', 'third-party', 'system-notification', 'group', 'rule', 'sender-filter'])
   assert.equal(page.settingsMenu.value.find(item => item.key === 'third-party').label, '邮件客户端')
   assert.equal(page.activeSettings.value.label, '安全')
   capabilities.add('config.read')
   capabilities.add('plugin.read_global')
   store.settingsActiveTab = 'config'
   assert.equal(page.activeSettings.value.label, '配置管理')
-  assert.equal(page.settingsMenu.value.length, 7)
+  assert.equal(page.settingsMenu.value.length, 8)
   assert.equal(page.settingsMenu.value.find(item => item.key === 'plugins').label, '插件配置')
   assert.ok(page.settingsMenu.value.every(item => item.icon && item.hint))
   capabilities.delete('config.read')
