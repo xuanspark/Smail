@@ -50,30 +50,36 @@ func TestTelegramUserSettingsRequiresLogin(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/plugin/settings/telegram_push/user", nil)
 	recorder := httptest.NewRecorder()
 	GetTelegramUserSettings(nil, recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "请先登录") {
+	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "无权访问或请求不满足安全条件") {
 		t.Fatalf("unauthenticated GET status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
 	request = httptest.NewRequest(http.MethodPut, "/api/v1/plugin/settings/telegram_push/user", strings.NewReader(`{}`))
 	recorder = httptest.NewRecorder()
 	UpdateTelegramUserSettings(&appcontext.Context{}, recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "请先登录") {
+	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "无权访问或请求不满足安全条件") {
 		t.Fatalf("unauthenticated PUT status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
 func TestTelegramUserSettingsRejectsUnknownAndTrailingFields(t *testing.T) {
-	hooks.SetPluginConfigService(nil)
-	t.Cleanup(func() { hooks.SetPluginConfigService(nil) })
+	service, engine := newTelegramControllerConfigService(t)
+	previousService := hooks.PluginConfigService()
+	hooks.SetPluginConfigService(service)
+	t.Cleanup(func() { hooks.SetPluginConfigService(previousService) })
+	user := models.User{Account: "telegram-parse-user", Name: "telegram-parse-user", Password: "hash"}
+	if _, err := engine.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []string{
-		`{"settings":{"chatId":"123","userId":99},"version":0}`,
-		`{"settings":{"chatId":"123"},"version":0} {}`,
+		`{"enabled":false,"chatId":"123","version":0}`,
+		`{"enabled":false,"version":0} {}`,
 	}
 	for _, body := range cases {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPut, "/api/v1/plugin/settings/telegram_push/user", bytes.NewBufferString(body))
-		UpdateTelegramUserSettings(&appcontext.Context{UserID: 7}, recorder, request)
+		UpdateTelegramUserSettings(&appcontext.Context{UserID: user.ID, RecentAuth: true}, recorder, request)
 		if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "请求参数格式不正确") {
 			t.Fatalf("body=%s status=%d response=%s", body, recorder.Code, recorder.Body.String())
 		}
@@ -92,8 +98,8 @@ func TestTelegramUserSettingsUsesSessionUserAndVersion(t *testing.T) {
 	}
 
 	firstRecorder := httptest.NewRecorder()
-	firstRequest := httptest.NewRequest(http.MethodPut, "/api/v1/plugin/settings/telegram_push/user", strings.NewReader(`{"settings":{"chatId":"-1001234567890","showContent":true},"version":0}`))
-	UpdateTelegramUserSettings(&appcontext.Context{UserID: user.ID}, firstRecorder, firstRequest)
+	firstRequest := httptest.NewRequest(http.MethodPut, "/api/v1/plugin/settings/telegram_push/user", strings.NewReader(`{"enabled":false,"showContent":true,"version":0}`))
+	UpdateTelegramUserSettings(&appcontext.Context{UserID: user.ID, RecentAuth: true}, firstRecorder, firstRequest)
 	if firstRecorder.Code != http.StatusOK || !strings.Contains(firstRecorder.Body.String(), `"version":1`) {
 		t.Fatalf("first update status=%d body=%s", firstRecorder.Code, firstRecorder.Body.String())
 	}
@@ -102,15 +108,15 @@ func TestTelegramUserSettingsUsesSessionUserAndVersion(t *testing.T) {
 	}
 
 	staleRecorder := httptest.NewRecorder()
-	staleRequest := httptest.NewRequest(http.MethodPut, "/api/v1/plugin/settings/telegram_push/user", strings.NewReader(`{"settings":{"chatId":"123"},"version":0}`))
-	UpdateTelegramUserSettings(&appcontext.Context{UserID: user.ID}, staleRecorder, staleRequest)
+	staleRequest := httptest.NewRequest(http.MethodPut, "/api/v1/plugin/settings/telegram_push/user", strings.NewReader(`{"enabled":false,"showContent":false,"version":0}`))
+	UpdateTelegramUserSettings(&appcontext.Context{UserID: user.ID, RecentAuth: true}, staleRecorder, staleRequest)
 	if staleRecorder.Code != http.StatusOK || !strings.Contains(staleRecorder.Body.String(), "配置已被其他操作更新") {
 		t.Fatalf("stale update status=%d body=%s", staleRecorder.Code, staleRecorder.Body.String())
 	}
 
 	getRecorder := httptest.NewRecorder()
 	GetTelegramUserSettings(&appcontext.Context{UserID: user.ID}, getRecorder, httptest.NewRequest(http.MethodGet, "/api/v1/plugin/settings/telegram_push/user", nil))
-	if getRecorder.Code != http.StatusOK || !strings.Contains(getRecorder.Body.String(), "-1001234567890") {
+	if getRecorder.Code != http.StatusOK || !strings.Contains(getRecorder.Body.String(), `"bound":false`) || strings.Contains(getRecorder.Body.String(), "-1001234567890") {
 		t.Fatalf("GET status=%d body=%s", getRecorder.Code, getRecorder.Body.String())
 	}
 }
@@ -131,30 +137,30 @@ func TestTelegramBotInfoDoesNotExposeSecret(t *testing.T) {
 	}
 }
 
-func TestTelegramTestMessageValidatesChatIDAndDoesNotPersist(t *testing.T) {
+func TestTelegramTestMessageRequiresCurrentAccountBinding(t *testing.T) {
+	service, engine := newTelegramControllerConfigService(t)
+	previousService := hooks.PluginConfigService()
+	hooks.SetPluginConfigService(service)
+	t.Cleanup(func() { hooks.SetPluginConfigService(previousService) })
+
+	user := models.User{Account: "telegram-test-user", Name: "telegram-test-user", Password: "hash"}
+	if _, err := engine.Insert(&user); err != nil {
+		t.Fatal(err)
+	}
+
 	previousHooks := hooks.HookList
 	hook := &telegramControllerTestHook{}
 	hooks.HookList = map[string]framework.EmailHook{"telegram_push": hook}
 	t.Cleanup(func() { hooks.HookList = previousHooks })
 
-	invalidRecorder := httptest.NewRecorder()
-	invalidRequest := httptest.NewRequest(http.MethodPost, "/api/v1/plugin/settings/telegram_push/test", strings.NewReader(`{"settings":{"chatId":"not-a-chat"}}`))
-	TestTelegramMessage(&appcontext.Context{UserID: 7}, invalidRecorder, invalidRequest)
-	if invalidRecorder.Code != http.StatusOK || !strings.Contains(invalidRecorder.Body.String(), "聊天 ID 格式不正确") {
-		t.Fatalf("invalid message status=%d body=%s", invalidRecorder.Code, invalidRecorder.Body.String())
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/plugin/settings/telegram_push/test", strings.NewReader(`{"settings":{"chatId":"123"}}`))
+	TestTelegramMessage(&appcontext.Context{UserID: user.ID, RecentAuth: true}, recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "请先绑定本人 Telegram 并启用通知") {
+		t.Fatalf("unbound test message status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	if hook.testPayload != nil {
-		t.Fatal("invalid test message reached plugin")
-	}
-
-	validRecorder := httptest.NewRecorder()
-	validRequest := httptest.NewRequest(http.MethodPost, "/api/v1/plugin/settings/telegram_push/test", strings.NewReader(`{"settings":{"chatId":"123"},"version":99}`))
-	TestTelegramMessage(&appcontext.Context{UserID: 7}, validRecorder, validRequest)
-	if validRecorder.Code != http.StatusOK || !strings.Contains(validRecorder.Body.String(), "测试消息已发送") {
-		t.Fatalf("valid message status=%d body=%s", validRecorder.Code, validRecorder.Body.String())
-	}
-	if !strings.Contains(string(hook.testPayload), `"chatId":"123"`) {
-		t.Fatalf("plugin did not receive validated settings: %s", hook.testPayload)
+		t.Fatal("caller-supplied Chat ID reached plugin without a verified binding")
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/hooks"
@@ -18,56 +17,12 @@ import (
 
 const maxTelegramUserSettingsBodyBytes int64 = 16 << 10
 
-type telegramSettingsRequest struct {
-	Settings pluginservice.TelegramUserSettings `json:"settings"`
-	Version  uint64                             `json:"version"`
-}
-
 func GetTelegramUserSettings(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authorizedPluginUser(ctx) {
-		response.NewErrorResponse(response.NeedLogin, "请先登录", "").FPrint(w)
-		return
-	}
-	service := hooks.PluginConfigService()
-	if service == nil {
-		response.NewErrorResponse(response.ServerError, "插件配置服务不可用", "").FPrint(w)
-		return
-	}
-	settings, err := service.GetOwnTelegramSettings(ctx.UserID)
-	if err != nil {
-		writeTelegramSettingsError(w, err)
-		return
-	}
-	response.NewSuccessResponse(settings).FPrint(w)
+	TelegramUserSettings(ctx, w, req)
 }
 
 func UpdateTelegramUserSettings(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authorizedPluginUser(ctx) {
-		response.NewErrorResponse(response.NeedLogin, "请先登录", "").FPrint(w)
-		return
-	}
-	var input telegramSettingsRequest
-	if !decodePluginJSONBody(w, req, &input) {
-		return
-	}
-	if err := pluginservice.ValidateTelegramUserSettings(input.Settings); err != nil {
-		writeTelegramSettingsError(w, err)
-		return
-	}
-	service := hooks.PluginConfigService()
-	if service == nil {
-		response.NewErrorResponse(response.ServerError, "插件配置服务不可用", "").FPrint(w)
-		return
-	}
-	settings, err := service.UpdateOwnTelegramSettings(ctx.UserID, input.Settings, input.Version)
-	if err != nil {
-		writeTelegramSettingsError(w, err)
-		return
-	}
-	if err := hooks.SyncTelegramUserSettings(ctx.UserID, settings.Settings); err != nil {
-		log.WithError(err).Warnf("Telegram 用户设置同步失败，用户 ID=%d", ctx.UserID)
-	}
-	response.NewSuccessResponse(settings).FPrint(w)
+	TelegramUserSettings(ctx, w, req)
 }
 
 func GetTelegramBotInfo(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
@@ -95,43 +50,7 @@ func GetTelegramBotInfo(ctx *context.Context, w http.ResponseWriter, req *http.R
 }
 
 func TestTelegramMessage(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !authenticatedPluginUser(ctx) {
-		response.NewErrorResponse(response.NeedLogin, "请先登录", "").FPrint(w)
-		return
-	}
-	var input telegramSettingsRequest
-	if !decodePluginJSONBody(w, req, &input) {
-		return
-	}
-	if strings.TrimSpace(input.Settings.ChatID) == "" {
-		response.NewErrorResponse(response.ParamsError, "请输入 Telegram 聊天 ID", "").FPrint(w)
-		return
-	}
-	if err := pluginservice.ValidateTelegramUserSettings(input.Settings); err != nil {
-		writeTelegramSettingsError(w, err)
-		return
-	}
-	hook, ok := hooks.GetHook("telegram_push")
-	if !ok {
-		response.NewErrorResponse(response.ServerError, "Telegram 插件不可用", "").FPrint(w)
-		return
-	}
-	provider, ok := hook.(framework.TestMessageProvider)
-	if !ok {
-		response.NewErrorResponse(response.ServerError, "Telegram 插件不支持测试消息", "").FPrint(w)
-		return
-	}
-	payload, err := json.Marshal(input.Settings)
-	if err != nil {
-		response.NewErrorResponse(response.ServerError, "测试消息参数处理失败", "").FPrint(w)
-		return
-	}
-	if err := provider.TestMessage(payload); err != nil {
-		log.WithError(err).Warn("发送 Telegram 测试消息失败")
-		response.NewErrorResponse(response.ServerError, "发送 Telegram 测试消息失败", "").FPrint(w)
-		return
-	}
-	response.NewSuccessResponse(map[string]string{"message": "测试消息已发送"}).FPrint(w)
+	TestBoundTelegramMessage(ctx, w, req)
 }
 
 func authenticatedPluginUser(ctx *context.Context) bool {

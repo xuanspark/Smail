@@ -22,6 +22,7 @@ func TestCapabilityMatrix(t *testing.T) {
 		{name: "admin writes user plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteAnyUser, TargetRole: RoleUser}, allowed: true},
 		{name: "admin cannot write admin plugin settings", req: Request{ActorRole: RoleAdmin, Capability: CapabilityPluginWriteAnyUser, TargetRole: RoleAdmin}},
 		{name: "super admin writes all user plugin settings", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginWriteAnyUser, TargetRole: RoleSuperAdmin}, allowed: true},
+		{name: "super admin writes own plugin settings", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPluginWriteOwn, OwnResource: true}, allowed: true},
 		{name: "user writes own plugin settings", req: Request{ActorRole: RoleUser, Capability: CapabilityPluginWriteOwn, OwnResource: true}, allowed: true},
 		{name: "user cannot write another plugin settings", req: Request{ActorRole: RoleUser, Capability: CapabilityPluginWriteOwn}},
 		{name: "authenticated super admin changes own password", req: Request{ActorRole: RoleSuperAdmin, Capability: CapabilityPasswordChangeOwn, OwnResource: true}, allowed: true},
