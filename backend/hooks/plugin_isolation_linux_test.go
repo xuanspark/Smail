@@ -25,6 +25,40 @@ func TestCopyPluginFileRejectsGrowthPastLimit(t *testing.T) {
 	}
 }
 
+func TestPluginCopiesApplySecurityBeforeClosingTargets(t *testing.T) {
+	directory := t.TempDir()
+	configSource := filepath.Join(directory, "source.json")
+	configTarget := filepath.Join(directory, "target.json")
+	if err := os.WriteFile(configSource, []byte(`{"enabled":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyPluginFile(configSource, configTarget, os.Getuid(), os.Getgid(), 0600); err != nil {
+		t.Fatalf("copy plugin configuration: %v", err)
+	}
+	configInfo, err := os.Stat(configTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configInfo.Mode().Perm() != 0600 {
+		t.Fatalf("configuration mode = %o, want 0600", configInfo.Mode().Perm())
+	}
+
+	executableSource := filepath.Join(directory, "source-plugin")
+	executableTarget := filepath.Join(directory, "target-plugin")
+	if err := os.WriteFile(executableSource, []byte("plugin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyPluginExecutable(executableSource, executableTarget, os.Getuid(), os.Getgid()); err != nil {
+		t.Fatalf("copy plugin executable: %v", err)
+	}
+	executableInfo, err := os.Stat(executableTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executableInfo.Mode().Perm() != 0700 {
+		t.Fatalf("executable mode = %o, want 0700", executableInfo.Mode().Perm())
+	}
+}
 func TestInheritedAbstractSocketRemainsReachableAcrossListenerCopy(t *testing.T) {
 	socketName, err := newPluginSocketName(1)
 	if err != nil {
