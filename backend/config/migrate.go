@@ -112,7 +112,7 @@ var legacyPluginExecutableMap = map[string]string{
 	"pmail_telegram_push.exe": "telegram_push",
 }
 
-var legacyMySQLDSNPattern = regexp.MustCompile(`^([^:@/[:space:]]+):([^@\r\n]*)@tcp\(([^():/[:space:]]+)(?::([0-9]{1,5}))?\)/([A-Za-z0-9][A-Za-z0-9._-]{0,127})(?:\?[^#[:space:]]*)?$`)
+var legacyMySQLDSNPattern = regexp.MustCompile(`^([^:@/[:space:]]+):([^\r\n]*)@tcp\(([^():/[:space:]]+)(?::([0-9]{1,5}))?\)/([A-Za-z0-9][A-Za-z0-9._-]{0,127})(?:\?[^#[:space:]]*)?$`)
 
 func PlanLegacyMigration(root string, _ RuntimeValidationOptions) (LegacyMigrationPlan, error) {
 	directory, err := secureManagerConfigDirectory(root)

@@ -631,6 +631,15 @@ func TestMigrateLegacyConfigParsesKnownStructuredDatabaseDSNs(t *testing.T) {
 			wantHost: "db.example.com",
 			wantName: "smail",
 			password: "database-secret",
+		}, {
+			name:     "MySQL password with at sign",
+			database: DBTypeMySQL,
+			dsn:      "smail:database@secret@tcp(db.example.com:3307)/smail?charset=utf8mb4",
+			wantType: DatabaseTypeMySQL,
+			wantPort: 3307,
+			wantHost: "db.example.com",
+			wantName: "smail",
+			password: "database@secret",
 		},
 		{
 			name:     "PostgreSQL",
