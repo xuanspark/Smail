@@ -114,7 +114,7 @@ test('Telegram 通知编辑在切页和重新加载前确认，取消保留输�
       return { errorNo: 0, data: userSettings({ version: 1, showContent: false }) }
     },
     put: async (url, body) => ({ errorNo: 0, data: userSettings({ ...body, version: 2, synced: true }) })
-  }, { confirm: async () => { prompts++; if (cancel) throw new Error('取消') } })
+  }, async () => { prompts++; if (cancel) throw new Error('取消') })
   await page.load()
   assert.equal(await page.beforeLeave(), true)
   page.settings.showContent = true
