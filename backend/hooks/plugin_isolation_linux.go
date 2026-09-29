@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	pluginMemoryLimit  = 512 << 20
-	pluginFileLimit    = 128
-	pluginProcessLimit = 32
+	pluginAddressSpaceLimit = 2 << 30
+	pluginFileLimit         = 128
+	pluginProcessLimit      = 32
 )
 
 func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string) (*pluginLaunchSpec, error) {
@@ -265,7 +265,7 @@ func applyPluginResourceLimits(process *os.Process) error {
 		resource int
 		value    uint64
 	}{
-		{resource: unix.RLIMIT_AS, value: pluginMemoryLimit},
+		{resource: unix.RLIMIT_AS, value: pluginAddressSpaceLimit},
 		{resource: unix.RLIMIT_NOFILE, value: pluginFileLimit},
 		{resource: unix.RLIMIT_NPROC, value: pluginProcessLimit},
 	}
