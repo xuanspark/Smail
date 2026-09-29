@@ -1,0 +1,31 @@
+.telegram-callback {
+  margin: 0 20px 20px;
+  padding: 16px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+}
+
+.telegram-callback header,
+.telegram-callback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.telegram-callback h4 {
+  margin: 0;
+}
+
+.telegram-callback p {
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+
+.telegram-callback .el-alert {
+  margin-bottom: 12px;
+}
+
+.telegram-callback-actions .el-button {
+  margin-left: 0;
+}

@@ -31,14 +31,21 @@
   margin-bottom: 20px;
 }
 
-.telegram-actions {
+.telegram-actions,
+.telegram-buttons,
+.telegram-identity {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  align-items: center;
+}
+
+.telegram-actions {
   margin-top: 20px;
 }
 
-.telegram-actions .el-button {
+.telegram-actions .el-button,
+.telegram-buttons .el-button {
   margin-left: 0;
 }
 .telegram-settings :deep(.el-form) {
@@ -52,8 +59,44 @@
   margin-bottom: 0;
 }
 
-.telegram-settings :deep(.el-form-item:first-child) {
-  grid-column: 1 / -1;
+.telegram-identity {
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+}
+
+.telegram-identity strong {
+  flex: 1;
+  min-width: 100px;
+  overflow-wrap: anywhere;
+}
+
+.telegram-binding {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.telegram-binding img {
+  max-width: 100%;
+  height: auto;
+}
+
+.telegram-binding h4,
+.telegram-binding p {
+  margin: 0;
+}
+
+.telegram-binding a {
+  color: var(--el-color-primary);
+}
+
+.telegram-dialog-actions {
+  justify-content: flex-end;
 }
 
 @media (max-width: 768px) {
