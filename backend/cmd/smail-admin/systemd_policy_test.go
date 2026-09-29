@@ -104,8 +104,6 @@ func TestSmailServiceRetainsPluginIsolationCapabilities(t *testing.T) {
 	}
 	content := string(unit)
 	for _, required := range []string{
-		"User=root",
-		"Group=root",
 		"EnvironmentFile=/etc/smail/smail.env",
 		"NoNewPrivileges=true",
 		"AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER",
@@ -124,6 +122,9 @@ func TestSmailServiceRetainsPluginIsolationCapabilities(t *testing.T) {
 	}
 	if !usesEnvironmentFile {
 		t.Fatal("smail unit must define EnvironmentFile as a standalone directive")
+	}
+	if strings.Contains(content, "User=smail") || strings.Contains(content, "Group=smail") {
+		t.Fatal("smail unit must retain root privileges for plugin isolation")
 	}
 	if strings.Count(content, "CAP_NET_BIND_SERVICE") != 2 {
 		t.Fatal("smail unit does not retain the expected bind capability entries")
