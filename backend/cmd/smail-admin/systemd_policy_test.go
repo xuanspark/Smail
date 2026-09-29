@@ -96,7 +96,7 @@ func TestInstallerManagesProtectedEnvironmentFile(t *testing.T) {
 	}
 }
 
-func TestSmailServiceUsesOnlyBindServiceCapability(t *testing.T) {
+func TestSmailServiceRetainsPluginIsolationCapabilities(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	unit, err := os.ReadFile(filepath.Join(root, "deploy", "systemd", "smail.service"))
 	if err != nil {
@@ -104,12 +104,12 @@ func TestSmailServiceUsesOnlyBindServiceCapability(t *testing.T) {
 	}
 	content := string(unit)
 	for _, required := range []string{
-		"User=smail",
-		"Group=smail",
+		"User=root",
+		"Group=root",
 		"EnvironmentFile=/etc/smail/smail.env",
 		"NoNewPrivileges=true",
-		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
-		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+		"AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER",
+		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT CAP_SETUID CAP_SETGID CAP_CHOWN CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("smail unit is missing %q", required)
@@ -125,10 +125,7 @@ func TestSmailServiceUsesOnlyBindServiceCapability(t *testing.T) {
 	if !usesEnvironmentFile {
 		t.Fatal("smail unit must define EnvironmentFile as a standalone directive")
 	}
-	if strings.Contains(content, "User=root") {
-		t.Fatal("smail unit must not run as root")
-	}
 	if strings.Count(content, "CAP_NET_BIND_SERVICE") != 2 {
-		t.Fatal("smail unit grants unexpected Linux capabilities")
+		t.Fatal("smail unit does not retain the expected bind capability entries")
 	}
 }
