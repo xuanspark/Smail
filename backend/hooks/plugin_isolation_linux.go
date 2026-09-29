@@ -145,19 +145,23 @@ func copyPluginFile(sourcePath, targetPath string, uid, gid int, mode os.FileMod
 		_ = os.Remove(targetPath)
 		return fmt.Errorf("copy plugin configuration: %w", err)
 	}
-	if err := target.Close(); err != nil {
-		_ = os.Remove(targetPath)
-		return fmt.Errorf("close sandbox plugin configuration: %w", err)
-	}
 	if written > maxPluginConfigBytes {
 		_ = os.Remove(targetPath)
 		return errors.New("plugin configuration exceeds the allowed size")
 	}
 	if err := target.Chmod(mode); err != nil {
+		_ = target.Close()
+		_ = os.Remove(targetPath)
 		return fmt.Errorf("secure sandbox plugin configuration: %w", err)
 	}
 	if err := target.Chown(uid, gid); err != nil {
+		_ = target.Close()
+		_ = os.Remove(targetPath)
 		return fmt.Errorf("assign sandbox plugin configuration identity: %w", err)
+	}
+	if err := target.Close(); err != nil {
+		_ = os.Remove(targetPath)
+		return fmt.Errorf("close sandbox plugin configuration: %w", err)
 	}
 	return nil
 }
@@ -219,14 +223,19 @@ func copyPluginExecutable(sourcePath, targetPath string, uid, gid int) error {
 		_ = target.Close()
 		return fmt.Errorf("sync sandbox plugin executable: %w", err)
 	}
-	if err := target.Close(); err != nil {
-		return fmt.Errorf("close sandbox plugin executable: %w", err)
-	}
 	if err := target.Chmod(0700); err != nil {
+		_ = target.Close()
+		_ = os.Remove(targetPath)
 		return fmt.Errorf("secure sandbox plugin executable: %w", err)
 	}
 	if err := target.Chown(uid, gid); err != nil {
+		_ = target.Close()
+		_ = os.Remove(targetPath)
 		return fmt.Errorf("assign sandbox plugin identity: %w", err)
+	}
+	if err := target.Close(); err != nil {
+		_ = os.Remove(targetPath)
+		return fmt.Errorf("close sandbox plugin executable: %w", err)
 	}
 	return nil
 }
