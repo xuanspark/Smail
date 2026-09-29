@@ -69,8 +69,8 @@ func TestEditUserPasswordResetRoleMatrix(t *testing.T) {
 	adminContext.SessionVersion = admin.SessionVersion
 	adminContext.SecurityVersion = admin.SecurityVersion
 
-	if result := editUserRequest(t, adminContext, `{"id":`+itoa(user.ID)+`,"password":"ResetUser123","disabled":0}`); result != 0 {
-		t.Fatalf("administrator could not reset regular user: %d", result)
+	if result, body := editUserResponse(t, adminContext, `{"id":`+itoa(user.ID)+`,"password":"ResetUser123","disabled":0}`); result != 0 {
+		t.Fatalf("administrator could not reset regular user: %d: %s", result, body)
 	}
 	assertUserPassword(t, user.ID, "ResetUser123")
 
@@ -86,6 +86,20 @@ func TestEditUserPasswordResetRoleMatrix(t *testing.T) {
 	if result := editUserRequest(t, superContext, `{"id":`+itoa(superAdmin.ID)+`,"password":"DeniedPass123","disabled":0}`); result == 0 {
 		t.Fatal("web reset of super administrator's own password was accepted")
 	}
+}
+
+func editUserResponse(t *testing.T, ctx *appcontext.Context, payload string) (int, string) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/user/edit", strings.NewReader(payload))
+	EditUser(ctx, recorder, request)
+	var result struct {
+		ErrorNo int `json:"errorNo"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	return result.ErrorNo, recorder.Body.String()
 }
 
 func TestPasswordChangeRevokesOfflineCredentialsAtomically(t *testing.T) {
