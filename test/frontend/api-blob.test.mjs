@@ -9,7 +9,7 @@ const createInterceptors = compileFunction(
   source.replace(/^import .*$/gm, '')
     .replace('import.meta.env.VITE_APP_URL', 'undefined')
     .replace('export {http};', ''),
-  ['axios', 'lang', 'router', 'createLoginRedirectHandler', 'decodeBlobAPIError']
+  ['axios', 'lang', 'router', 'createLoginRedirectHandler', 'decodeBlobAPIError', 'useGlobalStatusStore']
 )
 
 function fixture() {
@@ -17,7 +17,7 @@ function fixture() {
   let failure
   let redirects = 0
   const http = { interceptors: { response: { use: (left, right) => { success = left; failure = right } } } }
-  createInterceptors({ create: () => http }, { lang: 'zh' }, {}, () => async () => { redirects++ }, decodeBlobAPIError)
+  createInterceptors({ create: () => http }, { lang: 'zh' }, {}, () => async () => { redirects++ }, decodeBlobAPIError, () => ({ clear() {} }))
   return { success, failure, redirects: () => redirects }
 }
 

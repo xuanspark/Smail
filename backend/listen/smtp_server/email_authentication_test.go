@@ -135,7 +135,7 @@ func newAuthenticationTestEngine(t *testing.T) *xorm.Engine {
 		t.Fatalf("创建测试数据库失败：%v", err)
 	}
 	engine.SetMaxOpenConns(1)
-	if err = engine.Sync2(&models.User{}, &models.Email{}, &models.UserEmail{}, &models.Rule{}); err != nil {
+	if err = engine.Sync2(&models.User{}, &models.Email{}, &models.UserEmail{}, &models.Rule{}, &models.UserTrustedSender{}); err != nil {
 		t.Fatalf("初始化测试数据库失败：%v", err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })

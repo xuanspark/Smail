@@ -139,7 +139,7 @@ test('配置管理只在真实移动端将内部导航移到内容顶部', () =>
   const containerStart = config.indexOf('@container settings-content (max-width: 560px)')
   const desktopStart = config.indexOf('@media (min-width: 769px)', containerStart)
   const containerRule = config.slice(containerStart, desktopStart)
-  assert.match(header, /min\(100vw, max\(56vw, 880px\)\)/)
+  assert.match(header, /min\(100vw, max\(72vw, 1100px\)\)/)
   assert.match(config, /grid-template-areas: "main submenu"/)
   assert.match(config, /@media \(min-width: 769px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\)/)
   assert.match(config, /@media \(max-width: 768px\)[\s\S]*"submenu"[\s\S]*"main"/)
