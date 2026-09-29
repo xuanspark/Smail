@@ -58,11 +58,6 @@ func TestEditUserPasswordResetRoleMatrix(t *testing.T) {
 	adminContext := &appcontext.Context{UserID: admin.ID, SessionVersion: admin.SessionVersion, SecurityVersion: admin.SecurityVersion, UserAccount: admin.Account, Role: access.RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
 	userContext := &appcontext.Context{UserID: user.ID, SessionVersion: user.SessionVersion, SecurityVersion: user.SecurityVersion, UserAccount: user.Account, Role: access.RoleUser, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
 
-	if result := editUserRequest(t, superContext, `{"id":`+itoa(admin.ID)+`,"password":"ResetAdm12","disabled":0}`); result != 0 {
-		t.Fatalf("super administrator could not reset administrator: %d", result)
-	}
-	assertUserPassword(t, admin.ID, "ResetAdm12")
-
 	if _, err := db.Instance.ID(admin.ID).Get(&admin); err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +68,11 @@ func TestEditUserPasswordResetRoleMatrix(t *testing.T) {
 		t.Fatalf("administrator could not reset regular user: %d: %s", result, body)
 	}
 	assertUserPassword(t, user.ID, "ResetUser123")
+
+	if result := editUserRequest(t, superContext, `{"id":`+itoa(admin.ID)+`,"password":"ResetAdm12","disabled":0}`); result != 0 {
+		t.Fatalf("super administrator could not reset administrator: %d", result)
+	}
+	assertUserPassword(t, admin.ID, "ResetAdm12")
 
 	if result := editUserRequest(t, adminContext, `{"id":`+itoa(superAdmin.ID)+`,"password":"DeniedPass123","disabled":0}`); result == 0 {
 		t.Fatal("administrator reset of super administrator was accepted")
