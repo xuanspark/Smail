@@ -34,7 +34,8 @@ RuntimeDirectoryMode=0750
 
 NoNewPrivileges=true
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT CAP_SETUID CAP_SETGID CAP_CHOWN CAP_SYS_ADMIN
+# 主进程需要读取 smail 用户权限保护的配置和数据目录，同时保留插件隔离能力。
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT CAP_SETUID CAP_SETGID CAP_CHOWN CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
