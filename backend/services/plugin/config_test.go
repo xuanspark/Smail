@@ -57,7 +57,7 @@ func TestConfigServiceStoresPluginSecretsAsCiphertext(t *testing.T) {
 func TestConfigServiceEncryptsTelegramUserSettingsAndRejectsTampering(t *testing.T) {
 	service, engine := newPluginConfigService(t)
 	user := insertPluginTestUser(t, engine, "user", access.RoleUser)
-	status, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: "-100123456"}, 0)
+	status, err := service.updateTelegramSettings(user.ID, TelegramUserSettings{ChatID: "-100123456"}, 0)
 	if err != nil || status.Version != 1 {
 		t.Fatalf("update status = %+v, err=%v", status, err)
 	}
@@ -251,15 +251,14 @@ func TestEveryRoleKeepsIndependentOwnTelegramSettings(t *testing.T) {
 	}
 	chatIDs := []string{"10101", "20202", "30303"}
 	for index, user := range users {
-		status, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: chatIDs[index]}, 0)
+		status, err := service.updateTelegramSettings(user.ID, TelegramUserSettings{ChatID: chatIDs[index]}, 0)
 		if err != nil || status.Settings.ChatID != chatIDs[index] || status.Version != 1 {
 			t.Fatalf("角色=%s，本人通知设置保存失败：%v", user.EffectiveRole(), err)
 		}
 	}
-	if _, err := service.UpdateOwnTelegramSettings(users[0].ID, TelegramUserSettings{ChatID: "40404"}, 1); err != nil {
+	if _, err := service.UpdateOwnTelegramSettings(users[0].ID, TelegramUserSettings{ChatID: "40404"}, 1); !errors.Is(err, ErrTelegramBinding) {
 		t.Fatalf("超级管理员不能修改本人的通知设置：%v", err)
 	}
-	chatIDs[0] = "40404"
 	for index, user := range users {
 		status, err := service.GetOwnTelegramSettings(user.ID)
 		if err != nil || status.Settings.ChatID != chatIDs[index] {
@@ -271,7 +270,7 @@ func TestEveryRoleKeepsIndependentOwnTelegramSettings(t *testing.T) {
 func TestConfigServiceRejectsTrailingTelegramSettingsJSON(t *testing.T) {
 	service, engine := newPluginConfigService(t)
 	user := insertPluginTestUser(t, engine, "trailing-json", access.RoleUser)
-	if _, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: "123"}, 0); err != nil {
+	if _, err := service.updateTelegramSettings(user.ID, TelegramUserSettings{ChatID: "123"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	record := models.PluginUserSetting{}
@@ -310,27 +309,27 @@ func TestConfigServiceEnforcesUserSettingRolesAndVersions(t *testing.T) {
 	secondAdmin := insertPluginTestUser(t, engine, "admin2", access.RoleAdmin)
 	user := insertPluginTestUser(t, engine, "user", access.RoleUser)
 
-	own, err := service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: "123456"}, 0)
+	own, err := service.updateTelegramSettings(user.ID, TelegramUserSettings{ChatID: "123456"}, 0)
 	if err != nil || own.Version != 1 {
 		t.Fatalf("own update = %+v, err=%v", own, err)
 	}
-	updated, err := service.UpdateTelegramSettingsForUser(admin, user.ID, TelegramUserSettings{ChatID: "-100123456"}, own.Version)
+	updated, err := service.UpdateTelegramSettingsForUser(admin, user.ID, TelegramUserSettings{Disabled: true}, own.Version)
 	if err != nil || updated.Version != 2 {
 		t.Fatalf("admin update = %+v, err=%v", updated, err)
 	}
-	if _, err = service.UpdateTelegramSettingsForUser(admin, secondAdmin.ID, TelegramUserSettings{ChatID: "1"}, 0); !access.IsDenied(err, access.CodeTargetRoleDenied) {
+	if _, err = service.UpdateTelegramSettingsForUser(admin, secondAdmin.ID, TelegramUserSettings{Disabled: true}, 0); !access.IsDenied(err, access.CodeTargetRoleDenied) {
 		t.Fatalf("admin writes admin error = %v", err)
 	}
-	if _, err = service.UpdateTelegramSettingsForUser(user, admin.ID, TelegramUserSettings{ChatID: "1"}, 0); !access.IsDenied(err, access.CodeAccessDenied) {
+	if _, err = service.UpdateTelegramSettingsForUser(user, admin.ID, TelegramUserSettings{Disabled: true}, 0); !access.IsDenied(err, access.CodeAccessDenied) {
 		t.Fatalf("user cross-account error = %v", err)
 	}
-	if _, err = service.UpdateTelegramSettingsForUser(super, secondAdmin.ID, TelegramUserSettings{ChatID: "2"}, 0); err != nil {
+	if _, err = service.UpdateTelegramSettingsForUser(super, secondAdmin.ID, TelegramUserSettings{Disabled: true}, 0); err != nil {
 		t.Fatalf("super update admin: %v", err)
 	}
-	if _, err = service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: "777"}, own.Version); !errors.Is(err, ErrPluginSettingConflict) {
+	if _, err = service.UpdateOwnTelegramPreferences(user.ID, TelegramUserSettings{Disabled: true}, false, own.Version); !errors.Is(err, ErrPluginSettingConflict) {
 		t.Fatalf("stale version error = %v", err)
 	}
-	if _, err = service.UpdateOwnTelegramSettings(user.ID, TelegramUserSettings{ChatID: "001"}, updated.Version); !errors.Is(err, ErrInvalidTelegramChatID) {
+	if err = ValidateTelegramUserSettings(TelegramUserSettings{ChatID: "001"}); !errors.Is(err, ErrInvalidTelegramChatID) {
 		t.Fatalf("invalid chat ID error = %v", err)
 	}
 }
@@ -341,7 +340,7 @@ func TestConfigServiceBulkTicketIsBoundOneTimeAndVersioned(t *testing.T) {
 	first := insertPluginTestUser(t, engine, "first", access.RoleUser)
 	second := insertPluginTestUser(t, engine, "second", access.RoleUser)
 
-	preview, err := service.PreviewBulkTelegramSettings(super, []int{second.ID, first.ID}, TelegramUserSettings{ChatID: "123"}, false)
+	preview, err := service.PreviewBulkTelegramSettings(super, []int{second.ID, first.ID}, TelegramUserSettings{Disabled: true}, false)
 	if err != nil || len(preview.Targets) != 2 || preview.Targets[0].UserID != first.ID {
 		t.Fatalf("preview = %+v, err=%v", preview, err)
 	}
@@ -352,15 +351,15 @@ func TestConfigServiceBulkTicketIsBoundOneTimeAndVersioned(t *testing.T) {
 		t.Fatalf("ticket replay error = %v", err)
 	}
 	firstStatus, err := service.GetOwnTelegramSettings(first.ID)
-	if err != nil || firstStatus.Version != 1 || firstStatus.Settings.ChatID != "123" {
+	if err != nil || firstStatus.Version != 1 || !firstStatus.Settings.Disabled {
 		t.Fatalf("first setting = %+v, err=%v", firstStatus, err)
 	}
 
-	conflicting, err := service.PreviewBulkTelegramSettings(super, []int{first.ID}, TelegramUserSettings{ChatID: "456"}, true)
+	conflicting, err := service.PreviewBulkTelegramSettings(super, []int{first.ID}, TelegramUserSettings{Disabled: true}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.UpdateOwnTelegramSettings(first.ID, TelegramUserSettings{ChatID: "789"}, firstStatus.Version); err != nil {
+	if _, err = service.UpdateOwnTelegramPreferences(first.ID, TelegramUserSettings{Disabled: true}, false, firstStatus.Version); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.ExecuteBulkTelegramSettings(super.ID, conflicting.Ticket); !errors.Is(err, ErrPluginSettingConflict) {
@@ -372,7 +371,7 @@ func TestConfigServiceBulkTicketIsBoundOneTimeAndVersioned(t *testing.T) {
 
 	base := time.Date(2026, time.August, 28, 8, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return base }
-	expiring, err := service.PreviewBulkTelegramSettings(super, []int{second.ID}, TelegramUserSettings{ChatID: "999"}, true)
+	expiring, err := service.PreviewBulkTelegramSettings(super, []int{second.ID}, TelegramUserSettings{Disabled: true}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
