@@ -25,7 +25,7 @@ func Finish() error {
 	portsChanged := applyServicePorts(cfg)
 	if cfg.IsSetupReady() {
 		if portsChanged {
-			if err = config.WriteConfig(cfg); err != nil {
+			if err = config.WriteSetupConfig(cfg); err != nil {
 				return errors.Wrap(err)
 			}
 		}

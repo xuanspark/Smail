@@ -286,7 +286,7 @@ func SetDatabaseSettingsWithOptions(ctx *context.Context, settings DatabaseSetti
 	markSetupInProgress(&candidateConfig)
 	candidateConfig.DbType = dbType
 	candidateConfig.DbDSN = dbDSN
-	if err = config.WriteConfig(&candidateConfig); err != nil {
+	if err = config.WriteSetupConfig(&candidateConfig); err != nil {
 		return errors.Wrap(err)
 	}
 	if err = config.Init(); err != nil {
@@ -685,7 +685,7 @@ func restoreDatabaseConfig(previous *config.Config) {
 		return
 	}
 	closeDatabaseInstance()
-	if err := config.WriteConfig(previous); err != nil {
+	if err := config.WriteSetupConfig(previous); err != nil {
 		return
 	}
 	_ = config.Init()

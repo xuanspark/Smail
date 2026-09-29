@@ -26,9 +26,11 @@ func isPartitionedConfig(data []byte) (bool, error) {
 
 // loadPartitionedCompatibility 仅构造旧业务所需的只读快照，不重写分区配置。
 func loadPartitionedCompatibility() (*Config, error) {
-	runtime, err := NewConfigLoader(ROOT_PATH, ConfigLoaderOptions{
-		Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: !DevelopmentMode},
-	}).Load()
+	return loadPartitionedCompatibilityWithOptions(RuntimeValidationOptions{HasSuperAdmin: true, Production: !DevelopmentMode})
+}
+
+func loadPartitionedCompatibilityWithOptions(validation RuntimeValidationOptions) (*Config, error) {
+	runtime, err := NewConfigLoader(ROOT_PATH, ConfigLoaderOptions{Validation: validation}).Load()
 	if err != nil {
 		return nil, err
 	}

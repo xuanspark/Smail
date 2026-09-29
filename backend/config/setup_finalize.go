@@ -8,6 +8,17 @@ func FinalizeSetupConfig(cfg *Config) error {
 	if cfg == nil {
 		return ErrInvalidRuntimeConfig
 	}
+	data, err := readConfigFile("config.json")
+	if err != nil {
+		return err
+	}
+	partitioned, err := isPartitionedConfig(data)
+	if err != nil {
+		return err
+	}
+	if partitioned {
+		return finalizePartitionedSetupConfig(cfg)
+	}
 
 	pending := *cfg
 	pending.SetupState = SetupStateBootstrap
@@ -27,4 +38,11 @@ func FinalizeSetupConfig(cfg *Config) error {
 	}
 	PublishConfigSnapshot(loaded)
 	return nil
+}
+
+func finalizePartitionedSetupConfig(cfg *Config) error {
+	data := *cfg
+	data.SetupState = SetupStateReady
+	data.IsInit = true
+	return writeSetupConfigUnlocked(&data)
 }

@@ -63,7 +63,7 @@ func setDomainSettings(smtpDomain, webDomain, multiDomains string, publicHTTPSPo
 
 	// 检查域名是否指向本机 todo
 
-	err = config.WriteConfig(configData)
+	err = config.WriteSetupConfig(configData)
 	if err != nil {
 		return errors.Wrap(err)
 	}
