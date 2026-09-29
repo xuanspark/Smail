@@ -135,6 +135,7 @@ func setupRuntimeFromConfig(current RuntimeConfig, cfg *Config) (RuntimeConfig, 
 	candidate.Email.Policy.ExternalRecoveryEnabled = cfg.ExternalRecoveryEnabled
 	candidate.SSL.TLS = ssl
 	candidate.Root.UpdatedAt = time.Now().UTC()
+	setCandidateGeneration(&candidate, candidate.Generation)
 	return candidate, nil
 }
 

@@ -44,6 +44,46 @@ func TestPartitionedDatabaseConnectionPreservesMigrationTimezone(t *testing.T) {
 	}
 }
 
+func TestSetupRuntimeFromConfigSynchronizesSectionGeneration(t *testing.T) {
+	root := t.TempDir()
+	oldRoot := ROOT_PATH
+	ROOT_PATH = root
+	t.Cleanup(func() { ROOT_PATH = oldRoot })
+
+	current := validRuntimeConfig()
+	cfg := &Config{
+		SetupState:   SetupStateBootstrap,
+		DbType:       DBTypeSQLite,
+		DbDSN:        "smail.db",
+		Domain:       "mail.example.com",
+		Domains:      []string{"mail.example.com"},
+		WebDomain:    "mail.example.com",
+		SSLType:      "0",
+		HttpsEnabled: 1,
+		HttpPort:     80,
+		HttpsPort:    443,
+	}
+	candidate, err := setupRuntimeFromConfig(current, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Generation != current.Generation+1 {
+		t.Fatalf("candidate generation = %d, want %d", candidate.Generation, current.Generation+1)
+	}
+	for section, generation := range map[Section]uint64{
+		SectionSMTP:    candidate.SMTP.Meta.Generation,
+		SectionEmail:   candidate.Email.Meta.Generation,
+		SectionSSL:     candidate.SSL.Meta.Generation,
+		SectionPlugins: candidate.Plugins.Meta.Generation,
+	} {
+		if generation != candidate.Generation {
+			t.Fatalf("%s generation = %d, want %d", section, generation, candidate.Generation)
+		}
+		if candidate.Root.Sections[section].Generation != candidate.Generation {
+			t.Fatalf("%s reference generation = %d, want %d", section, candidate.Root.Sections[section].Generation, candidate.Generation)
+		}
+	}
+}
 func TestPartitionedCompatibilityStartupAndWriteProtection(t *testing.T) {
 	root := t.TempDir()
 	oldRoot, oldArgs, oldDevelopment := ROOT_PATH, os.Args, DevelopmentMode
