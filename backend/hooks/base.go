@@ -381,8 +381,10 @@ func Init(serverVersion string) {
 		pluginNo++
 		go waitPlugin(process, logicalID, socketPath, launchSpec)
 		if limitErr := applyPluginResourceLimits(process); limitErr != nil {
-			log.Warnf("[%s] Plugin resource limits could not be applied", logicalID)
-			_ = process.Kill()
+			log.WithError(limitErr).Warnf("[%s] 插件资源限制应用失败，插件未启用", logicalID)
+			if killErr := process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				log.WithError(killErr).Errorf("[%s] 插件终止失败，请检查服务权限", logicalID)
+			}
 			continue
 		}
 
