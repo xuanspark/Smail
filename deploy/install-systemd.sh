@@ -78,12 +78,20 @@ if [ -f /etc/smail/smail.env ]; then cp -p -- /etc/smail/smail.env "$backup_dir/
 
 if ! getent group smail >/dev/null; then groupadd --system smail; fi
 if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-dir "$runtime_dir" --shell /usr/sbin/nologin smail; fi
+if ! getent group smail-plugin >/dev/null; then groupadd --system smail-plugin; fi
+if ! getent passwd smail-plugin >/dev/null; then useradd --system --gid smail-plugin --home-dir /nonexistent --shell /usr/sbin/nologin smail-plugin; fi
 install -d -o root -g root -m 0755 "$runtime_dir"
 install -d -o root -g root -m 0750 /etc/smail
 if [ ! -e /etc/smail/smail.env ]; then
   # 只为新部署设置回收预算；已存在的文件始终保留部署人员的自定义环境配置。
   umask 0077
   printf '%s\n' 'SMAIL_ROOT=/opt/smail' 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
+fi
+if ! grep -q '^SMAIL_PLUGIN_UID=' /etc/smail/smail.env; then
+  printf 'SMAIL_PLUGIN_UID=%s\n' "$(id -u smail-plugin)" >> /etc/smail/smail.env
+fi
+if ! grep -q '^SMAIL_PLUGIN_GID=' /etc/smail/smail.env; then
+  printf 'SMAIL_PLUGIN_GID=%s\n' "$(id -g smail-plugin)" >> /etc/smail/smail.env
 fi
 chown root:root /etc/smail/smail.env
 chmod 0600 /etc/smail/smail.env
