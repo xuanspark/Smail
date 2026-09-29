@@ -6,7 +6,7 @@ import { computed, reactive, ref } from './vue.mjs'
 
 const source = readFileSync(new URL('../../frontend/src/views/components/SecuritySettings/SecuritySettings.js', import.meta.url), 'utf8')
 const createPage = compileFunction(
-  source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage()',
+  source.replace(/^import[\s\S]*?from .*$/gm, '').replace('export function usePage', 'function usePage') + '\nreturn usePage()',
   ['computed', 'reactive', 'ref', 'watch', 'onMounted', 'onUnmounted', 'http', 'useGlobalStatusStore', 'webAuthnSupported', 'lang', 'ElNotification', 'TextEncoder', 'location', 'setInterval', 'clearInterval']
 )
 
