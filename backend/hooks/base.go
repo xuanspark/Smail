@@ -375,19 +375,16 @@ func Init(serverVersion string) {
 			continue
 		}
 		launchSpec.closeParentFiles()
-		if limitErr := applyPluginResourceLimits(process); limitErr != nil {
-			log.Warnf("[%s] Plugin resource limits could not be applied", logicalID)
-			_ = process.Kill()
-			_, _ = process.Wait()
-			launchSpec.cleanup()
-			continue
-		}
 		processListMu.Lock()
 		processList = append(processList, process)
 		processListMu.Unlock()
 		pluginNo++
-
 		go waitPlugin(process, logicalID, socketPath, launchSpec)
+		if limitErr := applyPluginResourceLimits(process); limitErr != nil {
+			log.Warnf("[%s] Plugin resource limits could not be applied", logicalID)
+			_ = process.Kill()
+			continue
+		}
 
 		if !waitPluginSocket(socketPath) {
 			log.Warnf("[%s] Plugin socket was not created", logicalID)
