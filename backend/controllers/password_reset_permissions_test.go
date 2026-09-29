@@ -54,14 +54,20 @@ func TestEditUserPasswordResetRoleMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	superContext := &appcontext.Context{UserID: superAdmin.ID, UserAccount: superAdmin.Account, Role: access.RoleSuperAdmin, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
-	adminContext := &appcontext.Context{UserID: admin.ID, UserAccount: admin.Account, Role: access.RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
-	userContext := &appcontext.Context{UserID: user.ID, UserAccount: user.Account, Role: access.RoleUser, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
+	superContext := &appcontext.Context{UserID: superAdmin.ID, SessionVersion: superAdmin.SessionVersion, SecurityVersion: superAdmin.SecurityVersion, UserAccount: superAdmin.Account, Role: access.RoleSuperAdmin, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
+	adminContext := &appcontext.Context{UserID: admin.ID, SessionVersion: admin.SessionVersion, SecurityVersion: admin.SecurityVersion, UserAccount: admin.Account, Role: access.RoleAdmin, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
+	userContext := &appcontext.Context{UserID: user.ID, SessionVersion: user.SessionVersion, SecurityVersion: user.SecurityVersion, UserAccount: user.Account, Role: access.RoleUser, RecentAuth: true, RecoveryCodeConfigured: true, Lang: "zhCn"}
 
 	if result := editUserRequest(t, superContext, `{"id":`+itoa(admin.ID)+`,"password":"ResetAdm12","disabled":0}`); result != 0 {
 		t.Fatalf("super administrator could not reset administrator: %d", result)
 	}
 	assertUserPassword(t, admin.ID, "ResetAdm12")
+
+	if _, err := db.Instance.ID(admin.ID).Get(&admin); err != nil {
+		t.Fatal(err)
+	}
+	adminContext.SessionVersion = admin.SessionVersion
+	adminContext.SecurityVersion = admin.SecurityVersion
 
 	if result := editUserRequest(t, adminContext, `{"id":`+itoa(user.ID)+`,"password":"ResetUser123","disabled":0}`); result != 0 {
 		t.Fatalf("administrator could not reset regular user: %d", result)
@@ -159,7 +165,7 @@ func TestPasswordChangeRevokesOfflineCredentialsAtomically(t *testing.T) {
 
 func newControllerTestUser(t *testing.T, account, name string, role access.Role, plainPassword string) models.User {
 	t.Helper()
-	user := models.User{Account: account, Name: name, Role: string(role), SessionVersion: 1}
+	user := models.User{Account: account, Name: name, Role: string(role), SessionVersion: 1, SecurityVersion: 1}
 	user.ApplyRole(role)
 	if err := auth.SetPassword(&user, plainPassword); err != nil {
 		t.Fatal(err)

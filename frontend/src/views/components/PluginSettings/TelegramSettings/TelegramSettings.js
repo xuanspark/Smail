@@ -275,7 +275,7 @@ export function useTelegramSettings() {
   })
   return {
     settings, status, binding, ready, working, errorMessage, bindingError,
-    dialogVisible, polling, hasChanges, bindingLabel, refresh, submit,
+    dialogVisible, polling, hasChanges, bindingLabel, load, refresh, submit,
     beginBinding, confirmBinding, closeBinding, poll, beforeLeave
   }
 }

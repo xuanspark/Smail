@@ -37,7 +37,7 @@ func TestEditUserProtectsAdministrativeCredentialsAndRevokesUserSessions(t *test
 	if err := db.Init(""); err != nil {
 		t.Fatal(err)
 	}
-	admin := models.User{Account: "admin-user", Name: "Admin", IsAdmin: 1, SessionVersion: 1}
+	admin := models.User{Account: "admin-user", Name: "Admin", IsAdmin: 1, SessionVersion: 1, SecurityVersion: 1}
 	if err := auth.SetPassword(&admin, "AdminPass123"); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,8 @@ func TestEditUserProtectsAdministrativeCredentialsAndRevokesUserSessions(t *test
 		t.Fatal(err)
 	}
 	ctx := &appcontext.Context{
-		UserID: admin.ID, UserAccount: admin.Account, IsAdmin: true, Lang: "zhCn",
+		UserID: admin.ID, SessionVersion: admin.SessionVersion, SecurityVersion: admin.SecurityVersion,
+		UserAccount: admin.Account, IsAdmin: true, Lang: "zhCn",
 		RecentAuth: true, RecoveryCodeConfigured: true,
 	}
 
@@ -268,7 +269,8 @@ func TestManagedRecoveryCodesAreScopedAndShownOnce(t *testing.T) {
 	}
 	ConfigureSecurityRuntime(nil, nil, nil, credentialService)
 	ctx := &appcontext.Context{
-		UserID: actor.ID, UserAccount: actor.Account, Role: access.RoleSuperAdmin, RecentAuth: true,
+		UserID: actor.ID, SessionVersion: actor.SessionVersion, SecurityVersion: actor.SecurityVersion,
+		UserAccount: actor.Account, Role: access.RoleSuperAdmin, RecentAuth: true,
 	}
 
 	generateRecorder := httptest.NewRecorder()
@@ -405,10 +407,12 @@ func TestManagedExternalEmailChangeInvalidatesPreviousChallenge(t *testing.T) {
 	}
 
 	ctx := &appcontext.Context{
-		UserID:      actor.ID,
-		UserAccount: actor.Account,
-		Role:        access.RoleSuperAdmin,
-		RecentAuth:  true,
+		UserID:          actor.ID,
+		SessionVersion:  actor.SessionVersion,
+		SecurityVersion: actor.SecurityVersion,
+		UserAccount:     actor.Account,
+		Role:            access.RoleSuperAdmin,
+		RecentAuth:      true,
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(
