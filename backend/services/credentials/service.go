@@ -54,12 +54,19 @@ func (s *Service) SetVaultRoot(root string) {
 }
 
 func (s *Service) VaultRoot() string {
+	root, _ := s.VaultRootContext(context.Background())
+	return root
+}
+
+func (s *Service) VaultRootContext(ctx context.Context) (string, error) {
 	if s == nil {
-		return ""
+		return "", ErrUnavailable
 	}
-	s.mu.Lock()
+	if err := s.mu.LockContext(ctx); err != nil {
+		return "", err
+	}
 	defer s.mu.Unlock()
-	return s.vaultRoot
+	return s.vaultRoot, nil
 }
 
 func NewService(engine *xorm.Engine) (*Service, error) {
@@ -180,7 +187,10 @@ func (s *Service) generateRecoveryCodes(ctx context.Context, userID int, count i
 	}()
 	codes = make([]string, 0, count)
 	items := make([]models.RecoveryCode, 0, count)
-	vaultRoot := s.VaultRoot()
+	vaultRoot, err := s.VaultRootContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for i := 0; i < count; i++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
