@@ -77,7 +77,7 @@ func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string
 		return nil, fmt.Errorf("prepare plugin listener: %w", err)
 	}
 	cloneFlags := uintptr(unix.CLONE_NEWNET)
-	return &pluginLaunchSpec{
+	spec := &pluginLaunchSpec{
 		path:        "/" + name,
 		args:        []string{name, "fd:3"},
 		socketPath:  abstractSocket,
@@ -104,7 +104,12 @@ func newPluginLaunchSpec(pluginPath, root, name, socketName string, env []string
 				Setsid:     true,
 			},
 		},
-	}, nil
+	}
+	if err := startPluginEgress(spec, uid, gid); err != nil {
+		spec.cleanup()
+		return nil, err
+	}
+	return spec, nil
 }
 
 func copyPluginConfig(root, runtimeDir, name string, uid, gid int) error {

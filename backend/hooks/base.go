@@ -269,10 +269,10 @@ func (h *HookSender) SettingsHtml(ctx *context.Context, url string, requestData 
 
 func NewHookSender(socketPath string, name string, serverVersion string, authToken ...string) *HookSender {
 	httpc := http.Client{
-		Timeout: time.Second * 10,
+		Timeout: time.Second * 35,
 		Transport: &http.Transport{
 			DialContext: func(ctx oContext.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+				return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 			},
 		},
 	}
@@ -349,6 +349,7 @@ func Init(serverVersion string) {
 		}
 		env := pluginEnvironment(root, logicalID)
 		env = appendPluginEnv(env, "SMAIL_PLUGIN_RPC_TOKEN", authToken)
+		env = appendPluginEnv(env, "SMAIL_PLUGIN_ID", logicalID)
 		launchSpec, launchErr := newPluginLaunchSpec(pluginPath, root, executableName, socketName, env)
 		if launchErr != nil {
 			if !config.DevelopmentMode {
@@ -411,8 +412,18 @@ func Init(serverVersion string) {
 		}
 		if instance, generation, ok := pluginInstanceForStartup(logicalID); ok {
 			payload, payloadErr := pluginRuntimeConfig(logicalID, generation, instance)
-			if payloadErr != nil || hook.ValidateConfig(payload) != nil || hook.Configure(payload) != nil {
-				log.Warnf("[%s] Plugin runtime configuration failed", logicalID)
+			if payloadErr != nil {
+				log.Warnf("[%s] 插件运行配置构建失败", logicalID)
+				_ = process.Kill()
+				continue
+			}
+			if hook.ValidateConfig(payload) != nil {
+				log.Warnf("[%s] 插件运行配置校验失败", logicalID)
+				_ = process.Kill()
+				continue
+			}
+			if hook.Configure(payload) != nil {
+				log.Warnf("[%s] 插件运行配置应用失败", logicalID)
 				_ = process.Kill()
 				continue
 			}

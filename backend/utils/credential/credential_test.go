@@ -1,9 +1,11 @@
 package credential
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 )
 
@@ -128,5 +130,133 @@ func TestRestrictedHTTPClientAllowsAuthorizedRedirect(t *testing.T) {
 func TestNormalizeTimeoutMS(t *testing.T) {
 	if NormalizeTimeoutMS(0) != defaultTimeoutMS || NormalizeTimeoutMS(1) != minTimeoutMS || NormalizeTimeoutMS(60000) != maxTimeoutMS {
 		t.Fatal("timeout limit was not normalized")
+	}
+}
+
+func TestPluginEgressRejectsInvalidRequests(t *testing.T) {
+	token := strings.Repeat("a", 64)
+	allowed := []NetworkTarget{{Scheme: "https", Host: "allowed.example.com", Port: 443}}
+	cases := []struct {
+		name   string
+		change func(*http.Request)
+		status int
+	}{
+		{"missing_token", func(r *http.Request) { r.Header.Del(egressTokenHeader) }, http.StatusForbidden},
+		{"wrong_token", func(r *http.Request) { r.Header.Set(egressTokenHeader, strings.Repeat("b", 64)) }, http.StatusForbidden},
+		{"duplicate_token", func(r *http.Request) { r.Header.Add(egressTokenHeader, token) }, http.StatusForbidden},
+		{"wrong_host", func(r *http.Request) { r.Host = "other" }, http.StatusBadRequest},
+		{"wrong_path", func(r *http.Request) { r.URL.Path = "/other" }, http.StatusBadRequest},
+		{"query", func(r *http.Request) { r.URL.RawQuery = "x=1" }, http.StatusBadRequest},
+		{"connect", func(r *http.Request) { r.Method = http.MethodConnect }, http.StatusBadRequest},
+		{"upgrade", func(r *http.Request) { r.Header.Set("Upgrade", "websocket") }, http.StatusBadRequest},
+		{"duplicate_target", func(r *http.Request) { r.Header.Add(egressTargetHeader, "https://allowed.example.com") }, http.StatusForbidden},
+		{"http_target", func(r *http.Request) { r.Header.Set(egressTargetHeader, "http://allowed.example.com") }, http.StatusForbidden},
+		{"private_target", func(r *http.Request) { r.Header.Set(egressTargetHeader, "https://127.0.0.1") }, http.StatusForbidden},
+		{"other_target", func(r *http.Request) { r.Header.Set(egressTargetHeader, "https://other.example.com") }, http.StatusForbidden},
+		{"other_port", func(r *http.Request) { r.Header.Set(egressTargetHeader, "https://allowed.example.com:8443") }, http.StatusForbidden},
+		{"oversized_body", func(r *http.Request) { r.ContentLength = maxEgressRequestBytes + 1 }, http.StatusRequestEntityTooLarge},
+	}
+	for _, item := range cases {
+		t.Run(item.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/relay", nil)
+			request.Host = "plugin-egress"
+			request.Header.Set(egressTokenHeader, token)
+			request.Header.Set(egressTargetHeader, "https://allowed.example.com/send")
+			item.change(request)
+			response := httptest.NewRecorder()
+			NewPluginEgressHandler(token, func() []NetworkTarget { return allowed }).ServeHTTP(response, request)
+			if response.Code != item.status {
+				t.Fatalf("unexpected rejection status: %d", response.Code)
+			}
+		})
+	}
+}
+
+func TestPluginEgressEmptyAuthorizationFailsClosed(t *testing.T) {
+	for _, authorize := range []func() []NetworkTarget{
+		nil,
+		func() []NetworkTarget { return nil },
+		func() []NetworkTarget { return []NetworkTarget{{Scheme: "invalid", Host: "allowed.example.com"}} },
+	} {
+		token := strings.Repeat("a", 64)
+		request := httptest.NewRequest(http.MethodPost, "/relay", nil)
+		request.Host = "plugin-egress"
+		request.Header.Set(egressTokenHeader, token)
+		request.Header.Set(egressTargetHeader, "https://allowed.example.com/send")
+		response := httptest.NewRecorder()
+		NewPluginEgressHandler(token, authorize).ServeHTTP(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("empty authorization was accepted: %d", response.Code)
+		}
+	}
+}
+
+func TestPluginEgressRechecksAuthorizationBeforeOutbound(t *testing.T) {
+	token := strings.Repeat("a", 64)
+	calls := 0
+	handler := NewPluginEgressHandler(token, func() []NetworkTarget {
+		calls++
+		if calls > 1 {
+			return nil
+		}
+		return []NetworkTarget{{Scheme: "https", Host: "allowed.example.com", Port: 443}}
+	})
+	request := httptest.NewRequest(http.MethodPost, "/relay", strings.NewReader("payload"))
+	request.Host = "plugin-egress"
+	request.Header.Set(egressTokenHeader, token)
+	request.Header.Set(egressTargetHeader, "https://allowed.example.com/send")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || calls != 2 {
+		t.Fatalf("authorization was not rechecked: status=%d calls=%d", response.Code, calls)
+	}
+}
+
+func TestStripEgressHeaders(t *testing.T) {
+	header := make(http.Header)
+	for _, name := range []string{egressTokenHeader, egressTargetHeader, "Proxy-Authorization", "X-Hop", "Upgrade"} {
+		header.Set(name, "sensitive")
+	}
+	header.Set("Connection", "X-Hop, Upgrade")
+	header.Set("Content-Type", "application/json")
+	stripEgressHeaders(header)
+	if len(header) != 1 || header.Get("Content-Type") != "application/json" {
+		t.Fatal("internal or hop-by-hop headers survived filtering")
+	}
+}
+
+type egressTrackedBody struct {
+	io.Reader
+	closed bool
+}
+
+func (b *egressTrackedBody) Close() error {
+	b.closed = true
+	return nil
+}
+
+func TestRestrictedTransportsCloseRejectedRequestBody(t *testing.T) {
+	for _, transport := range []http.RoundTripper{restrictedRoundTripper{}, &pluginEgressTransport{}} {
+		body := &egressTrackedBody{Reader: strings.NewReader("payload")}
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/", body)
+		if _, err := transport.RoundTrip(request); err == nil || !body.closed {
+			t.Fatal("rejected request body was not closed")
+		}
+	}
+}
+
+type egressIdleTransport struct {
+	http.RoundTripper
+	closed bool
+}
+
+func (t *egressIdleTransport) CloseIdleConnections() { t.closed = true }
+
+func TestRestrictedTransportForwardsIdleConnectionCleanup(t *testing.T) {
+	transport := &egressIdleTransport{}
+	client := &http.Client{Transport: restrictedRoundTripper{transport: &pluginEgressTransport{transport: transport}}}
+	client.CloseIdleConnections()
+	if !transport.closed {
+		t.Fatal("idle connection cleanup was not forwarded")
 	}
 }

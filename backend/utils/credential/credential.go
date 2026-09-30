@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -101,6 +102,10 @@ type NetworkTarget struct {
 
 // NewRestrictedHTTPClientForTargets 创建仅允许访问授权目标的 HTTP 客户端。
 func NewRestrictedHTTPClientForTargets(timeoutMS int, targets []NetworkTarget) *http.Client {
+	return newRestrictedHTTPClientForTargets(timeoutMS, targets, os.Getenv("SMAIL_PLUGIN_SANDBOX") == "1")
+}
+
+func newRestrictedHTTPClientForTargets(timeoutMS int, targets []NetworkTarget, sandbox bool) *http.Client {
 	timeout := time.Duration(NormalizeTimeoutMS(timeoutMS)) * time.Millisecond
 	allowedTargets := normalizeNetworkTargets(targets)
 	transport := &http.Transport{
@@ -113,9 +118,13 @@ func NewRestrictedHTTPClientForTargets(timeoutMS int, targets []NetworkTarget) *
 		ResponseHeaderTimeout: timeout,
 		IdleConnTimeout:       30 * time.Second,
 	}
+	var outbound http.RoundTripper = transport
+	if sandbox {
+		outbound = newPluginEgressTransport(timeout)
+	}
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: restrictedRoundTripper{transport: transport, targets: allowedTargets},
+		Transport: restrictedRoundTripper{transport: outbound, targets: allowedTargets},
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("too many redirects")
@@ -132,9 +141,22 @@ type restrictedRoundTripper struct {
 
 func (r restrictedRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
 	if err := validateRestrictedRequest(request, r.targets, "remote target is not authorized"); err != nil {
+		closeRequestBody(request)
 		return nil, err
 	}
 	return r.transport.RoundTrip(request)
+}
+
+func (r restrictedRoundTripper) CloseIdleConnections() {
+	if transport, ok := r.transport.(interface{ CloseIdleConnections() }); ok {
+		transport.CloseIdleConnections()
+	}
+}
+
+func closeRequestBody(request *http.Request) {
+	if request != nil && request.Body != nil {
+		_ = request.Body.Close()
+	}
 }
 
 func validateRestrictedRequest(request *http.Request, targets []NetworkTarget, targetError string) error {

@@ -15,6 +15,7 @@ type pluginLaunchSpec struct {
 	socketPath  string
 	runtimeDir  string
 	parentFiles []*os.File
+	egressStop  func()
 }
 
 func compatibilityPluginLaunchSpec(pluginPath, root, name, socketName string, env []string) *pluginLaunchSpec {
@@ -43,6 +44,9 @@ func (s *pluginLaunchSpec) cleanup() {
 		return
 	}
 	s.closeParentFiles()
+	if s.egressStop != nil {
+		s.egressStop()
+	}
 	if s.runtimeDir != "" {
 		_ = os.RemoveAll(s.runtimeDir)
 	}

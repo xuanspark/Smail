@@ -100,3 +100,35 @@ func TestInheritedAbstractSocketRemainsReachableAcrossListenerCopy(t *testing.T)
 		t.Fatal(err)
 	}
 }
+
+func TestPluginEgressSocketLifecycle(t *testing.T) {
+	spec := &pluginLaunchSpec{
+		runtimeDir: t.TempDir(),
+		procAttr: &os.ProcAttr{Env: []string{
+			"SMAIL_PLUGIN_ID=wechat_push",
+			"SMAIL_PLUGIN_RPC_TOKEN=" + strings.Repeat("b", 64),
+		}},
+	}
+	if err := startPluginEgress(spec, os.Getuid(), os.Getgid()); err != nil {
+		t.Fatal(err)
+	}
+	defer spec.cleanup()
+	socketPath := filepath.Join(spec.runtimeDir, "egress.socket")
+	info, err := os.Stat(socketPath)
+	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0600 {
+		t.Fatal("egress socket is missing or permissions are unsafe")
+	}
+	token := ""
+	for _, value := range spec.procAttr.Env {
+		if strings.HasPrefix(value, "SMAIL_PLUGIN_EGRESS_TOKEN=") {
+			token = strings.TrimPrefix(value, "SMAIL_PLUGIN_EGRESS_TOKEN=")
+		}
+	}
+	if len(token) != 64 || token == strings.Repeat("b", 64) {
+		t.Fatal("egress token is missing or reuses the RPC token")
+	}
+	spec.egressStop()
+	if _, err := os.Stat(socketPath); !os.IsNotExist(err) {
+		t.Fatal("egress socket survived shutdown")
+	}
+}
