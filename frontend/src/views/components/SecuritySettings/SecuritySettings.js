@@ -374,7 +374,7 @@ export function usePage() {
       passwordChallenge.value = ''
       notify('密码修改成功，请重新登录；原安全凭据已失效', 'success')
       globalStatus.clear()
-      location.assign('/login')
+      location.assign('/#/login')
     } catch (error) {
       notify(error?.message || '密码修改失败，请重新获取验证码后重试')
     } finally {

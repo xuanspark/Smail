@@ -45,17 +45,19 @@ test('超级管理员凭邮箱验证码修改密码，成功后清除身份并�
   assert.equal(calls[1].body.challenge_id, 'challenge')
   assert.equal(calls[1].body.current_password, undefined)
   assert.equal(calls[1].body.code, '12345678')
-  assert.deepEqual(redirects, ['/login'])
+  assert.deepEqual(redirects, ['/#/login'])
   assert.equal(Object.keys(store.userInfos).length, 0)
 })
 
 test('普通用户和管理员维持当前密码验证', async () => {
   for (const role of ['user', 'admin']) {
-    const { page, calls } = fixture(role)
+    const { page, calls, redirects, store } = fixture(role)
     page.ruleForm.current_pwd = 'OldPass123'
     await page.submit()
     assert.equal(calls[0].body.current_password, 'OldPass123')
     assert.equal(calls[0].body.code, undefined)
+    assert.deepEqual(redirects, ['/#/login'])
+    assert.equal(Object.keys(store.userInfos).length, 0)
   }
 })
 
