@@ -88,8 +88,12 @@ export function usePage() {
   const loadBaseInfo = async () => {
     try {
       const infoRes = await http.post('/api/v1/user/info', {})
-      if (infoRes?.data?.email && infoRes.data.email.includes('@')) {
-        currentDomain.value = infoRes.data.email.split('@')[1]
+      const email = infoRes?.data?.email
+      const domains = Array.isArray(infoRes?.data?.domains) ? infoRes.data.domains : []
+      if (email && email.includes('@')) {
+        currentDomain.value = email.split('@')[1]
+      } else if (domains.length > 0 && domains[0]) {
+        currentDomain.value = domains[0]
       }
     } catch {
       // 忽略
