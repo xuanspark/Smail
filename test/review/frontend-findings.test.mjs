@@ -11,6 +11,20 @@ const Vue = require('vue')
 const { parse, compileScript } = require('@vue/compiler-sfc')
 const read = name => readFileSync(new URL(`../../frontend/${name}`, import.meta.url), 'utf8')
 
+test('发件箱必须区分部分成功与全部失败', () => {
+  const source = read('src/views/List/List.js')
+    .replace(/^import .*$/gm, '')
+    .replace('export function usePage', 'function usePage')
+    .replace(/export \{[^}]+\}\s*$/, '')
+  const { isPartialDelivery } = compileFunction(source + '\nreturn { isPartialDelivery }')()
+  assert.equal(isPartialDelivery({
+    status: 2,
+    error: '投递未全部完成；已接收 1，失败 1。已接收的收件人不会自动重投'
+  }), true)
+  assert.equal(isPartialDelivery({ status: 2, error: '投递失败；已接收 0，失败 2' }), false)
+  assert.equal(isPartialDelivery({ status: 1, error: '' }), false)
+})
+
 test('邮件列表挂载后，表格选中项必须用于全选和批量操作', async () => {
   const source = read('src/views/List/List.js').replace(/^import .*$/gm, '')
     .replace('export function usePage', 'function usePage').replace(/export \{[^}]+\}\s*$/, '')

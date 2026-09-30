@@ -92,6 +92,11 @@
                         <el-icon><Warning /></el-icon> 投递结果待核对
                       </el-tag>
                     </el-tooltip>
+                    <el-tooltip :content="scope.row.error" placement="top" v-else-if="isPartialDelivery(scope.row)">
+                      <el-tag type="warning" effect="light" size="small" class="clickable-tag" @click.stop="showError(scope.row)">
+                        <el-icon><Warning /></el-icon> 部分成功 (查看详情)
+                      </el-tag>
+                    </el-tooltip>
                     <el-tag type="success" effect="light" size="small" v-else-if="scope.row.status === 1 && !scope.row.error">
                       <el-icon><Check /></el-icon> 发送成功
                     </el-tag>
@@ -164,6 +169,7 @@ const {
   isOutbox,
   trustSender,
   showError,
+  isPartialDelivery,
   errorDialogVisible,
   currentErrorMsg,
   isRefreshing,

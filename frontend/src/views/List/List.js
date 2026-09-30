@@ -298,6 +298,11 @@ export function usePage() {
     errorDialogVisible.value = true
   }
 
+  const isPartialDelivery = function (row) {
+    if (row?.status !== 2) return false
+    return /^投递未全部完成；已接收\s*[1-9]\d*，失败\s*[1-9]\d*/.test(String(row.error || ''))
+  }
+
   return {
     EpArrowDownBold,
     Delete,
@@ -341,6 +346,7 @@ export function usePage() {
     isOutbox,
     trustSender,
     showError,
+    isPartialDelivery,
     errorDialogVisible,
     currentErrorMsg,
     isRefreshing,
