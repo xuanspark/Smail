@@ -21,14 +21,15 @@ var (
 // ScopePredicate 的外层必须是用户表。使用实时子查询，不缓存管理员的分组范围。
 // 未建立成员关系的旧账号以及新账号都属于默认分组，无需迁移或复制账号数据。
 func ScopePredicate(actorID int) (string, []any) {
-	return `(id IN (
+	return `((id IN (
 		SELECT gm.user_id FROM account_group_member gm
 		JOIN account_group_member am ON gm.group_id = am.group_id
 		WHERE am.user_id = ?
 	) OR ((id NOT IN (SELECT user_id FROM account_group_member)
 		OR id IN (SELECT user_id FROM account_group_member WHERE group_id = 0))
 		AND (NOT EXISTS (SELECT 1 FROM account_group_member WHERE user_id = ?)
-		OR EXISTS (SELECT 1 FROM account_group_member WHERE user_id = ? AND group_id = 0))))`,
+		OR EXISTS (SELECT 1 FROM account_group_member WHERE user_id = ? AND group_id = 0))))
+		AND NOT ` + models.SuperAdminPredicate + `)`,
 		[]any{actorID, actorID, actorID}
 }
 
