@@ -413,16 +413,19 @@ func Init(serverVersion string) {
 		if instance, generation, ok := pluginInstanceForStartup(logicalID); ok {
 			payload, payloadErr := pluginRuntimeConfig(logicalID, generation, instance)
 			if payloadErr != nil {
+				log.WithError(payloadErr).Warn("plugin runtime configuration build error")
 				log.Warnf("[%s] 插件运行配置构建失败", logicalID)
 				_ = process.Kill()
 				continue
 			}
-			if hook.ValidateConfig(payload) != nil {
+			if validateErr := hook.ValidateConfig(payload); validateErr != nil {
+				log.WithError(validateErr).Warn("plugin runtime configuration validation error")
 				log.Warnf("[%s] 插件运行配置校验失败", logicalID)
 				_ = process.Kill()
 				continue
 			}
-			if hook.Configure(payload) != nil {
+			if configureErr := hook.Configure(payload); configureErr != nil {
+				log.WithError(configureErr).Warn("plugin runtime configuration apply error")
 				log.Warnf("[%s] 插件运行配置应用失败", logicalID)
 				_ = process.Kill()
 				continue
