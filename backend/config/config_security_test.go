@@ -2,11 +2,47 @@ package config
 
 import (
 	"bytes"
+	stdcontext "context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	appcontext "git.pcux.cn/xuans/Smail/utils/context"
+	log "github.com/sirupsen/logrus"
 )
+
+func TestLogFormatterHandlesMissingLogID(t *testing.T) {
+	entry := &log.Entry{
+		Context: &appcontext.Context{Context: stdcontext.Background()},
+		Message: "配置操作",
+	}
+
+	output, err := (&logFormatter{}).Format(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(output, []byte("%!s(<nil>)")) {
+		t.Fatalf("log output contains a formatting error: %q", output)
+	}
+	if !bytes.Contains(output, []byte("配置操作")) {
+		t.Fatalf("log output lost the message: %q", output)
+	}
+}
+
+func TestLogFormatterIncludesLogID(t *testing.T) {
+	ctx := &appcontext.Context{Context: stdcontext.Background()}
+	ctx.SetValue(appcontext.LogID, "request-123")
+	entry := &log.Entry{Context: ctx, Message: "配置操作"}
+
+	output, err := (&logFormatter{}).Format(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output, []byte("[request-123]")) {
+		t.Fatalf("log output lost the log ID: %q", output)
+	}
+}
 
 func TestConfigCredentialsAreEncryptedAtRest(t *testing.T) {
 	oldRoot := ROOT_PATH

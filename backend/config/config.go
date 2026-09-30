@@ -153,7 +153,9 @@ func (l *logFormatter) Format(entry *log.Entry) ([]byte, error) {
 	if entry.Context != nil {
 		ctx, ok := entry.Context.(*context.Context)
 		if ok && ctx != nil {
-			b.WriteString(fmt.Sprintf("[%s]", ctx.GetValue(context.LogID)))
+			if logID := ctx.GetValue(context.LogID); logID != nil {
+				b.WriteString(fmt.Sprintf("[%v]", logID))
+			}
 		}
 	}
 	if entry.Caller != nil {
