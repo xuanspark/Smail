@@ -296,6 +296,15 @@ func Guard(actorID int, role access.Role, sessionVersion, securityVersion int, t
 }
 
 func SetMembership(engine *xorm.Engine, user models.User, input []int, guards ...WriteGuard) error {
+	return setMembership(engine, user, input, nil, guards...)
+}
+
+// SetScopedMembership 只替换可管理分组，保留目标账号在其他分组中的成员关系。
+func SetScopedMembership(engine *xorm.Engine, user models.User, input []int, editableGroupIDs []int, guards ...WriteGuard) error {
+	return setMembership(engine, user, input, editableGroupIDs, guards...)
+}
+
+func setMembership(engine *xorm.Engine, user models.User, input []int, editableGroupIDs []int, guards ...WriteGuard) error {
 	if engine == nil || user.ID <= 0 {
 		return ErrDenied
 	}
@@ -322,6 +331,24 @@ func SetMembership(engine *xorm.Engine, user models.User, input []int, guards ..
 	ids, err := ValidateMembership(tx, user.EffectiveRole(), input)
 	if err != nil {
 		return err
+	}
+	if editableGroupIDs != nil {
+		editable := make(map[int]struct{}, len(editableGroupIDs))
+		for _, groupID := range editableGroupIDs {
+			editable[groupID] = struct{}{}
+		}
+		existing := make([]models.AccountGroupMember, 0)
+		if err := tx.Where(`user_id = ?`, user.ID).Find(&existing); err != nil {
+			return err
+		}
+		preserved := make([]int, 0, len(existing)+len(ids))
+		for _, row := range existing {
+			if _, ok := editable[row.GroupID]; !ok {
+				preserved = append(preserved, row.GroupID)
+			}
+		}
+		ids = append(preserved, ids...)
+		sort.Ints(ids)
 	}
 	if err := ReplaceMembership(tx, user.ID, ids); err != nil {
 		return err

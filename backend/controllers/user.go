@@ -273,7 +273,9 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	items := make([]userListItem, 0, len(users))
 	memberships := map[int][]int{}
-	if ctx.EffectiveRole() == access.RoleSuperAdmin {
+	groupManager := ctx.EffectiveRole() == access.RoleSuperAdmin || ctx.EffectiveRole() == access.RoleAdmin
+	visibleMemberships := map[int]struct{}{}
+	if groupManager {
 		ids := make([]int, 0, len(users))
 		for _, user := range users {
 			ids = append(ids, user.ID)
@@ -283,10 +285,30 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			writeAccountGroupError(w, err)
 			return
 		}
+		if ctx.EffectiveRole() == access.RoleAdmin {
+			visibleGroups, visibleErr := accountgroup.VisibleGroups(db.Instance, ctx.UserID, ctx.EffectiveRole())
+			if visibleErr != nil {
+				writeAccountGroupError(w, visibleErr)
+				return
+			}
+			for _, group := range visibleGroups {
+				visibleMemberships[group.ID] = struct{}{}
+			}
+		}
 	}
 	for _, user := range users {
+		groupIDs := memberships[user.ID]
+		if ctx.EffectiveRole() == access.RoleAdmin {
+			filtered := make([]int, 0, len(groupIDs))
+			for _, groupID := range groupIDs {
+				if _, ok := visibleMemberships[groupID]; ok {
+					filtered = append(filtered, groupID)
+				}
+			}
+			groupIDs = filtered
+		}
 		items = append(items, userListItem{
-			GroupIDs:                memberships[user.ID],
+			GroupIDs:                groupIDs,
 			ID:                      user.ID,
 			Account:                 user.Account,
 			Name:                    user.Name,
@@ -298,7 +320,7 @@ func UserList(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			ExternalEmailEnabled:    user.ExternalEmailEnabled == 1,
 			ExternalEmailConfigured: externalEmailConfigured[user.ID],
 		})
-		if ctx.EffectiveRole() == access.RoleSuperAdmin {
+		if groupManager {
 			items[len(items)-1].MembershipVersion = user.SecurityVersion
 		}
 	}

@@ -125,14 +125,27 @@ func SetAccountGroupMembership(ctx *context.Context, w http.ResponseWriter, req 
 		writeAccountGroupError(w, accountgroup.ErrConflict)
 		return
 	}
-	if err := accountgroup.SetMembership(
-		db.Instance,
-		user,
-		input.GroupIDs,
+	guards := []accountgroup.WriteGuard{
 		accountWriteGuard(ctx, user),
 		accountgroup.MembershipScopeGuard(ctx.UserID, ctx.EffectiveRole(), input.GroupIDs),
-	); err != nil {
-		writeAccountGroupError(w, err)
+	}
+	var setErr error
+	if ctx.EffectiveRole() == access.RoleAdmin {
+		visibleGroups, visibleErr := accountgroup.VisibleGroups(db.Instance, ctx.UserID, ctx.EffectiveRole())
+		if visibleErr != nil {
+			writeAccountGroupError(w, visibleErr)
+			return
+		}
+		editableGroupIDs := make([]int, 0, len(visibleGroups))
+		for _, group := range visibleGroups {
+			editableGroupIDs = append(editableGroupIDs, group.ID)
+		}
+		setErr = accountgroup.SetScopedMembership(db.Instance, user, input.GroupIDs, editableGroupIDs, guards...)
+	} else {
+		setErr = accountgroup.SetMembership(db.Instance, user, input.GroupIDs, guards...)
+	}
+	if setErr != nil {
+		writeAccountGroupError(w, setErr)
 		return
 	}
 	InvalidateSecurityRuntimeUser(user.ID, user.Account)

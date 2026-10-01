@@ -135,3 +135,35 @@ func TestValidateMembershipKeepsAdminMultiGroupAndUserSingleGroupRules(t *testin
 		t.Fatalf("普通用户不应允许多个分组，得到：%v", err)
 	}
 }
+
+func TestSetScopedMembershipPreservesGroupsOutsideAdminScope(t *testing.T) {
+	engine, err := xorm.NewEngine(`sqlite`, `:memory:`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	if err := engine.Sync2(new(models.User), new(models.AccountGroup), new(models.AccountGroupMember)); err != nil {
+		t.Fatal(err)
+	}
+	target := models.User{Account: `target`, Name: `Target`, Role: string(access.RoleUser), SessionVersion: 1, SecurityVersion: 1}
+	if _, err := engine.Insert(&target); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Insert(&models.AccountGroup{ID: 1, Name: `visible`}, &models.AccountGroup{ID: 2, Name: `hidden`}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Insert(&models.AccountGroupMember{UserID: target.ID, GroupID: 1}, &models.AccountGroupMember{UserID: target.ID, GroupID: 2}); err != nil {
+		t.Fatal(err)
+	}
+	allow := func(*xorm.Session) error { return nil }
+	if err := SetScopedMembership(engine, target, []int{0}, []int{0, 1}, allow); err != nil {
+		t.Fatal(err)
+	}
+	rows := make([]models.AccountGroupMember, 0)
+	if err := engine.Where(`user_id = ?`, target.ID).Asc(`group_id`).Find(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].GroupID != 0 || rows[1].GroupID != 2 {
+		t.Fatalf(`scoped membership changed an inaccessible group: %+v`, rows)
+	}
+}
