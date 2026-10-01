@@ -226,14 +226,14 @@ const pluginDefinitions = {
   telegram_push: { label: 'Telegram 推送', fields: [
     field('proxy', '代理地址', 'text', { hint: '可选，不使用代理时留空。' }),
     field('timeout', '请求超时（秒）', 'number', { min: 0, max: 120, integer: true, hint: '0 使用插件默认值，最大 120 秒。' }),
-    field('webDomain', '网页域名', 'text'),
+    field('webDomain', '网页域名', 'text', { hint: '与后台访问域名保持一致，不含协议和路径；切换域名后请同步更新通知链接。' }),
     field('debug', '启用调试日志', 'switch'),
     field('httpsEnabled', '链接使用 HTTPS', 'switch')
   ] },
   wechat_push: { label: '微信推送', fields: [
     field('appId', '应用编号（App ID）'),
     field('templateId', '消息模板编号'),
-    field('webDomain', '网页域名')
+    field('webDomain', '网页域名', 'text', { hint: '请使用已备案域名，并与后台访问域名、公众号网页授权域名保持一致。不含协议和路径；切换域名后请同步更新公众号平台配置。' })
   ] }
 }
 
