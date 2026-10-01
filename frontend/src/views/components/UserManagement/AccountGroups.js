@@ -8,6 +8,7 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   const groupsLoading = ref(false)
   const groupsError = ref('')
   const canManageGroups = computed(() => globalStatus.hasCapability('account_group.manage'))
+  const canManageMembership = computed(() => globalStatus.hasCapability('account_group.member_manage'))
   const groupSaving = ref(false)
   const membershipVisible = ref(false)
   const membershipUser = ref(null)
@@ -128,7 +129,7 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   }
 
   const editMembership = (user, options = {}) => {
-    if (!canManageGroups.value || groupSaving.value) return
+    if (!canManageMembership.value || groupSaving.value) return
     membershipUser.value = { ...user, Role: options.role || user.Role }
     membershipSelection.value = [...(options.groupIDs || user.GroupIDs || [0])]
     applyMembershipDraft = options.onApply || null
@@ -137,7 +138,7 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   }
 
   const saveMembership = async () => {
-    if (!canManageGroups.value || groupSaving.value || !membershipUser.value) return
+    if (!canManageMembership.value || groupSaving.value || !membershipUser.value) return
     if (membershipSelection.value.length === 0) membershipSelection.value = [0]
     if (membershipSelection.value.length > membershipLimit.value) {
       ElMessage.error('普通用户只能选择一个分组，请重新选择')
@@ -174,7 +175,7 @@ export function useAccountGroups(globalStatus, onMembershipSaved = () => {}) {
   }
 
   return {
-    accountGroups, groupsLoading, groupsError, canManageGroups, groupSaving,
+    accountGroups, groupsLoading, groupsError, canManageGroups, canManageMembership, groupSaving,
     membershipVisible, membershipUser, membershipSelection, membershipLimit,
     membershipDraft, membershipSingleSelection,
     refreshGroups, loadGroup, toggleGroup, saveGroup, createMembershipGroup, editMembership, saveMembership

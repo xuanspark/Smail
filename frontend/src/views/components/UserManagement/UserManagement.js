@@ -69,7 +69,7 @@ export function usePage() {
     const user = selectedUser.value
     if (!user && editModel.value !== 'create') return []
     return groups.accountGroups.value.filter(group =>
-      groups.canManageGroups.value
+      groups.canManageMembership.value
         ? editingGroupIDs.value.includes(group.id)
         : group.rows.some(member => member.ID === user.ID)
     )
@@ -243,7 +243,7 @@ export function usePage() {
       }
       if (creating || roleChanged.value) newData.role = editUserInfo.role
       if (creating || editUserInfo.password !== '') newData.password = editUserInfo.password
-      if (groups.canManageGroups.value && (creating || membershipChanged.value || roleChanged.value)) {
+      if (groups.canManageMembership.value && (creating || membershipChanged.value || roleChanged.value)) {
         if (editUserInfo.role !== 'admin' && editingGroupIDs.value.length !== 1) {
           throw new Error('普通用户只能属于一个分组，请在分组管理中选择一个分组')
         }

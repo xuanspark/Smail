@@ -49,6 +49,14 @@ func requireAccountGroupManagement(ctx *context.Context, w http.ResponseWriter) 
 	return true
 }
 
+func requireAccountGroupMembershipManagement(ctx *context.Context, w http.ResponseWriter) bool {
+	if err := authorizeCapability(ctx, access.CapabilityAccountGroupMemberManage, "", false); err != nil {
+		writeUserAuthorizationError(w, err, "无权管理账号所属分组")
+		return false
+	}
+	return true
+}
+
 func SaveAccountGroup(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if !requireAccountGroupManagement(ctx, w) {
 		return
@@ -91,7 +99,7 @@ func SaveAccountGroup(ctx *context.Context, w http.ResponseWriter, req *http.Req
 }
 
 func SetAccountGroupMembership(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
-	if !requireAccountGroupManagement(ctx, w) {
+	if !requireAccountGroupMembershipManagement(ctx, w) {
 		return
 	}
 	var input struct {
@@ -117,7 +125,13 @@ func SetAccountGroupMembership(ctx *context.Context, w http.ResponseWriter, req 
 		writeAccountGroupError(w, accountgroup.ErrConflict)
 		return
 	}
-	if err := accountgroup.SetMembership(db.Instance, user, input.GroupIDs, accountWriteGuard(ctx, user)); err != nil {
+	if err := accountgroup.SetMembership(
+		db.Instance,
+		user,
+		input.GroupIDs,
+		accountWriteGuard(ctx, user),
+		accountgroup.MembershipScopeGuard(ctx.UserID, ctx.EffectiveRole(), input.GroupIDs),
+	); err != nil {
 		writeAccountGroupError(w, err)
 		return
 	}

@@ -28,6 +28,7 @@ const (
 	CapabilityNotificationManage Capability = "notification.manage"
 	CapabilityNotificationReveal Capability = "notification.reveal"
 	CapabilityAccountGroupManage Capability = "account_group.manage"
+	CapabilityAccountGroupMemberManage Capability = "account_group.member_manage"
 )
 
 type Policy struct {
@@ -41,6 +42,7 @@ type Policy struct {
 var policies = map[Capability]Policy{
 	CapabilityNotificationReveal: {Capability: CapabilityNotificationReveal, HighRisk: true, RequiresTarget: true},
 	CapabilityAccountGroupManage: {Capability: CapabilityAccountGroupManage, HighRisk: true, RequiresRecentAuth: true},
+	CapabilityAccountGroupMemberManage: {Capability: CapabilityAccountGroupMemberManage, HighRisk: true, RequiresRecentAuth: true},
 	CapabilityNotificationManage: {Capability: CapabilityNotificationManage, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true, RequiresTarget: true},
 	CapabilityConfigRead:         {Capability: CapabilityConfigRead},
 	CapabilityConfigWriteGlobal:  {Capability: CapabilityConfigWriteGlobal, HighRisk: true, RequiresRecentAuth: true, RequiresRecoveryCode: true},
@@ -70,6 +72,7 @@ var grants = map[Role]map[Capability]struct{}{
 	RoleSuperAdmin: grant(
 		CapabilityNotificationReveal,
 		CapabilityAccountGroupManage,
+		CapabilityAccountGroupMemberManage,
 		CapabilityNotificationManage,
 		CapabilityPluginReadGlobal, CapabilityUserCreate, CapabilityProfileWriteOwn,
 		CapabilityConfigRead, CapabilityConfigWriteGlobal, CapabilityConfigRollback,
@@ -81,6 +84,7 @@ var grants = map[Role]map[Capability]struct{}{
 	),
 	RoleAdmin: grant(
 		CapabilityNotificationReveal,
+		CapabilityAccountGroupMemberManage,
 		CapabilityNotificationManage,
 		CapabilityPluginReadGlobal, CapabilityPluginRead, CapabilityPluginWriteGlobal, CapabilityProfileWriteOwn,
 		CapabilityPluginWriteAnyUser, CapabilityPluginWriteOwn, CapabilityUserRead,

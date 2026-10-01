@@ -99,7 +99,7 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 		groupIDs = *reqData.GroupIDs
 	}
 	if len(groupIDs) > 0 && (len(groupIDs) != 1 || groupIDs[0] != 0) {
-		if !requireAccountGroupManagement(ctx, w) {
+		if !requireAccountGroupMembershipManagement(ctx, w) {
 			return
 		}
 	}
@@ -378,7 +378,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	targetRole := user.EffectiveRole()
 	writeGuard := accountWriteGuard(ctx, user)
 	if reqData.GroupIDs != nil {
-		if !requireAccountGroupManagement(ctx, w) {
+		if !requireAccountGroupMembershipManagement(ctx, w) {
 			return
 		}
 		if reqData.MembershipVersion < 1 || reqData.MembershipVersion != user.SecurityVersion {
@@ -491,6 +491,13 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 		_ = tx.Rollback()
 		writeAccountGroupError(w, err)
 		return
+	}
+	if reqData.GroupIDs != nil {
+		if err := accountgroup.CheckWrite(tx, accountgroup.MembershipScopeGuard(ctx.UserID, ctx.EffectiveRole(), *reqData.GroupIDs)); err != nil {
+			_ = tx.Rollback()
+			writeAccountGroupError(w, err)
+			return
+		}
 	}
 	if reqData.Password != "" {
 		updateColumns = append(updateColumns, "password", "must_change_password", "password_changed_at")

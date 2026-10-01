@@ -170,6 +170,38 @@ func ValidateMembership(tx *xorm.Session, role access.Role, input []int) ([]int,
 	return ids, nil
 }
 
+// MembershipScopeGuard 限制管理员只能把成员放入自己所属的分组。
+func MembershipScopeGuard(actorID int, role access.Role, input []int) WriteGuard {
+	return func(tx *xorm.Session) error {
+		if tx == nil || actorID <= 0 || !role.Valid() {
+			return ErrDenied
+		}
+		if role == access.RoleSuperAdmin {
+			return nil
+		}
+		if role != access.RoleAdmin {
+			return ErrDenied
+		}
+		allowedRows := make([]models.AccountGroupMember, 0)
+		if err := tx.Where("user_id = ?", actorID).Find(&allowedRows); err != nil {
+			return err
+		}
+		allowed := make(map[int]struct{}, len(allowedRows))
+		for _, row := range allowedRows {
+			allowed[row.GroupID] = struct{}{}
+		}
+		if len(allowed) == 0 {
+			allowed[0] = struct{}{}
+		}
+		for _, groupID := range input {
+			if _, ok := allowed[groupID]; !ok {
+				return ErrDenied
+			}
+		}
+		return nil
+	}
+}
+
 func ReplaceMembership(tx *xorm.Session, userID int, ids []int) error {
 	if _, err := tx.Where("user_id = ?", userID).Delete(&models.AccountGroupMember{}); err != nil {
 		return err
