@@ -17,10 +17,10 @@ import time
 import uuid
 
 
-DOMAINS = ('solit.cn', '*.solit.cn')
-VERIFY_HOSTNAMES = ('solit.cn', 'web.solit.cn', 'mail.solit.cn', 'smtp.solit.cn',
-                    'imap.solit.cn', 'pop.solit.cn')
-CERTIFICATE_SNI = 'web.solit.cn'
+DOMAINS = ('cdis.cn', '*.cdis.cn')
+VERIFY_HOSTNAMES = ('cdis.cn', 'web.cdis.cn', 'mail.cdis.cn', 'smtp.cdis.cn',
+                    'imap.cdis.cn', 'pop.cdis.cn')
+CERTIFICATE_SNI = 'web.cdis.cn'
 LINEAGE = Path('/var/lib/smail-acme-tls/certificates')
 TARGET = Path('/opt/smail/ssl')
 BACKUPS = Path('/var/backups')
@@ -147,9 +147,9 @@ def publish():
     check_nginx_paths()
     run('systemctl', 'is-active', '--quiet', 'nginx')
     identity = pwd.getpwnam('smail')
-    sources = {'candidate.crt': read_file(LINEAGE / 'solit.cn.crt', 0),
-               'candidate.key': read_file(LINEAGE / 'solit.cn.key', 0),
-               'candidate.issuer.crt': read_file(LINEAGE / 'solit.cn.issuer.crt', 0),
+    sources = {'candidate.crt': read_file(LINEAGE / 'cdis.cn.crt', 0),
+               'candidate.key': read_file(LINEAGE / 'cdis.cn.key', 0),
+               'candidate.issuer.crt': read_file(LINEAGE / 'cdis.cn.issuer.crt', 0),
                'previous.crt': read_file(TARGET / 'custom.crt', identity.pw_uid),
                'previous.key': read_file(TARGET / 'custom.key', identity.pw_uid)}
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]

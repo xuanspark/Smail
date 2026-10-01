@@ -100,15 +100,13 @@ function Stop-SmailService {
 }
 
 Assert-Administrator
-if ($Fresh -and $StartService) {
+if ($StartService) {
     throw "全新部署必须先完成初始化配置，不能在安装时启动服务"
 }
-if ($Fresh) {
-    $freshConfirmation = "确认全新部署 Smail"
-    $confirmation = Read-Host "这是不可逆的 Smail 专属数据清理操作。请输入“$freshConfirmation”继续"
-    if ($confirmation -cne $freshConfirmation) {
-        throw "未获得有效确认，已取消全新部署"
-    }
+$freshConfirmation = "确认全新部署 Smail"
+$confirmation = Read-Host "这是不可逆的 Smail 专属数据清理操作。请输入“$freshConfirmation”继续"
+if ($confirmation -cne $freshConfirmation) {
+    throw "未获得有效确认，已取消全新部署"
 }
 $mainSource = Resolve-PackageFile -Candidates @(
     (Join-Path $PackageRoot "out\backend\smail_windows_amd64.exe"),
@@ -132,7 +130,7 @@ if (Test-Path -LiteralPath $resolvedInstallRoot) {
         throw "安装目录不能是文件或链接"
     }
 }
-if ($Fresh -and (Test-Path -LiteralPath $resolvedInstallRoot)) {
+if (Test-Path -LiteralPath $resolvedInstallRoot) {
     foreach ($item in Get-ChildItem -LiteralPath $resolvedInstallRoot -Force) {
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
             throw "全新部署已停止：安装目录顶层存在重解析点，拒绝清理：$($item.FullName)"
@@ -140,35 +138,25 @@ if ($Fresh -and (Test-Path -LiteralPath $resolvedInstallRoot)) {
     }
 }
 New-Item -ItemType Directory -Path $resolvedInstallRoot -Force | Out-Null
-if ($Fresh) {
-    Stop-SmailService
-    $backupRoot = Join-Path ([IO.Path]::GetDirectoryName($resolvedInstallRoot)) (".smail-fresh-backup-" + [Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-    if (Test-Path -LiteralPath $resolvedInstallRoot) {
-        foreach ($item in Get-ChildItem -LiteralPath $resolvedInstallRoot -Force) {
-            Copy-Item -LiteralPath $item.FullName -Destination (Join-Path $backupRoot $item.Name) -Recurse -Force
-        }
-        foreach ($item in Get-ChildItem -LiteralPath $resolvedInstallRoot -Force) {
-            Remove-Item -LiteralPath $item.FullName -Recurse -Force
-        }
+$installParent = [IO.Path]::GetDirectoryName($resolvedInstallRoot)
+foreach ($legacyBackup in Get-ChildItem -LiteralPath $installParent -Force -Filter ".smail-fresh-backup-*" -ErrorAction SilentlyContinue) {
+    if ($legacyBackup.Attributes -band [IO.FileAttributes]::ReparsePoint -or -not $legacyBackup.PSIsContainer) {
+        throw "历史 Smail 备份不是安全目录，拒绝清理：$($legacyBackup.FullName)"
     }
-    Write-Output "已完成 Smail 专属运行数据清理；完整备份保存在 $backupRoot。"
-} else {
-    $backupRoot = Join-Path $resolvedInstallRoot (".backup-" + [Guid]::NewGuid().ToString("N"))
+    Remove-Item -LiteralPath $legacyBackup.FullName -Recurse -Force
 }
+Stop-SmailService
+foreach ($item in Get-ChildItem -LiteralPath $resolvedInstallRoot -Force) {
+    Remove-Item -LiteralPath $item.FullName -Recurse -Force
+}
+Write-Output "已完成 Smail 专属运行数据清理；不会保留旧配置、数据库、证书、日志、插件或绑定信息。"
 New-Item -ItemType Directory -Path (Join-Path $resolvedInstallRoot "config") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $resolvedInstallRoot "data") -Force | Out-Null
-$transactionRoot = Join-Path $resolvedInstallRoot (".upgrade-" + [Guid]::NewGuid().ToString("N"))
+$transactionRoot = Join-Path $resolvedInstallRoot (".deploy-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $transactionRoot -Force | Out-Null
-if (-not $Fresh) {
-    $backupRoot = Join-Path $resolvedInstallRoot (".backup-" + [Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-}
 
 $mainTarget = Join-Path $resolvedInstallRoot "smail.exe"
 $adminTarget = Join-Path $resolvedInstallRoot "smail-admin.exe"
-$mainBackup = Join-Path $backupRoot "smail.exe"
-$adminBackup = Join-Path $backupRoot "smail-admin.exe"
 $serviceCreated = $false
 
 try {
@@ -177,8 +165,6 @@ try {
     Stop-SmailService
     Copy-Item -LiteralPath $mainSource -Destination (Join-Path $transactionRoot "smail.exe")
     Copy-Item -LiteralPath $adminSource -Destination (Join-Path $transactionRoot "smail-admin.exe")
-    if (Test-Path -LiteralPath $mainTarget) { Move-Item -LiteralPath $mainTarget -Destination $mainBackup }
-    if (Test-Path -LiteralPath $adminTarget) { Move-Item -LiteralPath $adminTarget -Destination $adminBackup }
     Move-Item -LiteralPath (Join-Path $transactionRoot "smail.exe") -Destination $mainTarget
     $mainInstalled = $true
     Move-Item -LiteralPath (Join-Path $transactionRoot "smail-admin.exe") -Destination $adminTarget
@@ -222,25 +208,15 @@ try {
     if ($adminInstalled -and (Test-Path -LiteralPath $adminTarget)) {
         Remove-Item -LiteralPath $adminTarget -Force
     }
-    if (Test-Path -LiteralPath $mainBackup) {
-        Move-Item -LiteralPath $mainBackup -Destination $mainTarget -Force
-    }
-    if (Test-Path -LiteralPath $adminBackup) {
-        Move-Item -LiteralPath $adminBackup -Destination $adminTarget -Force
-    }
     if ($serviceCreated) {
         $deleteArguments = @("delete", "Smail")
         Invoke-Native -FilePath "sc.exe" -Arguments $deleteArguments
     }
-    # 失败时保留事务目录和备份，回滚再次失败时也不能丢失唯一恢复材料。
+    # 全新部署不保留旧运行数据；失败时仅清理本次已安装的程序。
     throw
 }
 
-$temporaryRoots = @($transactionRoot)
-if (-not $Fresh) {
-    $temporaryRoots += $backupRoot
-}
-foreach ($temporaryRoot in $temporaryRoots) {
+foreach ($temporaryRoot in @($transactionRoot)) {
     if (Test-Path -LiteralPath $temporaryRoot) {
         $resolvedTemporaryRoot = (Resolve-Path -LiteralPath $temporaryRoot).Path
         if ([IO.Path]::GetDirectoryName($resolvedTemporaryRoot) -ne $resolvedInstallRoot.TrimEnd('\')) {

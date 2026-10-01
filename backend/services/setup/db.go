@@ -570,12 +570,32 @@ func validMySQLIdentifier(value string) bool {
 	return true
 }
 
+type sqlSetupDatabase struct {
+	*sql.DB
+}
+
+func (database *sqlSetupDatabase) TableCountContext(ctx stdcontext.Context, query string) (int, error) {
+	var count int
+	if err := database.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 var openMySQLSetupDatabase = func(dsn string) (setupDatabase, error) {
-	return sql.Open("mysql", dsn)
+	database, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlSetupDatabase{DB: database}, nil
 }
 
 var openPostgresSetupDatabase = func(dsn string) (setupDatabase, error) {
-	return sql.Open("postgres", dsn)
+	database, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlSetupDatabase{DB: database}, nil
 }
 
 func ensurePostgresDatabase(dsn string) error {
@@ -596,7 +616,7 @@ func ensurePostgresDatabase(dsn string) error {
 	}
 	defer func() { _ = target.Close() }()
 	if err = target.PingContext(requestContext); err == nil {
-		return nil
+		return requireEmptyExternalDatabase(target, requestContext, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')")
 	} else {
 		var postgresErr *pq.Error
 		if !stderrors.As(err, &postgresErr) || string(postgresErr.Code) != "3D000" {
@@ -631,7 +651,19 @@ func ensurePostgresDatabase(dsn string) error {
 type setupDatabase interface {
 	PingContext(stdcontext.Context) error
 	ExecContext(stdcontext.Context, string, ...any) (sql.Result, error)
+	TableCountContext(stdcontext.Context, string) (int, error)
 	Close() error
+}
+
+func requireEmptyExternalDatabase(database setupDatabase, ctx stdcontext.Context, query string) error {
+	count, err := database.TableCountContext(ctx, query)
+	if err != nil {
+		return databaseError("检查外部数据库是否为空失败", err)
+	}
+	if count > 0 {
+		return databaseError("全新部署要求外部数据库为空，请使用新数据库或先清理 Smail 专属数据库", nil)
+	}
+	return nil
 }
 
 func ensureMySQLDatabase(dsn string) error {
@@ -652,7 +684,7 @@ func ensureMySQLDatabase(dsn string) error {
 	}
 	defer func() { _ = target.Close() }()
 	if err = target.PingContext(requestContext); err == nil {
-		return nil
+		return requireEmptyExternalDatabase(target, requestContext, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()")
 	} else {
 		var mysqlErr *mysql.MySQLError
 		if !errors.As(err, &mysqlErr) || mysqlErr.Number != 1049 {

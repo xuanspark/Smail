@@ -1,6 +1,9 @@
-﻿param()
+param()
 
 $ErrorActionPreference = 'Stop'
+$freshConfirmation = '确认全新部署 Smail'
+$confirmation = Read-Host "这是不可逆的 Smail 专属数据清理操作。请输入“$freshConfirmation”继续"
+if ($confirmation -cne $freshConfirmation) { throw '未获得有效确认，已取消全新部署' }
 $root = Split-Path -Parent $PSScriptRoot
 $runtime = Join-Path $root 'yunx-test'
 $boundary = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
@@ -25,22 +28,19 @@ try {
 if ($LASTEXITCODE -ne 0) { throw '编译产物校验失败，未部署' }
 
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
+foreach ($item in Get-ChildItem -LiteralPath $runtime -Force -ErrorAction SilentlyContinue) {
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw '运行目录顶层存在重解析点，拒绝清理' }
+    Remove-Item -LiteralPath $item.FullName -Recurse -Force
+}
 $receipt = Get-Content -LiteralPath (Join-Path $root 'out\build-state.json') -Encoding UTF8 -Raw | ConvertFrom-Json
-$backup = Join-Path $root ('out\deployment-history\' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 foreach ($item in $receipt.files) {
     if (-not $item.target) { continue }
     $target = Join-Path $runtime $item.target
-    if (Test-Path -LiteralPath $target) {
-        $info = Get-Item -LiteralPath $target -Force
-        if ($info.Attributes -band [IO.FileAttributes]::ReparsePoint -or $info.PSIsContainer) { throw '部署程序不能是链接或目录' }
-        New-Item -ItemType Directory -Path $backup -Force | Out-Null
-        Copy-Item -LiteralPath $target -Destination (Join-Path $backup $item.target) -ErrorAction Stop
-    }
     Copy-Item -LiteralPath (Join-Path $root $item.source) -Destination $target -ErrorAction Stop
 }
 & node (Join-Path $PSScriptRoot 'build-state.mjs') verify --deployed
-if ($LASTEXITCODE -ne 0) { throw '部署校验失败，禁止启动；旧程序备份保留在 out/deployment-history' }
-Write-Output '最新程序已部署到 yunx-test；正常升级不会覆盖配置、证书或数据库。需要全新部署时，请使用平台安装脚本的 --fresh 或 -Fresh 参数并输入确认词；外部数据库不会被安装脚本自动删除。'
+if ($LASTEXITCODE -ne 0) { throw '部署校验失败，禁止启动；本次全新部署未保留旧程序' }
+Write-Output '最新程序已完成全新部署到 yunx-test；配置、数据库、证书、日志、插件和绑定信息均未继承，请重新完成初始化配置。'
 } finally {
     if ($lock) { $lock.Dispose() }
 }

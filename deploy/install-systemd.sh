@@ -2,16 +2,16 @@
 set -eu
 
 usage() {
-  echo "用法：$0 [--fresh] [发布目录]"
-  echo "默认模式保留配置、数据库、证书、日志和插件；--fresh 模式必须输入确认词后才会备份并清理 Smail 专属运行数据。"
+  echo "用法：$0 [发布目录]"
+  echo "每次部署都是全新部署，必须输入确认词后才会清理 Smail 专属运行数据。"
 }
 
-fresh=false
+fresh=true
 root_argument=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --fresh)
-      fresh=true
+      # 保留旧参数兼容性；部署始终按全新部署处理。
       ;;
     --help|-h)
       usage
@@ -41,12 +41,10 @@ fi
 root_dir="$(realpath -e -- "${root_argument:-$(dirname "$0")/..}")"
 runtime_dir=/opt/smail
 fresh_confirmation="确认全新部署 Smail"
-if [ "$fresh" = true ]; then
-  printf '这是不可逆的 Smail 专属数据清理操作。请输入“%s”继续： ' "$fresh_confirmation"
-  if ! IFS= read -r confirmation || [ "$confirmation" != "$fresh_confirmation" ]; then
-    echo "未获得有效确认，已取消全新部署。" >&2
-    exit 1
-  fi
+printf '这是不可逆的 Smail 专属数据清理操作。请输入“%s”继续： ' "$fresh_confirmation"
+if ! IFS= read -r confirmation || [ "$confirmation" != "$fresh_confirmation" ]; then
+  echo "未获得有效确认，已取消全新部署。" >&2
+  exit 1
 fi
 case "$(uname -m)" in
   x86_64) arch=amd64 ;;
@@ -106,32 +104,21 @@ if [ -L /run/smail/admin-control.sock ] || { [ -e /run/smail/admin-control.sock 
   exit 1
 fi
 
-# 安装备份存放在系统备份目录，不在部署根目录遗留 .bak 文件。
-backup_dir="$(mktemp -d /var/backups/smail-deploy-XXXXXXXX)"
-chmod 0700 "$backup_dir"
+# 仅保留程序和服务文件的短期备份，不保留配置、数据库、证书、日志、插件或其他运行数据。
+for legacy_backup in /var/backups/smail-deploy-*; do
+  if [ ! -e "$legacy_backup" ]; then continue; fi
+  if [ -L "$legacy_backup" ] || [ ! -d "$legacy_backup" ]; then
+    echo "历史 Smail 备份不是安全目录，拒绝清理：$legacy_backup" >&2
+    exit 1
+  fi
+  rm -rf -- "$legacy_backup"
+done
 if [ "$fresh" = true ]; then
   if [ -d "$runtime_dir" ] && [ -n "$(find "$runtime_dir" -mindepth 1 -maxdepth 1 -type l -print -quit)" ]; then
     echo "全新部署已停止：/opt/smail 顶层存在符号链接，拒绝清理。" >&2
     exit 1
   fi
-  install -d -m 0700 "$backup_dir/runtime"
-  if [ -d "$runtime_dir" ]; then
-    cp -a -- "$runtime_dir/." "$backup_dir/runtime/"
-  fi
-  if [ -d /etc/smail ]; then
-    cp -a -- /etc/smail "$backup_dir/etc-smail"
-  fi
-  if [ -d /etc/systemd/system/smail.service.d ]; then
-    cp -a -- /etc/systemd/system/smail.service.d "$backup_dir/smail.service.d"
-  fi
-  for name in smail.service smail-admin.service; do
-    if [ -f "/etc/systemd/system/$name" ]; then
-      cp -p -- "/etc/systemd/system/$name" "$backup_dir/$name"
-    fi
-  done
-  if [ -e /etc/smail/smail.env ]; then
-    cp -p -- /etc/smail/smail.env "$backup_dir/smail.env"
-  fi
+
   if [ -d "$runtime_dir" ]; then
     find "$runtime_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
   fi
@@ -146,15 +133,7 @@ if [ "$fresh" = true ]; then
   fi
   systemctl disable smail smail-admin >/dev/null 2>&1 || true
   systemctl daemon-reload
-  echo "已完成 Smail 专属运行数据清理；完整备份保存在 $backup_dir。"
 fi
-for name in smail smail-admin; do
-  if [ -f "$runtime_dir/$name" ]; then cp -p -- "$runtime_dir/$name" "$backup_dir/$name"; fi
-done
-for name in smail.service smail-admin.service; do
-  if [ -f "/etc/systemd/system/$name" ]; then cp -p -- "/etc/systemd/system/$name" "$backup_dir/$name"; fi
-done
-if [ -f /etc/smail/smail.env ]; then cp -p -- /etc/smail/smail.env "$backup_dir/smail.env"; fi
 
 if ! getent group smail >/dev/null; then groupadd --system smail; fi
 if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-dir "$runtime_dir" --shell /usr/sbin/nologin smail; fi
@@ -163,7 +142,7 @@ if ! getent passwd smail-plugin >/dev/null; then useradd --system --gid smail-pl
 install -d -o root -g root -m 0755 "$runtime_dir"
 install -d -o root -g root -m 0750 /etc/smail
 if [ ! -e /etc/smail/smail.env ]; then
-  # 只为新部署设置回收预算；已存在的文件始终保留部署人员的自定义环境配置。
+  # 每次部署都重新创建服务环境文件，不继承旧的凭据或代理配置。
   umask 0077
   printf '%s\n' 'SMAIL_ROOT=/opt/smail' 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
 fi
@@ -197,8 +176,7 @@ systemctl daemon-reload
 systemctl enable smail
 # 清理旧版本可能留下的开机启动关系。smail-admin 单元没有 [Install]，不能再次 enable。
 systemctl disable smail-admin >/dev/null 2>&1 || true
-echo "Smail 已安装到 $runtime_dir，旧程序和服务文件备份在 $backup_dir。"
-echo "配置、数据库和证书未覆盖；请使用 systemctl start smail 启动并检查运行状态。"
+echo "配置、数据库、证书、日志、插件和绑定信息均未继承；请先完成初始化配置，再使用 systemctl start smail 启动。"
 echo "smail-admin 仅允许按需执行 start/stop，不支持开机自启动。"
 echo "主服务默认内存高水位 384 MiB、硬上限 512 MiB；不是容量承诺，请先核对同机资源预算。"
 echo "旧环境文件不会自动补写 GOMEMLIMIT；启动后请按《生产资源部署说明》执行只读资源预检。"

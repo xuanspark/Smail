@@ -88,7 +88,7 @@ func TestInstallerManagesProtectedEnvironmentFile(t *testing.T) {
 		"if [ ! -e /etc/smail/smail.env ]; then",
 		"'SMAIL_ROOT=/opt/smail'",
 		"chmod 0600 /etc/smail/smail.env",
-		"cp -p -- /etc/smail/smail.env \"$backup_dir/smail.env\"",
+		"每次部署都重新创建服务环境文件，不继承旧的凭据或代理配置。",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("installer is missing protected environment-file behavior %q", required)
@@ -104,14 +104,26 @@ func TestInstallerRequiresExplicitFreshReset(t *testing.T) {
 	}
 	content := string(installer)
 	for _, required := range []string{
-		"--fresh",
+		"fresh=true",
 		"确认全新部署 Smail",
-		"cp -a -- \"$runtime_dir/.\" \"$backup_dir/runtime/\"",
+		"for legacy_backup in /var/backups/smail-deploy-*",
+		"rm -rf -- \"$legacy_backup\"",
 		"find \"$runtime_dir\" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +",
 		"systemctl disable smail smail-admin",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("installer is missing explicit fresh-reset behavior %q", required)
+		}
+	}
+	forbidden := []string{
+		"默认模式保留配置、数据库、证书、日志和插件",
+		"cp -a -- \"$runtime_dir/.\" \"$backup_dir/runtime/\"",
+		"cp -p -- /etc/smail/smail.env \"$backup_dir/smail.env\"",
+		"配置、数据库和证书未覆盖",
+	}
+	for _, value := range forbidden {
+		if strings.Contains(content, value) {
+			t.Fatalf("installer retains forbidden legacy-data behavior %q", value)
 		}
 	}
 	if strings.Contains(content, "全新部署已停止：$target 非空") {

@@ -43,11 +43,14 @@ func TestMarkSetupInProgressPreservesExplicitSetupState(t *testing.T) {
 }
 
 type fakeSetupDB struct {
-	pingErrors  []error
-	pingCalls   int
-	execQueries []string
-	execError   error
-	closed      bool
+	pingErrors    []error
+	pingCalls     int
+	execQueries   []string
+	execError     error
+	tableCount    int
+	tableCountErr error
+	tableQueries  []string
+	closed        bool
 }
 
 func (database *fakeSetupDB) PingContext(context.Context) error {
@@ -62,6 +65,14 @@ func (database *fakeSetupDB) PingContext(context.Context) error {
 func (database *fakeSetupDB) ExecContext(_ context.Context, query string, _ ...any) (sql.Result, error) {
 	database.execQueries = append(database.execQueries, query)
 	return fakeSetupResult(0), database.execError
+}
+
+func (database *fakeSetupDB) TableCountContext(_ context.Context, query string) (int, error) {
+	if database.tableCountErr != nil {
+		return 0, database.tableCountErr
+	}
+	database.tableQueries = append(database.tableQueries, query)
+	return database.tableCount, nil
 }
 
 func (database *fakeSetupDB) Close() error {
@@ -279,6 +290,32 @@ func TestEnsureMySQLDatabaseSkipsCreationWhenDatabaseExists(t *testing.T) {
 	}
 	if len(target.execQueries) != 0 || !target.closed {
 		t.Fatal("existing database should not trigger creation and must be closed")
+	}
+}
+
+func TestEnsureMySQLDatabaseRejectsExistingNonEmptyDatabase(t *testing.T) {
+	target := &fakeSetupDB{tableCount: 1}
+	withMySQLSetupOpener(t, func(string) (setupDatabase, error) {
+		return target, nil
+	})
+
+	if err := ensureMySQLDatabase(testMySQLDSN(t, "secret")); err == nil {
+		t.Fatal("non-empty MySQL database was accepted for a fresh deployment")
+	} else if message := DatabaseSetupErrorMessage(err); message == "" {
+		t.Fatal("fresh deployment error message was empty")
+	}
+}
+
+func TestEnsurePostgresDatabaseRejectsExistingNonEmptyDatabase(t *testing.T) {
+	target := &fakeSetupDB{tableCount: 1}
+	withPostgresSetupOpener(t, func(string) (setupDatabase, error) {
+		return target, nil
+	})
+
+	if err := ensurePostgresDatabase("postgres://smail:secret@127.0.0.1:5432/smail?sslmode=disable"); err == nil {
+		t.Fatal("non-empty PostgreSQL database was accepted for a fresh deployment")
+	} else if message := DatabaseSetupErrorMessage(err); message == "" {
+		t.Fatal("fresh deployment error message was empty")
 	}
 }
 

@@ -22,9 +22,6 @@ func TestWindowsDeploymentScriptsKeepAdminChannelManual(t *testing.T) {
 		"$PackageRoot = $null",
 		"$PackageRoot = Split-Path -Parent $PSScriptRoot",
 		"NT SERVICE\\Smail:(F)",
-		".backup-",
-		"$mainBackup",
-		"$adminBackup",
 		"不会自动注册或启动服务",
 	} {
 		if !strings.Contains(content, required) {
@@ -61,11 +58,21 @@ func TestWindowsInstallerRequiresExplicitFreshReset(t *testing.T) {
 		"[switch]$Fresh",
 		"确认全新部署 Smail",
 		".smail-fresh-backup-",
-		"Copy-Item -LiteralPath $item.FullName -Destination (Join-Path $backupRoot $item.Name) -Recurse -Force",
+		"不会保留旧配置、数据库、证书、日志、插件或绑定信息。",
 		"Remove-Item -LiteralPath $item.FullName -Recurse -Force",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("Windows installer is missing explicit fresh-reset behavior %q", required)
+		}
+	}
+	forbidden := []string{
+		"Copy-Item -LiteralPath $item.FullName -Destination (Join-Path $backupRoot $item.Name) -Recurse -Force",
+		"$backupRoot = Join-Path",
+		"正常升级不会覆盖配置、证书或数据库",
+	}
+	for _, value := range forbidden {
+		if strings.Contains(content, value) {
+			t.Fatalf("Windows installer retains forbidden legacy-data behavior %q", value)
 		}
 	}
 	if strings.Contains(content, "全新部署已停止：$existing 不是空目录") {
