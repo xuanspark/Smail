@@ -115,6 +115,26 @@ $adminSource = Resolve-PackageFile -Candidates @(
 ) -Description "smail-admin.exe"
 
 $resolvedInstallRoot = [IO.Path]::GetFullPath($InstallRoot)
+if (Test-Path -LiteralPath $resolvedInstallRoot) {
+    $rootInfo = Get-Item -LiteralPath $resolvedInstallRoot -Force
+    if (-not $rootInfo.PSIsContainer -or $rootInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "安装目录不能是文件或链接"
+    }
+}
+foreach ($name in @('config', 'data', 'ssl', 'log', 'plugins')) {
+    $existing = Join-Path $resolvedInstallRoot $name
+    if (-not (Test-Path -LiteralPath $existing)) { continue }
+    $info = Get-Item -LiteralPath $existing -Force
+    if (-not $info.PSIsContainer -or $info.Attributes -band [IO.FileAttributes]::ReparsePoint -or
+        (Get-ChildItem -LiteralPath $existing -Force | Select-Object -First 1)) {
+        throw "全新部署已停止：$existing 不是空目录。请先确认并处理旧数据，再通过初始化页面重新配置。"
+    }
+}
+foreach ($name in @('config.json', 'config.dev.json', 'smail.db', 'smail-state.db')) {
+    if (Test-Path -LiteralPath (Join-Path $resolvedInstallRoot $name)) {
+        throw "全新部署已停止：发现历史运行文件 $name，不会自动继承或删除。"
+    }
+}
 New-Item -ItemType Directory -Path $resolvedInstallRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $resolvedInstallRoot "config") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $resolvedInstallRoot "data") -Force | Out-Null

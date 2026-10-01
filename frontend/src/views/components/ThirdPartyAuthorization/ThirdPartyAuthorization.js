@@ -86,6 +86,7 @@ export function usePage() {
   }
 
   const loadBaseInfo = async () => {
+    currentDomain.value = ''
     try {
       const infoRes = await http.post('/api/v1/user/info', {})
       const email = infoRes?.data?.email

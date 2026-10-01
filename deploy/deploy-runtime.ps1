@@ -40,7 +40,7 @@ foreach ($item in $receipt.files) {
 }
 & node (Join-Path $PSScriptRoot 'build-state.mjs') verify --deployed
 if ($LASTEXITCODE -ne 0) { throw '部署校验失败，禁止启动；旧程序备份保留在 out/deployment-history' }
-Write-Output '最新编译包已部署到 yunx-test；配置、证书、数据库未被构建过程覆盖。'
+Write-Output '最新程序已部署到 yunx-test；正常升级不会覆盖配置、证书或数据库。全新部署必须使用独立的空运行目录。'
 } finally {
     if ($lock) { $lock.Dispose() }
 }

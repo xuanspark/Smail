@@ -156,7 +156,8 @@
                 link
                 size="small"
                 class="btn-card-copy"
-                @click="copyText(`imap.${currentDomain || 'solit.cn'}:993`, 'IMAP 参数')"
+                :disabled="!currentDomain"
+                @click="copyText(`imap.${currentDomain}:993`, 'IMAP 参数')"
               >
                 复制
               </el-button>
@@ -165,7 +166,7 @@
             <div class="proto-fields">
               <div class="field-item">
                 <span class="field-k">服务器</span>
-                <span class="field-v font-mono">imap.{{ currentDomain || 'solit.cn' }}</span>
+                <span class="field-v font-mono">{{ currentDomain ? `imap.${currentDomain}` : '未配置邮件域名' }}</span>
               </div>
               <div class="field-item">
                 <span class="field-k">端口</span>
@@ -193,7 +194,8 @@
                 link
                 size="small"
                 class="btn-card-copy"
-                @click="copyText(`pop.${currentDomain || 'solit.cn'}:995`, 'POP3 参数')"
+                :disabled="!currentDomain"
+                @click="copyText(`pop.${currentDomain}:995`, 'POP3 参数')"
               >
                 复制
               </el-button>
@@ -202,7 +204,7 @@
             <div class="proto-fields">
               <div class="field-item">
                 <span class="field-k">服务器</span>
-                <span class="field-v font-mono">pop.{{ currentDomain || 'solit.cn' }}</span>
+                <span class="field-v font-mono">{{ currentDomain ? `pop.${currentDomain}` : '未配置邮件域名' }}</span>
               </div>
               <div class="field-item">
                 <span class="field-k">端口</span>
@@ -230,7 +232,8 @@
                 link
                 size="small"
                 class="btn-card-copy"
-                @click="copyText(`smtp.${currentDomain || 'solit.cn'}:465`, 'SMTP 参数')"
+                :disabled="!currentDomain"
+                @click="copyText(`smtp.${currentDomain}:465`, 'SMTP 参数')"
               >
                 复制
               </el-button>
@@ -239,7 +242,7 @@
             <div class="proto-fields">
               <div class="field-item">
                 <span class="field-k">服务器</span>
-                <span class="field-v font-mono">smtp.{{ currentDomain || 'solit.cn' }}</span>
+                <span class="field-v font-mono">{{ currentDomain ? `smtp.${currentDomain}` : '未配置邮件域名' }}</span>
               </div>
               <div class="field-item">
                 <span class="field-k">端口</span>

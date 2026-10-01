@@ -66,6 +66,29 @@ if [ -L /run/smail/admin-control.sock ] || { [ -e /run/smail/admin-control.sock 
   exit 1
 fi
 
+# 全新安装不继承目标目录中的配置、证书或业务数据，也不自动清理它们。
+for directory in config data ssl log plugins; do
+  target="$runtime_dir/$directory"
+  if [ -d "$target" ] && [ -n "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    echo "全新部署已停止：$target 非空。请先确认并处理旧数据，再通过初始化页面重新配置。" >&2
+    exit 1
+  fi
+done
+for file in config.json config.dev.json smail.db smail-state.db; do
+  if [ -e "$runtime_dir/$file" ] || [ -L "$runtime_dir/$file" ]; then
+    echo "全新部署已停止：发现历史运行文件 $file，不会自动继承或删除。" >&2
+    exit 1
+  fi
+done
+if [ -e /etc/smail/smail.env ]; then
+  echo "全新部署已停止：请先确认并处理 /etc/smail/smail.env 中的旧部署环境配置。" >&2
+  exit 1
+fi
+if [ -d /etc/systemd/system/smail.service.d ] && [ -n "$(find /etc/systemd/system/smail.service.d -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+  echo "全新部署已停止：请先确认并处理 Smail 的旧服务覆盖配置。" >&2
+  exit 1
+fi
+
 # 安装备份存放在系统备份目录，不在部署根目录遗留 .bak 文件。
 backup_dir="$(mktemp -d /var/backups/smail-deploy-XXXXXXXX)"
 for name in smail smail-admin; do
