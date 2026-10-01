@@ -178,7 +178,7 @@ func migrateLegacyConfig(root string, options RuntimeValidationOptions, complete
 		legacy.SetupState = SetupStateReady
 		legacy.IsInit = true
 	}
-	runtime, manualFields, err := legacyRuntimeConfig(root, legacy)
+	runtime, manualFields, err := legacyRuntimeConfig(root, legacy, completeSetup)
 	if err != nil {
 		return LegacyMigrationResult{}, err
 	}
@@ -450,7 +450,7 @@ func compactMigrationFields(fields []string) []string {
 	}
 	return result
 }
-func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConfig, []string, error) {
+func legacyRuntimeConfig(root string, legacy legacyMigrationConfig, allowExternalSSL ...bool) (RuntimeConfig, []string, error) {
 	vault, err := credential.NewVault(root)
 	if err != nil {
 		return RuntimeConfig{}, nil, err
@@ -490,7 +490,7 @@ func legacyRuntimeConfig(root string, legacy legacyMigrationConfig) (RuntimeConf
 	if !httpsEnabled {
 		httpsPort = 0
 	}
-	ssl, sslManual := legacySSLConfig(legacy)
+	ssl, sslManual := legacySSLConfig(legacy, allowExternalSSL...)
 	manualFields = append(manualFields, sslManual...)
 	relay, relayManual, err := legacySMTPConfig(root, vault, legacy)
 	if err != nil {
@@ -788,7 +788,8 @@ func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrati
 	return relay, nil, nil
 }
 
-func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
+func legacySSLConfig(legacy legacyMigrationConfig, allowExternalSSL ...bool) (SSLConfig, []string) {
+	permitExternal := len(allowExternalSSL) > 0 && allowExternalSSL[0]
 	if legacy.SSL.CertificateRef != "" || legacy.SSL.PrivateKeyRef != "" || legacy.SSL.Mode != "" || legacy.SSL.Management != "" {
 		ssl := legacy.SSL
 		if ssl.DefaultDirectory == "" {
@@ -798,6 +799,8 @@ func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 		if ssl.CertificateRef != "" {
 			if ref, ok := legacyControlledReference(ssl.CertificateRef); ok {
 				ssl.CertificateRef = ref
+			} else if permitExternal && filepath.IsAbs(strings.TrimSpace(ssl.CertificateRef)) {
+				ssl.CertificateRef = filepath.ToSlash(filepath.Clean(strings.TrimSpace(ssl.CertificateRef)))
 			} else {
 				manual = append(manual, "ssl.certificateRef")
 			}
@@ -805,6 +808,8 @@ func legacySSLConfig(legacy legacyMigrationConfig) (SSLConfig, []string) {
 		if ssl.PrivateKeyRef != "" {
 			if ref, ok := legacyControlledReference(ssl.PrivateKeyRef); ok {
 				ssl.PrivateKeyRef = ref
+			} else if permitExternal && filepath.IsAbs(strings.TrimSpace(ssl.PrivateKeyRef)) {
+				ssl.PrivateKeyRef = filepath.ToSlash(filepath.Clean(strings.TrimSpace(ssl.PrivateKeyRef)))
 			} else {
 				manual = append(manual, "ssl.privateKeyRef")
 			}

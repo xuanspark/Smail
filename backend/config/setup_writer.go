@@ -91,7 +91,7 @@ func setupRuntimeFromConfig(current RuntimeConfig, cfg *Config) (RuntimeConfig, 
 	if len(manualFields) != 0 {
 		return RuntimeConfig{}, fmt.Errorf("安装配置无法安全转换：%s", strings.Join(manualFields, ", "))
 	}
-	ssl, manualFields := legacySSLConfig(legacy)
+	ssl, manualFields := legacySSLConfig(legacy, true)
 	if len(manualFields) != 0 {
 		return RuntimeConfig{}, fmt.Errorf("安装配置无法安全转换：%s", strings.Join(manualFields, ", "))
 	}
