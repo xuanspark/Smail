@@ -17,9 +17,30 @@ SCRIPTS = BASE if (BASE / 'deploy_certificate.py').exists() else BASE.parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
 
-import deploy_certificate as deploy
-import renew_certificate as renew
+with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
+    import deploy_certificate as deploy
+    import renew_certificate as renew
 import nginx_certificate_cutover as cutover
+
+
+class DomainConfigurationTests(unittest.TestCase):
+    def test_domain_requires_explicit_configuration(self):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(KeyError):
+            deploy.configured_domain('SMAIL_MAIL_DOMAIN')
+
+    def test_domain_rejects_invalid_input(self):
+        for value in ('', ' ', 'localhost', '../example.test', 'https://example.test',
+                      '*.example.test', 'example.test:443', 'example..test',
+                      '-mail.example.test', 'mail-.example.test',
+                      'a' * 64 + '.test', '.'.join(['a' * 63] * 4)):
+            with self.subTest(value=value), \
+                    patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': value}), \
+                    self.assertRaises(ValueError):
+                deploy.configured_domain('SMAIL_MAIL_DOMAIN')
+
+    def test_domain_uses_user_configuration(self):
+        with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': ' New.Example.Test '}):
+            self.assertEqual(deploy.configured_domain('SMAIL_MAIL_DOMAIN'), 'new.example.test')
 
 
 class CutoverTests(unittest.TestCase):

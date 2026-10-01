@@ -13,7 +13,8 @@ from unittest.mock import patch
 BASE = Path(__file__).resolve().parent
 SCRIPTS = BASE if (BASE / 'renew_certificate.py').exists() else BASE.parents[1] / 'deploy/nginx'
 sys.path.insert(0, str(SCRIPTS))
-import renew_certificate as renew
+with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
+    import renew_certificate as renew
 
 
 class WebrootTests(unittest.TestCase):

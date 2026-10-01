@@ -66,7 +66,7 @@ export function usePage() {
   const waitDesc = ref(lang.wait_desc);
 
   const adminSettings = reactive({
-    "account": "admin",
+    "account": "",
     "password": "",
     "password2": "",
     "hadSeted": false

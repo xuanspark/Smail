@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 import pwd
+import re
 import shlex
 import socket
 import ssl
@@ -17,10 +18,25 @@ import time
 import uuid
 
 
-DOMAINS = ('cdis.cn', '*.cdis.cn')
-VERIFY_HOSTNAMES = ('cdis.cn', 'web.cdis.cn', 'mail.cdis.cn', 'smtp.cdis.cn',
-                    'imap.cdis.cn', 'pop.cdis.cn')
-CERTIFICATE_SNI = 'web.cdis.cn'
+def configured_domain(name):
+    value = os.environ[name].strip().lower()
+    labels = value.split('.')
+    if (len(value) > 253 or len(labels) < 2
+            or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', label)
+                   for label in labels)):
+        raise ValueError(name)
+    return value
+
+
+MAIL_DOMAIN = configured_domain('SMAIL_MAIL_DOMAIN')
+CERTIFICATE_SNI = configured_domain('SMAIL_WEB_DOMAIN')
+if (CERTIFICATE_SNI != MAIL_DOMAIN
+        and (not CERTIFICATE_SNI.endswith('.' + MAIL_DOMAIN)
+             or CERTIFICATE_SNI.count('.') != MAIL_DOMAIN.count('.') + 1)):
+    raise ValueError('SMAIL_WEB_DOMAIN')
+DOMAINS = (MAIL_DOMAIN, '*.' + MAIL_DOMAIN)
+VERIFY_HOSTNAMES = (MAIL_DOMAIN, CERTIFICATE_SNI,
+                    *(prefix + '.' + MAIL_DOMAIN for prefix in ('mail', 'smtp', 'imap', 'pop')))
 LINEAGE = Path('/var/lib/smail-acme-tls/certificates')
 TARGET = Path('/opt/smail/ssl')
 BACKUPS = Path('/var/backups')
@@ -147,9 +163,9 @@ def publish():
     check_nginx_paths()
     run('systemctl', 'is-active', '--quiet', 'nginx')
     identity = pwd.getpwnam('smail')
-    sources = {'candidate.crt': read_file(LINEAGE / 'cdis.cn.crt', 0),
-               'candidate.key': read_file(LINEAGE / 'cdis.cn.key', 0),
-               'candidate.issuer.crt': read_file(LINEAGE / 'cdis.cn.issuer.crt', 0),
+    sources = {'candidate.crt': read_file(LINEAGE / (MAIL_DOMAIN + '.crt'), 0),
+               'candidate.key': read_file(LINEAGE / (MAIL_DOMAIN + '.key'), 0),
+               'candidate.issuer.crt': read_file(LINEAGE / (MAIL_DOMAIN + '.issuer.crt'), 0),
                'previous.crt': read_file(TARGET / 'custom.crt', identity.pw_uid),
                'previous.key': read_file(TARGET / 'custom.key', identity.pw_uid)}
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]

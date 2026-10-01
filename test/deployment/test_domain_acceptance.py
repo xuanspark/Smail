@@ -18,9 +18,11 @@ class DomainAcceptanceTest(unittest.TestCase):
         self.assertNotIn('return 308 https://__SMAIL_MAIL_DOMAIN__$request_uri;', NGINX)
 
     def test_certificate_requests_root_and_wildcard(self):
-        self.assertIn("DOMAINS = ('cdis.cn', '*.cdis.cn')", CERTIFICATE)
-        self.assertIn("CERTIFICATE_SNI = 'web.cdis.cn'", CERTIFICATE)
-        self.assertIn("'web.cdis.cn'", CERTIFICATE)
+        self.assertIn("DOMAINS = (MAIL_DOMAIN, '*.' + MAIL_DOMAIN)", CERTIFICATE)
+        self.assertIn("configured_domain('SMAIL_MAIL_DOMAIN')", CERTIFICATE)
+        self.assertIn("configured_domain('SMAIL_WEB_DOMAIN')", CERTIFICATE)
+        self.assertNotIn('cdis.cn', CERTIFICATE)
+        self.assertIn("any(domain.startswith('*.') for domain in DOMAINS)", RENEWAL)
         self.assertIn('DOMAINS = deploy.DOMAINS', RENEWAL)
 
 
