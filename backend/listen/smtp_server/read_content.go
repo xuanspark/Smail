@@ -200,7 +200,12 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 			dkimDomain = fromDomain
 		}
 		// DKIM校验
-		dkimStatus = parsemail.CheckForDomain(ctx, bytes.NewReader(emailData), dkimDomain)
+		if localSender {
+			dkimStatus = parsemail.CheckLocalDelivery(ctx, bytes.NewReader(emailData), fromDomain, s.RemoteAddress)
+		}
+		if !dkimStatus {
+			dkimStatus = parsemail.CheckForDomain(ctx, bytes.NewReader(emailData), dkimDomain)
+		}
 
 		SPFStatus = spfCheck(s.RemoteAddress.String(), email.Sender, email.Sender.EmailAddress)
 

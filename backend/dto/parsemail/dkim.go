@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"git.pcux.cn/xuans/Smail/config"
@@ -14,6 +15,7 @@ import (
 	"github.com/emersion/go-msgauth/dkim"
 	log "github.com/sirupsen/logrus"
 	"io"
+	"net"
 	"os"
 	"strings"
 )
@@ -121,6 +123,42 @@ func (p *Dkim) Sign(msgData string) ([]byte, error) {
 
 func Check(ctx *context.Context, mail io.Reader) bool {
 	return CheckForDomain(ctx, mail, "")
+}
+
+// CheckLocalDelivery 仅对回环投递使用当前主域公钥验签，不能仅凭来源地址放行。
+func CheckLocalDelivery(ctx *context.Context, mail io.Reader, domain string, remote net.Addr) bool {
+	if instance == nil {
+		return false
+	}
+	return checkLocalDelivery(ctx, mail, domain, config.CurrentMailDomains().Primary, remote, instance.privateKey)
+}
+
+func checkLocalDelivery(ctx *context.Context, mail io.Reader, domain, primary string, remote net.Addr, signer crypto.Signer) bool {
+	address, ok := remote.(*net.TCPAddr)
+	if !ok || address == nil || !address.IP.IsLoopback() || signer == nil {
+		return false
+	}
+	domain = strings.TrimSpace(domain)
+	primary = strings.TrimSpace(primary)
+	if primary == "" || !strings.EqualFold(domain, primary) {
+		return false
+	}
+	publicKey, err := x509.MarshalPKIXPublicKey(signer.Public())
+	if err != nil {
+		return false
+	}
+	// 只提供本机实际使用的选择器和域名公钥，其他签名交回正常 DNS 验证流程。
+	options := &dkim.VerifyOptions{LookupTXT: func(name string) ([]string, error) {
+		if !strings.EqualFold(name, "default._domainkey."+primary) {
+			return nil, fmt.Errorf("signature does not use the current local DKIM selector")
+		}
+		return []string{"v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(publicKey)}, nil
+	}}
+	verified := checkForDomain(ctx, mail, domain, options)
+	if verified {
+		log.WithContext(ctx).Info("DKIM local delivery signature verified")
+	}
+	return verified
 }
 
 // CheckForDomain 在指定域名时要求有效签名与发件域严格一致，避免其他域签名冒用本域。

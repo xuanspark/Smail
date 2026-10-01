@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,71 @@ func TestCheckForDomainRequiresValidAlignedSignature(t *testing.T) {
 	}
 	if checkForDomain(nil, strings.NewReader(message), "example.com", options) {
 		t.Fatal("未签名邮件不能通过认证")
+	}
+}
+
+func TestLocalDeliveryRequiresCurrentKeyDomainAndLoopback(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := "From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: local authentication\r\n\r\noriginal body\r\n"
+	for _, tc := range []struct {
+		name, address, domain, selector string
+		foreignKey, tampered, unsigned  bool
+		want                            bool
+	}{
+		{name: "ipv4_without_dns", address: "127.0.0.1", want: true},
+		{name: "ipv6_without_dns", address: "::1", want: true},
+		{name: "mapped_loopback", address: "::ffff:127.0.0.1", want: true},
+		{name: "public_remote", address: "203.0.113.9"},
+		{name: "private_remote", address: "10.0.0.9"},
+		{name: "missing_remote"},
+		{name: "foreign_domain", address: "127.0.0.1", domain: "other.example"},
+		{name: "subdomain", address: "127.0.0.1", domain: "sub.example.com"},
+		{name: "unknown_selector", address: "127.0.0.1", selector: "other"},
+		{name: "wrong_key", address: "127.0.0.1", foreignKey: true},
+		{name: "tampered", address: "127.0.0.1", tampered: true},
+		{name: "unsigned", address: "127.0.0.1", unsigned: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			domain, selector := tc.domain, tc.selector
+			if domain == "" {
+				domain = "example.com"
+			}
+			if selector == "" {
+				selector = "default"
+			}
+			signingKey := key
+			if tc.foreignKey {
+				signingKey = otherKey
+			}
+			data := message
+			if !tc.unsigned {
+				var signed bytes.Buffer
+				if err := dkim.Sign(&signed, strings.NewReader(data), &dkim.SignOptions{Domain: domain, Selector: selector, Signer: signingKey}); err != nil {
+					t.Fatal(err)
+				}
+				data = signed.String()
+			}
+			if tc.tampered {
+				data += "tampered body\r\n"
+			}
+			remote := &net.TCPAddr{IP: net.ParseIP(tc.address), Port: 12345}
+			if got := checkLocalDelivery(nil, strings.NewReader(data), domain, "example.com", remote, key); got != tc.want {
+				t.Fatalf("本机投递认证结果为 %v，期望 %v", got, tc.want)
+			}
+		})
+	}
+	if checkLocalDelivery(nil, strings.NewReader(message), "example.com", "example.com", nil, key) {
+		t.Fatal("缺少连接地址时不能通过本机认证")
+	}
+	if checkLocalDelivery(nil, strings.NewReader(message), "example.com", "example.com", &net.TCPAddr{IP: net.ParseIP("127.0.0.1")}, nil) {
+		t.Fatal("缺少当前签名密钥时不能通过本机认证")
 	}
 }
 
