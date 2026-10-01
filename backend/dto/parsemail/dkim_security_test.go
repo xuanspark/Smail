@@ -1,18 +1,69 @@
 package parsemail
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"github.com/emersion/go-msgauth/dkim"
 )
+
+func TestCheckForDomainRequiresValidAlignedSignature(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := &dkim.VerifyOptions{LookupTXT: func(domain string) ([]string, error) {
+		return []string{"v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(publicKey)}, nil
+	}}
+	message := "From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: authentication\r\n\r\noriginal body\r\n"
+	for _, tc := range []struct {
+		name, signer, expected string
+		tampered               bool
+		want                   bool
+	}{
+		{name: "aligned", signer: "example.com", expected: "example.com", want: true},
+		{name: "case_insensitive", signer: "example.com", expected: "EXAMPLE.COM", want: true},
+		{name: "foreign_domain", signer: "other.example", expected: "example.com"},
+		{name: "subdomain", signer: "sub.example.com", expected: "example.com"},
+		{name: "suffix_attack", signer: "example.com.other.example", expected: "example.com"},
+		{name: "invalid_signature", signer: "example.com", expected: "example.com", tampered: true},
+		{name: "generic_verification", signer: "other.example", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var signed bytes.Buffer
+			if err := dkim.Sign(&signed, strings.NewReader(message), &dkim.SignOptions{
+				Domain: tc.signer, Selector: "default", Signer: key,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			data := signed.String()
+			if tc.tampered {
+				data += "tampered body\r\n"
+			}
+			if got := checkForDomain(nil, strings.NewReader(data), tc.expected, options); got != tc.want {
+				t.Fatalf("签名认证结果为 %v，期望 %v", got, tc.want)
+			}
+		})
+	}
+	if checkForDomain(nil, strings.NewReader(message), "example.com", options) {
+		t.Fatal("未签名邮件不能通过认证")
+	}
+}
 
 func TestLoadPrivateKeyAcceptsStrongRSAKey(t *testing.T) {
 	path := writeDKIMTestKey(t, 2048)

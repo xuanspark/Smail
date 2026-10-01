@@ -192,17 +192,20 @@ func (s *Session) Data(r io.Reader) (resultErr error) {
 		var dkimStatus, SPFStatus bool
 
 		details.Stage = "验证收信身份与插件处理"
+		_, fromDomain := email.From.GetDomainAccount()
+		domains := config.CurrentMailDomains()
+		localSender := array.InArray(fromDomain, domains.Accepted)
+		dkimDomain := ""
+		if localSender {
+			dkimDomain = fromDomain
+		}
 		// DKIM校验
-		dkimStatus = parsemail.Check(ctx, bytes.NewReader(emailData))
+		dkimStatus = parsemail.CheckForDomain(ctx, bytes.NewReader(emailData), dkimDomain)
 
 		SPFStatus = spfCheck(s.RemoteAddress.String(), email.Sender, email.Sender.EmailAddress)
 
-		_, formDomain := email.From.GetDomainAccount()
-		domains := config.CurrentMailDomains()
-		spoofed := array.InArray(formDomain, domains.Accepted) && SPFStatus == false
-		if spoofed {
-			dkimStatus = false
-		}
+		// 本机投递也保留真实 SPF 结果，仅有效且同域的 DKIM 签名可以避免误判伪造。
+		spoofed := localSender && !SPFStatus && !dkimStatus
 		email.Authentication = parsemail.NewEmailAuthentication(SPFStatus, dkimStatus)
 
 		log.WithContext(ctx).Debugf("开始执行插件ReceiveParseAfter！")

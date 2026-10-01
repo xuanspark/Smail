@@ -120,23 +120,33 @@ func (p *Dkim) Sign(msgData string) ([]byte, error) {
 }
 
 func Check(ctx *context.Context, mail io.Reader) bool {
+	return CheckForDomain(ctx, mail, "")
+}
 
-	verifications, err := dkim.Verify(mail)
+// CheckForDomain 在指定域名时要求有效签名与发件域严格一致，避免其他域签名冒用本域。
+func CheckForDomain(ctx *context.Context, mail io.Reader, domain string) bool {
+	return checkForDomain(ctx, mail, domain, nil)
+}
+
+func checkForDomain(ctx *context.Context, mail io.Reader, domain string, options *dkim.VerifyOptions) bool {
+	verifications, err := dkim.VerifyWithOptions(mail, options)
 	if err != nil {
 		log.WithContext(ctx).Warnf("DKIM Error:%v", err)
-	}
-
-	if len(verifications) == 0 {
 		return false
 	}
-
+	domain = strings.TrimSpace(domain)
 	for _, v := range verifications {
+		if v == nil {
+			continue
+		}
 		if v.Err == nil {
 			log.Println("Valid signature for:", v.Domain)
+			if domain == "" || strings.EqualFold(v.Domain, domain) {
+				return true
+			}
 		} else {
 			log.Println("Invalid signature for:", v.Domain, v.Err)
-			return false
 		}
 	}
-	return true
+	return false
 }
