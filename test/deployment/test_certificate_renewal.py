@@ -17,12 +17,16 @@ SCRIPTS = BASE if (BASE / 'deploy_certificate.py').exists() else BASE.parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
 
-with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
-    import deploy_certificate as deploy
-    import renew_certificate as renew
-import nginx_certificate_cutover as cutover
+if os.name == 'posix':
+    with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
+        import deploy_certificate as deploy
+        import renew_certificate as renew
+    import nginx_certificate_cutover as cutover
+else:
+    deploy = renew = cutover = None
 
 
+@unittest.skipUnless(os.name == 'posix', '证书部署脚本仅支持 Linux/Unix')
 class DomainConfigurationTests(unittest.TestCase):
     def test_domain_requires_explicit_configuration(self):
         with patch.dict(os.environ, {}, clear=True), self.assertRaises(KeyError):
@@ -43,6 +47,7 @@ class DomainConfigurationTests(unittest.TestCase):
             self.assertEqual(deploy.configured_domain('SMAIL_MAIL_DOMAIN'), 'new.example.test')
 
 
+@unittest.skipUnless(os.name == 'posix', '证书部署脚本仅支持 Linux/Unix')
 class CutoverTests(unittest.TestCase):
     def test_atomic_config_preserves_mode_under_restrictive_umask(self):
         directory = Path(tempfile.mkdtemp(prefix='cutover-tests-', dir=Path.cwd()))
@@ -60,6 +65,7 @@ class CutoverTests(unittest.TestCase):
             os.umask(previous)
 
 
+@unittest.skipUnless(os.name == 'posix', '证书部署脚本仅支持 Linux/Unix')
 class RenewalTests(unittest.TestCase):
     def execute(self, callback, provider='alidns'):
         with patch.object(renew.os, 'geteuid', return_value=0), \
@@ -164,6 +170,7 @@ class RenewalTests(unittest.TestCase):
             renew.main()
 
 
+@unittest.skipUnless(os.name == 'posix', '证书部署脚本仅支持 Linux/Unix')
 class DeploymentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

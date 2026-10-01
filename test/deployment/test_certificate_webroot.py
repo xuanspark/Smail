@@ -13,10 +13,14 @@ from unittest.mock import patch
 BASE = Path(__file__).resolve().parent
 SCRIPTS = BASE if (BASE / 'renew_certificate.py').exists() else BASE.parents[1] / 'deploy/nginx'
 sys.path.insert(0, str(SCRIPTS))
-with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
-    import renew_certificate as renew
+if os.name == 'posix':
+    with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
+        import renew_certificate as renew
+else:
+    renew = None
 
 
+@unittest.skipUnless(os.name == 'posix', '证书部署脚本仅支持 Linux/Unix')
 class WebrootTests(unittest.TestCase):
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp(prefix='webroot-tests-', dir=Path.cwd()))

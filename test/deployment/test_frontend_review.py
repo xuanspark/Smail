@@ -1,6 +1,7 @@
 """验证前端审查依赖的只读挂载范围，不启动本机应用。"""
 
 import importlib.util
+import os
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,7 @@ review = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(review)
 
 
+@unittest.skipUnless(os.name == 'posix', '前端隔离审查脚本仅支持 Linux/Unix')
 class DependencyBindingsTest(unittest.TestCase):
     root = Path('/var/tmp/smail-review-current')
 
