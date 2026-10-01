@@ -1,7 +1,6 @@
 package framework
 
 import (
-	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
@@ -10,6 +9,7 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/parsemail"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/runtimepath"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
@@ -397,9 +397,10 @@ func (p *Plugin) Run() error {
 		})
 	}
 	server := http.Server{
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-		Handler:      p.authenticatedHandler(p.limitedHandler(mux)),
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      35 * time.Second,
+		Handler:           p.authenticatedHandler(p.limitedHandler(mux)),
 	}
 
 	unixListener, err := pluginListener(os.Args[1])
