@@ -64,9 +64,10 @@ func applyServicePorts(cfg *config.Config) bool {
 		HTTPSEnabled: cfg.HttpsEnabled != 2,
 		TLSMode:      cfg.TLSMode,
 	}, cfg.GetSetupPort())
-	changed := cfg.HttpPort != resolved.Port || cfg.HttpsPort != resolved.HTTPSPort
+	changed := cfg.HttpPort != resolved.Port || cfg.HttpsPort != resolved.HTTPSPort || cfg.TLSMode != resolved.TLSMode
 	cfg.HttpPort = resolved.Port
 	cfg.HttpsPort = resolved.HTTPSPort
+	cfg.TLSMode = resolved.TLSMode
 	if resolved.TLSMode == config.HTTPSTLSModeProxy && cfg.HttpsEnabled != 2 {
 		cfg.HttpsEnabled = 2
 		changed = true

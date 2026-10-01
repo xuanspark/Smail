@@ -38,6 +38,31 @@ func TestSSLPolicyFollowsManagement(t *testing.T) {
 	}
 }
 
+func TestSSLPolicyFollowsRuntimeTLSOverride(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		stored    string
+		override  string
+		wantProxy bool
+	}{
+		{name: "bootstrap_proxy", override: HTTPSTLSModeProxy, wantProxy: true},
+		{name: "direct_to_proxy", stored: HTTPSTLSModeDirect, override: " PROXY ", wantProxy: true},
+		{name: "proxy_to_direct", stored: HTTPSTLSModeProxy, override: HTTPSTLSModeDirect},
+		{name: "invalid_override", stored: HTTPSTLSModeProxy, override: "invalid", wantProxy: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", test.override)
+			cfg := &Config{TLSMode: test.stored, SSLType: SSLTypeAutoHTTP}
+			if got := cfg.UsesProxyHTTPS(); got != test.wantProxy {
+				t.Fatalf("proxy policy = %t, want %t", got, test.wantProxy)
+			}
+			if cfg.AutomaticSSLEnabled() == test.wantProxy {
+				t.Fatal("certificate policy disagrees with effective TLS mode")
+			}
+		})
+	}
+}
+
 func TestExternalCertificateReloadIgnoresLegacyDNSMode(t *testing.T) {
 	previousRoot := ROOT_PATH
 	ROOT_PATH = t.TempDir()

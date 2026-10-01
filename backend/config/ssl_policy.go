@@ -1,10 +1,11 @@
 package config
 
-import "strings"
-
 // UsesProxyHTTPS 表示网页 HTTPS 由反向代理终止，不代表邮件协议可以关闭 TLS。
 func (c *Config) UsesProxyHTTPS() bool {
-	return c != nil && strings.EqualFold(strings.TrimSpace(c.TLSMode), HTTPSTLSModeProxy)
+	if c == nil {
+		return false
+	}
+	return ResolveHTTPPortDefaults(HTTPConfig{TLSMode: c.TLSMode}, 0).TLSMode == HTTPSTLSModeProxy
 }
 
 // EffectiveSSLType 以证书管理责任为准，仅在旧配置未记录管理方式时兼容旧类型。

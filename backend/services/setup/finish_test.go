@@ -166,6 +166,32 @@ func TestFinishRejectsInvalidConfigBeforeReady(t *testing.T) {
 	}
 }
 
+func TestFinishPersistsRuntimeProxyMode(t *testing.T) {
+	prepareFinishConfigTest(t)
+	t.Setenv("SMAIL_HTTP_TLS_MODE_OVERRIDE", config.HTTPSTLSModeProxy)
+	t.Setenv("SMAIL_HTTP_PORT_OVERRIDE", "8001")
+	if err := config.WriteConfig(&config.Config{
+		SetupState:   config.SetupStateBootstrap,
+		HttpsEnabled: 2,
+		Domain:       "example.com",
+		WebDomain:    "mail.example.com",
+		DbType:       config.DBTypeSQLite,
+		DbDSN:        filepath.Join(config.ROOT_PATH, "data", "smail.db"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Finish(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.ReadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.TLSMode != config.HTTPSTLSModeProxy || loaded.HttpsPort != 0 || loaded.HttpsEnabled != 2 || loaded.HttpPort != 8001 {
+		t.Fatalf("unexpected HTTP settings: mode=%q port=%d httpsPort=%d enabled=%d", loaded.TLSMode, loaded.HttpPort, loaded.HttpsPort, loaded.HttpsEnabled)
+	}
+}
+
 func prepareFinishConfigTest(t *testing.T) {
 	t.Helper()
 	previousRoot := config.ROOT_PATH
