@@ -132,6 +132,10 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 		writeAccountGroupError(w, err)
 		return
 	}
+	if err := accountgroup.CheckWrite(tx, accountgroup.MembershipScopeGuard(ctx.UserID, ctx.EffectiveRole(), groupIDs)); err != nil {
+		writeAccountGroupError(w, err)
+		return
+	}
 	groupIDs, err = accountgroup.ValidateMembership(tx, user.EffectiveRole(), groupIDs)
 	if err != nil {
 		writeAccountGroupError(w, err)
