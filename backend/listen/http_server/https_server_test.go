@@ -39,6 +39,37 @@ func TestCSRFExemptsReadOnlyUserInfoEndpoint(t *testing.T) {
 	}
 }
 
+func TestLoginAllowsSameOriginRequestWithInitializationSessionCookie(t *testing.T) {
+	configureProductionOriginTest(t)
+	oldInit := config.IsInit
+	oldSession := session.Instance
+	defer func() {
+		config.SetInitState(oldInit)
+		session.Instance = oldSession
+	}()
+	config.SetInitState(true)
+	session.Instance = scs.New()
+	session.Instance.Cookie.Name = "smail_session"
+
+	called := false
+	handler := session.Instance.LoadAndSave(contextIterceptor(controllers.HandlerFunc(func(ctx *context.Context, w http.ResponseWriter, r *http.Request) {
+		called = true
+		response.NewSuccessResponse("ok").FPrint(w)
+	})))
+
+	request := httptest.NewRequest(http.MethodPost, "https://mail.example.com/api/login", bytes.NewBufferString(`{"account":"test","password":"test"}`))
+	request.Host = "mail.example.com"
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://mail.example.com")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.AddCookie(&http.Cookie{Name: "smail_session", Value: "initialization-session"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if !called {
+		t.Fatalf("same-origin login with an initialization session cookie was rejected: status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
 func configureProductionOriginTest(t *testing.T) {
 	t.Helper()
 	oldConfig := config.Instance

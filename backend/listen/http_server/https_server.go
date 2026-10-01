@@ -320,7 +320,7 @@ func stateChangingMethod(method string) bool {
 
 func csrfExemptPath(path string) bool {
 	switch normalizedAPIPath(path) {
-	case "/api/user/info":
+	case "/api/login", "/api/user/info":
 		return true
 	default:
 		return false
