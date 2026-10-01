@@ -738,6 +738,60 @@ func TestMigrateLegacyConfigDerivesSetupStateFromFullPreflight(t *testing.T) {
 	}
 }
 
+func TestSetupMigrationAcceptsExternalSSLOnlyDuringFinalization(t *testing.T) {
+	for _, completing := range []bool{false, true} {
+		root := t.TempDir()
+		external := t.TempDir()
+		certificate := filepath.ToSlash(filepath.Join(external, "public.crt"))
+		privateKey := filepath.ToSlash(filepath.Join(external, "private.key"))
+		legacy := map[string]any{
+			"domain": "example.com", "webDomain": "web.example.com",
+			"dbDSN": "./data/smail.db", "dbType": "sqlite",
+			"isInit": false, "setupState": "bootstrap",
+			"ssl": map[string]any{
+				"management": SSLManagementWebServer,
+				"mode":       ManagedSSLModeUpload, "defaultDirectory": "ssl",
+				"customDirectory": "ssl", "certificateRef": certificate,
+				"privateKeyRef": privateKey,
+			},
+		}
+		writeLegacyMigrationFixture(t, root, legacy)
+		options := RuntimeValidationOptions{HasSuperAdmin: true, Production: true}
+		if _, err := PlanLegacyMigration(root, options); !errors.Is(err, ErrMigrationUnsafeValue) {
+			t.Fatalf("ordinary plan must reject external references: %v", err)
+		}
+		_, err := migrateLegacyConfig(root, options, completing)
+		if !completing {
+			if !errors.Is(err, ErrMigrationUnsafeValue) {
+				t.Fatalf("ordinary migration must reject external references: %v", err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime, err := NewConfigLoader(root, ConfigLoaderOptions{Validation: options}).Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if runtime.SetupState != SetupStateReady || runtime.SSL.TLS.CertificateRef != certificate || runtime.SSL.TLS.PrivateKeyRef != privateKey {
+			t.Fatalf("setup did not preserve external SSL references: %+v", runtime.SSL.TLS)
+		}
+	}
+}
+
+func TestSetupMigrationStillRejectsUnsafeRelativeSSL(t *testing.T) {
+	legacy := legacyMigrationConfig{DbType: "sqlite", DbDSN: "./data/smail.db"}
+	legacy.SSL.CertificateRef = "../outside/public.crt"
+	legacy.SSL.PrivateKeyRef = "../outside/private.key"
+	if fields := legacyManualFields(t.TempDir(), legacy, true); len(fields) == 0 {
+		t.Fatal("setup preflight accepted unsafe relative SSL paths")
+	}
+	if _, fields := legacySSLConfig(legacy, true); len(fields) == 0 {
+		t.Fatal("setup conversion accepted unsafe relative SSL paths")
+	}
+}
+
 func TestMigrateLegacyConfigAcceptsStructuredSSLObject(t *testing.T) {
 	root := t.TempDir()
 	legacy := map[string]any{

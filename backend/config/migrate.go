@@ -115,6 +115,10 @@ var legacyPluginExecutableMap = map[string]string{
 var legacyMySQLDSNPattern = regexp.MustCompile(`^([^:@/[:space:]]+):([^\r\n]*)@tcp\(([^():/[:space:]]+)(?::([0-9]{1,5}))?\)/([A-Za-z0-9][A-Za-z0-9._-]{0,127})(?:\?[^#[:space:]]*)?$`)
 
 func PlanLegacyMigration(root string, _ RuntimeValidationOptions) (LegacyMigrationPlan, error) {
+	return planLegacyMigration(root, false)
+}
+
+func planLegacyMigration(root string, allowExternalSSL bool) (LegacyMigrationPlan, error) {
 	directory, err := secureManagerConfigDirectory(root)
 	if err != nil {
 		return LegacyMigrationPlan{}, err
@@ -144,7 +148,7 @@ func PlanLegacyMigration(root string, _ RuntimeValidationOptions) (LegacyMigrati
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return LegacyMigrationPlan{}, err
 	}
-	plan.ManualFields = legacyManualFields(root, legacy)
+	plan.ManualFields = legacyManualFields(root, legacy, allowExternalSSL)
 	if len(plan.ManualFields) > 0 {
 		return plan, ErrMigrationUnsafeValue
 	}
@@ -155,7 +159,7 @@ func MigrateLegacyConfig(root string, options RuntimeValidationOptions) (LegacyM
 }
 
 func migrateLegacyConfig(root string, options RuntimeValidationOptions, completeSetup bool) (LegacyMigrationResult, error) {
-	plan, err := PlanLegacyMigration(root, options)
+	plan, err := planLegacyMigration(root, completeSetup)
 	if err != nil {
 		return LegacyMigrationResult{}, err
 	}
@@ -383,20 +387,25 @@ func equivalentStoredSecret(expected, existing StoredSecret, vault *credential.V
 	return expectedErr == nil && existingErr == nil && expectedPlaintext == existingPlaintext
 }
 
-func legacyManualFields(root string, legacy legacyMigrationConfig) []string {
+func legacyManualFields(root string, legacy legacyMigrationConfig, allowExternalSSL ...bool) []string {
+	permitExternal := len(allowExternalSSL) > 0 && allowExternalSSL[0]
+	validReference := func(value string) bool {
+		_, ok := legacyControlledReference(value)
+		return ok || (permitExternal && filepath.IsAbs(strings.TrimSpace(value)))
+	}
 	fields := make([]string, 0)
 	_, _, databaseManualFields := legacyDatabasePlan(root, legacy)
 	fields = append(fields, databaseManualFields...)
-	if _, ok := legacyControlledReference(legacy.SSLPublicKeyPath); legacy.SSLPublicKeyPath != "" && !ok {
+	if legacy.SSLPublicKeyPath != "" && !validReference(legacy.SSLPublicKeyPath) {
 		fields = append(fields, "SSLPublicKeyPath")
 	}
-	if _, ok := legacyControlledReference(legacy.SSLPrivateKeyPath); legacy.SSLPrivateKeyPath != "" && !ok {
+	if legacy.SSLPrivateKeyPath != "" && !validReference(legacy.SSLPrivateKeyPath) {
 		fields = append(fields, "SSLPrivateKeyPath")
 	}
-	if _, ok := legacyControlledReference(legacy.SSL.CertificateRef); legacy.SSL.CertificateRef != "" && !ok {
+	if legacy.SSL.CertificateRef != "" && !validReference(legacy.SSL.CertificateRef) {
 		fields = append(fields, "ssl.certificateRef")
 	}
-	if _, ok := legacyControlledReference(legacy.SSL.PrivateKeyRef); legacy.SSL.PrivateKeyRef != "" && !ok {
+	if legacy.SSL.PrivateKeyRef != "" && !validReference(legacy.SSL.PrivateKeyRef) {
 		fields = append(fields, "ssl.privateKeyRef")
 	}
 	if legacy.SMTPUsername == "" && legacy.SMTPPassword != "" {
