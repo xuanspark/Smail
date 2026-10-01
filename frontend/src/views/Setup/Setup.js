@@ -420,7 +420,7 @@ export function usePage() {
         return getSSLDNSParams()
       }
       if (sslType === "1") {
-        navigateToFormalService(sslRuntime.value)
+        scheduleStatusCheck()
         return res
       }
       checkStatus()
@@ -524,10 +524,6 @@ export function usePage() {
       if (response.errorNo === 0) {
         sslData = response.data || sslData
         sslRuntime.value = sslData
-        if (sslData.ready) {
-          navigateToFormalService(sslData)
-          return
-        }
       }
     } catch (error) {
       // 服务切换期间失败属于预期状态。
