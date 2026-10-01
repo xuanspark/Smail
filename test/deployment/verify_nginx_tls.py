@@ -11,7 +11,7 @@ import ssl
 import subprocess
 
 
-HOST = 'web.solit.cn'
+HOST = 'web.cdis.cn'
 CONTEXT = ssl.create_default_context()
 
 
@@ -47,9 +47,9 @@ def main():
     leaf = subprocess.run(['openssl', 'x509', '-in', '/opt/smail/ssl/custom.crt', '-outform', 'DER'],
                           check=True, capture_output=True).stdout
     expected = hashlib.sha256(leaf).hexdigest()
-    for port, host in [(443, HOST), (443, 'solit.cn'), (443, 'mail.solit.cn'),
-                       (8002, HOST), (465, 'smtp.solit.cn'),
-                       (993, 'imap.solit.cn'), (995, 'pop.solit.cn')]:
+    for port, host in [(443, HOST), (443, 'cdis.cn'), (443, 'mail.cdis.cn'),
+                       (8002, HOST), (465, 'smtp.cdis.cn'),
+                       (993, 'imap.cdis.cn'), (995, 'pop.cdis.cn')]:
         with socket.create_connection(('127.0.0.1', port), timeout=10) as raw:
             with CONTEXT.wrap_socket(raw, server_hostname=host) as stream:
                 actual = hashlib.sha256(stream.getpeercert(binary_form=True)).hexdigest()
@@ -59,7 +59,7 @@ def main():
     for port in (25, 587):
         with smtplib.SMTP(timeout=10) as client:
             assert client.connect('127.0.0.1', port)[0] == 220
-            client._host = 'smtp.solit.cn'
+            client._host = 'smtp.cdis.cn'
             assert client.ehlo('localhost')[0] == 250
             assert not client.has_extn('auth'), 'plaintext AUTH advertised'
             assert client.has_extn('starttls')
@@ -87,7 +87,7 @@ def main():
         raise AssertionError('unknown SNI accepted')
     root = json.loads(Path('/opt/smail/config/config.json').read_text())
     assert root['http']['port'] == 8001 and root['http']['httpsPort'] == 8002
-    assert root['security']['webAuthnRpOrigins'] == ['https://web.solit.cn']
+    assert root['security']['webAuthnRpOrigins'] == ['https://web.cdis.cn']
     results['fingerprintSHA256'] = expected
     results['status'] = 'failed' if results['failures'] else 'passed'
     print(json.dumps(results, ensure_ascii=False, indent=2))

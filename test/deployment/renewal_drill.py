@@ -15,7 +15,7 @@ from unittest.mock import patch
 SERVER = 'https://acme-staging-v02.api.letsencrypt.org/directory'
 SOURCE = Path('/usr/local/libexec/smail-acme/renew_certificate.py')
 LEGACY_SOURCE_SHA256 = '6d0abbe9466f8becd61b1cb3c750bfffb938d16c5a9bcae0b96d1451227d4216'
-DOMAINS = {'solit.cn', 'mail.solit.cn', 'smtp.solit.cn', 'imap.solit.cn', 'pop.solit.cn'}
+DOMAINS = {'cdis.cn', 'mail.cdis.cn', 'smtp.cdis.cn', 'imap.cdis.cn', 'pop.cdis.cn'}
 RUN = subprocess.run
 
 
@@ -59,14 +59,14 @@ def main():
     run(['nginx', '-t'], check=True)
     run(['systemctl', 'is-active', '--quiet', 'nginx'], check=True)
 
-    certificate = stage / 'certificates/solit.cn.crt'
-    key = stage / 'certificates/solit.cn.key'
+    certificate = stage / 'certificates/cdis.cn.crt'
+    key = stage / 'certificates/cdis.cn.key'
     old_certificate = digest(certificate)
     old_key = digest(key)
     protected = [Path('/opt/smail/smail'), Path('/opt/smail/smail-admin'),
                  Path('/opt/smail/ssl/custom.crt'), Path('/opt/smail/ssl/custom.key'),
-                 Path('/var/lib/smail-acme-tls/certificates/solit.cn.crt'),
-                 Path('/var/lib/smail-acme-tls/certificates/solit.cn.key')]
+                 Path('/var/lib/smail-acme-tls/certificates/cdis.cn.crt'),
+                 Path('/var/lib/smail-acme-tls/certificates/cdis.cn.key')]
     protected.extend(sorted(Path('/etc/nginx/conf.d').glob('*.conf')))
     before = {path: digest(path) for path in protected}
     spec = importlib.util.spec_from_file_location('production_renew', SOURCE)

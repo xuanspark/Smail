@@ -161,7 +161,7 @@ class DeploymentTests(unittest.TestCase):
                      '-subj', '/CN=Smail isolated test CA',
                      '-addext', 'keyUsage=critical,keyCertSign,cRLSign')
         cls.real_run('openssl', 'req', '-new', '-newkey', 'rsa:2048', '-nodes',
-                     '-keyout', str(cls.key), '-out', str(cls.csr), '-subj', '/CN=solit.cn',
+                     '-keyout', str(cls.key), '-out', str(cls.csr), '-subj', '/CN=cdis.cn',
                      '-addext', 'basicConstraints=critical,CA:FALSE',
                      '-addext', 'keyUsage=critical,digitalSignature,keyEncipherment',
                      '-addext', 'extendedKeyUsage=serverAuth',
@@ -180,9 +180,9 @@ class DeploymentTests(unittest.TestCase):
         self.backups = self.directory / 'backups'
         for directory in (self.source, self.target, self.backups):
             directory.mkdir(mode=0o700)
-        for path, value in ((self.source / 'solit.cn.crt', self.new.read_bytes()),
-                            (self.source / 'solit.cn.key', self.key.read_bytes()),
-                            (self.source / 'solit.cn.issuer.crt', self.ca.read_bytes()),
+        for path, value in ((self.source / 'cdis.cn.crt', self.new.read_bytes()),
+                            (self.source / 'cdis.cn.key', self.key.read_bytes()),
+                            (self.source / 'cdis.cn.issuer.crt', self.ca.read_bytes()),
                             (self.target / 'custom.crt', self.old.read_bytes()),
                             (self.target / 'custom.key', self.key.read_bytes())):
             path.write_bytes(value)
@@ -235,20 +235,20 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o077, 0)
 
     def test_unchanged_certificate_checks_live_without_reload(self):
-        (self.source / 'solit.cn.crt').write_bytes(self.old.read_bytes())
+        (self.source / 'cdis.cn.crt').write_bytes(self.old.read_bytes())
         deploy.main()
         self.assertNotIn(('systemctl', 'reload', 'nginx'), self.calls)
         self.live.assert_called_once()
 
     def test_interrupted_publish_is_reconciled_when_files_already_match(self):
-        (self.source / 'solit.cn.crt').write_bytes(self.old.read_bytes())
+        (self.source / 'cdis.cn.crt').write_bytes(self.old.read_bytes())
         self.live.side_effect = [RuntimeError('上次重载前中断'), None]
         deploy.main()
         self.assertEqual(self.calls.count(('systemctl', 'reload', 'nginx')), 1)
         self.assertEqual(self.live.call_count, 2)
 
     def test_failed_reconciliation_does_not_report_success(self):
-        (self.source / 'solit.cn.crt').write_bytes(self.old.read_bytes())
+        (self.source / 'cdis.cn.crt').write_bytes(self.old.read_bytes())
         self.live.side_effect = RuntimeError('线上证书不匹配')
         with self.assertRaisesRegex(RuntimeError, '线上证书不匹配'):
             deploy.main()
@@ -271,13 +271,13 @@ class DeploymentTests(unittest.TestCase):
     def test_short_lived_certificate_is_rejected(self):
         self.real_run('openssl', 'x509', '-req', '-in', str(self.csr), '-CA', str(self.ca),
                       '-CAkey', str(self.ca_key), '-set_serial', '3', '-days', '1',
-                      '-copy_extensions', 'copy', '-out', str(self.source / 'solit.cn.crt'))
+                      '-copy_extensions', 'copy', '-out', str(self.source / 'cdis.cn.crt'))
         with self.assertRaises(subprocess.CalledProcessError):
             deploy.main()
         self.assert_old_untouched()
 
     def test_mismatched_key_is_rejected(self):
-        (self.source / 'solit.cn.key').write_bytes(self.ca_key.read_bytes())
+        (self.source / 'cdis.cn.key').write_bytes(self.ca_key.read_bytes())
         with self.assertRaisesRegex(RuntimeError, '不匹配'):
             deploy.main()
         self.assert_old_untouched()
@@ -289,7 +289,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.target / 'custom.crt').read_bytes(), self.old.read_bytes())
 
     def test_nginx_still_using_candidate_is_rejected(self):
-        self.config += 'ssl_certificate ' + str(self.source / 'solit.cn.crt') + ';\n'
+        self.config += 'ssl_certificate ' + str(self.source / 'cdis.cn.crt') + ';\n'
         with self.assertRaisesRegex(RuntimeError, '签发目录'):
             deploy.main()
         self.assert_old_untouched()
@@ -325,7 +325,7 @@ class DeploymentTests(unittest.TestCase):
         self.live.assert_called_with(deploy.fingerprint(self.old))
 
     def test_unreadable_private_permissions_are_rejected(self):
-        (self.source / 'solit.cn.key').chmod(0o644)
+        (self.source / 'cdis.cn.key').chmod(0o644)
         with self.assertRaisesRegex(RuntimeError, '权限'):
             deploy.main()
         self.assert_old_untouched()
@@ -353,7 +353,7 @@ class DeploymentTests(unittest.TestCase):
         validate = deploy.validate
 
         def mutate(snapshot):
-            (self.source / 'solit.cn.crt').write_bytes(b'changed-after-snapshot')
+            (self.source / 'cdis.cn.crt').write_bytes(b'changed-after-snapshot')
             validate(snapshot)
 
         with patch.object(deploy, 'validate', side_effect=mutate):
@@ -372,7 +372,7 @@ class DeploymentTests(unittest.TestCase):
                       for name in ('client_body', 'proxy', 'fastcgi', 'uwsgi', 'scgi'))
             + 'server {\n'
             + 'listen 127.0.0.1:18443 ssl;\nlisten 127.0.0.1:18002 ssl;\n'
-            + 'server_name mail.solit.cn;\n' + self.config
+            + 'server_name mail.cdis.cn;\n' + self.config
             + 'location / { return 200 "ready"; }\n}\n}\n', encoding='utf-8')
         arguments = ('nginx', '-c', str(configuration), '-p', str(self.directory))
 
@@ -402,7 +402,7 @@ class DeploymentTests(unittest.TestCase):
                     deploy.main()
                     self.real_verify(deploy.fingerprint(self.new))
                     self.assertIsNone(process.poll())
-                    (self.source / 'solit.cn.crt').write_bytes(self.old.read_bytes())
+                    (self.source / 'cdis.cn.crt').write_bytes(self.old.read_bytes())
                     attempted = False
 
                     def fail_after_live_update(expected):

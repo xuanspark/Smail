@@ -42,7 +42,7 @@ def main():
     args = parser.parse_args()
     if not args.confirm_staging_challenge or os.geteuid() != 0 or run('hostname') != 'ikun2':
         parser.error('只允许在 47 服务器明确执行测试 CA 的全新 HTTP 挑战')
-    if '*.solit.cn' in renew.DOMAINS:
+    if '*.cdis.cn' in renew.DOMAINS:
         parser.error('当前泛域名证书必须使用 DNS-01，不能执行 HTTP-01 演练')
     if file_state(CONFIG)['sha256'] != CONFIG_SHA:
         parser.error('Nginx 配置与已审查模板不符，停止演练')
@@ -80,7 +80,7 @@ def main():
                  Path('/usr/local/libexec/smail-acme/deploy_certificate.py'),
                  Path('/etc/systemd/system/smail-certificate-renew.service')]
     protected.extend(sorted(Path('/etc/nginx/conf.d').glob('*.conf')))
-    protected.extend(sorted(Path('/var/lib/smail-acme-tls/certificates').glob('solit.cn.*')))
+    protected.extend(sorted(Path('/var/lib/smail-acme-tls/certificates').glob('cdis.cn.*')))
     before = {str(path): file_state(path) for path in protected}
     before_services = service_state()
     challenge_dir = renew.WEBROOT / '.well-known/acme-challenge'
@@ -92,7 +92,7 @@ def main():
     stop = threading.Event()
 
     def sample():
-        for host in ('mail.solit.cn', 'web.apmmk.cn'):
+        for host in ('mail.cdis.cn', 'web.cdis.cn'):
             value = {'host': host, 'timeUTC': datetime.now(timezone.utc).isoformat()}
             try:
                 value['bytes'] = len(monitor.request(host, 443))
@@ -135,8 +135,8 @@ def main():
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=630)
             report['exitCode'] = result.returncode
             assert result.returncode == 0, '全新 HTTP 挑战失败，日志已保留'
-            certificate = state / 'certificates/solit.cn.crt'
-            key = state / 'certificates/solit.cn.key'
+            certificate = state / 'certificates/cdis.cn.crt'
+            key = state / 'certificates/cdis.cn.key'
             public_cert = run('openssl', 'x509', '-in', str(certificate), '-pubkey', '-noout')
             public_key = run('openssl', 'pkey', '-in', str(key), '-pubout')
             assert public_cert == public_key

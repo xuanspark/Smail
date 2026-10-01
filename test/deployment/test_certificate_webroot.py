@@ -26,7 +26,7 @@ class WebrootTests(unittest.TestCase):
             path.chmod(0o755)
         for context in (patch.object(renew, 'WEBROOT', self.webroot),
                         patch.object(renew, 'ROOT', self.directory),
-                        patch.object(renew, 'DOMAINS', ('solit.cn', 'web.solit.cn')),
+                        patch.object(renew, 'DOMAINS', ('cdis.cn', 'web.cdis.cn')),
                         patch.dict(os.environ, {'SMAIL_ACME_CHALLENGE': 'http'}, clear=True)):
             context.start()
             self.addCleanup(context.stop)
@@ -70,7 +70,7 @@ class WebrootTests(unittest.TestCase):
         self.assertEqual(renew.challenge_arguments(), ['--http', '--http.webroot', str(self.webroot)])
 
     def test_wildcard_certificate_rejects_http_challenge(self):
-        with patch.object(renew, 'DOMAINS', ('solit.cn', '*.solit.cn')):
+        with patch.object(renew, 'DOMAINS', ('cdis.cn', '*.cdis.cn')):
             with self.assertRaisesRegex(RuntimeError, '泛域名证书必须使用 DNS 验证'):
                 renew.challenge_arguments()
 
