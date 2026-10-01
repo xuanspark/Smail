@@ -420,7 +420,7 @@ export function usePage() {
         return getSSLDNSParams()
       }
       if (sslType === "1") {
-        window.location.href = buildFinalURL(sslRuntime.value)
+        navigateToFormalService(sslRuntime.value)
         return res
       }
       checkStatus()
@@ -481,6 +481,8 @@ export function usePage() {
     const target = buildFinalURL(sslData)
     if (target && target !== window.location.href) {
       window.location.href = target
+    } else if (target) {
+      window.location.reload()
     }
   }
 
