@@ -96,6 +96,29 @@ func TestInstallerManagesProtectedEnvironmentFile(t *testing.T) {
 	}
 }
 
+func TestInstallerRequiresExplicitFreshReset(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	installer, err := os.ReadFile(filepath.Join(root, "deploy", "install-systemd.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(installer)
+	for _, required := range []string{
+		"--fresh",
+		"确认全新部署 Smail",
+		"cp -a -- \"$runtime_dir/.\" \"$backup_dir/runtime/\"",
+		"find \"$runtime_dir\" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +",
+		"systemctl disable smail smail-admin",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("installer is missing explicit fresh-reset behavior %q", required)
+		}
+	}
+	if strings.Contains(content, "全新部署已停止：$target 非空") {
+		t.Fatal("installer must not reject existing data without an explicit fresh-reset request")
+	}
+}
+
 func TestSmailServiceRetainsPluginIsolationCapabilities(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	unit, err := os.ReadFile(filepath.Join(root, "deploy", "systemd", "smail.service"))

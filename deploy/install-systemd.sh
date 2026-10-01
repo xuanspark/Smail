@@ -1,13 +1,53 @@
 #!/usr/bin/env bash
 set -eu
 
+usage() {
+  echo "用法：$0 [--fresh] [发布目录]"
+  echo "默认模式保留配置、数据库、证书、日志和插件；--fresh 模式必须输入确认词后才会备份并清理 Smail 专属运行数据。"
+}
+
+fresh=false
+root_argument=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --fresh)
+      fresh=true
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    -* )
+      echo "未知参数：$1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [ -n "$root_argument" ]; then
+        echo "发布目录只能指定一次。" >&2
+        exit 1
+      fi
+      root_argument="$1"
+      ;;
+  esac
+  shift
+done
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "必须使用 root 用户安装 Smail" >&2
   exit 1
 fi
 
-root_dir="$(realpath -e -- "${1:-$(dirname "$0")/..}")"
+root_dir="$(realpath -e -- "${root_argument:-$(dirname "$0")/..}")"
 runtime_dir=/opt/smail
+fresh_confirmation="确认全新部署 Smail"
+if [ "$fresh" = true ]; then
+  printf '这是不可逆的 Smail 专属数据清理操作。请输入“%s”继续： ' "$fresh_confirmation"
+  if ! IFS= read -r confirmation || [ "$confirmation" != "$fresh_confirmation" ]; then
+    echo "未获得有效确认，已取消全新部署。" >&2
+    exit 1
+  fi
+fi
 case "$(uname -m)" in
   x86_64) arch=amd64 ;;
   aarch64|arm64) arch=arm64 ;;
@@ -66,31 +106,48 @@ if [ -L /run/smail/admin-control.sock ] || { [ -e /run/smail/admin-control.sock 
   exit 1
 fi
 
-# 全新安装不继承目标目录中的配置、证书或业务数据，也不自动清理它们。
-for directory in config data ssl log plugins; do
-  target="$runtime_dir/$directory"
-  if [ -d "$target" ] && [ -n "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-    echo "全新部署已停止：$target 非空。请先确认并处理旧数据，再通过初始化页面重新配置。" >&2
-    exit 1
-  fi
-done
-for file in config.json config.dev.json smail.db smail-state.db; do
-  if [ -e "$runtime_dir/$file" ] || [ -L "$runtime_dir/$file" ]; then
-    echo "全新部署已停止：发现历史运行文件 $file，不会自动继承或删除。" >&2
-    exit 1
-  fi
-done
-if [ -e /etc/smail/smail.env ]; then
-  echo "全新部署已停止：请先确认并处理 /etc/smail/smail.env 中的旧部署环境配置。" >&2
-  exit 1
-fi
-if [ -d /etc/systemd/system/smail.service.d ] && [ -n "$(find /etc/systemd/system/smail.service.d -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-  echo "全新部署已停止：请先确认并处理 Smail 的旧服务覆盖配置。" >&2
-  exit 1
-fi
-
 # 安装备份存放在系统备份目录，不在部署根目录遗留 .bak 文件。
 backup_dir="$(mktemp -d /var/backups/smail-deploy-XXXXXXXX)"
+chmod 0700 "$backup_dir"
+if [ "$fresh" = true ]; then
+  if [ -d "$runtime_dir" ] && [ -n "$(find "$runtime_dir" -mindepth 1 -maxdepth 1 -type l -print -quit)" ]; then
+    echo "全新部署已停止：/opt/smail 顶层存在符号链接，拒绝清理。" >&2
+    exit 1
+  fi
+  install -d -m 0700 "$backup_dir/runtime"
+  if [ -d "$runtime_dir" ]; then
+    cp -a -- "$runtime_dir/." "$backup_dir/runtime/"
+  fi
+  if [ -d /etc/smail ]; then
+    cp -a -- /etc/smail "$backup_dir/etc-smail"
+  fi
+  if [ -d /etc/systemd/system/smail.service.d ]; then
+    cp -a -- /etc/systemd/system/smail.service.d "$backup_dir/smail.service.d"
+  fi
+  for name in smail.service smail-admin.service; do
+    if [ -f "/etc/systemd/system/$name" ]; then
+      cp -p -- "/etc/systemd/system/$name" "$backup_dir/$name"
+    fi
+  done
+  if [ -e /etc/smail/smail.env ]; then
+    cp -p -- /etc/smail/smail.env "$backup_dir/smail.env"
+  fi
+  if [ -d "$runtime_dir" ]; then
+    find "$runtime_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  fi
+  if [ -d /etc/smail ]; then
+    find /etc/smail -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  fi
+  if [ -d /etc/systemd/system/smail.service.d ]; then
+    rm -rf -- /etc/systemd/system/smail.service.d
+  fi
+  if [ -d /run/smail ]; then
+    find /run/smail -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  fi
+  systemctl disable smail smail-admin >/dev/null 2>&1 || true
+  systemctl daemon-reload
+  echo "已完成 Smail 专属运行数据清理；完整备份保存在 $backup_dir。"
+fi
 for name in smail smail-admin; do
   if [ -f "$runtime_dir/$name" ]; then cp -p -- "$runtime_dir/$name" "$backup_dir/$name"; fi
 done

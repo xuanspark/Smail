@@ -50,6 +50,29 @@ func TestWindowsDeploymentScriptsKeepAdminChannelManual(t *testing.T) {
 	}
 }
 
+func TestWindowsInstallerRequiresExplicitFreshReset(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	installer, err := os.ReadFile(filepath.Join(root, "deploy", "install-windows.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(installer)
+	for _, required := range []string{
+		"[switch]$Fresh",
+		"确认全新部署 Smail",
+		".smail-fresh-backup-",
+		"Copy-Item -LiteralPath $item.FullName -Destination (Join-Path $backupRoot $item.Name) -Recurse -Force",
+		"Remove-Item -LiteralPath $item.FullName -Recurse -Force",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("Windows installer is missing explicit fresh-reset behavior %q", required)
+		}
+	}
+	if strings.Contains(content, "全新部署已停止：$existing 不是空目录") {
+		t.Fatal("Windows installer must not reject existing data without an explicit fresh-reset request")
+	}
+}
+
 func hasUTF8BOM(data []byte) bool {
 	return len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF
 }
