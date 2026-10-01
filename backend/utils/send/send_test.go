@@ -113,6 +113,28 @@ func TestAllowUnsafeSMTPRequiresExplicitLoopbackTestTarget(t *testing.T) {
 	}
 }
 
+func TestIsConfiguredMailDomain(t *testing.T) {
+	accepted := []string{"cdis.cn", "alias.cdis.cn"}
+	tests := []struct {
+		name   string
+		domain string
+		want   bool
+	}{
+		{name: "primary domain", domain: "cdis.cn", want: true},
+		{name: "case insensitive domain", domain: "CDIS.CN", want: true},
+		{name: "accepted alias", domain: "alias.cdis.cn", want: true},
+		{name: "external domain", domain: "example.com"},
+		{name: "empty domain"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isConfiguredMailDomain(tt.domain, accepted); got != tt.want {
+				t.Fatalf("isConfiguredMailDomain(%q) = %v, want %v", tt.domain, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseRecipientAddressRejectsUnsafeInput(t *testing.T) {
 	tests := []struct {
 		name string

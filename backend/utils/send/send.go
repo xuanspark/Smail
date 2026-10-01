@@ -270,7 +270,7 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 				}
 			}()
 
-			if domain == consts.TEST_DOMAIN {
+			if domain == consts.TEST_DOMAIN || isConfiguredMailDomain(domain, config.CurrentMailDomains().Accepted) {
 				err := smtp.SendMailUnsafeContext(deliveryContext, "localhost", "127.0.0.1:25", nil, from, fromDomain, buildAddress(tos), data)
 				if err != nil {
 					recordFailure(err)
@@ -334,6 +334,21 @@ func deliveryLogResult(accepted, total int, failed bool) string {
 
 func allowUnsafeSMTP(domain mxDomain) bool {
 	return domain.localTest && domain.domain == "localhost" && domain.mxHost == "127.0.0.1"
+}
+
+// isConfiguredMailDomain 判断收件域名是否属于当前 Smail 实例管理的域名。
+// 受管域名应交给本机 SMTP 服务处理，避免内部账户互发依赖公网 DNS 和 MX。
+func isConfiguredMailDomain(domain string, accepted []string) bool {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return false
+	}
+	for _, item := range accepted {
+		if domain == strings.ToLower(strings.TrimSpace(item)) {
+			return true
+		}
+	}
+	return false
 }
 
 func isCertificateVerificationError(err error) bool {
