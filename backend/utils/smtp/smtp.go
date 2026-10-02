@@ -62,7 +62,8 @@ func IsDeliveryUncertain(err error) bool {
 }
 
 const (
-	outboundSMTPDialTimeout         = 2 * time.Second
+	outboundSMTPDialTimeout         = 10 * time.Second
+	outboundSMTPConnectTimeout      = 30 * time.Second
 	outboundSMTPGreetingTimeout     = 5 * time.Second
 	outboundSMTPTLSHandshakeTimeout = 2 * time.Second
 	outboundSMTPTransactionTimeout  = 2 * time.Minute
@@ -215,9 +216,11 @@ func dialTCPContext(parent context.Context, addr string, publicOnly bool) (net.C
 		return nil, errors.New("smtp: invalid remote address")
 	}
 
-	ctx, cancel := context.WithTimeout(parent, outboundSMTPDialTimeout)
+	ctx, cancel := context.WithTimeout(parent, outboundSMTPConnectTimeout)
 	defer cancel()
-	addresses, err := resolveRemoteAddresses(ctx, host)
+	resolveCtx, resolveCancel := context.WithTimeout(ctx, outboundSMTPDialTimeout)
+	addresses, err := resolveRemoteAddresses(resolveCtx, host)
+	resolveCancel()
 	if err != nil {
 		return nil, err
 	}
@@ -228,18 +231,30 @@ func dialTCPContext(parent context.Context, addr string, publicOnly bool) (net.C
 	}
 
 	dialer := &net.Dialer{Timeout: outboundSMTPDialTimeout, KeepAlive: 30 * time.Second}
-	var lastErr error
+	return dialResolvedAddresses(ctx, addresses, port, outboundSMTPDialTimeout, dialer.DialContext)
+}
+
+// 为各地址分配独立连接预算，同时遵守父级总时限，避免首个地址耗尽全部回退时间。
+func dialResolvedAddresses(ctx context.Context, addresses []netip.Addr, port string, timeout time.Duration, dial func(context.Context, string, string) (net.Conn, error)) (net.Conn, error) {
+	var failures []error
 	for _, address := range addresses {
-		conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address.String(), port))
+		if err := ctx.Err(); err != nil {
+			failures = append(failures, err)
+			break
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+		conn, err := dial(attemptCtx, "tcp", net.JoinHostPort(address.String(), port))
+		cancel()
 		if err == nil {
 			return conn, nil
 		}
-		lastErr = err
+		failures = append(failures, err)
 	}
-	if lastErr == nil {
+	if len(failures) == 0 {
 		return nil, errors.New("smtp: remote address is unavailable")
 	}
-	return nil, fmt.Errorf("smtp: connect to remote address: %w", lastErr)
+	// 保留各地址的失败原因，不能把最后一个未成功连接的地址当成唯一故障。
+	return nil, fmt.Errorf("smtp: connect to remote address: %w", errors.Join(failures...))
 }
 
 func resolveRemoteAddresses(ctx context.Context, host string) ([]netip.Addr, error) {
