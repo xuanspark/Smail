@@ -359,33 +359,48 @@ func (s *Store) cleanupLocked(now time.Time) {
 }
 
 func randomCode(length int) (string, error) {
+	return randomCodeFromReader(length, rand.Reader)
+}
+
+func randomCodeFromReader(length int, reader io.Reader) (string, error) {
 	if length <= 0 || length > 12 {
 		return "", ErrInvalidChallenge
 	}
 	const digits = "0123456789"
 	code := make([]byte, length)
 	random := make([]byte, length*2)
-	for written := 0; written < length; {
-		if _, err := io.ReadFull(rand.Reader, random); err != nil {
-			clearBytes(random)
-			clearBytes(code)
-			return "", err
-		}
-		for _, value := range random {
-			if value >= 250 {
-				continue
+	defer clearBytes(random)
+	defer clearBytes(code)
+	for {
+		var counts [10]uint8
+		for written := 0; written < length; {
+			if _, err := io.ReadFull(reader, random); err != nil {
+				return "", err
 			}
-			code[written] = digits[int(value)%len(digits)]
-			written++
-			if written == length {
+			for _, value := range random {
+				if value >= 250 {
+					continue
+				}
+				digit := int(value) % len(digits)
+				code[written] = digits[digit]
+				counts[digit]++
+				written++
+				if written == length {
+					break
+				}
+			}
+		}
+		valid := true
+		for _, count := range counts {
+			if count > 2 {
+				valid = false
 				break
 			}
 		}
+		if valid {
+			return string(code), nil
+		}
 	}
-	clearBytes(random)
-	result := string(code)
-	clearBytes(code)
-	return result, nil
 }
 
 func randomID() (string, error) {
