@@ -57,7 +57,7 @@
 
 1. 安装与项目依赖版本一致的 lego 到 `/usr/local/libexec/smail-acme/lego`，安装最新版 `smail-config` 到 `/opt/smail/smail-config`。
 2. 创建权限为 `0700` 的 `/var/lib/smail-acme-tls`，以及权限为 `0600`、root 所有的 `/etc/smail/acme-dns.env` 与 `/etc/smail/acme-renew.env`。按对应示例填写，禁止输出凭据或加入仓库。
-3. 首次使用相同参数执行 lego 的 `run` 完成签发，不能直接用缺少账户和证书状态的 `renew` 初始化。固定使用 `--filename smail`；域名包括邮件根域、该根域的泛域名及后台域名，验证方式为 DNS。
+3. 首次使用相同参数执行 lego 的 `run` 完成签发，不能直接用缺少账户和证书状态的 `renew` 初始化。固定使用 `--filename smail`；申请邮件根域及其泛域名，验证方式为 DNS。本模板要求后台域名被该证书覆盖；不要重复加入已被泛域名覆盖的后台子域，否则签发机构可能拒绝请求。独立的后台域名需要管理员额外加入明确的申请参数。
 4. 执行下列发布命令。该命令校验证书有效期、域名、密钥匹配及文件权限，拒绝符号链接、不安全路径和源目录内覆盖；失败时保留原有 Nginx 合并证书。
 
 ```sh
