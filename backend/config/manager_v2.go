@@ -55,12 +55,12 @@ type UpdateRequest struct {
 }
 
 type AuditActor struct {
-	UserID                 string
-	Name                   string
-	Role                   string
-	SessionID              string
-	RecentAuth             bool
-	RecoveryCodeConfigured bool
+	UserID                  string
+	Name                    string
+	Role                    string
+	SessionID               string
+	RecentAuth              bool
+	RecoveryCodeConfigured  bool
 	ExternalEmailConfigured bool
 }
 

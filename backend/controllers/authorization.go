@@ -16,18 +16,18 @@ func authorizeCapabilityWithNewRole(ctx *context.Context, capability access.Capa
 		return &access.Denial{Code: access.CodeAccessDenied}
 	}
 	return access.Authorize(access.Request{
-		ActorRole:                ctx.EffectiveRole(),
-		Capability:               capability,
-		TargetRole:               targetRole,
-		OwnResource:              ownResource,
-		RecentAuth:               ctx.RecentAuth,
-		RecoveryCodeConfigured:   ctx.RecoveryCodeConfigured,
-		ExternalEmailConfigured:  ctx.ExternalEmailConfigured,
-		TargetRecoveryConfigured: ctx.TargetRecoveryConfigured,
+		ActorRole:                     ctx.EffectiveRole(),
+		Capability:                    capability,
+		TargetRole:                    targetRole,
+		OwnResource:                   ownResource,
+		RecentAuth:                    ctx.RecentAuth,
+		RecoveryCodeConfigured:        ctx.RecoveryCodeConfigured,
+		ExternalEmailConfigured:       ctx.ExternalEmailConfigured,
+		TargetRecoveryConfigured:      ctx.TargetRecoveryConfigured,
 		TargetExternalEmailConfigured: ctx.TargetExternalEmailConfigured,
-		NewRole:                  newRole,
-		PluginInstanceAuthorized: ctx.PluginInstanceAuthorized,
-		AuditScopeAuthorized:     ctx.AuditScopeAuthorized,
-		DeploymentChannel:        ctx.DeploymentChannel,
+		NewRole:                       newRole,
+		PluginInstanceAuthorized:      ctx.PluginInstanceAuthorized,
+		AuditScopeAuthorized:          ctx.AuditScopeAuthorized,
+		DeploymentChannel:             ctx.DeploymentChannel,
 	})
 }

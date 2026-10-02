@@ -71,6 +71,75 @@ func setupSecurityPromptTest(t *testing.T) *xorm.Engine {
 	return engine
 }
 
+func TestSecurityContextRecoveryOptionsRefresh(t *testing.T) {
+	for _, role := range []access.Role{access.RoleAdmin, access.RoleUser} {
+		t.Run(string(role), func(t *testing.T) {
+			engine := setupSecurityPromptTest(t)
+			user := models.User{Account: "option-user", Role: string(role)}
+			if _, err := engine.Insert(&user); err != nil {
+				t.Fatal(err)
+			}
+			ctx := &appcontext.Context{UserID: user.ID, Role: role, RecentAuth: true, RecoveryCodeConfigured: true, ExternalEmailConfigured: true}
+			assertState := func(code, email bool) {
+				t.Helper()
+				LoadSecurityContext(ctx)
+				if ctx.RecoveryCodeConfigured != code || ctx.ExternalEmailConfigured != email {
+					t.Fatalf("unexpected context: code=%v email=%v", ctx.RecoveryCodeConfigured, ctx.ExternalEmailConfigured)
+				}
+			}
+			assertState(false, false)
+			email := models.ExternalEmail{UserID: user.ID, Status: models.ExternalEmailStatusPending, EmailFingerprint: "fixture"}
+			if _, err := engine.Insert(&email); err != nil {
+				t.Fatal(err)
+			}
+			assertState(false, false)
+			if _, err := engine.ID(email.ID).Cols("status").Update(&models.ExternalEmail{Status: models.ExternalEmailStatusVerified}); err != nil {
+				t.Fatal(err)
+			}
+			assertState(false, true)
+			if role == access.RoleAdmin {
+				if err := authorizeCapability(ctx, access.CapabilityPasswordReset, access.RoleUser, false); err != nil {
+					t.Fatalf("email state not forwarded: %v", err)
+				}
+			}
+			if _, err := engine.ID(email.ID).Cols("status").Update(&models.ExternalEmail{Status: models.ExternalEmailStatusDisabled}); err != nil {
+				t.Fatal(err)
+			}
+			assertState(false, false)
+			code := models.RecoveryCode{UserID: user.ID, CodeHash: "fixture"}
+			if _, err := engine.Insert(&code); err != nil {
+				t.Fatal(err)
+			}
+			assertState(true, false)
+			now := time.Now()
+			if _, err := engine.ID(code.ID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+				t.Fatal(err)
+			}
+			assertState(false, false)
+			ctx.UserID = 0
+			ctx.ExternalEmailConfigured, ctx.RecoveryCodeConfigured = true, true
+			assertState(false, false)
+			ctx.UserID = user.ID
+			db.Instance = nil
+			ctx.ExternalEmailConfigured, ctx.RecoveryCodeConfigured = true, true
+			assertState(false, false)
+		})
+	}
+	LoadSecurityContext(nil)
+}
+
+func TestRoleAuthorizationForwardsTargetEmail(t *testing.T) {
+	ctx := &appcontext.Context{UserID: 1, Role: access.RoleSuperAdmin, RecentAuth: true, TargetExternalEmailConfigured: true}
+	if err := authorizeCapabilityWithNewRole(ctx, access.CapabilityRoleManage, access.RoleUser, access.RoleAdmin, false); err != nil {
+		t.Fatalf("target email was not forwarded: %v", err)
+	}
+	ctx.TargetExternalEmailConfigured = false
+	ctx.ExternalEmailConfigured = true
+	if err := authorizeCapabilityWithNewRole(ctx, access.CapabilityRoleManage, access.RoleUser, access.RoleAdmin, false); !access.IsDenied(err, access.CodeRecoveryCodeRequired) {
+		t.Fatalf("actor state substituted for target: %v", err)
+	}
+}
+
 func TestSecuritySetupAcknowledgementIsSessionScoped(t *testing.T) {
 	engine := setupSecurityPromptTest(t)
 	previousSession, previousConfig, previousManager := session.Instance, config.Instance, config.CurrentManager()

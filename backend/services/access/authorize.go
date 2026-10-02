@@ -25,19 +25,19 @@ func IsDenied(err error, code DenialCode) bool {
 }
 
 type Request struct {
-	ActorRole                Role
-	Capability               Capability
-	TargetRole               Role
-	NewRole                  Role
-	OwnResource              bool
-	RecentAuth               bool
-	RecoveryCodeConfigured   bool
-	ExternalEmailConfigured  bool
-	TargetRecoveryConfigured bool
+	ActorRole                     Role
+	Capability                    Capability
+	TargetRole                    Role
+	NewRole                       Role
+	OwnResource                   bool
+	RecentAuth                    bool
+	RecoveryCodeConfigured        bool
+	ExternalEmailConfigured       bool
+	TargetRecoveryConfigured      bool
 	TargetExternalEmailConfigured bool
-	PluginInstanceAuthorized bool
-	AuditScopeAuthorized     bool
-	DeploymentChannel        bool
+	PluginInstanceAuthorized      bool
+	AuditScopeAuthorized          bool
+	DeploymentChannel             bool
 }
 
 func Authorize(request Request) error {

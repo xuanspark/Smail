@@ -162,10 +162,10 @@ func DefaultConfigAuthorization(_ context.Context, actor AuditActor, operation C
 		capability = access.CapabilityDatabaseMigrate
 	}
 	request := access.Request{
-		ActorRole:              access.Role(actor.Role),
-		Capability:             capability,
-		RecentAuth:             actor.RecentAuth,
-		RecoveryCodeConfigured: actor.RecoveryCodeConfigured,
+		ActorRole:               access.Role(actor.Role),
+		Capability:              capability,
+		RecentAuth:              actor.RecentAuth,
+		RecoveryCodeConfigured:  actor.RecoveryCodeConfigured,
 		ExternalEmailConfigured: actor.ExternalEmailConfigured,
 	}
 	if operation == ConfigOperationRollback && request.ActorRole == access.RoleSuperAdmin {

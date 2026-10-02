@@ -2,6 +2,63 @@ package access
 
 import "testing"
 
+func TestRecoveryOptionAuthorization(t *testing.T) {
+	for _, capability := range []Capability{CapabilityPasswordReset, CapabilityUserSecurityManage, CapabilityNotificationManage} {
+		for _, ready := range []struct {
+			name  string
+			code  bool
+			email bool
+		}{{"neither", false, false}, {"code", true, false}, {"email", false, true}, {"both", true, true}} {
+			t.Run(string(capability)+"/"+ready.name, func(t *testing.T) {
+				req := Request{ActorRole: RoleAdmin, TargetRole: RoleUser, Capability: capability, RecentAuth: true,
+					RecoveryCodeConfigured: ready.code, ExternalEmailConfigured: ready.email}
+				err := Authorize(req)
+				if ready.code || ready.email {
+					if err != nil {
+						t.Fatalf("expected allow: %v", err)
+					}
+				} else if !IsDenied(err, CodeRecoveryCodeRequired) {
+					t.Fatalf("expected recovery requirement: %v", err)
+				}
+				req.RecentAuth = false
+				if err := Authorize(req); !IsDenied(err, CodeRecentAuthRequired) {
+					t.Fatalf("missing recent auth accepted: %v", err)
+				}
+			})
+		}
+	}
+	for _, target := range []Role{RoleAdmin, RoleSuperAdmin} {
+		req := Request{ActorRole: RoleAdmin, TargetRole: target, Capability: CapabilityPasswordReset, RecentAuth: true, ExternalEmailConfigured: true}
+		if err := Authorize(req); !IsDenied(err, CodeTargetRoleDenied) {
+			t.Fatalf("email bypassed target boundary: %v", err)
+		}
+	}
+	req := Request{ActorRole: RoleUser, TargetRole: RoleUser, Capability: CapabilityNotificationManage, RecentAuth: true, ExternalEmailConfigured: true, RecoveryCodeConfigured: true}
+	if err := Authorize(req); !IsDenied(err, CodeAccessDenied) {
+		t.Fatalf("user received management permission: %v", err)
+	}
+}
+
+func TestRoleChangeAcceptsTargetEmailWithoutBorrowingActorState(t *testing.T) {
+	req := Request{ActorRole: RoleSuperAdmin, Capability: CapabilityRoleManage, TargetRole: RoleUser, NewRole: RoleAdmin, RecentAuth: true, ExternalEmailConfigured: true}
+	if err := Authorize(req); !IsDenied(err, CodeRecoveryCodeRequired) {
+		t.Fatalf("actor email substituted for target: %v", err)
+	}
+	req.TargetExternalEmailConfigured = true
+	if err := Authorize(req); err != nil {
+		t.Fatalf("target email did not qualify: %v", err)
+	}
+	req.NewRole = RoleUser
+	req.TargetRole = RoleAdmin
+	if err := Authorize(req); err != nil {
+		t.Fatalf("email-only downgrade rejected: %v", err)
+	}
+	req.RecentAuth = false
+	if err := Authorize(req); !IsDenied(err, CodeRecentAuthRequired) {
+		t.Fatalf("role change bypassed recent auth: %v", err)
+	}
+}
+
 func TestDefaultDeny(t *testing.T) {
 	tests := []struct {
 		name string

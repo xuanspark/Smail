@@ -8,9 +8,33 @@ import (
 	"path/filepath"
 	"testing"
 
+	"git.pcux.cn/xuans/Smail/services/access"
 	appcontext "git.pcux.cn/xuans/Smail/utils/context"
 	log "github.com/sirupsen/logrus"
 )
+
+func TestConfigAuthorizationAcceptsEitherRecoveryOption(t *testing.T) {
+	actor := AuditActor{UserID: "2", Role: string(access.RoleAdmin), RecentAuth: true, ExternalEmailConfigured: true}
+	if err := DefaultConfigAuthorization(stdcontext.Background(), actor, ConfigOperationUpdate, SectionPlugins); err != nil {
+		t.Fatalf("email-only admin rejected: %v", err)
+	}
+	actor.RecentAuth = false
+	if err := DefaultConfigAuthorization(stdcontext.Background(), actor, ConfigOperationUpdate, SectionPlugins); !access.IsDenied(err, access.CodeRecentAuthRequired) {
+		t.Fatalf("email bypassed recent auth: %v", err)
+	}
+	actor.RecentAuth = true
+	if err := DefaultConfigAuthorization(stdcontext.Background(), actor, ConfigOperationRollback, SectionRoot); !access.IsDenied(err, access.CodeAccessDenied) {
+		t.Fatalf("email granted rollback: %v", err)
+	}
+	actor.ExternalEmailConfigured = false
+	if err := DefaultConfigAuthorization(stdcontext.Background(), actor, ConfigOperationUpdate, SectionPlugins); !access.IsDenied(err, access.CodeRecoveryCodeRequired) {
+		t.Fatalf("missing recovery option accepted: %v", err)
+	}
+	actor.RecoveryCodeConfigured = true
+	if err := DefaultConfigAuthorization(stdcontext.Background(), actor, ConfigOperationUpdate, SectionPlugins); err != nil {
+		t.Fatalf("code-only admin rejected: %v", err)
+	}
+}
 
 func TestLogFormatterHandlesMissingLogID(t *testing.T) {
 	entry := &log.Entry{
