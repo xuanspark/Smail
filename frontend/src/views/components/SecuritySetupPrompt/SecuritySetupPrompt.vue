@@ -8,7 +8,9 @@
     :show-close="false"
     class="security-setup-dialog"
   >
-    <p class="setup-description">{{ isSuperAdmin ? '请至少启用一种安全验证后继续。' : '请设置安全码并绑定外部邮箱。未完成前，每次登录都会提醒。' }}</p>
+    <p class="setup-description">
+      {{ isSuperAdmin ? '请至少启用一种安全验证后继续。' : '安全码或外部邮箱至少配置一项。未配置时，每次登录都会提醒。' }}
+    </p>
     <div class="setup-options">
       <section v-for="item in options" :key="item.key" class="setup-option">
         <div>

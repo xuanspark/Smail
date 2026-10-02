@@ -189,16 +189,60 @@ func TestSecuritySetupRequiresUsableCredentials(t *testing.T) {
 					fields := loginSecurityFields(&user)
 					emailReady := emailStatus == models.ExternalEmailStatusVerified
 					codeReady := codeStatus == "valid"
-					wantPrompt := !emailReady || !codeReady
-					if role == access.RoleSuperAdmin {
-						wantPrompt = !emailReady && !codeReady
-					}
-					if fields["externalEmailConfigured"] != emailReady || fields["showSecuritySetupPrompt"] != wantPrompt {
+					wantPrompt := !emailReady && !codeReady
+					wantRequired := role == access.RoleSuperAdmin && wantPrompt
+					wantRecoveryPrompt := role != access.RoleSuperAdmin && wantPrompt
+					if fields["externalEmailConfigured"] != emailReady || fields["recoveryCodesConfigured"] != codeReady ||
+						fields["showSecuritySetupPrompt"] != wantPrompt || fields["showRecoverySetupPrompt"] != wantRecoveryPrompt ||
+						fields["securitySetupRequired"] != wantRequired {
 						t.Fatalf("unexpected security state: %#v", fields)
 					}
 				})
 			}
 		}
+	}
+}
+
+func TestNonSuperAdminRecoverySetupTracksUsableOptions(t *testing.T) {
+	for _, role := range []access.Role{access.RoleUser, access.RoleAdmin} {
+		t.Run(string(role), func(t *testing.T) {
+			engine := setupSecurityPromptTest(t)
+			user := models.User{Account: "alice", Role: string(role)}
+			if _, err := engine.Insert(&user); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := engine.Insert(&models.TOTPAuthenticator{UserID: user.ID, Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			assertPrompt := func(want bool) {
+				t.Helper()
+				fields := loginSecurityFields(&user)
+				if fields["showSecuritySetupPrompt"] != want || fields["showRecoverySetupPrompt"] != want ||
+					fields["securitySetupRequired"] != false {
+					t.Fatalf("unexpected security state: %#v", fields)
+				}
+			}
+			assertPrompt(true)
+			email := models.ExternalEmail{UserID: user.ID, Status: models.ExternalEmailStatusVerified, EmailFingerprint: "fixture"}
+			if _, err := engine.Insert(&email); err != nil {
+				t.Fatal(err)
+			}
+			assertPrompt(false)
+			if _, err := engine.ID(email.ID).Cols("status").Update(&models.ExternalEmail{Status: models.ExternalEmailStatusDisabled}); err != nil {
+				t.Fatal(err)
+			}
+			assertPrompt(true)
+			code := models.RecoveryCode{UserID: user.ID, CodeHash: "fixture"}
+			if _, err := engine.Insert(&code); err != nil {
+				t.Fatal(err)
+			}
+			assertPrompt(false)
+			now := time.Now()
+			if _, err := engine.ID(code.ID).Cols("used_at").Update(&models.RecoveryCode{UsedAt: &now}); err != nil {
+				t.Fatal(err)
+			}
+			assertPrompt(true)
+		})
 	}
 }
 

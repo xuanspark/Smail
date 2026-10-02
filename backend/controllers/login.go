@@ -127,8 +127,9 @@ func loginSecurityFields(user *models.User) map[string]any {
 		fields["totpConfigured"] = enabled
 	}
 	fields["recoveryCodesConfigured"] = configured
-	fields["showRecoverySetupPrompt"] = !configured
-	fields["showSecuritySetupPrompt"] = !configured || fields["externalEmailConfigured"] != true
+	needsRecoverySetup := !configured && fields["externalEmailConfigured"] != true
+	fields["showRecoverySetupPrompt"] = needsRecoverySetup
+	fields["showSecuritySetupPrompt"] = needsRecoverySetup
 	if user.EffectiveRole() == access.RoleSuperAdmin {
 		required := !configured && fields["externalEmailConfigured"] != true && fields["totpConfigured"] != true
 		fields["securitySetupRequired"] = required
