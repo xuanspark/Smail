@@ -421,7 +421,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	if reqData.Password != "" {
 		if err := authorizeCapability(ctx, access.CapabilityPasswordReset, targetRole, false); err != nil {
-			writeUserAuthorizationError(w, err, "密码重置需要为当前管理员配置有效安全码")
+			writeUserAuthorizationError(w, err, "请先为当前管理员配置有效安全码或验证外部邮箱")
 			return
 		}
 	}
@@ -436,17 +436,17 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		ctx.TargetRecoveryConfigured = false
-		if credentialService := credentialRuntime(); credentialService != nil {
-			configured, checkErr := credentialService.HasValidRecoveryCode(user.ID)
-			if checkErr != nil {
-				log.WithContext(ctx).WithError(checkErr).Error("load target recovery code status failed")
-				response.NewErrorResponse(response.ServerError, "读取目标用户恢复码状态失败", "").FPrint(w)
-				return
-			}
-			ctx.TargetRecoveryConfigured = configured
+		ctx.TargetExternalEmailConfigured = false
+		recoveryStatus, emailStatus, checkErr := loadUserSecurityStatus([]models.User{user})
+		if checkErr != nil {
+			log.WithContext(ctx).WithError(checkErr).Error("load target recovery options failed")
+			response.NewErrorResponse(response.ServerError, "读取目标用户安全方式失败", "").FPrint(w)
+			return
 		}
+		ctx.TargetRecoveryConfigured = recoveryStatus[user.ID]
+		ctx.TargetExternalEmailConfigured = emailStatus[user.ID]
 		if err := authorizeCapabilityWithNewRole(ctx, access.CapabilityRoleManage, targetRole, newRole, false); err != nil {
-			writeUserAuthorizationError(w, err, "更改权限级别前，请先为该用户配置有效安全码")
+			writeUserAuthorizationError(w, err, "更改权限级别前，请先为该用户配置有效安全码或验证外部邮箱")
 			return
 		}
 		user.ApplyRole(newRole)

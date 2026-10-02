@@ -57,7 +57,7 @@ func loadManagedSecurityUser(ctx *context.Context, w http.ResponseWriter, userID
 			return nil, false
 		}
 		if access.IsDenied(err, access.CodeRecoveryCodeRequired) {
-			writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "请先为当前管理员配置有效安全码", string(access.CodeRecoveryCodeRequired))
+			writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "请先为当前管理员配置有效安全码或验证外部邮箱", string(access.CodeRecoveryCodeRequired))
 			return nil, false
 		}
 		writeSecurityError(w, response.NoAccessPrivileges, "无权管理该用户的安全信息")

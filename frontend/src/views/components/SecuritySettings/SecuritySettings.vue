@@ -92,7 +92,7 @@
         <div class="section-actions"><el-button v-if="recoveryConfigured && !generatedCodes.length" @click="revealRecoveryCodes">验证后查看</el-button><el-button type="primary" @click="generateRecoveryCodes">生成新恢复码</el-button><el-button v-if="recoveryConfigured" type="danger" plain @click="revokeRecoveryCodes">撤销</el-button></div>
       </div>
       <el-alert v-if="recoveryConfigured" title="当前已配置有效离线恢复码" type="success" :closable="false" show-icon />
-      <el-alert v-else title="当前未配置有效离线恢复码，高风险操作可能无法进行。" type="warning" :closable="false" show-icon />
+      <el-alert v-else title="尚未配置安全码；已验证外部邮箱也可满足安全配置要求。" type="warning" :closable="false" show-icon />
       <div v-if="generatedCodes.length" class="recovery-code-panel">
         <div class="one-time-tip">安全码已通过安全验证显示，仅在当前页面短暂显示，请立即复制并妥善保存。</div>
         <code v-for="code in generatedCodes" :key="code" class="recovery-code">{{ code }}</code>

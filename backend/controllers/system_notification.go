@@ -52,7 +52,7 @@ func loadNotificationUser(ctx *context.Context, w http.ResponseWriter, userID in
 			if access.IsDenied(err, access.CodeRecentAuthRequired) {
 				writeSecurityErrorWithCode(w, response.NoAccessPrivileges, "请先确认当前管理员密码", string(access.CodeRecentAuthRequired))
 			} else if access.IsDenied(err, access.CodeRecoveryCodeRequired) {
-				writeSecurityError(w, response.NoAccessPrivileges, "请先为当前管理员配置安全码")
+				writeSecurityError(w, response.NoAccessPrivileges, "请先为当前管理员配置有效安全码或验证外部邮箱")
 			} else {
 				writeSecurityError(w, response.NoAccessPrivileges, "无权修改该账号的系统通知授权")
 			}

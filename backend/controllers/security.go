@@ -164,12 +164,23 @@ func InvalidateSecurityRuntimeUser(userID int, account string) {
 }
 
 func LoadSecurityContext(ctx *context.Context) {
-	if ctx == nil || ctx.UserID <= 0 {
+	if ctx == nil {
+		return
+	}
+	// 每次请求重新读取，停用邮箱或用完安全码后不能沿用旧的授权状态。
+	ctx.RecoveryCodeConfigured = false
+	ctx.ExternalEmailConfigured = false
+	if ctx.UserID <= 0 {
 		return
 	}
 	if ctx.EffectiveRole() == access.RoleSuperAdmin {
-		ctx.RecoveryCodeConfigured = false
 		return
+	}
+	if db.Instance != nil {
+		configured, err := db.Instance.Where("user_id = ? AND status = ?", ctx.UserID, models.ExternalEmailStatusVerified).Exist(&models.ExternalEmail{})
+		if err == nil {
+			ctx.ExternalEmailConfigured = configured
+		}
 	}
 	service := currentSecurityRuntime().credentials
 	if service == nil && db.Instance != nil {

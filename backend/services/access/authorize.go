@@ -32,7 +32,9 @@ type Request struct {
 	OwnResource              bool
 	RecentAuth               bool
 	RecoveryCodeConfigured   bool
+	ExternalEmailConfigured  bool
 	TargetRecoveryConfigured bool
+	TargetExternalEmailConfigured bool
 	PluginInstanceAuthorized bool
 	AuditScopeAuthorized     bool
 	DeploymentChannel        bool
@@ -55,7 +57,8 @@ func Authorize(request Request) error {
 	if policy.RequiresRecentAuth && !request.RecentAuth {
 		return deny(CodeRecentAuthRequired)
 	}
-	if policy.RequiresRecoveryCode && request.ActorRole != RoleSuperAdmin && !request.RecoveryCodeConfigured && !request.DeploymentChannel {
+	// 保留原策略与错误码名称；普通角色的恢复保障允许安全码或已验证外部邮箱任选其一。
+	if policy.RequiresRecoveryCode && request.ActorRole != RoleSuperAdmin && !request.RecoveryCodeConfigured && !request.ExternalEmailConfigured && !request.DeploymentChannel {
 		return deny(CodeRecoveryCodeRequired)
 	}
 	return authorizeResource(request)
@@ -98,7 +101,7 @@ func authorizeResource(request Request) error {
 		if !canManageAccountTarget(request.ActorRole, request.TargetRole) || !request.NewRole.Valid() || request.NewRole == RoleSuperAdmin {
 			return deny(CodeTargetRoleDenied)
 		}
-		if !request.TargetRecoveryConfigured {
+		if !request.TargetRecoveryConfigured && !request.TargetExternalEmailConfigured {
 			return deny(CodeRecoveryCodeRequired)
 		}
 	case CapabilityPluginRestart:

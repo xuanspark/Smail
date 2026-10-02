@@ -166,6 +166,7 @@ func DefaultConfigAuthorization(_ context.Context, actor AuditActor, operation C
 		Capability:             capability,
 		RecentAuth:             actor.RecentAuth,
 		RecoveryCodeConfigured: actor.RecoveryCodeConfigured,
+		ExternalEmailConfigured: actor.ExternalEmailConfigured,
 	}
 	if operation == ConfigOperationRollback && request.ActorRole == access.RoleSuperAdmin {
 		if !request.RecentAuth {

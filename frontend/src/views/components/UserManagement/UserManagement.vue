@@ -219,8 +219,8 @@
             <el-tag v-else :type="roleMeta(editUserInfo.role).type">
               {{ roleMeta(editUserInfo.role).label }}
             </el-tag>
-            <span v-if="roleChanged && !selectedUser?.RecoveryCodeConfigured" class="role-requirement">
-              更改级别前，请先在下方配置该用户的安全码。
+            <span v-if="roleChanged && !selectedUser?.RecoveryCodeConfigured && !selectedUser?.ExternalEmailConfigured" class="role-requirement">
+              更改级别前，请先为该用户配置安全码或验证外部邮箱。
             </span>
           </el-form-item>
 

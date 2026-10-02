@@ -25,7 +25,9 @@ type Context struct {
 	SecuritySetupAcknowledged int
 	RecentAuth                bool
 	RecoveryCodeConfigured    bool
+	ExternalEmailConfigured   bool
 	TargetRecoveryConfigured  bool
+	TargetExternalEmailConfigured bool
 	PluginInstanceAuthorized  bool
 	AuditScopeAuthorized      bool
 	DeploymentChannel         bool

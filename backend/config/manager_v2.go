@@ -61,6 +61,7 @@ type AuditActor struct {
 	SessionID              string
 	RecentAuth             bool
 	RecoveryCodeConfigured bool
+	ExternalEmailConfigured bool
 }
 
 type StepUpConfirmation struct {
