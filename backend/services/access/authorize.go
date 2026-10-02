@@ -40,6 +40,11 @@ type Request struct {
 	DeploymentChannel             bool
 }
 
+// HasRecoveryOption 判断账号是否至少配置了一种可用恢复方式。
+func HasRecoveryOption(recoveryCodeConfigured, externalEmailConfigured bool) bool {
+	return recoveryCodeConfigured || externalEmailConfigured
+}
+
 func Authorize(request Request) error {
 	if !request.ActorRole.Valid() {
 		return deny(CodeInvalidRole)
@@ -58,7 +63,7 @@ func Authorize(request Request) error {
 		return deny(CodeRecentAuthRequired)
 	}
 	// 保留原策略与错误码名称；普通角色的恢复保障允许安全码或已验证外部邮箱任选其一。
-	if policy.RequiresRecoveryCode && request.ActorRole != RoleSuperAdmin && !request.RecoveryCodeConfigured && !request.ExternalEmailConfigured && !request.DeploymentChannel {
+	if policy.RequiresRecoveryCode && request.ActorRole != RoleSuperAdmin && !HasRecoveryOption(request.RecoveryCodeConfigured, request.ExternalEmailConfigured) && !request.DeploymentChannel {
 		return deny(CodeRecoveryCodeRequired)
 	}
 	return authorizeResource(request)
@@ -101,7 +106,7 @@ func authorizeResource(request Request) error {
 		if !canManageAccountTarget(request.ActorRole, request.TargetRole) || !request.NewRole.Valid() || request.NewRole == RoleSuperAdmin {
 			return deny(CodeTargetRoleDenied)
 		}
-		if !request.TargetRecoveryConfigured && !request.TargetExternalEmailConfigured {
+		if !HasRecoveryOption(request.TargetRecoveryConfigured, request.TargetExternalEmailConfigured) {
 			return deny(CodeRecoveryCodeRequired)
 		}
 	case CapabilityPluginRestart:

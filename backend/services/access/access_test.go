@@ -2,6 +2,27 @@ package access
 
 import "testing"
 
+func TestHasRecoveryOptionAcceptsEitherConfiguredMethod(t *testing.T) {
+	tests := []struct {
+		name  string
+		code  bool
+		email bool
+		want  bool
+	}{
+		{name: "neither", want: false},
+		{name: "security code only", code: true, want: true},
+		{name: "external email only", email: true, want: true},
+		{name: "both", code: true, email: true, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := HasRecoveryOption(test.code, test.email); got != test.want {
+				t.Fatalf("HasRecoveryOption(%t, %t) = %t, want %t", test.code, test.email, got, test.want)
+			}
+		})
+	}
+}
+
 func TestRecoveryOptionAuthorization(t *testing.T) {
 	for _, capability := range []Capability{CapabilityPasswordReset, CapabilityUserSecurityManage, CapabilityNotificationManage} {
 		for _, ready := range []struct {
