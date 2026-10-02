@@ -46,3 +46,12 @@ test('客户端凭据操作验证本人密码且保留密码空白字符', () =>
   assert.match(source, /if \(verifyLoading\.value\) return/)
   assert.match(source, /finally \{\s+verifyPassword\.value = ''/)
 })
+
+test('新增客户端使用原生表单提交且保留防重复提交保护', () => {
+  const source = read('js')
+  const template = read('vue')
+  assert.match(template, /<el-form\s+id="client-credential-create-form"\s+@submit\.prevent="submitCreateClient"/)
+  assert.match(template, /native-type="submit"\s+form="client-credential-create-form"/)
+  assert.doesNotMatch(template, /@click="submitCreateClient"|@key(?:down|up)\.enter[^=]*="submitCreateClient"/)
+  assert.match(source, /const submitCreateClient = async \(\) => \{\s+if \(createLoading\.value\) return/)
+})

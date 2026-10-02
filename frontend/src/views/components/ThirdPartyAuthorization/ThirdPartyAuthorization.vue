@@ -273,7 +273,10 @@
         <p class="dialog-tip">
           为您的设备（例如“iPhone 自带邮件”、“公司 Foxmail”、“Mac Mail”）创建独立授权码：
         </p>
-        <el-form @submit.prevent="submitCreateClient">
+        <el-form
+          id="client-credential-create-form"
+          @submit.prevent="submitCreateClient"
+        >
           <el-form-item label="客户端名称">
             <el-input
               v-model="newClientName"
@@ -304,7 +307,8 @@
             class="btn-primary-action"
             :loading="createLoading"
             :disabled="!newClientName.trim() || !createPassword || createLoading"
-            @click="submitCreateClient"
+            native-type="submit"
+            form="client-credential-create-form"
           >
             验证并生成
           </el-button>
