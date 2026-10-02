@@ -16,7 +16,6 @@ import (
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
-	"git.pcux.cn/xuans/Smail/services/auth"
 	"git.pcux.cn/xuans/Smail/services/credentials"
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/recovery"
@@ -422,9 +421,11 @@ func RevokeRecoveryCodes(ctx *context.Context, w http.ResponseWriter, req *http.
 type protocolCredentialRequest struct {
 	Protocol string `json:"protocol"`
 	Enabled  *bool  `json:"enabled,omitempty"`
+	Password string `json:"password"`
 }
 
 func requireProtocolCredentialContext(ctx *context.Context, w http.ResponseWriter) (*credentials.Service, bool) {
+	w.Header().Set("Cache-Control", "no-store")
 	if ctx == nil || ctx.UserID <= 0 {
 		writeSecurityError(w, response.NeedLogin, "请先登录")
 		return nil, false
@@ -463,6 +464,9 @@ func SetProtocolCredentialEnabled(ctx *context.Context, w http.ResponseWriter, r
 		writeSecurityError(w, response.ParamsError, "协议设置请求无效")
 		return
 	}
+	if !requireProtocolCredentialPassword(ctx, w, req, input.Password) {
+		return
+	}
 	if err := service.SetProtocolEnabled(ctx.UserID, input.Protocol, *input.Enabled); err != nil {
 		writeSecurityError(w, response.ParamsError, "协议设置失败")
 		return
@@ -479,6 +483,9 @@ func GenerateProtocolCredential(ctx *context.Context, w http.ResponseWriter, req
 	var input protocolCredentialRequest
 	if err := decodeJSONRequest(w, req, &input); err != nil || strings.TrimSpace(input.Protocol) == "" {
 		writeSecurityError(w, response.ParamsError, "协议请求无效")
+		return
+	}
+	if !requireProtocolCredentialPassword(ctx, w, req, input.Password) {
 		return
 	}
 	code, err := service.GenerateProtocolCode(ctx.UserID, input.Protocol)
@@ -504,6 +511,9 @@ func RevokeProtocolCredential(ctx *context.Context, w http.ResponseWriter, req *
 		writeSecurityError(w, response.ParamsError, "协议请求无效")
 		return
 	}
+	if !requireProtocolCredentialPassword(ctx, w, req, input.Password) {
+		return
+	}
 	if err := service.RevokeProtocolCode(ctx.UserID, input.Protocol); err != nil {
 		writeSecurityError(w, response.ParamsError, "撤销授权码失败")
 		return
@@ -525,11 +535,7 @@ func RevealProtocolCredentials(ctx *context.Context, w http.ResponseWriter, req 
 		writeSecurityError(w, response.ParamsError, "请输入当前账号密码进行安全验证")
 		return
 	}
-	if _, err := auth.AuthenticateUserByID(ctx.UserID, input.Password); err != nil {
-		if writePasswordBusy(w, err) {
-			return
-		}
-		writeSecurityError(w, response.ParamsError, "密码验证失败")
+	if !requireProtocolCredentialPassword(ctx, w, req, input.Password) {
 		return
 	}
 	codes, err := service.RevealProtocolCodes(ctx.UserID)

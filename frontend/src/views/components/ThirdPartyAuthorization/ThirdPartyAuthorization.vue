@@ -264,6 +264,8 @@
       title="新增客户端专属授权码"
       width="min(440px, calc(100vw - 32px))"
       :close-on-click-modal="false"
+      :close-on-press-escape="!createLoading"
+      :show-close="!createLoading"
       class="compact-dialog"
       @close="closeCreateDialog"
     >
@@ -279,23 +281,32 @@
               maxlength="32"
               show-word-limit
               autocomplete="off"
-              @keyup.enter="submitCreateClient"
+            />
+          </el-form-item>
+          <el-form-item label="登录密码">
+            <el-input
+              v-model="createPassword"
+              type="password"
+              show-password
+              placeholder="验证本人密码后生成授权码"
+              autocomplete="current-password"
+              :disabled="createLoading"
             />
           </el-form-item>
         </el-form>
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button size="default" @click="closeCreateDialog">取消</el-button>
+          <el-button size="default" :disabled="createLoading" @click="closeCreateDialog">取消</el-button>
           <el-button
             type="primary"
             size="default"
             class="btn-primary-action"
             :loading="createLoading"
-            :disabled="!newClientName.trim()"
+            :disabled="!newClientName.trim() || !createPassword || createLoading"
             @click="submitCreateClient"
           >
-            立即生成
+            验证并生成
           </el-button>
         </div>
       </template>
@@ -307,12 +318,14 @@
       title="安全身份验证"
       width="min(440px, calc(100vw - 32px))"
       :close-on-click-modal="false"
+      :close-on-press-escape="!verifyLoading"
+      :show-close="!verifyLoading"
       class="compact-dialog"
       @close="closeVerifyDialog"
     >
       <div class="dialog-body">
         <p class="dialog-tip">
-          查看已保存的客户端专属授权码明文前，请先验证当前账号的登录密码：
+          {{ verifyDescription }}
         </p>
         <el-form @submit.prevent="submitVerifyAndReveal">
           <el-form-item label="登录密码">
@@ -322,23 +335,23 @@
               show-password
               placeholder="请输入当前账号登录密码"
               autocomplete="current-password"
-              @keyup.enter="submitVerifyAndReveal"
+              :disabled="verifyLoading"
             />
           </el-form-item>
         </el-form>
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button size="default" @click="closeVerifyDialog">取消</el-button>
+          <el-button size="default" :disabled="verifyLoading" @click="closeVerifyDialog">取消</el-button>
           <el-button
             type="primary"
             size="default"
             class="btn-primary-action"
             :loading="verifyLoading"
-            :disabled="!verifyPassword.trim()"
+            :disabled="!verifyPassword || verifyLoading"
             @click="submitVerifyAndReveal"
           >
-            验证并查看明文
+            验证并{{ verifyActionLabel }}
           </el-button>
         </div>
       </template>
@@ -360,10 +373,13 @@ const {
   revealCountdown,
   createDialogVisible,
   newClientName,
+  createPassword,
   createLoading,
   verifyDialogVisible,
   verifyPassword,
   verifyLoading,
+  verifyActionLabel,
+  verifyDescription,
   handleClientSelect,
   openCreateDialog,
   closeCreateDialog,

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,6 +33,11 @@ func TestSecurityHandlersRejectUnauthenticatedRequests(t *testing.T) {
 		{name: "generate protocol credential", hand: GenerateProtocolCredential, body: `{"protocol":"smtp"}`},
 		{name: "revoke protocol credential", hand: RevokeProtocolCredential, body: `{"protocol":"smtp"}`},
 		{name: "reveal protocol credentials", hand: RevealProtocolCredentials, body: `{"password":"FixtureP12"}`},
+		{name: "list client credentials", hand: ListClientCredentials},
+		{name: "create client credential", hand: CreateClientCredential, body: `{"client_name":"设备","password":"FixtureP12"}`},
+		{name: "regenerate client credential", hand: RegenerateClientCredential, body: `{"client_id":1,"password":"FixtureP12"}`},
+		{name: "revoke client credential", hand: RevokeClientCredential, body: `{"client_id":1,"password":"FixtureP12"}`},
+		{name: "reveal client credentials", hand: RevealClientCredentials, body: `{"password":"FixtureP12"}`},
 		{name: "request verification", hand: RequestVerification, body: `{"purpose":"login","account":"smail","email":"user@example.com"}`},
 		{name: "verify verification", hand: VerifyVerification, body: `{"id":"challenge","account":"smail","email":"user@example.com","code":"12345678","purpose":"login"}`},
 		{name: "list external emails", hand: ListExternalEmails},
@@ -157,7 +163,7 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	setRequest := httptest.NewRequest(
 		http.MethodPut,
 		"/api/security/credentials/protocols/enabled",
-		strings.NewReader(`{"protocol":"SMTP","enabled":true}`),
+		strings.NewReader(`{"protocol":"SMTP","enabled":true,"password":"FixtureP12"}`),
 	)
 	SetProtocolCredentialEnabled(ctx, setRecorder, setRequest)
 	var setResult response.Response
@@ -172,7 +178,7 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	generateRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/api/security/credentials/protocols/generate",
-		strings.NewReader(`{"protocol":"smtp"}`),
+		strings.NewReader(`{"protocol":"smtp","password":"FixtureP12"}`),
 	)
 	GenerateProtocolCredential(ctx, generateRecorder, generateRequest)
 	var generateResult response.Response
@@ -251,7 +257,7 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 	revokeRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/api/security/credentials/protocols/revoke",
-		strings.NewReader(`{"protocol":"smtp"}`),
+		strings.NewReader(`{"protocol":"smtp","password":"FixtureP12"}`),
 	)
 	RevokeProtocolCredential(ctx, revokeRecorder, revokeRequest)
 	var revokeResult response.Response
@@ -271,5 +277,119 @@ func TestProtocolCredentialHandlersManageCurrentUserCredential(t *testing.T) {
 		if ok && itemMap["protocol"] == "smtp" && itemMap["configured"] == true {
 			t.Fatal("revoked SMTP protocol credential remained configured")
 		}
+	}
+}
+
+func TestClientCredentialEntryPointsRequireOwnPassword(t *testing.T) {
+	_, _, engine, user, other := newPublicSecurityFixture(t)
+	service, err := credentials.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetVaultRoot(t.TempDir())
+	previousDB, previousRuntime := db.Instance, securityRuntime
+	previousUserLimiter, previousIPLimiter := reauthUserAttempts, reauthIPAttempts
+	db.Instance, securityRuntime.credentials = engine, service
+	t.Cleanup(func() {
+		db.Instance, securityRuntime = previousDB, previousRuntime
+		reauthUserAttempts, reauthIPAttempts = previousUserLimiter, previousIPLimiter
+	})
+	_, client, err := service.CreateClientCredential(user.ID, "原设备")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetProtocolEnabled(user.ID, "smtp", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GenerateProtocolCode(user.ID, "smtp"); err != nil {
+		t.Fatal(err)
+	}
+	status := func() string {
+		t.Helper()
+		clients, err := service.ListClientCredentials(user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		protocols, err := service.ListProtocolCredentials(user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal([]any{clients, protocols})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	before := status()
+	entries := []struct {
+		name string
+		hand func(*appcontext.Context, http.ResponseWriter, *http.Request)
+		body string
+	}{
+		{"create", CreateClientCredential, `{"client_name":"新设备"`},
+		{"regenerate", RegenerateClientCredential, fmt.Sprintf(`{"client_id":%d`, client.ID)},
+		{"revoke", RevokeClientCredential, fmt.Sprintf(`{"client_id":%d`, client.ID)},
+		{"reveal", RevealClientCredentials, `{"unused":true`},
+		{"enable protocol", SetProtocolCredentialEnabled, `{"protocol":"imap","enabled":true`},
+		{"disable protocol", SetProtocolCredentialEnabled, `{"protocol":"smtp","enabled":false`},
+		{"generate protocol", GenerateProtocolCredential, `{"protocol":"smtp"`},
+		{"revoke protocol", RevokeProtocolCredential, `{"protocol":"smtp"`},
+		{"reveal protocol", RevealProtocolCredentials, `{"unused":true`},
+	}
+	for _, role := range []access.Role{access.RoleUser, access.RoleAdmin, access.RoleSuperAdmin} {
+		for _, entry := range entries {
+			t.Run(string(role)+"/"+entry.name, func(t *testing.T) {
+				reauthUserAttempts, reauthIPAttempts = newLoginLimiter(10), newLoginLimiter(50)
+				ctx := &appcontext.Context{UserID: user.ID, Role: role, RecentAuth: true}
+				for _, suffix := range []string{`}`, `,"password":"incorrect"}`, `,"password":" FixtureP12 "}`} {
+					recorder := httptest.NewRecorder()
+					entry.hand(ctx, recorder, httptest.NewRequest(http.MethodPost, "/api/security", strings.NewReader(entry.body+suffix)))
+					var result response.Response
+					if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil || result.ErrorNo == 0 {
+						t.Fatal("missing or incorrect password must not allow credential operations")
+					}
+					if recorder.Header().Get("Cache-Control") != "no-store" {
+						t.Fatal("credential responses must not be cached")
+					}
+					if status() != before {
+						t.Fatal("rejected operation changed credential state")
+					}
+				}
+			})
+		}
+	}
+	// 本人验证通过也不能重置或撤销其他账号的客户端。
+	reauthUserAttempts, reauthIPAttempts = newLoginLimiter(10), newLoginLimiter(50)
+	for _, hand := range []func(*appcontext.Context, http.ResponseWriter, *http.Request){RegenerateClientCredential, RevokeClientCredential} {
+		recorder := httptest.NewRecorder()
+		body := fmt.Sprintf(`{"client_id":%d,"password":"FixtureP12"}`, client.ID)
+		hand(&appcontext.Context{UserID: other.ID, Role: access.RoleSuperAdmin}, recorder, httptest.NewRequest(http.MethodPost, "/api/security", strings.NewReader(body)))
+		var result response.Response
+		if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil || result.ErrorNo == 0 || status() != before {
+			t.Fatal("credential operations must remain scoped to the current account")
+		}
+	}
+}
+
+func TestClientCredentialPasswordFailuresShareRateLimit(t *testing.T) {
+	_, _, engine, user, _ := newPublicSecurityFixture(t)
+	service, err := credentials.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousDB, previousRuntime := db.Instance, securityRuntime
+	previousUserLimiter, previousIPLimiter := reauthUserAttempts, reauthIPAttempts
+	db.Instance, securityRuntime.credentials = engine, service
+	reauthUserAttempts, reauthIPAttempts = newLoginLimiter(1), newLoginLimiter(10)
+	t.Cleanup(func() {
+		db.Instance, securityRuntime = previousDB, previousRuntime
+		reauthUserAttempts, reauthIPAttempts = previousUserLimiter, previousIPLimiter
+	})
+	ctx := &appcontext.Context{UserID: user.ID, RecentAuth: true}
+	CreateClientCredential(ctx, httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/security", strings.NewReader(`{"client_name":"设备","password":"incorrect"}`)))
+	recorder := httptest.NewRecorder()
+	RevealProtocolCredentials(ctx, recorder, httptest.NewRequest(http.MethodPost, "/api/security", strings.NewReader(`{"password":"FixtureP12"}`)))
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatal("switching from client to legacy protocol entry must not bypass password failure limits")
 	}
 }

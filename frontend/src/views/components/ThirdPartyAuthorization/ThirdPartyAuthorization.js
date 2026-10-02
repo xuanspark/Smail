@@ -19,12 +19,23 @@ export function usePage() {
   // 新增客户端弹窗
   const createDialogVisible = ref(false)
   const newClientName = ref('')
+  const createPassword = ref('')
   const createLoading = ref(false)
 
-  // 密码验证查看弹窗
+  // 查看、重置及撤销均使用本人密码验证，操作目标在打开弹窗时固定。
   const verifyDialogVisible = ref(false)
   const verifyPassword = ref('')
   const verifyLoading = ref(false)
+  const verifyAction = ref('reveal')
+  const verificationClient = ref(null)
+  const verifyActionLabel = computed(() => ({
+    reveal: '查看明文',
+    regenerate: '重新生成',
+    revoke: '撤销授权码',
+  }[verifyAction.value]))
+  const verifyDescription = computed(() => verificationClient.value
+    ? `请验证本人登录密码，以${verifyActionLabel.value}：${verificationClient.value.client_name}`
+    : '查看客户端授权码前，请验证本人登录密码。')
 
   const currentClient = computed(() => {
     if (!selectedClientId.value || !Array.isArray(clientList.value)) return null
@@ -129,25 +140,35 @@ export function usePage() {
   }
 
   const openCreateDialog = () => {
+    if (loading.value || createLoading.value || verifyLoading.value) return
     newClientName.value = ''
+    createPassword.value = ''
     createDialogVisible.value = true
   }
 
   const closeCreateDialog = () => {
     createDialogVisible.value = false
     newClientName.value = ''
+    createPassword.value = ''
   }
 
   const submitCreateClient = async () => {
+    if (createLoading.value) return
     const name = newClientName.value.trim()
     if (!name) {
       notify('请输入客户端名称')
+      return
+    }
+    const password = createPassword.value
+    if (!password) {
+      notify('请输入当前账号登录密码')
       return
     }
     createLoading.value = true
     try {
       const response = await http.post('/api/v1/security/credentials/clients/create', {
         client_name: name,
+        password,
       })
       if (response.errorNo !== 0) {
         throw new Error(response.errorMsg || '创建客户端专属授权码失败')
@@ -166,12 +187,13 @@ export function usePage() {
     } catch (error) {
       notify(error?.message || '创建客户端授权码失败')
     } finally {
+      createPassword.value = ''
       createLoading.value = false
     }
   }
 
   const regenerateClientCode = async (client) => {
-    if (!client) return
+    if (!client || loading.value || verifyLoading.value) return
     try {
       await ElMessageBox.confirm(
         `确定重新生成客户端「${client.client_name}」的专属授权码吗？旧授权码将立即失效。`,
@@ -186,28 +208,11 @@ export function usePage() {
       return
     }
 
-    loading.value = true
-    try {
-      const response = await http.post('/api/v1/security/credentials/clients/regenerate', {
-        client_id: client.id,
-      })
-      if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '重新生成客户端授权码失败')
-      }
-      const newCode = response.data?.code || ''
-      revealedCodes[client.id] = newCode
-      startRevealCountdown(60)
-      notify(`客户端「${client.client_name}」专属授权码已重新生成（60秒内有效显示）`, 'success')
-      await loadClientCredentials()
-    } catch (error) {
-      notify(error?.message || '重新生成失败')
-    } finally {
-      loading.value = false
-    }
+    openActionVerification('regenerate', client)
   }
 
   const revokeClientCode = async (client) => {
-    if (!client) return
+    if (!client || loading.value || verifyLoading.value) return
     try {
       await ElMessageBox.confirm(
         `确定撤销并删除客户端「${client.client_name}」吗？撤销后该设备将无法通过授权码登录收发信。`,
@@ -222,22 +227,7 @@ export function usePage() {
       return
     }
 
-    loading.value = true
-    try {
-      const response = await http.post('/api/v1/security/credentials/clients/revoke', {
-        client_id: client.id,
-      })
-      if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '撤销客户端失败')
-      }
-      delete revealedCodes[client.id]
-      notify(`客户端「${client.client_name}」已成功撤销`, 'success')
-      await loadClientCredentials()
-    } catch (error) {
-      notify(error?.message || '撤销失败')
-    } finally {
-      loading.value = false
-    }
+    openActionVerification('revoke', client)
   }
 
   const copyText = async (text, label = '内容') => {
@@ -267,34 +257,64 @@ export function usePage() {
     await copyText(codeText, '专属授权码')
   }
 
-  const openVerifyDialog = () => {
+  const openActionVerification = (action, client = null) => {
+    if (verifyLoading.value) return
+    hideCodesAutomatically(true)
+    verifyAction.value = action
+    verificationClient.value = client ? { id: client.id, client_name: client.client_name } : null
     verifyPassword.value = ''
     verifyDialogVisible.value = true
   }
 
+  const openVerifyDialog = () => openActionVerification('reveal')
+
   const closeVerifyDialog = () => {
     verifyDialogVisible.value = false
     verifyPassword.value = ''
+    verificationClient.value = null
   }
 
   const submitVerifyAndReveal = async () => {
-    const password = verifyPassword.value.trim()
+    if (verifyLoading.value) return
+    const password = verifyPassword.value
     if (!password) {
       notify('请输入当前账号登录密码')
       return
     }
+    const action = verifyAction.value
+    const client = verificationClient.value
+    if (action !== 'reveal' && !client) return
     verifyLoading.value = true
     try {
-      const response = await http.post('/api/v1/security/credentials/clients/reveal', {
+      const paths = {
+        reveal: '/api/v1/security/credentials/clients/reveal',
+        regenerate: '/api/v1/security/credentials/clients/regenerate',
+        revoke: '/api/v1/security/credentials/clients/revoke',
+      }
+      const response = await http.post(paths[action], {
         password,
+        ...(client ? { client_id: client.id } : {}),
       })
       if (response.errorNo !== 0) {
-        throw new Error(response.errorMsg || '密码验证失败，无法查看授权码')
+        throw new Error(response.errorMsg || '安全验证或授权码操作失败')
+      }
+      closeVerifyDialog()
+      if (action === 'regenerate') {
+        revealedCodes[client.id] = response.data?.code || ''
+        startRevealCountdown(60)
+        notify(`客户端「${client.client_name}」授权码已重新生成，旧授权码已失效`, 'success')
+        await loadClientCredentials()
+        return
+      }
+      if (action === 'revoke') {
+        hideCodesAutomatically(true)
+        notify(`客户端「${client.client_name}」已成功撤销`, 'success')
+        await loadClientCredentials()
+        return
       }
       const map = response.data || {}
       Object.keys(revealedCodes).forEach(k => delete revealedCodes[k])
       Object.assign(revealedCodes, map)
-      closeVerifyDialog()
       const count = Object.keys(map).length
       if (count > 0) {
         startRevealCountdown(60)
@@ -305,6 +325,7 @@ export function usePage() {
     } catch (error) {
       notify(error?.message || '验证失败，请检查密码是否正确')
     } finally {
+      verifyPassword.value = ''
       verifyLoading.value = false
     }
   }
@@ -315,7 +336,9 @@ export function usePage() {
   })
 
   onUnmounted(() => {
-    clearCountdownTimer()
+    hideCodesAutomatically(true)
+    createPassword.value = ''
+    verifyPassword.value = ''
   })
 
   return {
@@ -329,10 +352,13 @@ export function usePage() {
     revealCountdown,
     createDialogVisible,
     newClientName,
+    createPassword,
     createLoading,
     verifyDialogVisible,
     verifyPassword,
     verifyLoading,
+    verifyActionLabel,
+    verifyDescription,
     handleClientSelect,
     openCreateDialog,
     closeCreateDialog,

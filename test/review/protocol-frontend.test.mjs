@@ -31,3 +31,18 @@ test('客户端授权码接口与界面能力保持一致', () => {
   assert.match(template, /自动隐藏/)
   assert.match(template, /撤销删除/)
 })
+
+test('客户端凭据操作验证本人密码且保留密码空白字符', () => {
+  const source = read('js')
+  const template = read('vue')
+  assert.match(template, /v-model="createPassword"/)
+  assert.match(template, /验证并生成/)
+  assert.match(source, /const password = createPassword\.value/)
+  assert.match(source, /const password = verifyPassword\.value/)
+  assert.doesNotMatch(source, /(?:createPassword|verifyPassword)\.value\.trim\(/)
+  assert.match(source, /client_name: name,\s+password,/)
+  assert.match(source, /openActionVerification\('regenerate', client\)/)
+  assert.match(source, /openActionVerification\('revoke', client\)/)
+  assert.match(source, /if \(verifyLoading\.value\) return/)
+  assert.match(source, /finally \{\s+verifyPassword\.value = ''/)
+})
