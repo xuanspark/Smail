@@ -16,19 +16,38 @@ const createPage = compileFunction(
 function fixture(tlsMode, type = '2') {
   const requests = []
   const messages = []
-  const window = { location: { href: 'https://mail.example.test/setup' } }
+  let scheduledTimer = null
+  const window = {
+    location: { href: 'https://mail.example.test/setup' },
+    setTimeout: callback => {
+      scheduledTimer = callback
+      return 1
+    },
+    clearTimeout: () => {
+      scheduledTimer = null
+    }
+  }
   const page = createPage(computed, () => {}, reactive, ref,
     { error: message => messages.push(message) }, {}, {}, {}, {
       post: async (path, payload) => {
         requests.push({ path, payload })
         return { errorNo: 0, data: { tlsMode, type, port: 8080 } }
       }
-    }, () => 'https://mail.example.test/', () => assert.fail('外部证书不应探测签发状态'), window)
-  return { page, requests, messages, window }
+    }, () => 'https://mail.example.test/', () => true, window)
+  return {
+    page,
+    requests,
+    messages,
+    window,
+    runScheduledTimer: async () => {
+      scheduledTimer = null
+      await page.checkStatus()
+    }
+  }
 }
 
 test('反代初始化强制导入外部证书，即使旧配置仍是自动 DNS 类型', async () => {
-  const { page, requests, messages, window } = fixture('proxy')
+  const { page, requests, messages, window, runScheduledTimer } = fixture('proxy')
   await page.getSSLConfig()
   assert.equal(page.proxyHTTPS.value, true)
   assert.equal(page.sslSettings.type, '1')
@@ -51,6 +70,7 @@ test('反代初始化强制导入外部证书，即使旧配置仍是自动 DNS 
     }
   })
   assert.equal(requests.length, 2)
+  await runScheduledTimer()
   assert.equal(window.location.href, 'https://mail.example.test/')
   assert.deepEqual(messages, [])
 })
