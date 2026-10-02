@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -329,24 +330,38 @@ func TestClientCredentialEntryPointsRequireOwnPassword(t *testing.T) {
 		{"create", CreateClientCredential, `{"client_name":"新设备"`},
 		{"regenerate", RegenerateClientCredential, fmt.Sprintf(`{"client_id":%d`, client.ID)},
 		{"revoke", RevokeClientCredential, fmt.Sprintf(`{"client_id":%d`, client.ID)},
-		{"reveal", RevealClientCredentials, `{"unused":true`},
+		{"reveal", RevealClientCredentials, `{`},
 		{"enable protocol", SetProtocolCredentialEnabled, `{"protocol":"imap","enabled":true`},
 		{"disable protocol", SetProtocolCredentialEnabled, `{"protocol":"smtp","enabled":false`},
 		{"generate protocol", GenerateProtocolCredential, `{"protocol":"smtp"`},
 		{"revoke protocol", RevokeProtocolCredential, `{"protocol":"smtp"`},
-		{"reveal protocol", RevealProtocolCredentials, `{"unused":true`},
+		{"reveal protocol", RevealProtocolCredentials, `{`},
 	}
 	for _, role := range []access.Role{access.RoleUser, access.RoleAdmin, access.RoleSuperAdmin} {
 		for _, entry := range entries {
 			t.Run(string(role)+"/"+entry.name, func(t *testing.T) {
 				reauthUserAttempts, reauthIPAttempts = newLoginLimiter(10), newLoginLimiter(50)
 				ctx := &appcontext.Context{UserID: user.ID, Role: role, RecentAuth: true}
+				expectedFailures := 0
 				for _, suffix := range []string{`}`, `,"password":"incorrect"}`, `,"password":" FixtureP12 "}`} {
+					if entry.body == "{" {
+						suffix = strings.TrimPrefix(suffix, ",")
+					}
 					recorder := httptest.NewRecorder()
 					entry.hand(ctx, recorder, httptest.NewRequest(http.MethodPost, "/api/security", strings.NewReader(entry.body+suffix)))
 					var result response.Response
 					if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil || result.ErrorNo == 0 {
 						t.Fatal("missing or incorrect password must not allow credential operations")
+					}
+					if suffix != "}" {
+						expectedFailures++
+						key := reauthUserAttempts.accountKey(strconv.Itoa(user.ID))
+						reauthUserAttempts.mu.Lock()
+						failures := reauthUserAttempts.attempts[key].failures
+						reauthUserAttempts.mu.Unlock()
+						if failures != expectedFailures {
+							t.Fatal("incorrect password must reach authentication and record a failed attempt")
+						}
 					}
 					if recorder.Header().Get("Cache-Control") != "no-store" {
 						t.Fatal("credential responses must not be cached")
