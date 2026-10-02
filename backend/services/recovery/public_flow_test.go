@@ -1,12 +1,17 @@
 package recovery
 
 import (
+	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"git.pcux.cn/xuans/Smail/db/migration"
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
+	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
@@ -15,6 +20,46 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 	for _, role := range []access.Role{access.RoleSuperAdmin, access.RoleAdmin, access.RoleUser} {
 		t.Run(string(role), func(t *testing.T) {
 			s, verify, engine, user := newRecoveryFixture(t)
+			var migrations []migration.Migration
+			for _, item := range migration.DefaultMigrations() {
+				if item.Name == "create_managed_logs" || item.Name == "expand_operation_log_actor_role" {
+					migrations = append(migrations, item)
+				}
+			}
+			runner := migration.Runner{DB: engine.DB().DB, Dialect: migration.DialectSQLite, Migrations: migrations}
+			if _, err := runner.Run(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			logs, err := logstore.New(engine.DB().DB, migration.DialectSQLite)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime := logstore.Start(logs)
+			defer runtime.Stop()
+			assertAudit := func(want int, secrets ...string) {
+				t.Helper()
+				entries, err := logs.Query(context.Background(), logstore.Query{Kind: "operation"})
+				if err != nil || len(entries) != want {
+					t.Fatalf("恢复审计记录数量不符：数量=%d，预期=%d，错误=%v", len(entries), want, err)
+				}
+				for _, entry := range entries {
+					if entry.ActorID != strconv.Itoa(user.ID) || entry.ActorRole != string(role) || entry.Action != "公共密码恢复" || entry.Result != "success" {
+						t.Fatal("恢复审计的可信身份或结果不符")
+					}
+					var payload map[string]string
+					if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+						t.Fatal(err)
+					}
+					if payload["method"] != "email" || payload["actorName"] != user.Account || len(payload) != 5 {
+						t.Fatal("恢复审计未使用预期的白名单字段")
+					}
+					for _, secret := range secrets {
+						if secret != "" && strings.Contains(string(entry.Payload), secret) {
+							t.Fatal("恢复审计包含敏感信息")
+						}
+					}
+				}
+			}
 			user.Role = string(role)
 			if _, err := engine.ID(user.ID).Cols("role").Update(user); err != nil {
 				t.Fatal(err)
@@ -29,6 +74,7 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 				if flow.Token != "" || len(flow.Methods) != 0 || flow.Email != "" {
 					t.Fatal("super administrator received public recovery access")
 				}
+				assertAudit(0)
 				return
 			}
 			if flow.Email != "a***@example.com" || flow.Role != role {
@@ -62,12 +108,14 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 			if err := s.CompletePublicFlow(ticket, "short"); err == nil {
 				t.Fatal("invalid password accepted")
 			}
+			assertAudit(0)
 			if err := s.CompletePublicFlow(ticket, "NewPass123"); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.CompletePublicFlow(ticket, "OtherPass12"); err == nil {
 				t.Fatal("ticket replay accepted")
 			}
+			assertAudit(1, flow.Token, ticket, code, "NewPass123", "OtherPass12", "alice@example.com")
 			var updated models.User
 			if _, err := engine.ID(user.ID).Get(&updated); err != nil {
 				t.Fatal(err)

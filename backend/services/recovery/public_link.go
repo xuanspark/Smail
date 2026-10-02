@@ -1,14 +1,18 @@
 package recovery
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/models"
 	"git.pcux.cn/xuans/Smail/services/access"
 	"git.pcux.cn/xuans/Smail/services/auth"
+	"git.pcux.cn/xuans/Smail/services/logstore"
 	"git.pcux.cn/xuans/Smail/utils/password"
 )
 
@@ -253,6 +257,24 @@ func (s *Service) completePublicLink(token, newPassword, recoveryCode string, fl
 		_ = s.verification.Store.InvalidateAccount(user.Account)
 	}
 	s.invalidateSecurityState(item.UserID, user.Account)
+	method := item.Method
+	if !flow {
+		method = "email_link"
+		if user.EffectiveRole() == access.RoleAdmin {
+			method = "email_link_and_security_code"
+		}
+	}
+	payload, _ := json.Marshal(struct {
+		ActorName string `json:"actorName"`
+		ActorRole string `json:"actorRole"`
+		Method    string `json:"method"`
+		Object    string `json:"object"`
+		Outcome   string `json:"outcome"`
+	}{user.Account, string(user.EffectiveRole()), method, "账号安全", "密码已重置，旧凭据已撤销"})
+	logstore.Record(context.Background(), logstore.Entry{
+		Kind: "operation", CreatedAt: now, ActorID: strconv.Itoa(user.ID), ActorRole: string(user.EffectiveRole()),
+		Action: "公共密码恢复", Section: "账号安全", Result: "success", Payload: payload,
+	})
 	return nil
 }
 

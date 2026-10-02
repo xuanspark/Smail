@@ -67,7 +67,7 @@ export function usePage() {
   const totalPage = ref(0)
   
   const updateList = async function (silent = false) {
-    if (silent && selectedRows.value.length > 0) return
+    if (silent && selectedRows.value.length > 0) return false
     const version = ++requestVersion
     if (!silent) {
       isRefreshing.value = true
@@ -76,7 +76,7 @@ export function usePage() {
       const res = await http.post("/api/v1/email/list", {
         tag, keyword: groupStore.keyword, current_page: currentPage.value, page_size: 15
       })
-      if (version !== requestVersion) return
+      if (version !== requestVersion) return false
       if (res.errorNo !== 0) throw new Error(res.errorMsg)
       const available = new Set((res.data.list || []).map(row => row.id))
       selectedRows.value.filter(row => !available.has(row.id)).forEach(row => {
@@ -86,12 +86,14 @@ export function usePage() {
       totalPage.value = res.data.total_page || 0
       if (currentPage.value > Math.max(1, totalPage.value)) {
         currentPage.value = Math.max(1, totalPage.value)
-        await updateList(silent)
+        return await updateList(silent)
       }
+      return true
     } catch (err) {
       if (!silent && version === requestVersion) {
         ElMessage.error(err?.message || '获取邮件列表失败')
       }
+      return false
     } finally {
       if (!silent && version === requestVersion) {
         isRefreshing.value = false
@@ -106,9 +108,11 @@ export function usePage() {
         throw new Error(res.errorMsg || "分组列表加载失败")
       }
       groupList.value = res.data || []
+      return true
     } catch (error) {
       groupList.value = []
       ElMessage.error(error?.message || "分组列表加载失败，请稍后重试")
+      return false
     }
   }
   
@@ -139,10 +143,11 @@ export function usePage() {
   }
 
   const manualRefresh = async () => {
-    await Promise.all([
+    const results = await Promise.all([
       updateList(false),
       updateGroupList()
     ])
+    if (!globalStatus.isLogin || !results.every(result => result === true)) return
     ElMessage.success('已刷新')
     startAutoRefreshTimer()
   }
