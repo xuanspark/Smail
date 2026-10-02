@@ -57,7 +57,7 @@
 
 1. 安装与项目依赖版本一致的 lego 到 `/usr/local/libexec/smail-acme/lego`，安装最新版 `smail-config` 到 `/opt/smail/smail-config`。
 2. 创建权限为 `0700` 的 `/var/lib/smail-acme-tls`，以及权限为 `0600`、root 所有的 `/etc/smail/acme-dns.env` 与 `/etc/smail/acme-renew.env`。按对应示例填写，禁止输出凭据或加入仓库。
-3. 首次使用相同参数执行 lego 的 `run` 完成签发，不能直接用缺少账户和证书状态的 `renew` 初始化。固定使用 `--filename smail`；申请邮件根域及其泛域名，验证方式为 DNS。本模板要求后台域名被该证书覆盖；不要重复加入已被泛域名覆盖的后台子域，否则签发机构可能拒绝请求。独立的后台域名需要管理员额外加入明确的申请参数。
+3. 首次使用相同参数执行 lego 的 `run` 完成签发，不能直接用缺少账户和证书状态的 `renew` 初始化。以邮件主域名作为第一个域名参数，使用工具默认的域名文件名，不设置已弃用的 `--filename`，否则签发保存和续期读取的文件名可能不一致。申请邮件根域及其泛域名，验证方式为 DNS。本模板要求后台域名被该证书覆盖；不要重复加入已被泛域名覆盖的后台子域，否则签发机构可能拒绝请求。独立的后台域名需要管理员额外加入明确的申请参数。
 4. 执行下列发布命令。该命令校验证书有效期、域名、密钥匹配及文件权限，拒绝符号链接、不安全路径和源目录内覆盖；失败时保留原有 Nginx 合并证书。
 
 ```sh
@@ -66,7 +66,7 @@
   --publish-external-tls /etc/nginx/smail/tls.pem
 ```
 
-5. Nginx 的 `ssl_certificate` 与 `ssl_certificate_key` 都引用 `/etc/nginx/smail/tls.pem`。通过 Smail 页面将外部证书路径设置为 `/var/lib/smail-acme-tls/certificates/smail.crt`、私钥路径设置为同目录的 `smail.key`；运行账号必须具备读取权限，不能通过开放私钥权限解决访问问题。
+5. Nginx 的 `ssl_certificate` 与 `ssl_certificate_key` 都引用 `/etc/nginx/smail/tls.pem`。通过 Smail 页面将外部证书路径设置为 `/var/lib/smail-acme-tls/certificates/<邮件主域名>.crt`、私钥路径设置为同目录的 `<邮件主域名>.key`，与本次初始化确认的邮件主域名一致；运行账号必须具备读取权限，不能通过开放私钥权限解决访问问题。
 6. 检查 Nginx 配置、平滑加载，并分别核验网页及邮件协议的公网证书。确认首次切换成功后，再安装并启用专用续期 service、timer；不要启用同机其他项目的全局续期任务，也不要同时保留旧的项目证书同步监听器。
 
 专用计时器每天检查一次，并随机延迟；到期阈值为三十天，续期复用当前证书私钥。续期成功后重新校验并原子发布合并证书，再检查和加载 Nginx。Smail 从外部证书文件热加载，保持其无效新证书回退行为。不要在该任务运行期间另外手工调用同一状态目录的 lego。

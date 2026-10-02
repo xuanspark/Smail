@@ -26,7 +26,7 @@ func run(args []string) error {
 	historySource := flags.String("deployment-history", "", "停服复制完成后，从原部署导入配置历史并转换证书引用")
 	exportTLS := flags.String("export-project-tls", "", "将项目托管证书导出为本机 TLS 入口使用的合并 PEM 文件")
 	publishTLS := flags.String("publish-external-tls", "", "将外部续期证书校验并原子发布为 Nginx 使用的合并 PEM 文件")
-	externalTLSDirectory := flags.String("external-tls-dir", "", "外部续期目录，包含权限受保护的 smail.crt 和 smail.key")
+	externalTLSDirectory := flags.String("external-tls-dir", "", "外部续期目录，包含以邮件主域名命名且权限受保护的证书与私钥")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

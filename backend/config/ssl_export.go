@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"git.pcux.cn/xuans/Smail/utils/atomicfile"
 )
@@ -38,7 +39,7 @@ func ExportProjectTLS(root, destination string) error {
 }
 
 // PublishExternalTLS 仅由部署管理员显式提供外部续期目录，不从网页配置读取高权限源路径。
-// 外部工具统一使用 smail 文件名；校验失败时不替换入口的有效证书。
+// 外部工具使用邮件主域名作为文件名，与续期读取规则一致；校验失败时保留入口证书。
 func PublishExternalTLS(root, sourceDirectory, destination string) error {
 	if runtime.GOOS != "linux" {
 		return errors.New("本机 Nginx 证书同步仅支持 Linux")
@@ -57,7 +58,11 @@ func PublishExternalTLS(root, sourceDirectory, destination string) error {
 	if filepath.Dir(destination) == sourceDirectory {
 		return ErrUnsafeSSLFile
 	}
-	return exportTLSBundle(sourceDirectory, "smail.crt", "smail.key", destination, validationCertificateDomains(&runtime))
+	domain := runtime.Root.Domains.Primary
+	if domain == "" || domain == "." || domain == ".." || strings.ContainsAny(domain, `/\:`) {
+		return ErrUnsafeSSLFile
+	}
+	return exportTLSBundle(sourceDirectory, domain+".crt", domain+".key", destination, validationCertificateDomains(&runtime))
 }
 
 func exportTLSBundle(sourceDirectory, certificateName, privateKeyName, destination string, domains []string) error {

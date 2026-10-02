@@ -35,8 +35,8 @@ func TestPublishExternalTLSValidatesBeforeReplacingBundle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("smail.crt", certificate)
-	write("smail.key", key)
+	write("example.com.crt", certificate)
+	write("example.com.key", key)
 	destination := filepath.Join(output, "tls.pem")
 	if err := PublishExternalTLS(root, source, destination); err != nil {
 		t.Fatal(err)
@@ -69,22 +69,22 @@ func TestPublishExternalTLSValidatesBeforeReplacingBundle(t *testing.T) {
 			t.Fatal("failed publication replaced the previous bundle")
 		}
 	}
-	write("smail.key", []byte("invalid"))
+	write("example.com.key", []byte("invalid"))
 	assertRejected()
 	wrongKey, wrongCertificate := testManagedCertificate(t, "other.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 2048)
-	write("smail.key", wrongKey)
-	write("smail.crt", wrongCertificate)
+	write("example.com.key", wrongKey)
+	write("example.com.crt", wrongCertificate)
 	assertRejected()
-	write("smail.key", key)
-	write("smail.crt", certificate)
-	if err := os.Chmod(filepath.Join(source, "smail.key"), 0644); err != nil {
+	write("example.com.key", key)
+	write("example.com.crt", certificate)
+	if err := os.Chmod(filepath.Join(source, "example.com.key"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	assertRejected()
-	if err := os.Chmod(filepath.Join(source, "smail.key"), 0600); err != nil {
+	if err := os.Chmod(filepath.Join(source, "example.com.key"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := PublishExternalTLS(root, source, filepath.Join(source, "smail.crt")); err == nil {
+	if err := PublishExternalTLS(root, source, filepath.Join(source, "example.com.crt")); err == nil {
 		t.Fatal("source overwrite allowed")
 	}
 	candidate.Root.HTTP.TLSMode = HTTPSTLSModeDirect
