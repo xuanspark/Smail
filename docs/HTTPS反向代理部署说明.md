@@ -49,6 +49,30 @@
 
 ## Nginx 配置示例
 
+### 使用 Go 工具维护外部泛域名证书
+
+仓库中的 `deploy/nginx/smail-certificate-renew.service` 使用独立的 lego 命令行程序，并由 `smail-config` 校验、原子发布 Nginx 证书，不调用历史 Python 工具。此方式仍属于外部证书管理，不会重新启用 Smail 内置 HTTPS 或 ACME。
+
+部署前必须由管理员输入本次域名、ACME 联系邮箱及 DNS 服务商凭据，不能复制历史实例的数据。示例环境文件保持空值；阿里云 DNS 凭据应限制在所需域名及验证记录操作范围内。
+
+1. 安装与项目依赖版本一致的 lego 到 `/usr/local/libexec/smail-acme/lego`，安装最新版 `smail-config` 到 `/opt/smail/smail-config`。
+2. 创建权限为 `0700` 的 `/var/lib/smail-acme-tls`，以及权限为 `0600`、root 所有的 `/etc/smail/acme-dns.env` 与 `/etc/smail/acme-renew.env`。按对应示例填写，禁止输出凭据或加入仓库。
+3. 首次使用相同参数执行 lego 的 `run` 完成签发，不能直接用缺少账户和证书状态的 `renew` 初始化。固定使用 `--filename smail`；域名包括邮件根域、该根域的泛域名及后台域名，验证方式为 DNS。
+4. 执行下列发布命令。该命令校验证书有效期、域名、密钥匹配及文件权限，拒绝符号链接、不安全路径和源目录内覆盖；失败时保留原有 Nginx 合并证书。
+
+```sh
+/opt/smail/smail-config --root /opt/smail \
+  --external-tls-dir /var/lib/smail-acme-tls/certificates \
+  --publish-external-tls /etc/nginx/smail/tls.pem
+```
+
+5. Nginx 的 `ssl_certificate` 与 `ssl_certificate_key` 都引用 `/etc/nginx/smail/tls.pem`。通过 Smail 页面将外部证书路径设置为 `/var/lib/smail-acme-tls/certificates/smail.crt`、私钥路径设置为同目录的 `smail.key`；运行账号必须具备读取权限，不能通过开放私钥权限解决访问问题。
+6. 检查 Nginx 配置、平滑加载，并分别核验网页及邮件协议的公网证书。确认首次切换成功后，再安装并启用专用续期 service、timer；不要启用同机其他项目的全局续期任务，也不要同时保留旧的项目证书同步监听器。
+
+专用计时器每天检查一次，并随机延迟；到期阈值为三十天，续期复用当前证书私钥。续期成功后重新校验并原子发布合并证书，再检查和加载 Nginx。Smail 从外部证书文件热加载，保持其无效新证书回退行为。不要在该任务运行期间另外手工调用同一状态目录的 lego。
+
+计时器启动成功、当前证书未到期而跳过签发，都不能证明真实续期闭环通过。必须保留实际签发、发布和公网新证书加载的独立验收证据；首次签发也不能冒充到期自动续期。
+
 下面示例将 Nginx 的 15184 本机代理端口替换为实际 Smail HTTP 端口。
 
 ```nginx

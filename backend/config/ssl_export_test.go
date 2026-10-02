@@ -10,6 +10,88 @@ import (
 	"time"
 )
 
+func TestPublishExternalTLSValidatesBeforeReplacingBundle(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		if err := PublishExternalTLS(t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "tls.pem")); err == nil {
+			t.Fatal("unsupported platform allowed publishing a private key")
+		}
+		t.Skip("Linux Nginx publishing requires POSIX permission checks")
+	}
+	root, source, output := t.TempDir(), t.TempDir(), t.TempDir()
+	for _, directory := range []string{source, output} {
+		if err := os.Chmod(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	candidate := validRuntimeConfig()
+	candidate.Root.Domains = DomainConfig{Primary: "example.com", Web: "web.example.com", Accepted: []string{"example.com"}}
+	candidate.Root.HTTP = HTTPConfig{Port: 15184, TLSMode: HTTPSTLSModeProxy, TrustedProxyCIDRs: []string{"127.0.0.1/32"}}
+	candidate.SSL.TLS = SSLConfig{Management: SSLManagementWebServer, Mode: ManagedSSLModeUpload, CustomDirectory: "ssl"}
+	writeRuntimeFixture(t, root, candidate)
+	key, certificate := testManagedCertificate(t, "example.com", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 2048, "*.example.com")
+	write := func(name string, data []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(source, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("smail.crt", certificate)
+	write("smail.key", key)
+	destination := filepath.Join(output, "tls.pem")
+	if err := PublishExternalTLS(root, source, destination); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tls.X509KeyPair(bundle, bundle); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(destination)
+	if err != nil || before.Mode().Perm() != 0600 {
+		t.Fatal("published bundle must be private")
+	}
+	if err := PublishExternalTLS(root, source, destination); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.Stat(destination)
+	if !os.SameFile(before, after) {
+		t.Fatal("unchanged certificate must not be rewritten")
+	}
+	assertRejected := func() {
+		t.Helper()
+		if err := PublishExternalTLS(root, source, destination); err == nil {
+			t.Fatal("invalid publication accepted")
+		}
+		preserved, err := os.ReadFile(destination)
+		if err != nil || !bytes.Equal(bundle, preserved) {
+			t.Fatal("failed publication replaced the previous bundle")
+		}
+	}
+	write("smail.key", []byte("invalid"))
+	assertRejected()
+	wrongKey, wrongCertificate := testManagedCertificate(t, "other.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 2048)
+	write("smail.key", wrongKey)
+	write("smail.crt", wrongCertificate)
+	assertRejected()
+	write("smail.key", key)
+	write("smail.crt", certificate)
+	if err := os.Chmod(filepath.Join(source, "smail.key"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	assertRejected()
+	if err := os.Chmod(filepath.Join(source, "smail.key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishExternalTLS(root, source, filepath.Join(source, "smail.crt")); err == nil {
+		t.Fatal("source overwrite allowed")
+	}
+	candidate.Root.HTTP.TLSMode = HTTPSTLSModeDirect
+	writeRuntimeFixture(t, root, candidate)
+	assertRejected()
+}
+
 func TestExportProjectTLSKeepsOldBundleOnInvalidInput(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		if err := ExportProjectTLS(t.TempDir(), filepath.Join(t.TempDir(), "tls.pem")); err == nil {

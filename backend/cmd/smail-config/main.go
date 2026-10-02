@@ -25,6 +25,8 @@ func run(args []string) error {
 	runtimeData := flags.Bool("runtime-data", false, "将运行数据迁到 data，保留当前五个配置文件")
 	historySource := flags.String("deployment-history", "", "停服复制完成后，从原部署导入配置历史并转换证书引用")
 	exportTLS := flags.String("export-project-tls", "", "将项目托管证书导出为本机 TLS 入口使用的合并 PEM 文件")
+	publishTLS := flags.String("publish-external-tls", "", "将外部续期证书校验并原子发布为 Nginx 使用的合并 PEM 文件")
+	externalTLSDirectory := flags.String("external-tls-dir", "", "外部续期目录，包含权限受保护的 smail.crt 和 smail.key")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -36,13 +38,23 @@ func run(args []string) error {
 		return fmt.Errorf("服务根目录无效")
 	}
 	if *exportTLS != "" {
-		if *apply || *runtimeData || *historySource != "" || !filepath.IsAbs(*exportTLS) {
+		if *apply || *runtimeData || *historySource != "" || *publishTLS != "" || *externalTLSDirectory != "" || !filepath.IsAbs(*exportTLS) {
 			return fmt.Errorf("证书导出必须单独执行，目标必须是绝对路径")
 		}
 		if err := config.ExportProjectTLS(absolute, filepath.Clean(*exportTLS)); err != nil {
 			return fmt.Errorf("项目证书导出失败，原有入口证书保留：%w", err)
 		}
 		fmt.Println("项目证书同步检查完成。")
+		return nil
+	}
+	if *publishTLS != "" || *externalTLSDirectory != "" {
+		if *apply || *runtimeData || *historySource != "" || !filepath.IsAbs(*publishTLS) || !filepath.IsAbs(*externalTLSDirectory) {
+			return fmt.Errorf("外部证书发布必须单独执行，源目录和目标文件必须同时指定绝对路径")
+		}
+		if err := config.PublishExternalTLS(absolute, *externalTLSDirectory, *publishTLS); err != nil {
+			return fmt.Errorf("外部证书发布失败，原有入口证书保留：%w", err)
+		}
+		fmt.Println("外部证书校验及发布完成。")
 		return nil
 	}
 	options := config.RuntimeValidationOptions{HasSuperAdmin: true, Production: true}

@@ -34,6 +34,33 @@ func ExportProjectTLS(root, destination string) error {
 		return ErrInvalidSSLReference
 	}
 	sourceDirectory := filepath.Join(root, "ssl")
+	return exportTLSBundle(sourceDirectory, filepath.Base(publicPath), filepath.Base(privatePath), destination, validationCertificateDomains(&runtime))
+}
+
+// PublishExternalTLS 仅由部署管理员显式提供外部续期目录，不从网页配置读取高权限源路径。
+// 外部工具统一使用 smail 文件名；校验失败时不替换入口的有效证书。
+func PublishExternalTLS(root, sourceDirectory, destination string) error {
+	if runtime.GOOS != "linux" {
+		return errors.New("本机 Nginx 证书同步仅支持 Linux")
+	}
+	if !filepath.IsAbs(root) || !filepath.IsAbs(sourceDirectory) || !filepath.IsAbs(destination) {
+		return ErrUnsafeSSLFile
+	}
+	root, sourceDirectory, destination = filepath.Clean(root), filepath.Clean(sourceDirectory), filepath.Clean(destination)
+	runtime, err := NewConfigLoader(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}).Load()
+	if err != nil {
+		return ErrInvalidSSL
+	}
+	if runtime.Root.HTTP.TLSMode != HTTPSTLSModeProxy || EffectiveSSLManagement(runtime.SSL.TLS) == SSLManagementProject {
+		return ErrInvalidSSL
+	}
+	if filepath.Dir(destination) == sourceDirectory {
+		return ErrUnsafeSSLFile
+	}
+	return exportTLSBundle(sourceDirectory, "smail.crt", "smail.key", destination, validationCertificateDomains(&runtime))
+}
+
+func exportTLSBundle(sourceDirectory, certificateName, privateKeyName, destination string, domains []string) error {
 	resolvedSource, err := filepath.EvalSymlinks(sourceDirectory)
 	if err != nil || resolvedSource != sourceDirectory {
 		return ErrUnsafeSSLFile
@@ -71,15 +98,15 @@ func ExportProjectTLS(root, destination string) error {
 		}
 		return data, nil
 	}
-	certificate, err := read(filepath.Base(publicPath))
+	certificate, err := read(certificateName)
 	if err != nil {
 		return err
 	}
-	privateKey, err := read(filepath.Base(privatePath))
+	privateKey, err := read(privateKeyName)
 	if err != nil {
 		return err
 	}
-	if err := validateSSLMaterial(privateKey, certificate, nil, validationCertificateDomains(&runtime)); err != nil {
+	if err := validateSSLMaterial(privateKey, certificate, nil, domains); err != nil {
 		return err
 	}
 	combined := append(append(append([]byte{}, certificate...), '\n'), privateKey...)
