@@ -42,19 +42,25 @@
 
 - Web HTTPS 的证书申请、续期和加载由反代服务器上的证书管理工具负责，Smail 不再发起 ACME 请求，也不需要把 ACME 验证路径转发给 Smail。
 - 反代模式下，初始化 SSL 步骤只提供外部证书导入，不再提供自动 HTTP 或 DNS 验证。仅切换反代模式不会删除已有证书或自动模式配置；切回直接 HTTPS 时，仍保留自动类型的证书可继续由 Smail 维护。若已主动导入外部证书，则仍由外部维护，不会自动恢复签发。
-- HTTP 反代不等于邮件协议代理。SMTP、IMAP、POP3 仍使用 Smail 本地受管证书，必须保留有效证书和匹配私钥，不能改成明文认证。
-- 外部工具续期后，需要将邮件服务使用的新证书和私钥重新导入 Smail 受管存储、应用引用并重启相关服务。导入是受验证的副本，不会自动跟随反代服务器上的源文件变化。
-- 仅仅在 Nginx 上更换证书，不会更新 Smail 的邮件服务证书。本次调整没有增加跨服务器证书同步或自动重新导入功能。
+- HTTP 反代不等于邮件协议代理。SMTP、IMAP、POP3 仍需使用有效的本地证书和匹配私钥，不能改成明文认证。
+- 手动配置可以直接引用服务器上的证书和私钥路径，不生成副本。Nginx 与 Smail 引用同一组文件时，外部工具应成对更新证书与私钥，检查 Nginx 配置后平滑加载；Smail 的运行时证书加载器会检查文件变更，并在新证书无效时保留已有有效证书。
+- 使用导入副本或不同路径时，更新 Nginx 的源文件不代表 Smail 已更新，仍需重新导入或同步实际引用的文件。跨服务器同步不能靠共享路径配置完成。
+- 手动引用和证书热加载都不等于自动续期。必须另行配置、验证外部续期及部署任务，并分别核验网页和各邮件协议实际使用的证书；不能以页面可访问或文件已替换作为续期验收结论。
 
 ## Nginx 配置示例
 
 下面示例将 Nginx 的 15184 本机代理端口替换为实际 Smail HTTP 端口。
 
 ```nginx
+log_format smail_privacy
+    '$time_iso8601 remote=$remote_addr method=$request_method uri=$uri '
+    'status=$status bytes=$body_bytes_sent duration=$request_time';
+
 server {
     listen 80;
     listen [::]:80;
     server_name xuans.com;
+    access_log /var/log/nginx/smail-access.log smail_privacy;
 
     location /.well-known/acme-challenge/ {
         # 由反代服务器上的 ACME 客户端写入此目录，不转发到 Smail。
@@ -71,6 +77,7 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name xuans.com;
+    access_log /var/log/nginx/smail-access.log smail_privacy;
 
     ssl_certificate /etc/letsencrypt/live/xuans.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/xuans.com/privkey.pem;
@@ -122,6 +129,12 @@ Nginx 对公网提供 Web 服务时通常开放 `80/tcp` 和 `443/tcp`。Smail �
 
 邮件协议端口按照实际启用情况开放，例如 `25/tcp`、`465/tcp`、`587/tcp`、`993/tcp`、`995/tcp`；数据库端口不应直接开放公网。IPv6 监听和防火墙规则应同步配置。
 
+## 访问日志保护
+
+`deploy/nginx/smail.conf` 使用专用日志格式，仅保留请求路径及必要的状态信息，不记录查询参数、来源页和认证头，避免微信授权回调、密码恢复链接等敏感参数进入访问日志。不要为 Smail 站点重新启用包含完整请求或来源页的日志格式。
+
+专用日志文件应限制为 `0640` 或更严格权限，并确认日志轮转后的权限不会放宽。不要直接修改共享服务器上其他项目的日志。错误日志和应用日志仍需单独检查，访问日志脱敏不代表所有日志均已完成脱敏。
+
 ## 验证清单
 
 - [ ] Smail 日志显示已跳过内部 HTTPS 监听。
@@ -132,4 +145,5 @@ Nginx 对公网提供 Web 服务时通常开放 `80/tcp` 和 `443/tcp`。Smail �
 - [ ] 浏览器收到的会话 Cookie 仍带有 `Secure` 和 `HttpOnly` 属性。
 - [ ] 证书续期由反代服务器完成，Smail 不再发出 ACME 申请或续期请求。
 - [ ] 使用 HTTP 验证时，ACME 路径由反代服务器提供，其他 HTTP 路径跳转到 HTTPS。
-- [ ] 本地邮件服务证书保持有效；外部续期后已重新导入、应用并重启相关服务。
+- [ ] 本地邮件服务证书保持有效；外部续期后已更新实际引用文件或重新导入，完成 Nginx 加载及邮件协议实际握手核验。
+- [ ] Smail 专用访问日志不记录查询参数、来源页和认证头，文件及轮转权限符合要求。
