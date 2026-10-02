@@ -107,6 +107,27 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	if err := s.checkAuthorization(); err != nil {
 		return err
 	}
+	if !validation.IsMailboxAddress(to) {
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 3}, Message: "Invalid recipient address"}
+	}
+	// 匿名连接仅接收受管域名的邮件，不能等到正文阶段再静默丢弃外域收件人。
+	if s.authorization == nil {
+		domains := config.CurrentMailDomains().Accepted
+		if len(domains) == 0 {
+			return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: "Mail domains are unavailable"}
+		}
+		domain := to[strings.LastIndex(to, "@")+1:]
+		local := false
+		for _, accepted := range domains {
+			if strings.EqualFold(domain, accepted) {
+				local = true
+				break
+			}
+		}
+		if !local {
+			return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Relay access denied"}
+		}
+	}
 	if validation.IsNotificationAddress(to, config.CurrentMailDomains().Accepted) {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "Notification address does not accept mail"}
 	}

@@ -5,9 +5,43 @@ import (
 	"strings"
 	"testing"
 
+	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"github.com/emersion/go-smtp"
 )
+
+func TestAnonymousRcptRejectsForeignDomains(t *testing.T) {
+	oldConfig := config.Instance
+	t.Cleanup(func() { config.Instance = oldConfig })
+	config.Instance = &config.Config{Domain: "example.com", Domains: []string{"example.com", "alias.example"}}
+	for _, tt := range []struct {
+		address string
+		allowed bool
+	}{
+		{"alice@example.com", true},
+		{"alice@EXAMPLE.COM", true},
+		{"alice@alias.example", true},
+		{"alice@external.example", false},
+		{"alice@example.com.attacker.test", false},
+		{"alice@sub.example.com", false},
+		{"not-an-address", false},
+	} {
+		t.Run(tt.address, func(t *testing.T) {
+			session := &Session{Ctx: &context.Context{}, To: []string{"existing@example.com"}}
+			err := session.Rcpt(tt.address, nil)
+			if tt.allowed {
+				if err != nil || len(session.To) != 2 {
+					t.Fatalf("受管域名收件失败：%v", err)
+				}
+				return
+			}
+			var denied *smtp.SMTPError
+			if !errors.As(err, &denied) || denied.Code != 550 || len(session.To) != 1 {
+				t.Fatalf("匿名外域收件未明确拒绝或污染收件列表：%v", err)
+			}
+		})
+	}
+}
 
 func TestSessionResetClearsTransactionStateOnly(t *testing.T) {
 	ctx := &context.Context{UserID: 42, UserAccount: "smail", IsAdmin: true}

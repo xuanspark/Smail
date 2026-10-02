@@ -287,10 +287,22 @@ func doSend(ctx *context.Context, fromDomain string, data []byte, to []*parsemai
 			}
 			err = deliverMXContext(deliveryContext, hosts, func(host, port string) error {
 				address := net.JoinHostPort(host, port)
+				var attemptErr error
 				if port == "465" {
-					return smtp.SendMailWithTLSContext(deliveryContext, host, address, nil, from, fromDomain, buildAddress(tos), data)
+					attemptErr = smtp.SendMailWithTLSContext(deliveryContext, host, address, nil, from, fromDomain, buildAddress(tos), data)
+				} else {
+					attemptErr = smtp.SendMailContext(deliveryContext, host, address, nil, from, fromDomain, buildAddress(tos), data)
 				}
-				return smtp.SendMailContext(deliveryContext, host, address, nil, from, fromDomain, buildAddress(tos), data)
+				if attemptErr != nil {
+					// 分端口记录网络失败，不记录邮件内容、凭据及远端 SMTP 响应原文。
+					fields := log.Fields{"action": "外域邮件投递尝试", "mxHost": host, "mxPort": port, "reason": logstore.MailFailureReason(attemptErr)}
+					var networkErr *net.OpError
+					if errors.As(attemptErr, &networkErr) {
+						fields["networkError"] = networkErr.Error()
+					}
+					log.WithContext(ctx).WithFields(fields).Warn("外域邮件投递通道失败")
+				}
+				return attemptErr
 			})
 			if err != nil {
 				recordFailure(err)
