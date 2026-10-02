@@ -20,11 +20,10 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 	for _, role := range []access.Role{access.RoleSuperAdmin, access.RoleAdmin, access.RoleUser} {
 		t.Run(string(role), func(t *testing.T) {
 			s, verify, engine, user := newRecoveryFixture(t)
-			var migrations []migration.Migration
-			for _, item := range migration.DefaultMigrations() {
-				if item.Name == "create_managed_logs" || item.Name == "expand_operation_log_actor_role" {
-					migrations = append(migrations, item)
-				}
+			migrations := migration.DefaultMigrations()[16:18]
+
+			for index := range migrations {
+				migrations[index].Version = int64(index + 1)
 			}
 			runner := migration.Runner{DB: engine.DB().DB, Dialect: migration.DialectSQLite, Migrations: migrations}
 			if _, err := runner.Run(context.Background()); err != nil {
@@ -34,8 +33,6 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime := logstore.Start(logs)
-			defer runtime.Stop()
 			assertAudit := func(want int, secrets ...string) {
 				t.Helper()
 				entries, err := logs.Query(context.Background(), logstore.Query{Kind: "operation"})
@@ -64,6 +61,8 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 			if _, err := engine.ID(user.ID).Cols("role").Update(user); err != nil {
 				t.Fatal(err)
 			}
+			runtime := logstore.Start(logs)
+			defer runtime.Stop()
 			var code string
 			verify.Send = func(_ verification.Challenge, value string) error { code = value; return nil }
 			flow, err := s.IdentifyPublicFlow(user.Account)
