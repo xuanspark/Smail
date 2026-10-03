@@ -498,6 +498,8 @@ test('独立页模板可编译，编辑器不再连接维护面板且权限绑�
     assert.ok(maintenance.includes(`pageKey === '${key}' && ${capability}`))
   }
   assert.doesNotMatch(maintenance, /audit-panel|canExportAudit|loadAudit/)
+  assert.match(maintenance, /文件存放在运行根目录的 data 子目录中，只填写新文件名，不填写路径。/)
+  assert.doesNotMatch(maintenance, /文件固定存放在运行目录 config 下/)
   for (const name of ['BaseConfig', 'EmailConfig', 'SslConfig', 'PluginsConfig', 'ConfigMaintenance']) {
     const page = readFileSync(new URL(`${name}/${name}.vue`, root), 'utf8')
     const { descriptor, errors } = parse(page)

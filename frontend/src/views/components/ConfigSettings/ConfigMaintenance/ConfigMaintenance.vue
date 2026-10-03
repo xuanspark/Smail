@@ -56,7 +56,11 @@
                 @update:model-value="invalidateMigration"
               />
             </el-form-item>
-            <p class="panel-desc">{{ migrationTarget.type === 'sqlite' ? '文件固定存放在运行目录 config 下，只填写新文件名，不填写路径。' : '请使用尚不存在的库名，系统执行时自动建库。新连接必须填写密码，不会复用源数据库密码。' }}</p>
+            <p class="panel-desc">
+              {{ migrationTarget.type === 'sqlite'
+                ? '文件存放在运行根目录的 data 子目录中，只填写新文件名，不填写路径。'
+                : '请使用尚不存在的库名，系统执行时自动建库。新连接必须填写密码，不会复用源数据库密码。' }}
+            </p>
             <p v-if="migrationTarget.type === 'postgresql'" class="panel-desc">PostgreSQL 连接要求数据库服务启用 TLS 加密，与迁移后的运行连接保持一致。</p>
           </el-form>
           <div class="action-row">
