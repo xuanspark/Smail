@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"git.pcux.cn/xuans/Smail/config"
+	"git.pcux.cn/xuans/Smail/controllers/wechatcallback"
 	"git.pcux.cn/xuans/Smail/dto/response"
 	"git.pcux.cn/xuans/Smail/hooks"
 	"git.pcux.cn/xuans/Smail/hooks/framework"
@@ -157,17 +158,12 @@ func WeChatBinding(ctx *appcontext.Context, w http.ResponseWriter, req *http.Req
 
 // WeChatBindingCallback 不依赖手机浏览器的登录 Cookie，也不自动完成绑定。
 func WeChatBindingCallback(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 	service := hooks.PluginConfigService()
 	if !config.IsSetupReady() || service == nil || service.ClaimWeChatBinding(req.Context(), req.URL.Query().Get("state"), req.URL.Query().Get("code")) != nil {
-		http.Error(w, "授权失败或二维码已失效，请返回 Smail 页面重新扫码。", http.StatusBadRequest)
+		wechatcallback.Write(w, false)
 		return
 	}
-	_, _ = w.Write([]byte("微信授权已完成。请返回发起扫码的 Smail 页面，核对微信昵称后点击确认绑定。"))
+	wechatcallback.Write(w, true)
 }
 
 func TestWeChatMessage(ctx *appcontext.Context, w http.ResponseWriter, req *http.Request) {
