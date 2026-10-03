@@ -105,6 +105,53 @@ func NewRestrictedHTTPClientForTargets(timeoutMS int, targets []NetworkTarget) *
 	return newRestrictedHTTPClientForTargets(timeoutMS, targets, os.Getenv("SMAIL_PLUGIN_SANDBOX") == "1")
 }
 
+// NormalizeTelegramProxyURL 仅接受超管指定的本机 HTTP 代理，不解析代理域名。
+func NormalizeTelegramProxyURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	endpoint, err := url.Parse(raw)
+	if err != nil || endpoint.Scheme != "http" || endpoint.User != nil || endpoint.Path != "" ||
+		endpoint.RawQuery != "" || endpoint.ForceQuery || strings.ContainsRune(raw, '#') || len(raw) > 256 {
+		return "", errors.New("Telegram 代理仅支持带端口的本机 HTTP 地址，如 http://127.0.0.1:9000")
+	}
+	address, addressErr := netip.ParseAddr(endpoint.Hostname())
+	port, portErr := strconv.Atoi(endpoint.Port())
+	if addressErr != nil || !address.IsLoopback() || address.Zone() != "" || portErr != nil || port < 1 || port > 65535 {
+		return "", errors.New("Telegram 代理仅支持带端口的本机 HTTP 地址，如 http://127.0.0.1:9000")
+	}
+	return "http://" + net.JoinHostPort(address.String(), strconv.Itoa(port)), nil
+}
+
+// NewTelegramHTTPClient 将代理权限限定为 Telegram；沙箱始终由主进程代为出站。
+func NewTelegramHTTPClient(timeoutMS int, proxyURL string) (*http.Client, error) {
+	return newTelegramHTTPClient(timeoutMS, proxyURL, os.Getenv("SMAIL_PLUGIN_SANDBOX") == "1")
+}
+
+func newTelegramHTTPClient(timeoutMS int, proxyURL string, sandbox bool) (*http.Client, error) {
+	proxyURL, err := NormalizeTelegramProxyURL(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	targets := []NetworkTarget{{Scheme: "https", Host: "api.telegram.org", Port: 443}}
+	client := newRestrictedHTTPClientForTargets(timeoutMS, targets, sandbox)
+	if proxyURL == "" || sandbox {
+		return client, nil
+	}
+	endpoint, _ := url.Parse(proxyURL)
+	transport := client.Transport.(restrictedRoundTripper).transport.(*http.Transport)
+	transport.Proxy = http.ProxyURL(endpoint)
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if address != endpoint.Host {
+			return nil, errors.New("Telegram 代理连接目标不匹配")
+		}
+		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, endpoint.Host)
+	}
+	// HTTPS CONNECT 后仍验证 Telegram 的系统可信证书，不接受其他目标或明文请求。
+	return client, nil
+}
+
 func newRestrictedHTTPClientForTargets(timeoutMS int, targets []NetworkTarget, sandbox bool) *http.Client {
 	timeout := time.Duration(NormalizeTimeoutMS(timeoutMS)) * time.Millisecond
 	allowedTargets := normalizeNetworkTargets(targets)

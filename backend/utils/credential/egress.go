@@ -78,6 +78,11 @@ func (t *pluginEgressTransport) CloseIdleConnections() {
 // NewPluginEgressHandler 只供沙箱专属本地通道使用，不注册到公网路由。
 // 每次重新取权限；空权限拒绝访问，禁止继承通用客户端的空名单语义。
 func NewPluginEgressHandler(token string, authorize func() []NetworkTarget) http.Handler {
+	return NewPluginEgressHandlerWithTelegramProxy(token, authorize, nil)
+}
+
+// NewPluginEgressHandlerWithTelegramProxy 的代理只能由主进程读取，插件请求不能指定代理。
+func NewPluginEgressHandlerWithTelegramProxy(token string, authorize func() []NetworkTarget, telegramProxy func() (string, error)) http.Handler {
 	slots := make(chan struct{}, 2)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if len(token) != 64 || len(request.Header.Values(egressTokenHeader)) != 1 ||
@@ -142,6 +147,18 @@ func NewPluginEgressHandler(token string, authorize func() []NetworkTarget) http
 		outbound.Header = request.Header.Clone()
 		stripEgressHeaders(outbound.Header)
 		client := newRestrictedHTTPClientForTargets(30_000, targets, false)
+		if telegramProxy != nil {
+			proxyURL, proxyErr := telegramProxy()
+			if proxyErr != nil {
+				http.Error(writer, "Telegram 代理配置无效", http.StatusForbidden)
+				return
+			}
+			client, err = newTelegramHTTPClient(30_000, proxyURL, false)
+			if err != nil {
+				http.Error(writer, "Telegram 代理配置无效", http.StatusForbidden)
+				return
+			}
+		}
 		// 每次请求使用独立连接，避免配置撤销后继续复用已有上游连接。
 		if restricted, ok := client.Transport.(restrictedRoundTripper); ok {
 			if transport, ok := restricted.transport.(*http.Transport); ok {

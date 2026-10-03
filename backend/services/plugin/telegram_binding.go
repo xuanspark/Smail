@@ -50,6 +50,8 @@ type telegramBinding struct {
 
 type telegramBindingConfig struct {
 	Token       string
+	Proxy       string
+	TimeoutMS   int
 	BotID       string
 	Callback    string
 	Secret      string
@@ -68,6 +70,8 @@ func (s *ConfigService) telegramConfiguration() (telegramBindingConfig, error) {
 	}
 	var settings struct {
 		WebDomain string `json:"webDomain"`
+		Proxy     string `json:"proxy"`
+		Timeout   int    `json:"timeout"`
 	}
 	domain := strings.TrimSpace(current.WebDomain)
 	parsed, err := url.Parse("https://" + domain)
@@ -75,6 +79,16 @@ func (s *ConfigService) telegramConfiguration() (telegramBindingConfig, error) {
 		parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" ||
 		!strings.EqualFold(settings.WebDomain, domain) {
 		return result, TelegramNotice("机器人网页域名与后台域名不一致，请联系超级管理员")
+	}
+	proxyURL, err := credential.NormalizeTelegramProxyURL(settings.Proxy)
+	if err != nil {
+		return result, TelegramNotice(err.Error())
+	}
+	if settings.Timeout == 0 {
+		settings.Timeout = 30
+	}
+	if settings.Timeout < 1 || settings.Timeout > 120 {
+		return result, TelegramNotice("Telegram 请求超时时间无效")
 	}
 	token, err := s.openSecretForPlugin(telegramPluginID, "botToken")
 	parts := telegramTokenPattern.FindStringSubmatch(token)
@@ -90,7 +104,7 @@ func (s *ConfigService) telegramConfiguration() (telegramBindingConfig, error) {
 		return result, ErrPluginStoreUnavailable
 	}
 	// 回调地址只携带配置标识，不包含机器人令牌或请求认证密钥。
-	return telegramBindingConfig{Token: token, BotID: parts[1], Secret: secret, Fingerprint: fingerprint,
+	return telegramBindingConfig{Token: token, Proxy: proxyURL, TimeoutMS: settings.Timeout * 1000, BotID: parts[1], Secret: secret, Fingerprint: fingerprint,
 		Callback: "https://" + domain + TelegramCallbackPath + "?v=" + fingerprint[:16]}, nil
 }
 
@@ -107,7 +121,11 @@ func requestTelegramBindingJSON(ctx context.Context, configuration telegramBindi
 		return ErrTelegramBinding
 	}
 	request.Header.Set("Content-Type", "application/json")
-	client := credential.NewRestrictedHTTPClientForTargets(10_000, []credential.NetworkTarget{{Scheme: "https", Host: "api.telegram.org", Port: 443}})
+	client, err := credential.NewTelegramHTTPClient(configuration.TimeoutMS, configuration.Proxy)
+	if err != nil {
+		return TelegramNotice(err.Error())
+	}
+	defer client.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
 		return TelegramNotice("无法连接 Telegram，请稍后重试")

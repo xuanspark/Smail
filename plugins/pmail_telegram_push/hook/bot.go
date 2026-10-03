@@ -19,16 +19,10 @@ func NewBot(config pluginSettings, token string) (*bot.Bot, error) {
 			}),
 		)
 	}
-	if config.Proxy != "" {
-		return nil, errUnsupportedProxy
+	httpClient, err := credential.NewTelegramHTTPClient(config.Timeout*1000, config.Proxy)
+	if err != nil {
+		return nil, err
 	}
-	httpClient := credential.NewRestrictedHTTPClientForTargets(config.Timeout*1000, []credential.NetworkTarget{{Scheme: "https", Host: "api.telegram.org", Port: 443}})
 	opts = append(opts, bot.WithHTTPClient(timeout, httpClient))
 	return bot.New(token, opts...)
 }
-
-var errUnsupportedProxy = &unsupportedProxyError{}
-
-type unsupportedProxyError struct{}
-
-func (*unsupportedProxyError) Error() string { return "不支持的代理协议" }

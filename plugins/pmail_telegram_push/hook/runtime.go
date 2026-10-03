@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"git.pcux.cn/xuans/Smail/utils/credential"
 )
 
 const (
@@ -162,9 +164,11 @@ func parseRuntimeConfig(data json.RawMessage) (pluginRuntimeConfig, pluginSettin
 	if settings.Timeout < 1 || settings.Timeout > maxTimeout {
 		return pluginRuntimeConfig{}, pluginSettings{}, "", errors.New("Telegram 请求超时时间无效")
 	}
-	if settings.Proxy != "" {
-		return pluginRuntimeConfig{}, pluginSettings{}, "", errors.New("Telegram 插件不允许使用未授权代理")
+	proxyURL, err := credential.NormalizeTelegramProxyURL(settings.Proxy)
+	if err != nil {
+		return pluginRuntimeConfig{}, pluginSettings{}, "", err
 	}
+	settings.Proxy = proxyURL
 	secret := strings.TrimSpace(runtime.Secrets["botToken"])
 	if secret == "" {
 		return pluginRuntimeConfig{}, pluginSettings{}, "", errors.New("Telegram Bot Token 未配置")

@@ -48,6 +48,22 @@ func TestParseRuntimeConfigRejectsZeroGeneration(t *testing.T) {
 	}
 }
 
+func TestParseRuntimeConfigAcceptsHostManagedLocalProxy(t *testing.T) {
+	var payload pluginRuntimeConfig
+	if err := json.Unmarshal(validRuntimePayload(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload.Settings = json.RawMessage(`{"proxy":"http://127.0.0.1:9000","timeout":30}`)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, settings, _, err := parseRuntimeConfig(data)
+	if err != nil || settings.Proxy != "http://127.0.0.1:9000" {
+		t.Fatal("host-managed local proxy was rejected")
+	}
+}
+
 func TestParseRuntimeConfigRejectsSecurityBoundaryViolations(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -70,8 +86,8 @@ func TestParseRuntimeConfigRejectsSecurityBoundaryViolations(t *testing.T) {
 			payload.Network = append(payload.Network, pluginNetworkTarget{Scheme: "https", Host: "example.test", Port: 443})
 		}, wantError: "Telegram \u7f51\u7edc\u6743\u9650\u672a\u914d\u7f6e"},
 		{name: "proxy bypass", mutate: func(payload *pluginRuntimeConfig) {
-			payload.Settings = json.RawMessage(`{"proxy":"http://127.0.0.1:8080"}`)
-		}, wantError: "Telegram \u63d2\u4ef6\u4e0d\u5141\u8bb8\u4f7f\u7528\u672a\u6388\u6743\u4ee3\u7406"},
+			payload.Settings = json.RawMessage(`{"proxy":"http://192.168.1.1:8080"}`)
+		}, wantError: "Telegram 代理仅支持带端口的本机 HTTP 地址"},
 		{name: "timeout too large", mutate: func(payload *pluginRuntimeConfig) { payload.Settings = json.RawMessage(`{"timeout":121}`) }, wantError: "Telegram \u8bf7\u6c42\u8d85\u65f6\u65f6\u95f4\u65e0\u6548"},
 		{name: "unknown setting", mutate: func(payload *pluginRuntimeConfig) { payload.Settings = json.RawMessage(`{"unknown":true}`) }, wantError: "Telegram \u63d2\u4ef6\u914d\u7f6e\u65e0\u6548"},
 	}

@@ -4,6 +4,7 @@ package hooks
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -45,8 +46,24 @@ func startPluginEgress(spec *pluginLaunchSpec, uid, gid int) error {
 		return errors.New("plugin egress socket identity failed")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	var telegramProxy func() (string, error)
+	if logicalID == "telegram_push" {
+		telegramProxy = func() (string, error) {
+			instance, _, ok := pluginInstanceForStartup(logicalID)
+			if !ok || validatePluginRuntimeBinding(logicalID, instance) != nil {
+				return "", errors.New("Telegram plugin configuration is unavailable")
+			}
+			var settings struct {
+				Proxy string `json:"proxy"`
+			}
+			if err := json.Unmarshal(instance.Settings, &settings); err != nil {
+				return "", errors.New("Telegram plugin configuration is invalid")
+			}
+			return credential.NormalizeTelegramProxyURL(settings.Proxy)
+		}
+	}
 	server := &http.Server{
-		Handler: credential.NewPluginEgressHandler(token, func() []credential.NetworkTarget {
+		Handler: credential.NewPluginEgressHandlerWithTelegramProxy(token, func() []credential.NetworkTarget {
 			instance, _, ok := pluginInstanceForStartup(logicalID)
 			if !ok || validatePluginRuntimeBinding(logicalID, instance) != nil {
 				return nil
@@ -65,7 +82,7 @@ func startPluginEgress(spec *pluginLaunchSpec, uid, gid int) error {
 				}
 			}
 			return targets
-		}),
+		}, telegramProxy),
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,

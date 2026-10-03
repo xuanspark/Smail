@@ -1,6 +1,8 @@
 package credential
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,107 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestTelegramProxyValidation(t *testing.T) {
+	for _, raw := range []string{"", "http://127.0.0.1:9000", "http://[::1]:8080"} {
+		if _, err := NormalizeTelegramProxyURL(raw); err != nil {
+			t.Fatalf("valid proxy rejected: %q", raw)
+		}
+	}
+	for _, raw := range []string{
+		"http://localhost:9000", "http://10.0.0.1:9000", "http://8.8.8.8:9000",
+		"https://127.0.0.1:9000", "socks5://127.0.0.1:9000", "http://127.0.0.1",
+		"http://127.0.0.1:0", "http://127.0.0.1:65536", "http://user:pass@127.0.0.1:9000",
+		"http://127.0.0.1:9000/", "http://127.0.0.1:9000?", "http://127.0.0.1:9000#",
+		"http://[::1%25lo]:9000",
+	} {
+		if _, err := NormalizeTelegramProxyURL(raw); err == nil {
+			t.Fatalf("invalid proxy accepted: %q", raw)
+		}
+	}
+}
+
+func TestTelegramProxyRetainsTargetAndTLSRestrictions(t *testing.T) {
+	client, err := newTelegramHTTPClient(30000, "http://127.0.0.1:9000", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.CloseIdleConnections()
+	transport := client.Transport.(restrictedRoundTripper).transport.(*http.Transport)
+	request := httptest.NewRequest(http.MethodPost, "https://api.telegram.org/bot-test/getMe", nil)
+	proxy, err := transport.Proxy(request)
+	if err != nil || proxy.String() != "http://127.0.0.1:9000" {
+		t.Fatal("configured proxy was not applied")
+	}
+	if transport.TLSClientConfig != nil && transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("TLS verification was disabled")
+	}
+	if connection, err := transport.DialContext(context.Background(), "tcp", "127.0.0.1:9001"); err == nil {
+		connection.Close()
+		t.Fatal("dial escaped configured proxy")
+	}
+	for _, target := range []string{"https://example.com/", "https://127.0.0.1/", "http://api.telegram.org/", "https://api.telegram.org:444/"} {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		if _, err := client.Transport.RoundTrip(request); err == nil {
+			t.Fatalf("unauthorized target accepted: %s", target)
+		}
+		if err := client.CheckRedirect(request, nil); err == nil {
+			t.Fatalf("unauthorized redirect accepted: %s", target)
+		}
+	}
+}
+
+func TestTelegramSandboxNeverDialsProxyDirectly(t *testing.T) {
+	client, err := newTelegramHTTPClient(30000, "http://127.0.0.1:9000", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.CloseIdleConnections()
+	if _, ok := client.Transport.(restrictedRoundTripper).transport.(*pluginEgressTransport); !ok {
+		t.Fatal("sandbox escaped host-managed egress")
+	}
+}
+
+func TestTelegramProxyUsesConnectWithoutSendingTokenInPlaintext(t *testing.T) {
+	requests := make(chan string, 1)
+	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests <- request.Method + " " + request.RequestURI
+		writer.WriteHeader(http.StatusForbidden)
+	}))
+	defer proxy.Close()
+	client, err := newTelegramHTTPClient(1000, proxy.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.CloseIdleConnections()
+	if _, err := client.Get("https://api.telegram.org/bot-secret/getMe"); err == nil {
+		t.Fatal("failed CONNECT was accepted")
+	}
+	select {
+	case request := <-requests:
+		if request != "CONNECT api.telegram.org:443" {
+			t.Fatalf("unexpected proxy request: %s", request)
+		}
+	default:
+		t.Fatal("proxy was not contacted")
+	}
+}
+
+func TestTelegramEgressRejectsInvalidProxyWithoutFallback(t *testing.T) {
+	token := strings.Repeat("a", 64)
+	handler := NewPluginEgressHandlerWithTelegramProxy(token, func() []NetworkTarget {
+		return []NetworkTarget{{Scheme: "https", Host: "api.telegram.org", Port: 443}}
+	}, func() (string, error) { return "", errors.New("private configuration detail") })
+	request := httptest.NewRequest(http.MethodPost, "/relay", strings.NewReader("{}"))
+	request.Host = "plugin-egress"
+	request.Header.Set(egressTokenHeader, token)
+	request.Header.Set(egressTargetHeader, "https://api.telegram.org/bot-secret/getMe")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || strings.Contains(response.Body.String(), "private") {
+		t.Fatal("invalid proxy did not fail closed with a sanitized error")
+	}
+}
 
 func TestValidateSecret(t *testing.T) {
 	value, err := ValidateSecret(" token-value ", 64)
