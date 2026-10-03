@@ -124,6 +124,10 @@ func Send(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 
 	e := &parsemail.Email{}
 	if err := applyReplyThread(ctx, reqData, e); err != nil {
+		if errors.Is(err, errDraftConflict) {
+			writeDraftError(w, err)
+			return
+		}
 		response.NewErrorResponse(response.ParamsError, i18n.GetText(ctx.Lang, "send_fail"), "").FPrint(w)
 		return
 	}

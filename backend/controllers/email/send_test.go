@@ -2,6 +2,7 @@ package email
 
 import (
 	"encoding/json"
+	"git.pcux.cn/xuans/Smail/config"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -13,6 +14,92 @@ import (
 	"git.pcux.cn/xuans/Smail/utils/context"
 	"xorm.io/xorm"
 )
+
+func TestReplyDraftConflictResponsesPreserveStoredMessage(t *testing.T) {
+	engine, err := xorm.NewEngine(`sqlite`, `:memory:`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	engine.SetMaxOpenConns(1)
+	if err := engine.Sync2(&models.Email{}, &models.UserEmail{}, &models.OutboundDelivery{}); err != nil {
+		t.Fatal(err)
+	}
+	previousDB := db.Instance
+	previousConfig := config.CurrentConfig()
+	previousManager := config.CurrentManager()
+	db.Instance = engine
+	config.SetRuntimeManager(nil)
+	config.PublishConfigSnapshot(&config.Config{Domain: `example.com`, Domains: []string{`example.com`}})
+	defer func() {
+		db.Instance = previousDB
+		config.PublishConfigSnapshot(previousConfig)
+		config.SetRuntimeManager(previousManager)
+	}()
+
+	draft := models.Email{
+		Type: consts.EmailTypeSend, Status: consts.EmailStatusDrafts,
+		SendUserID: 1, ReplyEmailID: 99, Subject: `saved version`, MsgID: `current@example.com`,
+	}
+	if err := persistDraft(engine, 1, &draft, 0, ``); err != nil {
+		t.Fatal(err)
+	}
+	for _, send := range []bool{false, true} {
+		for _, test := range []struct {
+			name    string
+			userID  int
+			draftID int
+			version string
+		}{
+			{name: `stale version`, userID: 1, draftID: draft.Id, version: `stale@example.com`},
+			{name: `foreign owner`, userID: 2, draftID: draft.Id, version: draft.MsgID},
+			{name: `missing draft`, userID: 1, draftID: draft.Id + 1, version: draft.MsgID},
+		} {
+			t.Run(test.name+map[bool]string{false: `/save`, true: `/send`}[send], func(t *testing.T) {
+				input := sendRequest{
+					DraftID: test.draftID, DraftVersion: test.version, ReplyEmailID: 99,
+					From: user{Email: `testuser@example.com`}, To: []user{{Email: `recipient@example.com`}},
+					Subject: `must not overwrite`, Text: `unsaved text`,
+				}
+				payload, err := json.Marshal(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx := &context.Context{UserID: test.userID, UserAccount: `testuser`, UserName: `Test User`}
+				writer := httptest.NewRecorder()
+				request := httptest.NewRequest(`POST`, `/`, strings.NewReader(string(payload)))
+				if send {
+					Send(ctx, writer, request)
+				} else {
+					SaveDraft(ctx, writer, request)
+				}
+				var result struct {
+					ErrorNo  int
+					ErrorMsg string
+				}
+				if err := json.Unmarshal(writer.Body.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.ErrorNo == 0 || result.ErrorMsg != `草稿已变更、已删除或已发送，请返回草稿箱刷新后重试` {
+					t.Fatalf(`unexpected conflict response: %s`, writer.Body.String())
+				}
+				var saved models.Email
+				found, err := engine.ID(draft.Id).Get(&saved)
+				if err != nil || !found || saved.Subject != draft.Subject || saved.MsgID != draft.MsgID || saved.Status != consts.EmailStatusDrafts {
+					t.Fatalf(`stored draft changed: found=%v error=%v draft=%+v`, found, err, saved)
+				}
+				count, err := engine.Count(&models.Email{})
+				if err != nil || count != 1 {
+					t.Fatalf(`unexpected email count: %d error=%v`, count, err)
+				}
+				queued, err := engine.Count(&models.OutboundDelivery{})
+				if err != nil || queued != 0 {
+					t.Fatalf(`conflict queued delivery: %d error=%v`, queued, err)
+				}
+			})
+		}
+	}
+}
 
 func TestSendTransactionalPersistenceConsistency(t *testing.T) {
 	engine, err := xorm.NewEngine("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")

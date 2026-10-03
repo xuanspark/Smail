@@ -66,6 +66,10 @@ func SaveDraft(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	candidate, err := buildDraft(ctx, input)
 	if err != nil {
+		if errors.Is(err, errDraftConflict) {
+			writeDraftError(w, err)
+			return
+		}
 		response.NewErrorResponse(response.ParamsError, "草稿内容无效，请检查发件人、邮箱地址及附件大小", "").FPrint(w)
 		return
 	}
