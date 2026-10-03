@@ -4,10 +4,54 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
 	"git.pcux.cn/xuans/Smail/db/migration"
+	"xorm.io/xorm/convert"
 )
+
+func TestDatabaseEnginePreservesMigratedUTCTime(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.FixedZone("CST", 8*3600)
+	t.Cleanup(func() { time.Local = previousLocal })
+
+	for _, tc := range []struct {
+		driver string
+		dsn    string
+	}{
+		{"sqlite", ":memory:"},
+		{"mysql", "smail@tcp(127.0.0.1:3306)/smail?parseTime=true"},
+		{"postgres", "host=127.0.0.1 user=smail dbname=smail sslmode=require"},
+	} {
+		t.Run(tc.driver, func(t *testing.T) {
+			engine, err := newDatabaseEngine(tc.driver, tc.dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			if engine.GetTZDatabase() != time.UTC {
+				t.Fatalf("database timezone = %v, want UTC", engine.GetTZDatabase())
+			}
+			if engine.GetTZLocation() != time.Local {
+				t.Fatalf("display timezone = %v, want CST", engine.GetTZLocation())
+			}
+			want := time.Date(2026, 10, 3, 16, 56, 0, 0, time.UTC)
+			for _, value := range []any{want, "2026-10-03 16:56:00"} {
+				got, err := convert.AsTime(value, engine.GetTZDatabase(), engine.GetTZLocation())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got == nil || !got.Equal(want) {
+					t.Fatalf("converted time = %v, want instant %v", got, want)
+				}
+				if display := got.Format("2006-01-02 15:04:05"); display != "2026-10-04 00:56:00" {
+					t.Fatalf("display time = %s, want 2026-10-04 00:56:00", display)
+				}
+			}
+		})
+	}
+}
 
 func TestInitAppliesSchemaMigration(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "init.db")

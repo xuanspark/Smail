@@ -35,12 +35,8 @@ func Init(version string) error {
 	}
 
 	switch cfg.DbType {
-	case "mysql":
-		Instance, err = xorm.NewEngine("mysql", dsn)
-	case "sqlite":
-		Instance, err = xorm.NewEngine("sqlite", dsn)
-	case "postgres":
-		Instance, err = xorm.NewEngine("postgres", dsn)
+	case "mysql", "sqlite", "postgres":
+		Instance, err = newDatabaseEngine(cfg.DbType, dsn)
 	default:
 		return errors.New("Database Type Error!")
 	}
@@ -108,6 +104,17 @@ func Init(version string) error {
 	//}
 
 	return nil
+}
+
+func newDatabaseEngine(driver, dsn string) (*xorm.Engine, error) {
+	engine, err := xorm.NewEngine(driver, dsn)
+	if err != nil {
+		return nil, err
+	}
+	// 数据库存储与跨库迁移统一使用 UTC，读取后仍按应用时区展示。
+	// 不得把驱动返回的 UTC 时间按本地时区重新解释。
+	engine.SetTZDatabase(time.UTC)
+	return engine, nil
 }
 
 func WithContext(ctx *requestcontext.Context, sql string) string {
