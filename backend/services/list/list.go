@@ -105,7 +105,12 @@ func genSQL(ctx *context.Context, count bool, tagInfo dto.SearchTag, keyword str
 		return sql, sqlParams
 	}
 
-	sql += " order by e.id desc"
+	if pop3List {
+		sql += " order by e.id desc"
+	} else {
+		// 网页按实际展示的投递时间排序，同一时间用邮件编号稳定分页。
+		sql += " order by e.send_date desc, e.id desc"
+	}
 
 	if limit < 10000 {
 		sql += fmt.Sprintf(" LIMIT %d OFFSET %d ", limit, offset)
