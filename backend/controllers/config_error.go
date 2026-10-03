@@ -131,6 +131,10 @@ func configErrorDetails(err error) (string, int, string, map[string]string) {
 		code = "DATABASE_MIGRATION_CONNECTION_UNAVAILABLE"
 		status = http.StatusServiceUnavailable
 		message = "数据库连接暂不可用，请检查数据库配置和服务状态"
+	case errors.Is(err, dbmigration.ErrSQLPermissionDenied):
+		code = "DATABASE_MIGRATION_PERMISSION_DENIED"
+		status = http.StatusUnprocessableEntity
+		message = "目标数据库账号权限不足，请联系数据库管理员授予建库权限后重新预览；PostgreSQL 需要 CREATEDB 权限，迁移完成后可撤销"
 	case errors.Is(err, dbmigration.ErrSQLUnsupportedObject):
 		code = "DATABASE_MIGRATION_UNSUPPORTED_OBJECT"
 		status = http.StatusUnprocessableEntity

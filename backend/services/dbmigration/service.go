@@ -372,6 +372,8 @@ func migrationErrorCode(err error) string {
 		return "COPIER_UNAVAILABLE"
 	case errors.Is(err, ErrSQLConnectionUnavailable):
 		return "CONNECTION_UNAVAILABLE"
+	case errors.Is(err, ErrSQLPermissionDenied):
+		return "PERMISSION_DENIED"
 	case errors.Is(err, ErrSQLUnsupportedObject):
 		return "UNSUPPORTED_OBJECT"
 	case errors.Is(err, ErrSQLDataVerification):

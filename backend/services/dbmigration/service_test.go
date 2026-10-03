@@ -119,6 +119,7 @@ func TestMigrationErrorCodeMapsExecutorFailures(t *testing.T) {
 		{err: ErrSQLTargetExists, code: "TARGET_EXISTS"},
 		{err: ErrSQLCopyUnavailable, code: "COPIER_UNAVAILABLE"},
 		{err: ErrSQLConnectionUnavailable, code: "CONNECTION_UNAVAILABLE"},
+		{err: ErrSQLPermissionDenied, code: "PERMISSION_DENIED"},
 		{err: ErrSQLUnsupportedObject, code: "UNSUPPORTED_OBJECT"},
 		{err: ErrSQLDataVerification, code: "DATA_VERIFICATION_FAILED"},
 		{err: ErrSQLSourceBusy, code: "SOURCE_BUSY"},

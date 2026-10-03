@@ -96,6 +96,16 @@ func (e *PortableExecutor) checkTarget(ctx context.Context, target config.Databa
 	if count != 0 {
 		return ErrSQLTargetExists
 	}
+	if target.Type == config.DatabaseTypePostgreSQL {
+		var canCreate bool
+		query := "SELECT rolcreatedb OR rolsuper FROM pg_roles WHERE rolname = CURRENT_USER"
+		if err := admin.QueryRowContext(ctx, query).Scan(&canCreate); err != nil {
+			return classifyDatabaseCreationError(err, target.Type)
+		}
+		if !canCreate {
+			return ErrSQLPermissionDenied
+		}
+	}
 	return nil
 }
 
@@ -129,10 +139,7 @@ func (e *PortableExecutor) createTarget(ctx context.Context, target config.Datab
 			query += " TEMPLATE template0 ENCODING 'UTF8'"
 		}
 		if _, err := admin.ExecContext(ctx, query); err != nil {
-			if isDatabaseAlreadyExistsError(err, target.Type) {
-				return nil, ErrSQLTargetExists
-			}
-			return nil, ErrSQLConnectionUnavailable
+			return nil, classifyDatabaseCreationError(err, target.Type)
 		}
 	}
 	// 失败目标保留供检查，后续重试必须换用未占用的名称，绝不删除旧库。

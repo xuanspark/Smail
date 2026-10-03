@@ -25,6 +25,7 @@ var (
 	ErrSQLTargetExists          = errors.New("structured database migration target already exists")
 	ErrSQLUnsupportedObject     = errors.New("structured database contains unsupported object")
 	ErrSQLConnectionUnavailable = errors.New("structured database connection unavailable")
+	ErrSQLPermissionDenied      = errors.New("structured database migration permission denied")
 	ErrSQLDataVerification      = errors.New("structured database data verification failed")
 	ErrSQLSourceBusy            = errors.New("structured database source has active connections")
 	ErrSwitchOutcomeUnknown     = errors.New("database configuration switch outcome is unknown")
@@ -748,6 +749,25 @@ func listPostgreSQLTables(ctx context.Context, database *sql.DB) ([]postgreSQLTa
 		return nil, err
 	}
 	return tables, nil
+}
+
+func classifyDatabaseCreationError(err error, databaseType config.DatabaseType) error {
+	if isDatabaseAlreadyExistsError(err, databaseType) {
+		return ErrSQLTargetExists
+	}
+	switch databaseType {
+	case config.DatabaseTypePostgreSQL:
+		var postgresErr *pq.Error
+		if errors.As(err, &postgresErr) && postgresErr.Code == "42501" {
+			return ErrSQLPermissionDenied
+		}
+	case config.DatabaseTypeMySQL:
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && (mysqlErr.Number == 1044 || mysqlErr.Number == 1142 || mysqlErr.Number == 1227) {
+			return ErrSQLPermissionDenied
+		}
+	}
+	return ErrSQLConnectionUnavailable
 }
 
 func isDatabaseAlreadyExistsError(err error, databaseType config.DatabaseType) bool {
