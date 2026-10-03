@@ -19,6 +19,14 @@ func TestNormalizeAccount(t *testing.T) {
 }
 
 func TestNormalizeDisplayName(t *testing.T) {
+	for _, value := range []string{strings.Repeat("名", MaxNameRunes), strings.Repeat("😀", MaxNameRunes)} {
+		if normalized, err := NormalizeDisplayName(" " + value + " "); err != nil || normalized != value {
+			t.Fatalf("valid Unicode name rejected: %q %v", value, err)
+		}
+		if _, err := NormalizeDisplayName(value + "名"); err == nil {
+			t.Fatal("oversized Unicode name accepted")
+		}
+	}
 	if value, err := NormalizeDisplayName(" Test User "); err != nil || value != "Test User" {
 		t.Fatalf("valid display name rejected: %q %v", value, err)
 	}

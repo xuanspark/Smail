@@ -54,6 +54,43 @@ func TestEditUserProtectsAdministrativeCredentialsAndRevokesUserSessions(t *test
 		RecentAuth: true, RecoveryCodeConfigured: true,
 	}
 
+	for _, invalidName := range []string{strings.Repeat("名", 11), "bad\nname", "   "} {
+		for _, operation := range []string{"create", "edit"} {
+			payload := map[string]any{"username": invalidName, "disabled": 0}
+			if operation == "create" {
+				payload["account"] = "invalid-name"
+				payload["password"] = "UserPass123"
+			} else {
+				payload["id"] = regular.ID
+			}
+			body, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/user/"+operation, strings.NewReader(string(body)))
+			if operation == "create" {
+				CreateUser(ctx, recorder, request)
+			} else {
+				EditUser(ctx, recorder, request)
+			}
+			var rejected struct {
+				ErrorNo  int    `json:"errorNo"`
+				ErrorMsg string `json:"errorMsg"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &rejected); err != nil {
+				t.Fatal(err)
+			}
+			if rejected.ErrorNo == 0 || rejected.ErrorMsg != displayNameValidationMessage {
+				t.Fatalf("%s returned an unclear name validation error: %+v", operation, rejected)
+			}
+		}
+	}
+	var unchangedUser models.User
+	if _, err := db.Instance.ID(regular.ID).Get(&unchangedUser); err != nil || unchangedUser.Name != regular.Name {
+		t.Fatalf("invalid name changed the user: %v", err)
+	}
+
 	result := editUserRequest(t, ctx, `{"id":`+itoa(admin.ID)+`,"password":"BypassPass123","disabled":0}`)
 	if result == 0 {
 		t.Fatal("administrator changed the current password without current-password verification")

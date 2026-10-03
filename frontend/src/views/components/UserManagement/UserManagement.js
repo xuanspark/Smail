@@ -235,10 +235,14 @@ export function usePage() {
     if (submitting.value || !canEditSelectedUser.value) return
     submitting.value = true
     try {
+      const name = editUserInfo.name.trim()
+      if (!name || Array.from(name).length > 10 || /[\u0000-\u001f\u007f-\u009f]/u.test(name)) {
+        throw new Error('显示名称须为 1–10 个字符，且不能包含控制字符')
+      }
       const creating = editModel.value === 'create'
       const newData = {
         "account": editUserInfo.account,
-        "username": editUserInfo.name,
+        "username": name,
         "disabled": editUserInfo.disabled ? 1 : 0
       }
       if (creating || roleChanged.value) newData.role = editUserInfo.role

@@ -30,7 +30,7 @@ func UpdateProfile(ctx *appcontext.Context, w http.ResponseWriter, req *http.Req
 	}
 	name, err := validation.NormalizeDisplayName(input.Name)
 	if err != nil {
-		response.NewErrorResponse(response.ParamsError, "请输入有效的显示名称", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, displayNameValidationMessage, "").FPrint(w)
 		return
 	}
 	if db.Instance == nil {

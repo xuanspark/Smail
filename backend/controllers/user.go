@@ -26,6 +26,8 @@ import (
 
 const maxUserRequestBytes int64 = 64 << 10
 
+const displayNameValidationMessage = "显示名称须为 1–10 个字符，且不能包含控制字符"
+
 func decodeUserRequest(w http.ResponseWriter, req *http.Request, dst any) error {
 	req.Body = http.MaxBytesReader(w, req.Body, maxUserRequestBytes)
 	decoder := json.NewDecoder(req.Body)
@@ -89,7 +91,7 @@ func CreateUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) 
 	}
 	username, err := validation.NormalizeDisplayName(reqData.Username)
 	if err != nil {
-		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
+		response.NewErrorResponse(response.ParamsError, displayNameValidationMessage, "").FPrint(w)
 		return
 	}
 	user := models.User{Name: username, Account: account, Disabled: reqData.Disabled, SessionVersion: 1, SecurityVersion: 1}
@@ -462,7 +464,7 @@ func EditUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	if reqData.Username != "" {
 		username, validationErr := validation.NormalizeDisplayName(reqData.Username)
 		if validationErr != nil {
-			response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
+			response.NewErrorResponse(response.ParamsError, displayNameValidationMessage, "").FPrint(w)
 			return
 		}
 		user.Name = username

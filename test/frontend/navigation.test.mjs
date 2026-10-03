@@ -49,6 +49,49 @@ test('资源恢复保留目标路径且同一构建只自动刷新一次', () =>
     assert.equal(paths.length, 2);
 });
 
+test('旧邮件页登录资源失效时恢复安全登录目标且不重复刷新', () => {
+    for (const [redirect, expected] of [
+        ['/detail/21', '/detail/21'],
+        ['/list?tag=inbox', '/list?tag=inbox'],
+        ['https://example.com', '/'],
+        ['//example.com', '/'],
+        ['/login?redirect=/list', '/'],
+        [undefined, '/']
+    ]) {
+        const values = new Map();
+        const paths = [];
+        const options = {
+            buildID: 'release-login',
+            getStorage: () => ({getItem: key => values.get(key), setItem: (key, value) => values.set(key, value)}),
+            reload: path => paths.push(path)
+        };
+        const error = new Error('Unable to preload CSS for /assets/Login-old.css');
+        const to = {name: 'login', path: '/login', fullPath: '/login', query: {redirect}};
+        const from = {name: 'list'};
+        const recover = createRouteAssetRecovery(options);
+        assert.equal(recover(error, to, from), true);
+        assert.equal(recover(error, to, from), true);
+        assert.deepEqual(paths, [`/login?${new URLSearchParams({redirect: expected})}`]);
+        assert.equal(createRouteAssetRecovery(options)(error, to, from), false);
+    }
+});
+
+test('登录资源恢复不刷新编辑表单、不恢复验证步骤或离线页面', () => {
+    const recover = createRouteAssetRecovery({
+        buildID: 'release-login',
+        getStorage: () => assert.fail('不应访问存储'),
+        reload: () => assert.fail('不应刷新')
+    });
+    const error = new Error('Unable to preload CSS for /assets/Login-old.css');
+    const to = {name: 'login', path: '/login', fullPath: '/login', query: {redirect: '/list'}};
+    assert.equal(recover(error, to, {name: 'editer'}), false);
+    assert.equal(recover(error, to, {name: 'login'}), false);
+    assert.equal(recover(error, to, {name: 'list'}, {editing: true}), false);
+    assert.equal(recover(error, to, {name: 'list'}, {online: false}), false);
+    assert.equal(recover(error, {...to, name: 'login-verification'}, {name: 'list'}), false);
+    assert.equal(recover(error, {...to, path: '//example.com'}, {name: 'list'}), false);
+});
+
 test('编辑页、设置表单、离线和非法目标不会自动刷新', () => {
     let storageCalls = 0;
     const recover = createRouteAssetRecovery({

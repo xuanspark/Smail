@@ -24,8 +24,13 @@ function createRouteAssetRecovery({buildID, getStorage, reload}) {
         if (!isRouteAssetLoadError(error) || !isReadOnlyRoute(from) || editing || !online) {
             return false;
         }
-        if (!RECOVERABLE_ROUTES.has(to?.name) || !to.fullPath
-            || getSafeLoginRedirect(to.fullPath, '') !== to.fullPath) {
+        let recoveryPath = to?.fullPath;
+        if (to?.name === 'login' && to.path === '/login') {
+            // 旧邮件页登录失效时也可能缺失登录资源，只重建安全的登录目标。
+            const query = new URLSearchParams({redirect: getSafeLoginRedirect(to.query?.redirect)});
+            recoveryPath = `/login?${query}`;
+        } else if (!RECOVERABLE_ROUTES.has(to?.name) || !recoveryPath
+            || getSafeLoginRedirect(recoveryPath, '') !== recoveryPath) {
             return false;
         }
         if (recovering) {
@@ -39,7 +44,7 @@ function createRouteAssetRecovery({buildID, getStorage, reload}) {
             // 先持久化重试标记；同一标签页的同一构建最多自动恢复一次。
             storage.setItem(ASSET_RECOVERY_KEY, buildID);
             recovering = true;
-            reload(to.fullPath);
+            reload(recoveryPath);
             return true;
         } catch {
             // 浏览器禁用存储或导航失败时保留手动恢复入口，不能无限刷新。

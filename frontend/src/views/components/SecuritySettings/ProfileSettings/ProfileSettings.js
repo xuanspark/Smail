@@ -10,10 +10,13 @@ export function useProfile() {
   const saving = ref(false)
   async function save() {
     if (saving.value) return
-    if (!name.value.trim()) return ElMessage.error('请输入显示名称')
+    const displayName = name.value.trim()
+    if (!displayName || Array.from(displayName).length > 10 || /[\u0000-\u001f\u007f-\u009f]/u.test(displayName)) {
+      return ElMessage.error('显示名称须为 1–10 个字符，且不能包含控制字符')
+    }
     saving.value = true
     try {
-      const result = await http.post('/api/v1/user/profile', { name: name.value.trim() })
+      const result = await http.post('/api/v1/user/profile', { name: displayName })
       if (result?.errorNo !== 0) throw new Error(result?.errorMsg || '个人资料保存失败')
       store.userInfos.name = result.data.name
       name.value = result.data.name

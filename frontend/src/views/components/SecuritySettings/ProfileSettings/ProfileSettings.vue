@@ -11,7 +11,7 @@
         <el-tag :type="roleMeta(store.role).type">{{ roleMeta(store.role).label }}</el-tag>
       </el-form-item>
       <el-form-item label="显示名称">
-        <el-input v-model="name" maxlength="10" placeholder="请输入显示名称" />
+        <el-input v-model="name" placeholder="请输入 1–10 个字符" />
       </el-form-item>
       <el-button type="primary" native-type="submit" :loading="saving">
         保存资料

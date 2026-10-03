@@ -188,7 +188,11 @@
           </el-form-item>
 
           <el-form-item :label="lang.user_name">
-            <el-input v-model="editUserInfo.name" :disabled="!canEditSelectedUser || submitting" />
+            <el-input
+              v-model="editUserInfo.name"
+              :disabled="!canEditSelectedUser || submitting"
+              placeholder="请输入 1–10 个字符"
+            />
           </el-form-item>
 
           <el-form-item :label="lang.password">
