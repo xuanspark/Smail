@@ -73,7 +73,7 @@ func (s *Service) IdentifyPublicFlow(identifier string) (*PublicFlow, error) {
 			result.Methods = append(result.Methods, "email")
 		}
 	}
-	if result.Role == access.RoleUser {
+	if result.Role == access.RoleUser || result.Role == access.RoleAdmin {
 		configured, err := s.credentials.HasValidRecoveryCode(user.ID)
 		if err != nil {
 			return nil, ErrUnavailable
@@ -194,7 +194,7 @@ func (s *Service) VerifyPublicFlow(token, method, code, remoteIP string) (string
 			err = s.verification.VerifyBoundWithContext(item.ChallengeID, item.Account, email, strings.TrimSpace(code), verification.PurposePasswordRecover, item.CredentialID, remoteIP, token)
 		}
 	case "security_code":
-		if item.Role != access.RoleUser {
+		if item.Role != access.RoleUser && item.Role != access.RoleAdmin {
 			err = ErrRecoveryDenied
 		} else {
 			err = s.credentials.ConsumeRecoveryCode(item.UserID, code)

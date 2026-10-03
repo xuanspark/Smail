@@ -151,7 +151,7 @@ func (s *Service) completePublicLink(token, newPassword, recoveryCode string, fl
 		s.mu.Unlock()
 		return ErrRecoveryDenied
 	}
-	if item.Flow != flow || (flow && (!item.Verified || (item.Role == access.RoleAdmin && item.Method != "email"))) {
+	if item.Flow != flow || (flow && (!item.Verified || (item.Method != "email" && item.Method != "security_code"))) {
 		s.mu.Unlock()
 		return ErrRecoveryDenied
 	}

@@ -130,11 +130,18 @@ func TestPublicFlowEmailResetAndRoleBoundary(t *testing.T) {
 }
 
 func TestPublicFlowSecurityCodeRoleAndFailureLimits(t *testing.T) {
-	for _, role := range []access.Role{access.RoleAdmin, access.RoleUser} {
+	for _, role := range []access.Role{access.RoleSuperAdmin, access.RoleAdmin, access.RoleUser} {
 		t.Run(string(role), func(t *testing.T) {
 			s, _, engine, user := newRecoveryFixture(t)
 			user.Role = string(role)
 			if _, err := engine.ID(user.ID).Cols("role").Update(user); err != nil {
+				t.Fatal(err)
+			}
+			binding, err := s.external.FindVerifiedPrimaryByUser(user.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.external.Disable(user.ID, binding.ID); err != nil {
 				t.Fatal(err)
 			}
 			codes, err := s.credentials.GenerateRecoveryCodes(user.ID, 5)
@@ -145,17 +152,53 @@ func TestPublicFlowSecurityCodeRoleAndFailureLimits(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ticket, err := s.VerifyPublicFlow(flow.Token, "security_code", codes[0], "192.0.2.2")
-			if role == access.RoleAdmin {
-				if err == nil || strings.Contains(strings.Join(flow.Methods, ","), "security_code") {
-					t.Fatal("admin used security code instead of email")
+			if role == access.RoleSuperAdmin {
+				if flow.Token != "" || len(flow.Methods) != 0 || flow.Email != "" {
+					t.Fatal("超级管理员不应获得公共安全码恢复入口")
+				}
+				if _, err := s.VerifyPublicFlow(flow.Token, "security_code", codes[0], "192.0.2.2"); err == nil {
+					t.Fatal("超级管理员安全码被公共恢复流程接受")
 				}
 				return
 			}
+			if flow.Token == "" || flow.Email != "" || len(flow.Methods) != 1 || flow.Methods[0] != "security_code" {
+				t.Fatal("仅配置安全码的账号未获得独立恢复方式")
+			}
+			if err := s.CompletePublicFlow(flow.Token, "NewPass123"); err == nil {
+				t.Fatal("未经安全码验证就完成了密码重置")
+			}
+			ticket, err := s.VerifyPublicFlow(flow.Token, "security_code", codes[0], "192.0.2.2")
 			if err != nil {
 				t.Fatal(err)
 			}
+			replay, err := s.IdentifyPublicFlow(user.Account)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.VerifyPublicFlow(replay.Token, "security_code", codes[0], "192.0.2.2"); err == nil {
+				t.Fatal("已核销的安全码被重复使用")
+			}
 			if err := s.CompletePublicFlow(ticket, "NewPass123"); err != nil {
+				t.Fatal(err)
+			}
+			var updated models.User
+			if found, err := engine.ID(user.ID).Get(&updated); err != nil || !found {
+				t.Fatal("无法读取重置后的账号", err)
+			}
+			if ok, err := password.Check(updated.Password, "NewPass123"); err != nil || !ok {
+				t.Fatal("安全码恢复未更新密码", err)
+			}
+			if updated.SessionVersion != user.SessionVersion+1 || updated.SecurityVersion != user.SecurityVersion+1 {
+				t.Fatal("安全码恢复未更新密码或撤销旧安全状态")
+			}
+			if configured, err := s.credentials.HasValidRecoveryCode(user.ID); err != nil || configured {
+				t.Fatal("密码重置后仍保留旧安全码", err)
+			}
+			if err := s.CompletePublicFlow(ticket, "OtherPass123"); err == nil {
+				t.Fatal("密码重置令牌被重复使用")
+			}
+			codes, err = s.credentials.GenerateRecoveryCodes(user.ID, 5)
+			if err != nil {
 				t.Fatal(err)
 			}
 			flow, err = s.IdentifyPublicFlow(user.Account)
@@ -169,6 +212,9 @@ func TestPublicFlowSecurityCodeRoleAndFailureLimits(t *testing.T) {
 			}
 			if err := s.SendPublicFlowCode(flow.Token, "192.0.2.2"); err == nil {
 				t.Fatal("exhausted flow usable")
+			}
+			if _, err := s.VerifyPublicFlow(flow.Token, "security_code", codes[0], "192.0.2.2"); err == nil {
+				t.Fatal("达到失败次数上限后仍可验证有效安全码")
 			}
 		})
 	}
