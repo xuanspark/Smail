@@ -1,6 +1,9 @@
 <template>
   <div class="settings-card security-settings-card" v-loading="securityLoading">
-    <div class="security-workspace">
+    <div
+      class="security-workspace"
+      :class="{ 'security-workspace--recovery': selectedSection === 'recovery' }"
+    >
       <SettingsSubmenu
         title="安全设置"
         :items="sectionOptions"
