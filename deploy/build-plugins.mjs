@@ -55,6 +55,7 @@ export async function buildPlugins(args) {
     const vite = path.join(directory, 'node_modules', 'vite', 'bin', 'vite.js')
     try { await access(vite) } catch { throw new Error('请先在 plugins/pmail_telegram_push 执行 npm ci 安装依赖') }
     // 构建并同步 Telegram 单文件界面，保证 Go 嵌入的是本次资源。
+    await run(process.execPath, [path.join(root, 'deploy', 'prepare-frontend.mjs'), 'telegram', '--prepare'], root)
     await run(process.execPath, [vite, 'build'], directory)
     await run(process.execPath, [path.join(root, 'deploy', 'prepare-frontend.mjs'), 'telegram'], root)
   }

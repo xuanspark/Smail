@@ -23,10 +23,24 @@ test('跨平台构建输出不得越过项目 out 目录', async () => {
 test('前端构建必须自动同步 Go 嵌入资源', async () => {
   const frontend = JSON.parse(await read('frontend/package.json'))
   const telegram = JSON.parse(await read('plugins/pmail_telegram_push/package.json'))
+  assert.equal(frontend.scripts.prebuild, 'node ../deploy/prepare-frontend.mjs --prepare')
+  assert.equal(telegram.scripts['prebuild-only'], 'node ../../deploy/prepare-frontend.mjs telegram --prepare')
   assert.equal(frontend.scripts.postbuild, 'node ../deploy/prepare-frontend.mjs')
   assert.equal(telegram.scripts['postbuild-only'], 'node ../../deploy/prepare-frontend.mjs telegram')
   assert.match(await read('frontend/vite.config.js'), /\.\.\/out\/frontend/)
   assert.match(await read('plugins/pmail_telegram_push/vite.config.ts'), /\.\.\/\.\.\/out\/plugins\/telegram-ui/)
+})
+
+test('正式构建先隔离旧资源，复制时不合并旧嵌入目录', async () => {
+  const prepare = await read('deploy/prepare-frontend.mjs')
+  assert.match(prepare, /archiveDirectories\(\[source, target\]\)/)
+  assert.match(prepare, /archiveDirectories\(\[target\]\)/)
+  assert.match(prepare, /info\.isSymbolicLink\(\)/)
+  assert.match(prepare, /relative\.startsWith\('\.\.'\)/)
+  assert.doesNotMatch(prepare, /\b(?:rm|unlink|rmdir)\s*\(/)
+  const build = await read('deploy/build-plugins.mjs')
+  const isolate = build.indexOf("'telegram', '--prepare'")
+  assert.ok(isolate >= 0 && isolate < build.indexOf("[vite, 'build']"))
 })
 
 test('前端入口按需加载 Element Plus，并延迟设置页和写信编辑器', async () => {

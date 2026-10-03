@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "prebuild": "node ../deploy/prepare-frontend.mjs --prepare",
     "build": "vite build",
     "postbuild": "node ../deploy/prepare-frontend.mjs",
     "preview": "vite preview",

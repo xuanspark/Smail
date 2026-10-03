@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
+    "prebuild-only": "node ../../deploy/prepare-frontend.mjs telegram --prepare",
     "build-only": "vite build",
     "postbuild-only": "node ../../deploy/prepare-frontend.mjs telegram",
     "type-check": "vue-tsc --build",
