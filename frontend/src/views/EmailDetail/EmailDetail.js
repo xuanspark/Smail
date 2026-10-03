@@ -26,8 +26,12 @@ export function usePage() {
   const tos = ref([])
   
   const ccs = ref([])
+
+  const bccs = ref([])
   
   const showCC = ref(false)
+
+  const showBCC = ref(false)
 
   const loading = ref(false)
   const loadError = ref('')
@@ -47,7 +51,9 @@ export function usePage() {
     detailData.value = {attachments: []}
     tos.value = []
     ccs.value = []
+    bccs.value = []
     showCC.value = false
+    showBCC.value = false
     loadError.value = ''
     loading.value = true
 
@@ -76,6 +82,9 @@ export function usePage() {
       tos.value = parseAddresses(data.to)
       ccs.value = parseAddresses(data.cc)
       showCC.value = ccs.value.length > 0
+      // 仅在本人的发件副本展示密送；后端仍负责所有权校验和收件副本脱敏。
+      bccs.value = data.type === 1 ? parseAddresses(data.bcc) : []
+      showBCC.value = bccs.value.length > 0
     } catch {
       if (sequence === requestSequence) {
         loadError.value = '网络连接失败，请稍后重试'
@@ -165,6 +174,8 @@ export function usePage() {
     tos,
     ccs,
     showCC,
+    bccs,
+    showBCC,
     loading,
     loadError,
     loadDetail,

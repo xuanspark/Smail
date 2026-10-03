@@ -79,6 +79,44 @@ test('异常地址和附件字段不导致页面异常，切换邮件清除旧�
   assert.equal(page.showCC.value, false)
 })
 
+test('仅发件副本展示密送名单，切换到收件副本立即清除', async () => {
+  const addresses = '[{"Name":"","EmailAddress":"hidden@example.com"}]'
+  const {page, route} = fixture(async (_, {id}) => ({
+    errorNo: 0,
+    data: {...email(id).data, type: id === 15 ? 1 : 0, bcc: addresses}
+  }))
+  await settle()
+  assert.equal(page.showBCC.value, true)
+  assert.equal(page.bccs.value[0].EmailAddress, 'hidden@example.com')
+  route.params.id = '16'
+  await settle()
+  assert.equal(page.showBCC.value, false)
+  assert.deepEqual(page.bccs.value, [])
+})
+
+test('未知邮件类型和无效密送字段不展示名单，加载失败不残留旧名单', async () => {
+  for (const data of [
+    {bcc: '[{"EmailAddress":"hidden@example.com"}]'},
+    {type: 1, bcc: '{'},
+    {type: 1, bcc: 'null'},
+    {type: 1, bcc: '[]'}
+  ]) {
+    const {page} = fixture(async () => ({errorNo: 0, data: {...email(15).data, ...data}}))
+    await settle()
+    assert.equal(page.showBCC.value, false)
+    assert.deepEqual(page.bccs.value, [])
+  }
+  const {page, route} = fixture(async (_, {id}) => id === 15
+    ? {errorNo: 0, data: {...email(id).data, type: 1, bcc: '[{"EmailAddress":"hidden@example.com"}]'}}
+    : {errorNo: 403, errorMsg: '无权查看邮件'})
+  await settle()
+  assert.equal(page.showBCC.value, true)
+  route.params.id = '16'
+  await settle()
+  assert.equal(page.showBCC.value, false)
+  assert.deepEqual(page.bccs.value, [])
+})
+
 test('切换邮件后旧请求成功或失败均不能覆盖新邮件', async () => {
   for (const staleFailure of [false, true]) {
     let finish

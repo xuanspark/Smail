@@ -61,6 +61,12 @@
                   {{ item.Name !== '' ? item.Name : item.EmailAddress }}<span v-if="index < ccs.length - 1">, </span>
                 </span>
               </span>
+              <span v-if="showBCC" class="cc-section">
+                <span class="meta-label">{{ lang.bcc }}:</span>
+                <span v-for="(item, index) in bccs" :key="'bcc'+index" class="receiver-chip">
+                  {{ item.Name || item.EmailAddress }}<span v-if="index < bccs.length - 1">, </span>
+                </span>
+              </span>
             </div>
           </div>
         </div>
@@ -109,6 +115,8 @@ const {
   tos,
   showCC,
   ccs,
+  showBCC,
+  bccs,
   formatDetailDate
 } = usePage()
 </script>
