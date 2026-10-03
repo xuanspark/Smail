@@ -169,9 +169,9 @@ h1 {
 }
 
 .notice {
-  margin: 16px 0 20px;
+  margin: 16px -8px 20px;
   color: #647286;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.8;
 }
 
@@ -184,6 +184,10 @@ footer {
 }
 
 @media (max-width: 360px) {
+  .notice {
+    font-size: 11px;
+  }
+
   body {
     padding-right: max(12px, env(safe-area-inset-right));
     padding-left: max(12px, env(safe-area-inset-left));
