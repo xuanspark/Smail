@@ -10,31 +10,53 @@
   </head>
   <body>
     <main class="result-card" aria-labelledby="result-title">
-      <div class="brand">Smail <span>微信通知</span></div>
+      <header class="brand">Smail <span>微信通知</span></header>
       {{if .Authorized}}
-      <div class="status-icon success" aria-hidden="true">✓</div>
-      <p class="status-label">等待确认绑定</p>
+      <div class="status-icon success" aria-hidden="true">
+        <span class="checkmark"></span>
+      </div>
       <h1 id="result-title">微信授权成功</h1>
-      <p class="description">还差一步，请返回 Smail 确认绑定。</p>
-      <ol class="steps" aria-label="接下来的操作">
-        <li><span class="step-number" aria-hidden="true">1</span><span>回到发起扫码的 Smail 页面</span></li>
-        <li><span class="step-number" aria-hidden="true">2</span><span>核对显示的微信昵称</span></li>
-        <li><span class="step-number" aria-hidden="true">3</span><span>点击「确认绑定」</span></li>
-      </ol>
-      <p class="notice">本次授权不会自动绑定账号。<br>请在二维码有效期内完成确认。</p>
+      <p class="description">还差一步，回到原设备确认即可。</p>
+      <section class="next-step" aria-labelledby="next-step-title">
+        <h2 id="next-step-title">
+          完成绑定
+          <span class="status-label">等待确认绑定</span>
+        </h2>
+        <ol class="steps" aria-label="接下来的操作">
+          <li>
+            <span class="step-number" aria-hidden="true">1</span>
+            <span>回到发起扫码的 Smail 页面</span>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">2</span>
+            <span>核对微信昵称，点击<strong>「确认绑定」</strong></span>
+          </li>
+        </ol>
+      </section>
+      <p class="notice">本次授权不会自动绑定账号，请在二维码有效期内确认。</p>
       {{else}}
       <div class="status-icon warning" aria-hidden="true">!</div>
-      <p class="status-label">请重新扫码</p>
       <h1 id="result-title">微信授权未完成</h1>
       <p class="description">二维码可能已失效，或本次授权未完成。</p>
-      <ol class="steps" aria-label="重新授权的操作">
-        <li><span class="step-number" aria-hidden="true">1</span><span>回到发起扫码的 Smail 页面</span></li>
-        <li><span class="step-number" aria-hidden="true">2</span><span>关闭绑定弹窗，重新生成二维码</span></li>
-        <li><span class="step-number" aria-hidden="true">3</span><span>使用本人微信重新扫码授权</span></li>
-      </ol>
-      <p class="notice">若已在 Smail 确认绑定，以原页面状态为准。<br>请勿刷新或重复打开旧授权链接。</p>
+      <section class="next-step" aria-labelledby="next-step-title">
+        <h2 id="next-step-title">
+          重新授权
+          <span class="status-label warning-label">请重新扫码</span>
+        </h2>
+        <ol class="steps" aria-label="重新授权的操作">
+          <li>
+            <span class="step-number" aria-hidden="true">1</span>
+            <span>回到发起扫码的 Smail 页面</span>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">2</span>
+            <span>重新打开绑定弹窗，用本人微信扫码</span>
+          </li>
+        </ol>
+      </section>
+      <p class="notice">若已确认绑定，以原页面状态为准。请勿重复打开旧授权链接。</p>
       {{end}}
-      <footer>可以关闭此页面，返回原设备继续操作。</footer>
+      <footer>此页面可直接关闭，无需在微信中登录 Smail。</footer>
     </main>
   </body>
 </html>

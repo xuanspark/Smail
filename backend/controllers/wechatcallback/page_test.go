@@ -39,6 +39,20 @@ func TestWriteAuthorizationResult(t *testing.T) {
 			if test.authorized && !strings.Contains(body, "本次授权不会自动绑定账号") {
 				t.Fatal("授权成功页面必须明确仍需原会话确认")
 			}
+			if strings.Count(body, `<li>`) != 2 {
+				t.Fatal("结果页应仅展示两步操作指引")
+			}
+			for _, expected := range []string{`aria-labelledby="next-step-title"`, `id="next-step-title"`, "无需在微信中登录 Smail"} {
+				if !strings.Contains(body, expected) {
+					t.Fatalf("结果页缺少操作引导：%s", expected)
+				}
+			}
+			if test.authorized && (!strings.Contains(body, "核对微信昵称") || !strings.Contains(body, "「确认绑定」")) {
+				t.Fatal("授权成功页面必须引导核对昵称并手动确认")
+			}
+			if !test.authorized && !strings.Contains(body, "以原页面状态为准") {
+				t.Fatal("失效页面不能将重复回调误报为已经解除绑定")
+			}
 		})
 	}
 }
