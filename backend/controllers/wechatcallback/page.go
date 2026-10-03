@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"html/template"
 	"net/http"
+	"strings"
 )
 
 // 页面随主程序发布，无需外部字体、脚本或手机浏览器登录状态。
@@ -15,7 +16,14 @@ import (
 var pageHTML string
 
 //go:embed page.css
-var pageCSS string
+var embeddedCSS string
+
+var pageCSS = normalizeStyle(embeddedCSS)
+
+// 与浏览器解析内嵌样式时的换行规则一致，避免跨平台构建导致摘要不匹配。
+func normalizeStyle(css string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(css, "\r\n", "\n"), "\r", "\n")
+}
 
 var resultTemplate = template.Must(template.New("wechat-result").Parse(pageHTML))
 
