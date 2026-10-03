@@ -1,5 +1,54 @@
 const BLOCKED_REDIRECT_PATHS = ["/login", "/login-verification", "/setup"];
 
+const ASSET_RECOVERY_KEY = 'smail:route-asset-recovery';
+const READ_ONLY_ROUTES = new Set(['home', 'list', 'detail']);
+const RECOVERABLE_ROUTES = new Set([...READ_ONLY_ROUTES, 'editer']);
+
+function isRouteAssetLoadError(error) {
+    const message = typeof error?.message === 'string' ? error.message : '';
+    return /^Unable to preload CSS for /.test(message)
+        || /^Failed to fetch dynamically imported module:/.test(message)
+        || /^error loading dynamically imported module/i.test(message)
+        || /^Importing a module script failed/.test(message)
+        || (error?.name === 'ChunkLoadError' && /^Loading chunk /.test(message));
+}
+
+function isReadOnlyRoute(route) {
+    return READ_ONLY_ROUTES.has(route?.name);
+}
+
+function createRouteAssetRecovery({buildID, getStorage, reload}) {
+    let recovering = false;
+
+    return function recoverRouteAsset(error, to, from, {editing = false, online = true} = {}) {
+        if (!isRouteAssetLoadError(error) || !isReadOnlyRoute(from) || editing || !online) {
+            return false;
+        }
+        if (!RECOVERABLE_ROUTES.has(to?.name) || !to.fullPath
+            || getSafeLoginRedirect(to.fullPath, '') !== to.fullPath) {
+            return false;
+        }
+        if (recovering) {
+            return true;
+        }
+        try {
+            const storage = getStorage();
+            if (!buildID || storage.getItem(ASSET_RECOVERY_KEY) === buildID) {
+                return false;
+            }
+            // 先持久化重试标记；同一标签页的同一构建最多自动恢复一次。
+            storage.setItem(ASSET_RECOVERY_KEY, buildID);
+            recovering = true;
+            reload(to.fullPath);
+            return true;
+        } catch {
+            // 浏览器禁用存储或导航失败时保留手动恢复入口，不能无限刷新。
+            recovering = false;
+            return false;
+        }
+    };
+}
+
 function decodeRedirect(value) {
     let decoded = value;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -92,6 +141,9 @@ function createLoginRedirectHandler(router) {
 }
 
 export {
+    createRouteAssetRecovery,
+    isReadOnlyRoute,
+    isRouteAssetLoadError,
     createLoginLocation,
     createLoginRedirectHandler,
     createSetupLocation,

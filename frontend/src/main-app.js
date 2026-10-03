@@ -3,6 +3,8 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import { router } from './router'
 import { useGlobalStatusStore } from './stores/useGlobalStatusStore'
+import { ElMessage } from 'element-plus'
+import { createRouteAssetRecovery, isReadOnlyRoute, isRouteAssetLoadError } from './utils/navigation.mjs'
 
 import './styles/element-services.css'
 import './assets/main.css'
@@ -34,8 +36,27 @@ const globalStatus = useGlobalStatusStore(pinia)
 
 app.use(pinia)
 
-router.onError((error) => {
+const recoverRouteAsset = createRouteAssetRecovery({
+  buildID: import.meta.url,
+  getStorage: () => window.sessionStorage,
+  reload: fullPath => {
+    // 只恢复页面导航，不重放发送邮件或保存配置等业务请求。
+    window.history.replaceState(window.history.state, '', `#${fullPath}`)
+    window.location.reload()
+  }
+})
+
+router.onError((error, to, from) => {
   console.error('Router navigation failed', error)
+  const editing = globalStatus.settingsDrawerVisible || globalStatus.userInfos.securitySetupRequired
+  if (recoverRouteAsset(error, to, from, {editing, online: window.navigator.onLine})) {
+    return
+  }
+  if (isRouteAssetLoadError(error) && (editing || !isReadOnlyRoute(from)) && from?.name) {
+    // 保留编辑器或配置表单，不能用错误页卸载尚未保存的内容。
+    ElMessage.error('页面资源加载失败，请先保存当前内容，再刷新页面。')
+    return
+  }
   globalStatus.setStartupError('页面加载失败，请刷新后重试')
 })
 

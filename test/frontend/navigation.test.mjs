@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+    createRouteAssetRecovery,
+    isRouteAssetLoadError,
     createLoginRedirectHandler,
     getCurrentLoginRedirect,
     getSafeLoginRedirect,
@@ -16,6 +18,74 @@ test("登录重定向只接受非登录页的站内路径", () => {
     assert.equal(getSafeLoginRedirect("/login?redirect=/list"), "/");
     assert.equal(getSafeLoginRedirect("/%6Cogin-verification"), "/");
     assert.equal(getSafeLoginRedirect("/login/extra"), "/");
+});
+
+test('模块与样式加载错误才进入资源恢复流程', () => {
+    for (const message of [
+        'Unable to preload CSS for /assets/old.css',
+        'Failed to fetch dynamically imported module: https://example.com/assets/old.js',
+        'error loading dynamically imported module',
+        'Importing a module script failed.'
+    ]) assert.equal(isRouteAssetLoadError(new Error(message)), true);
+    assert.equal(isRouteAssetLoadError(new Error('Network Error')), false);
+    assert.equal(isRouteAssetLoadError(new Error('邮件发送失败')), false);
+    assert.equal(isRouteAssetLoadError(null), false);
+});
+
+test('资源恢复保留目标路径且同一构建只自动刷新一次', () => {
+    const values = new Map();
+    const storage = {getItem: key => values.get(key), setItem: (key, value) => values.set(key, value)};
+    const paths = [];
+    const options = {buildID: 'release-a', getStorage: () => storage, reload: path => paths.push(path)};
+    const recover = createRouteAssetRecovery(options);
+    const error = new Error('Unable to preload CSS for /assets/old.css');
+    const from = {name: 'list'};
+    const to = {name: 'editer', fullPath: '/editer?draft=20'};
+    assert.equal(recover(error, to, from), true);
+    assert.equal(recover(error, to, from), true);
+    assert.deepEqual(paths, ['/editer?draft=20']);
+    assert.equal(createRouteAssetRecovery(options)(error, to, from), false);
+    assert.equal(createRouteAssetRecovery({...options, buildID: 'release-b'})(error, to, from), true);
+    assert.equal(paths.length, 2);
+});
+
+test('编辑页、设置表单、离线和非法目标不会自动刷新', () => {
+    let storageCalls = 0;
+    const recover = createRouteAssetRecovery({
+        buildID: 'release-a',
+        getStorage: () => { storageCalls += 1; throw new Error('不应访问存储'); },
+        reload: () => assert.fail('不应刷新')
+    });
+    const error = new Error('Unable to preload CSS for /assets/old.css');
+    const to = {name: 'detail', fullPath: '/detail/21'};
+    for (const name of ['editer', 'setup', 'login', 'force-password-change', undefined]) {
+        assert.equal(recover(error, to, {name}), false);
+    }
+    assert.equal(recover(error, to, {name: 'list'}, {editing: true}), false);
+    assert.equal(recover(error, to, {name: 'list'}, {online: false}), false);
+    for (const fullPath of ['//example.com', '/%2fexample.com', 'https://example.com', '/login', '']) {
+        assert.equal(recover(error, {...to, fullPath}, {name: 'list'}), false);
+    }
+    assert.equal(recover(new Error('Network Error'), to, {name: 'list'}), false);
+    assert.equal(storageCalls, 0);
+});
+
+test('存储不可用或导航异常时交回手动处理', () => {
+    const error = new Error('Unable to preload CSS for /assets/old.css');
+    const to = {name: 'detail', fullPath: '/detail/21'};
+    for (const getStorage of [
+        () => { throw new Error('存储不可用'); },
+        () => ({getItem: () => null, setItem: () => { throw new Error('写入失败'); }})
+    ]) {
+        const recover = createRouteAssetRecovery({buildID: 'release-a', getStorage, reload: () => assert.fail('不应刷新')});
+        assert.equal(recover(error, to, {name: 'list'}), false);
+    }
+    const recover = createRouteAssetRecovery({
+        buildID: 'release-a',
+        getStorage: () => ({getItem: () => null, setItem: () => {}}),
+        reload: () => { throw new Error('导航失败'); }
+    });
+    assert.equal(recover(error, to, {name: 'list'}), false);
 });
 
 test("已在登录页时保留原有安全重定向", () => {
