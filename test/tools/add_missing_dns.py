@@ -32,9 +32,9 @@ def aliyun_request(params):
 
 dkim_pub = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm1F4k0SRUf0aAkIAJewM/oNzARx0XJjCXbA+HZNpqWg0rFpmGzNUsdXaD6Lw3VGok9P2JaE2t8wQxdIqZGX8f1WjXSEYkN2jv4mY2MTECy4Git8gwlwgXG4oBNcfdQ4MXJj+5YYRuqxAZPKhVoJgWbZwpHWmgdoKIoPHJVBRZQ00+K18WqYJC+kXQYGiB6+ztbYIhlZlvgoaPcvApMJE7TdhCulHKSG0DSz+lX4GaYzxGUZuGgKIb5lUBeatSsKsM8WH2eNG2NP+zS/HIdWsppkUh6u4m8V+8K3ieMENPxOsAJ9DSg1GFtCf1WU7KqTmUeQsApZOxbaHWn0W+6nfjwIDAQAB'
 dkim_val = 'v=DKIM1; k=rsa; p=' + dkim_pub
-dmarc_val = 'v=DMARC1; p=quarantine; rua=mailto:admin@solit.cn'
+dmarc_val = 'v=DMARC1; p=quarantine; rua=mailto:admin@example.com'
 
-records = aliyun_request({'Action': 'DescribeDomainRecords', 'DomainName': 'solit.cn', 'PageSize': 50})
+records = aliyun_request({'Action': 'DescribeDomainRecords', 'DomainName': 'example.com', 'PageSize': 50})
 existing = { (r.get('RR'), r.get('Type')): r.get('RecordId') for r in records.get('DomainRecords', {}).get('Record', []) }
 print('Existing RRs:', list(existing.keys()))
 
@@ -42,7 +42,7 @@ if ('_dmarc', 'TXT') not in existing:
     print('Adding _dmarc...')
     res = aliyun_request({
         'Action': 'AddDomainRecord',
-        'DomainName': 'solit.cn',
+        'DomainName': 'example.com',
         'RR': '_dmarc',
         'Type': 'TXT',
         'Value': dmarc_val,
@@ -54,7 +54,7 @@ if ('default._domainkey', 'TXT') not in existing:
     print('Adding default._domainkey...')
     res = aliyun_request({
         'Action': 'AddDomainRecord',
-        'DomainName': 'solit.cn',
+        'DomainName': 'example.com',
         'RR': 'default._domainkey',
         'Type': 'TXT',
         'Value': dkim_val,

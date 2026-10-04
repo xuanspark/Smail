@@ -16,7 +16,7 @@ def prepare_nginx(target, root, template):
     assert 'proxy_pass https://127.0.0.1:8002;' in source
     assert 'proxy_ssl_verify on;' in source
     assert 'proxy_set_header X-Forwarded-For $remote_addr;' in source
-    site = source.replace('solit.cn', 'runtime.invalid')
+    site = source.replace('example.com', 'runtime.invalid')
     site = site.replace('/opt/smail/ssl/custom.crt', str(root / 'ssl/runtime.crt'))
     site = site.replace('/opt/smail/ssl/custom.key', str(root / 'ssl/runtime.key'))
     site = site.replace('/etc/ssl/certs/ca-certificates.crt', str(root / 'ssl/runtime.crt'))

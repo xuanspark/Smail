@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 import http.client
 import json
+import os
 from pathlib import Path
 import smtplib
 import socket
@@ -11,7 +12,19 @@ import ssl
 import subprocess
 
 
-HOST = 'web.cdis.cn'
+def required_domain(name):
+    value = os.environ.get(name, '').strip().lower()
+    if not value:
+        raise RuntimeError(f'?????????? {name}')
+    return value
+
+
+MAIL_DOMAIN = required_domain('SMAIL_MAIL_DOMAIN')
+WEB_DOMAIN = required_domain('SMAIL_WEB_DOMAIN')
+SMTP_DOMAIN = required_domain('SMAIL_SMTP_DOMAIN')
+IMAP_DOMAIN = required_domain('SMAIL_IMAP_DOMAIN')
+POP_DOMAIN = required_domain('SMAIL_POP_DOMAIN')
+HOST = WEB_DOMAIN
 CONTEXT = ssl.create_default_context()
 
 
@@ -47,9 +60,9 @@ def main():
     leaf = subprocess.run(['openssl', 'x509', '-in', '/opt/smail/ssl/custom.crt', '-outform', 'DER'],
                           check=True, capture_output=True).stdout
     expected = hashlib.sha256(leaf).hexdigest()
-    for port, host in [(443, HOST), (443, 'cdis.cn'), (443, 'mail.cdis.cn'),
-                       (8002, HOST), (465, 'smtp.cdis.cn'),
-                       (993, 'imap.cdis.cn'), (995, 'pop.cdis.cn')]:
+    for port, host in [(443, HOST), (443, MAIL_DOMAIN), (443, SMTP_DOMAIN),
+                       (8002, HOST), (465, SMTP_DOMAIN),
+                       (993, IMAP_DOMAIN), (995, POP_DOMAIN)]:
         with socket.create_connection(('127.0.0.1', port), timeout=10) as raw:
             with CONTEXT.wrap_socket(raw, server_hostname=host) as stream:
                 actual = hashlib.sha256(stream.getpeercert(binary_form=True)).hexdigest()
@@ -59,7 +72,7 @@ def main():
     for port in (25, 587):
         with smtplib.SMTP(timeout=10) as client:
             assert client.connect('127.0.0.1', port)[0] == 220
-            client._host = 'smtp.cdis.cn'
+            client._host = SMTP_DOMAIN
             assert client.ehlo('localhost')[0] == 250
             assert not client.has_extn('auth'), 'plaintext AUTH advertised'
             assert client.has_extn('starttls')
@@ -87,7 +100,7 @@ def main():
         raise AssertionError('unknown SNI accepted')
     root = json.loads(Path('/opt/smail/config/config.json').read_text())
     assert root['http']['port'] == 8001 and root['http']['httpsPort'] == 8002
-    assert root['security']['webAuthnRpOrigins'] == ['https://web.cdis.cn']
+    assert root['security']['webAuthnRpOrigins'] == ['https://' + WEB_DOMAIN]
     results['fingerprintSHA256'] = expected
     results['status'] = 'failed' if results['failures'] else 'passed'
     print(json.dumps(results, ensure_ascii=False, indent=2))

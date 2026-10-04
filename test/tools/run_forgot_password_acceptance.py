@@ -39,15 +39,15 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
     page = context.new_page()
 
     # 1. 访问登录页面
-    write_log('1. 打开登录页面 https://mail.solit.cn/#/login')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    write_log('1. 打开登录页面 https://mail.example.com/#/login')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     page.wait_for_timeout(1000)
     page.screenshot(path=os.path.join(output_dir, '20_login_page.png'))
 

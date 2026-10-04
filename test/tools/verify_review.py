@@ -85,11 +85,11 @@ def main():
     assert control.st_uid == database.stat().st_uid
     summary['control_socket_mode'] = oct(stat.S_IMODE(control.st_mode))
     curl = ['curl', '--silent', '--show-error', '--fail', '--max-time', '10', '--noproxy', '*',
-            '--cacert', str(root / 'ssl/custom.crt'), '--resolve', 'web.solit.cn:443:127.0.0.1']
-    run(*curl, 'https://web.solit.cn/api/ping')
+            '--cacert', str(root / 'ssl/custom.crt'), '--resolve', 'web.example.com:443:127.0.0.1']
+    run(*curl, 'https://web.example.com/api/ping')
     summary['unauthenticated'] = {}
     for endpoint in ('/api/v1/user/info', '/api/v1/email/list'):
-        response = json.loads(run(*curl, '-X', 'POST', 'https://web.solit.cn' + endpoint))
+        response = json.loads(run(*curl, '-X', 'POST', 'https://web.example.com' + endpoint))
         assert response['errorNo'] == 403 and not response.get('data')
         summary['unauthenticated'][endpoint] = response['errorNo']
     entries = run('journalctl', '-u', 'smail.service', '--since', args.since, '--output=json', '--no-pager')

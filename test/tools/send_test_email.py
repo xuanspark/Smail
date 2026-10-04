@@ -4,25 +4,28 @@ ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
 from remote_ssh import connect_remote
 connect_remote(ssh)
 
-s = '''import smtplib, ssl
+s = '''import os
+import smtplib, ssl
 from email.mime.text import MIMEText
 
-for target, subj in [
-    ('gfxezc@163.com', 'Smail DirectMail Test - Admin'),
-    ('xuanspark@163.com', 'Smail DirectMail Test - User'),
-    ('likb_blue@163.com', 'Smail DirectMail Test - SuperAdmin')
-]:
+recipients = [item.strip() for item in os.environ['SMAIL_TEST_RECIPIENTS'].split(',') if item.strip()]
+for target in recipients:
     msg = MIMEText('Smail DirectMail test outbound delivery', 'plain', 'utf-8')
-    msg['From'] = 'xuans@solit.cn'
+    msg['From'] = os.environ['SMAIL_FROM_ADDRESS']
     msg['To'] = target
-    msg['Subject'] = subj
+    msg['Subject'] = 'Smail DirectMail Test'
 
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL('smtpdm.aliyun.com', 465, context=context) as server:
-        server.login('xuans@solit.cn', 'Solit12ABcd')
-        res = server.sendmail('xuans@solit.cn', [target], msg.as_string())
+    with smtplib.SMTP_SSL(
+        os.environ['SMAIL_RELAY_HOST'],
+        int(os.environ['SMAIL_RELAY_PORT']),
+        context=context,
+    ) as server:
+        username = os.environ['SMAIL_RELAY_USERNAME']
+        server.login(username, os.environ['SMAIL_RELAY_PASSWORD'])
+        res = server.sendmail(os.environ['SMAIL_FROM_ADDRESS'], [target], msg.as_string())
         print(f'Send to {target}: {res}')
-'''
+''' 
 sftp = ssh.open_sftp()
 with sftp.file('/tmp/test_send_all.py', 'w') as f:
     f.write(s)

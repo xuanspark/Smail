@@ -8,7 +8,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -18,21 +18,21 @@ with sync_playwright() as p:
     page.on('pageerror', lambda err: print('[PAGE ERROR]', err))
     page.on('response', lambda res: print('[NET RES]', res.status, res.url) if '/api/' in res.url else None)
 
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
     page.locator('button.login-btn').click()
     page.wait_for_timeout(2500)
 
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     # 选择收件人
     wrapper = page.locator('.border-less-select .el-select__wrapper')
     wrapper.click()
     page.wait_for_timeout(300)
-    page.keyboard.type('testuser2@solit.cn')
+    page.keyboard.type('testuser2@example.com')
     page.wait_for_timeout(500)
     
     item = page.locator('.el-select-dropdown__item:visible').first

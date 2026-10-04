@@ -14,7 +14,7 @@ BASE = Path(__file__).resolve().parent
 SCRIPTS = BASE if (BASE / 'renew_certificate.py').exists() else BASE.parents[1] / 'deploy/nginx'
 sys.path.insert(0, str(SCRIPTS))
 if os.name == 'posix':
-    with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'cdis.cn', 'SMAIL_WEB_DOMAIN': 'web.cdis.cn'}):
+    with patch.dict(os.environ, {'SMAIL_MAIL_DOMAIN': 'example.com', 'SMAIL_WEB_DOMAIN': 'web.example.com'}):
         import renew_certificate as renew
 else:
     renew = None
@@ -31,7 +31,7 @@ class WebrootTests(unittest.TestCase):
             path.chmod(0o755)
         for context in (patch.object(renew, 'WEBROOT', self.webroot),
                         patch.object(renew, 'ROOT', self.directory),
-                        patch.object(renew, 'DOMAINS', ('cdis.cn', 'web.cdis.cn')),
+                        patch.object(renew, 'DOMAINS', ('example.com', 'web.example.com')),
                         patch.dict(os.environ, {'SMAIL_ACME_CHALLENGE': 'http'}, clear=True)):
             context.start()
             self.addCleanup(context.stop)
@@ -75,7 +75,7 @@ class WebrootTests(unittest.TestCase):
         self.assertEqual(renew.challenge_arguments(), ['--http', '--http.webroot', str(self.webroot)])
 
     def test_wildcard_certificate_rejects_http_challenge(self):
-        with patch.object(renew, 'DOMAINS', ('cdis.cn', '*.cdis.cn')):
+        with patch.object(renew, 'DOMAINS', ('example.com', '*.example.com')):
             with self.assertRaisesRegex(RuntimeError, '泛域名证书必须使用 DNS 验证'):
                 renew.challenge_arguments()
 

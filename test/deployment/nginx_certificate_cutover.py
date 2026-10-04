@@ -116,9 +116,10 @@ def main():
     if digest(previous) != args.expected_config_sha256 or CONFIG.is_symlink():
         parser.error('线上配置与已审查版本不符')
     proposed = (evidence / 'smail.conf').read_bytes()
-    expected = previous.replace(
-        b'/var/lib/smail-acme-tls/certificates/cdis.cn.crt', b'/opt/smail/ssl/custom.crt').replace(
-        b'/var/lib/smail-acme-tls/certificates/cdis.cn.key', b'/opt/smail/ssl/custom.key')
+    certificate = f'/var/lib/smail-acme-tls/certificates/{deploy.MAIL_DOMAIN}.crt'.encode()
+    private_key = f'/var/lib/smail-acme-tls/certificates/{deploy.MAIL_DOMAIN}.key'.encode()
+    expected = previous.replace(certificate, b'/opt/smail/ssl/custom.crt').replace(
+        private_key, b'/opt/smail/ssl/custom.key')
     if proposed != expected or proposed == previous:
         parser.error('候选配置必须且只能改变 Smail 证书读取路径')
     run('nginx', '-t')
@@ -158,21 +159,21 @@ def main():
 
     try:
         scripts = Scripts()
-        scripts.feed(request('mail.cdis.cn', 443).decode('utf-8'))
+        scripts.feed(request(deploy.VERIFY_HOSTNAMES[0], 443).decode('utf-8'))
         if not scripts.paths:
             raise RuntimeError('未找到用于既有连接测试的真实静态资源')
         asset = args.asset_path or scripts.paths[0]
-        expected_body = request('mail.cdis.cn', 443, asset)
+        expected_body = request(deploy.VERIFY_HOSTNAMES[0], 443, asset)
         if len(expected_body) < 65536:
             raise RuntimeError('静态资源过小，无法进行本次下载连续性检查')
-        for host, port in (('mail.cdis.cn', 443), ('web.cdis.cn', 443)):
+        for host, port in ((deploy.VERIFY_HOSTNAMES[0], 443), (deploy.CERTIFICATE_SNI, 443)):
             thread = threading.Thread(target=monitor, args=(host, port))
             thread.start()
             threads.append(thread)
         time.sleep(2)
         if len(report['samples']) < 4 or any(not item['ok'] for item in report['samples']):
             raise RuntimeError('迁移前连续探测未通过')
-        secure, response = request('mail.cdis.cn', 443, asset, slow=True)
+        secure, response = request(deploy.VERIFY_HOSTNAMES[0], 443, asset, slow=True)
         pending = (secure, response)
         prefix = response.read(1024)
         report['connectionOpenedBeforeReload'] = True

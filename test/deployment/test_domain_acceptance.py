@@ -21,7 +21,7 @@ class DomainAcceptanceTest(unittest.TestCase):
         self.assertIn("DOMAINS = (MAIL_DOMAIN, '*.' + MAIL_DOMAIN)", CERTIFICATE)
         self.assertIn("configured_domain('SMAIL_MAIL_DOMAIN')", CERTIFICATE)
         self.assertIn("configured_domain('SMAIL_WEB_DOMAIN')", CERTIFICATE)
-        self.assertNotIn('cdis.cn', CERTIFICATE)
+        self.assertNotRegex(CERTIFICATE, r"(?i)(?:[a-z0-9-]+\.)+(?:cn|com|net)")
         self.assertIn("any(domain.startswith('*.') for domain in DOMAINS)", RENEWAL)
         self.assertIn('DOMAINS = deploy.DOMAINS', RENEWAL)
 

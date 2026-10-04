@@ -11,7 +11,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -19,21 +19,21 @@ with sync_playwright() as p:
 
     page.on('response', lambda res: print('[API RES]', res.status, res.url, res.text()[:200]) if 'send' in res.url else None)
 
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
     page.locator('button.login-btn').click()
     page.wait_for_timeout(3000)
 
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     # 模拟真实在 el-select 内部输入并点击创建选项
     select_box = page.locator('.border-less-select')
     select_box.click()
     page.wait_for_timeout(300)
-    page.keyboard.type('testuser2@solit.cn')
+    page.keyboard.type('testuser2@example.com')
     page.wait_for_timeout(500)
 
     # 检查下拉列表中出现的“创建”选项或按 Enter
@@ -71,7 +71,7 @@ with sync_playwright() as p:
     print('当前页面 URL:', page.url)
 
     # 检查发件箱
-    page.goto('https://mail.solit.cn/#/list?tag={"type":1,"status":-1}', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/list?tag={"type":1,"status":-1}', wait_until='networkidle')
     page.wait_for_timeout(2000)
     page.screenshot(path=os.path.join(test_dir, '24_outbox.png'))
 

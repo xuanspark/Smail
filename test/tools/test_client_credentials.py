@@ -11,8 +11,8 @@ opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx), u
 login_payload = json.dumps({'account': 'xuans', 'password': '12345678'}).encode('utf-8')
 req = urllib.request.Request('https://47.108.78.12/api/v1/login', data=login_payload, headers={
     'Content-Type': 'application/json',
-    'Host': 'mail.solit.cn',
-    'Origin': 'https://mail.solit.cn'
+    'Host': 'mail.example.com',
+    'Origin': 'https://mail.example.com'
 })
 resp = opener.open(req, timeout=5)
 print('Login resp:', resp.read().decode())
@@ -24,9 +24,9 @@ for c in cj:
 
 headers = {
     'Content-Type': 'application/json',
-    'Host': 'mail.solit.cn',
-    'Origin': 'https://mail.solit.cn',
-    'Referer': 'https://mail.solit.cn/',
+    'Host': 'mail.example.com',
+    'Origin': 'https://mail.example.com',
+    'Referer': 'https://mail.example.com/',
     'X-CSRF-Token': csrf_token
 }
 

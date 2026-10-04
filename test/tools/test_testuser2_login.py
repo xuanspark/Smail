@@ -9,8 +9,8 @@ for pwd in ["12345678", "123456", "testuser2", "Password123!", "Tester123456!"]:
     login_payload = json.dumps({"account": "testuser2", "password": pwd}).encode("utf-8")
     req = urllib.request.Request("https://47.108.78.12/api/v1/login", data=login_payload, headers={
         "Content-Type": "application/json",
-        "Host": "mail.solit.cn",
-        "Origin": "https://mail.solit.cn"
+        "Host": "mail.example.com",
+        "Origin": "https://mail.example.com"
     })
     try:
         resp = opener.open(req, timeout=5)

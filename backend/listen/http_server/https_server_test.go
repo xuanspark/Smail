@@ -224,7 +224,7 @@ func TestSameOriginUsesTrustedForwardedProto(t *testing.T) {
 	oldManager := config.CurrentManager()
 	config.SetRuntimeManager(nil)
 	config.Instance = &config.Config{
-		WebDomain:         "xuans.com",
+		WebDomain:         "example.com",
 		TLSMode:           config.HTTPSTLSModeProxy,
 		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
 	}
@@ -233,11 +233,11 @@ func TestSameOriginUsesTrustedForwardedProto(t *testing.T) {
 		config.SetRuntimeManager(oldManager)
 	})
 
-	request := httptest.NewRequest(http.MethodPost, "http://xuans.com/api/settings", nil)
-	request.Host = "xuans.com"
+	request := httptest.NewRequest(http.MethodPost, "http://example.com/api/settings", nil)
+	request.Host = "example.com"
 	request.RemoteAddr = "127.0.0.1:15184"
 	request.Header.Set("X-Forwarded-Proto", "https")
-	request.Header.Set("Origin", "https://xuans.com")
+	request.Header.Set("Origin", "https://example.com")
 	if requestScheme(request) != "https" || !sameOriginRequest(request) {
 		t.Fatal("trusted HTTPS proxy request was rejected")
 	}
@@ -248,7 +248,7 @@ func TestSameOriginDoesNotTrustForwardedProtoFromUntrustedClient(t *testing.T) {
 	oldManager := config.CurrentManager()
 	config.SetRuntimeManager(nil)
 	config.Instance = &config.Config{
-		WebDomain:         "xuans.com",
+		WebDomain:         "example.com",
 		TLSMode:           config.HTTPSTLSModeProxy,
 		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
 	}
@@ -257,11 +257,11 @@ func TestSameOriginDoesNotTrustForwardedProtoFromUntrustedClient(t *testing.T) {
 		config.SetRuntimeManager(oldManager)
 	})
 
-	request := httptest.NewRequest(http.MethodPost, "http://xuans.com/api/settings", nil)
-	request.Host = "xuans.com"
+	request := httptest.NewRequest(http.MethodPost, "http://example.com/api/settings", nil)
+	request.Host = "example.com"
 	request.RemoteAddr = "192.0.2.10:15184"
 	request.Header.Set("X-Forwarded-Proto", "https")
-	request.Header.Set("Origin", "https://xuans.com")
+	request.Header.Set("Origin", "https://example.com")
 	if requestScheme(request) != "http" || sameOriginRequest(request) {
 		t.Fatal("untrusted client controlled the forwarded protocol")
 	}
@@ -272,7 +272,7 @@ func TestSameOriginRejectsAmbiguousForwardedProto(t *testing.T) {
 	oldManager := config.CurrentManager()
 	config.SetRuntimeManager(nil)
 	config.Instance = &config.Config{
-		WebDomain:         "xuans.com",
+		WebDomain:         "example.com",
 		TLSMode:           config.HTTPSTLSModeProxy,
 		TrustedProxyCIDRs: []string{"127.0.0.1/32"},
 	}
@@ -281,11 +281,11 @@ func TestSameOriginRejectsAmbiguousForwardedProto(t *testing.T) {
 		config.SetRuntimeManager(oldManager)
 	})
 
-	request := httptest.NewRequest(http.MethodPost, "http://xuans.com/api/settings", nil)
-	request.Host = "xuans.com"
+	request := httptest.NewRequest(http.MethodPost, "http://example.com/api/settings", nil)
+	request.Host = "example.com"
 	request.RemoteAddr = "127.0.0.1:15184"
 	request.Header.Set("X-Forwarded-Proto", "https, http")
-	request.Header.Set("Origin", "https://xuans.com")
+	request.Header.Set("Origin", "https://example.com")
 	if requestScheme(request) != "http" || sameOriginRequest(request) {
 		t.Fatal("ambiguous forwarded protocol was trusted")
 	}
@@ -296,7 +296,7 @@ func TestHttpsStartSkipsListenerInProxyMode(t *testing.T) {
 	oldManager := config.CurrentManager()
 	config.SetRuntimeManager(nil)
 	config.Instance = &config.Config{
-		WebDomain:    "xuans.com",
+		WebDomain:    "example.com",
 		TLSMode:      config.HTTPSTLSModeProxy,
 		HttpsEnabled: 1,
 		HttpsPort:    443,

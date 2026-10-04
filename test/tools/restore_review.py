@@ -97,7 +97,7 @@ def main():
                 probe = subprocess.run([
                     'nsenter', '--target', pid, '--net', 'curl', '--silent', '--fail', '--max-time', '2',
                     '--noproxy', '*', '--cacert', str(restored / 'ssl/custom.crt'),
-                    '--resolve', 'web.solit.cn:443:127.0.0.1', 'https://web.solit.cn/api/ping',
+                    '--resolve', 'web.example.com:443:127.0.0.1', 'https://web.example.com/api/ping',
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if probe.returncode == 0:
                     ready = True
@@ -112,14 +112,14 @@ import smtplib,ssl,sys
 from email.message import EmailMessage
 message=EmailMessage()
 message['From']='restore@review.invalid'
-message['To']='remotecheck@solit.cn'
+message['To']='remotecheck@example.com'
 message['Subject']='restore-review'
 message['Message-ID']='<restore-'+sys.argv[2]+'@review.invalid>'
 message.set_content('restore database write check')
 context=ssl.create_default_context(cafile=sys.argv[1])
 with smtplib.SMTP('127.0.0.1',25,timeout=20) as client:
  client.ehlo('restore.invalid')
- client._host='mail.solit.cn'
+ client._host='mail.example.com'
  client.starttls(context=context)
  client.ehlo('restore.invalid')
  assert not client.send_message(message)

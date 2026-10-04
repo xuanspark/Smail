@@ -114,15 +114,15 @@ func TestAllowUnsafeSMTPRequiresExplicitLoopbackTestTarget(t *testing.T) {
 }
 
 func TestIsConfiguredMailDomain(t *testing.T) {
-	accepted := []string{"cdis.cn", "alias.cdis.cn"}
+	accepted := []string{"example.com", "alias.example.com"}
 	tests := []struct {
 		name   string
 		domain string
 		want   bool
 	}{
-		{name: "primary domain", domain: "cdis.cn", want: true},
-		{name: "case insensitive domain", domain: "CDIS.CN", want: true},
-		{name: "accepted alias", domain: "alias.cdis.cn", want: true},
+		{name: "primary domain", domain: "example.com", want: true},
+		{name: "case insensitive domain", domain: "EXAMPLE.COM", want: true},
+		{name: "accepted alias", domain: "alias.example.com", want: true},
 		{name: "external domain", domain: "example.com"},
 		{name: "empty domain"},
 	}

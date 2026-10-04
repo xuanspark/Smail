@@ -20,7 +20,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -30,7 +30,7 @@ with sync_playwright() as p:
 
     # 1. 登录页检查忘记密码入口
     write_log('1. 打开登录页面')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     page.screenshot(path=os.path.join(output_dir, '10_login_page_forgot_btn.png'))
 
     forgot_btn = page.locator('button.forgot-password-btn, a:has-text("忘记密码")')
@@ -39,7 +39,7 @@ with sync_playwright() as p:
         forgot_btn.first.click()
         page.wait_for_timeout(1500)
     else:
-        page.goto('https://mail.solit.cn/#/forgot-password', wait_until='networkidle')
+        page.goto('https://mail.example.com/#/forgot-password', wait_until='networkidle')
         page.wait_for_timeout(1500)
 
     write_log(f'   当前页面 URL: {page.url}')

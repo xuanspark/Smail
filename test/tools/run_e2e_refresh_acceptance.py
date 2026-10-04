@@ -20,7 +20,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -32,8 +32,8 @@ with sync_playwright() as p:
     write_log('=== 开始端到端自动化测试：发件前新增刷新按钮与定时刷新机制 ===')
     
     # 步骤 1：访问登录页
-    write_log('1. 打开登录页面 https://mail.solit.cn/#/login')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    write_log('1. 打开登录页面 https://mail.example.com/#/login')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     page.screenshot(path=os.path.join(output_dir, '01_login_page.png'))
     write_log('   登录页面加载成功并已截图')
 
@@ -107,7 +107,7 @@ with sync_playwright() as p:
 
     # 步骤 6：检查未登录状态下的刷新按钮及轮询
     write_log('6. 测试退出登录后未登录状态的表现')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     page.wait_for_timeout(1500)
     page.screenshot(path=os.path.join(output_dir, '06_logout_page.png'))
 

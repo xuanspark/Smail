@@ -32,7 +32,7 @@ func TestProxyHTTPHandlerServesBusinessRoutesWithoutRedirect(t *testing.T) {
 	oldManager := config.CurrentManager()
 	oldSession := session.Instance
 	config.SetRuntimeManager(nil)
-	config.Instance = &config.Config{WebDomain: "xuans.com", TLSMode: config.HTTPSTLSModeProxy}
+	config.Instance = &config.Config{WebDomain: "example.com", TLSMode: config.HTTPSTLSModeProxy}
 	session.Instance = scs.New()
 	t.Cleanup(func() {
 		config.Instance = oldConfig
@@ -45,7 +45,7 @@ func TestProxyHTTPHandlerServesBusinessRoutesWithoutRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://xuans.com/", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://example.com/", nil))
 	if recorder.Code == http.StatusPermanentRedirect || recorder.Code == http.StatusTemporaryRedirect {
 		t.Fatalf("proxy HTTP handler redirected the request: %d", recorder.Code)
 	}
@@ -55,7 +55,7 @@ func TestDirectHTTPHandlerKeepsHTTPSRedirect(t *testing.T) {
 	oldConfig := config.Instance
 	oldManager := config.CurrentManager()
 	config.SetRuntimeManager(nil)
-	config.Instance = &config.Config{WebDomain: "xuans.com", HttpsEnabled: 1, HttpsPort: 443}
+	config.Instance = &config.Config{WebDomain: "example.com", HttpsEnabled: 1, HttpsPort: 443}
 	t.Cleanup(func() {
 		config.Instance = oldConfig
 		config.SetRuntimeManager(oldManager)
@@ -66,8 +66,8 @@ func TestDirectHTTPHandlerKeepsHTTPSRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://xuans.com/inbox", nil))
-	if recorder.Code != http.StatusPermanentRedirect || recorder.Header().Get("Location") != "https://xuans.com/inbox" {
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://example.com/inbox", nil))
+	if recorder.Code != http.StatusPermanentRedirect || recorder.Header().Get("Location") != "https://example.com/inbox" {
 		t.Fatalf("unexpected direct HTTP redirect: status=%d location=%q", recorder.Code, recorder.Header().Get("Location"))
 	}
 }

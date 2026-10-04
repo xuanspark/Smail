@@ -15,13 +15,13 @@ func TestWildcardCertificateDomains(t *testing.T) {
 	}{
 		{
 			name:   "configured domain",
-			config: &config.Config{Domain: "xuans.com", WebDomain: "web.xuans.com", Domains: []string{"xuans.com", "other.example"}},
-			want:   []string{"xuans.com", "*.xuans.com"},
+			config: &config.Config{Domain: "example.com", WebDomain: "web.example.com", Domains: []string{"example.com", "other.example"}},
+			want:   []string{"example.com", "*.example.com"},
 		},
 		{
 			name:   "trimmed wildcard domain",
-			config: &config.Config{Domain: "  *.xuans.com.  "},
-			want:   []string{"xuans.com", "*.xuans.com"},
+			config: &config.Config{Domain: "  *.example.com.  "},
+			want:   []string{"example.com", "*.example.com"},
 		},
 		{
 			name:   "case normalized domain",
@@ -57,9 +57,9 @@ func TestWildcardCertificateDomains(t *testing.T) {
 
 func TestCertificateDomainsFollowChallengeMode(t *testing.T) {
 	cfg := &config.Config{
-		Domain:    "xuans.com",
-		WebDomain: "web.xuans.com",
-		Domains:   []string{"xuans.com"},
+		Domain:    "example.com",
+		WebDomain: "web.example.com",
+		Domains:   []string{"example.com"},
 	}
 
 	cfg.SSLType = config.SSLTypeAutoHTTP
@@ -67,13 +67,13 @@ func TestCertificateDomainsFollowChallengeMode(t *testing.T) {
 	if len(httpDomains) != 5 {
 		t.Fatalf("got %d HTTP domains, want 5: %v", len(httpDomains), httpDomains)
 	}
-	if httpDomains[0] != "web.xuans.com" || httpDomains[1] != "xuans.com" || httpDomains[2] != "smtp.xuans.com" {
+	if httpDomains[0] != "web.example.com" || httpDomains[1] != "example.com" || httpDomains[2] != "smtp.example.com" {
 		t.Fatalf("unexpected HTTP domains: %v", httpDomains)
 	}
 
 	cfg.SSLType = config.SSLTypeAutoDNS
 	dnsDomains := certificateDomains(cfg)
-	if len(dnsDomains) != 2 || dnsDomains[0] != "xuans.com" || dnsDomains[1] != "*.xuans.com" {
+	if len(dnsDomains) != 2 || dnsDomains[0] != "example.com" || dnsDomains[1] != "*.example.com" {
 		t.Fatalf("unexpected DNS domains: %v", dnsDomains)
 	}
 }
@@ -145,7 +145,7 @@ func TestDNSWildcardIgnoresLegacyAdminRecoveryDomain(t *testing.T) {
 
 func TestDNSChallengeWildcardProducesSingleRecord(t *testing.T) {
 	challenge := &DNSChallenge{authInfo: map[string]*authInfo{}}
-	if err := challenge.Present("*.xuans.com", "token", "key-auth"); err != nil {
+	if err := challenge.Present("*.example.com", "token", "key-auth"); err != nil {
 		t.Fatalf("Present returned an error: %v", err)
 	}
 
@@ -156,8 +156,8 @@ func TestDNSChallengeWildcardProducesSingleRecord(t *testing.T) {
 	if records[0].Type != "TXT" {
 		t.Fatalf("got record type %q, want TXT", records[0].Type)
 	}
-	if strings.TrimSuffix(records[0].Host, ".") != "_acme-challenge.xuans.com" {
-		t.Fatalf("got record host %q, want _acme-challenge.xuans.com", records[0].Host)
+	if strings.TrimSuffix(records[0].Host, ".") != "_acme-challenge.example.com" {
+		t.Fatalf("got record host %q, want _acme-challenge.example.com", records[0].Host)
 	}
 	if records[0].Value == "" {
 		t.Fatal("DNS record value must not be empty")

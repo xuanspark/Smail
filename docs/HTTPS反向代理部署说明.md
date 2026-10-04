@@ -8,12 +8,12 @@
 
 ## Smail 配置
 
-在分区配置的 `config.json` 中配置 HTTP 服务。下面示例仅用于开发测试，测试域名使用 `xuans.com`；不要把示例域名直接当作生产配置。
+在分区配置的 `config.json` 中配置 HTTP 服务。下面示例仅用于开发测试，测试域名使用 `example.com`；不要把示例域名直接当作生产配置。
 
 ```json
 {
   "domains": {
-    "web": "xuans.com"
+    "web": "example.com"
   },
   "http": {
     "port": 15184,
@@ -83,7 +83,7 @@ log_format smail_privacy
 server {
     listen 80;
     listen [::]:80;
-    server_name xuans.com;
+    server_name example.com;
     access_log /var/log/nginx/smail-access.log smail_privacy;
 
     location /.well-known/acme-challenge/ {
@@ -100,11 +100,11 @@ server {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name xuans.com;
+    server_name example.com;
     access_log /var/log/nginx/smail-access.log smail_privacy;
 
-    ssl_certificate /etc/letsencrypt/live/xuans.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/xuans.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:15184;
@@ -164,7 +164,7 @@ Nginx 对公网提供 Web 服务时通常开放 `80/tcp` 和 `443/tcp`。Smail �
 - [ ] Smail 日志显示已跳过内部 HTTPS 监听。
 - [ ] Smail 只监听配置的内部 HTTP 端口。
 - [ ] Nginx 443 代理请求可以打开登录页。
-- [ ] 登录请求的 `Origin` 为 `https://xuans.com` 时可以通过校验。
+- [ ] 登录请求的 `Origin` 为 `https://example.com` 时可以通过校验。
 - [ ] 非可信来源伪造 `X-Forwarded-Proto` 不会被信任。
 - [ ] 浏览器收到的会话 Cookie 仍带有 `Secure` 和 `HttpOnly` 属性。
 - [ ] 证书续期由反代服务器完成，Smail 不再发出 ACME 申请或续期请求。

@@ -8,7 +8,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -16,20 +16,20 @@ with sync_playwright() as p:
 
     page.on('response', lambda res: print('[API RES]', res.status, res.url, res.text()[:200]) if 'email' in res.url or 'send' in res.url else None)
 
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
     page.locator('button.login-btn').click()
     page.wait_for_timeout(3000)
 
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     # 填写收件人
     to_input = page.locator('.border-less-select input').first
     to_input.click()
-    to_input.fill('testuser2@solit.cn')
+    to_input.fill('testuser2@example.com')
     page.wait_for_timeout(500)
     # 模拟键盘回车和下拉项选择
     page.keyboard.press('Enter')

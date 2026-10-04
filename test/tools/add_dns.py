@@ -19,7 +19,7 @@ dkim_pub = ''.join(pub_lines)
 dkim_val = 'v=DKIM1; k=rsa; p=' + dkim_pub
 print('DKIM Value:', dkim_val)
 
-dmarc_val = 'v=DMARC1; p=quarantine; rua=mailto:admin@solit.cn'
+dmarc_val = 'v=DMARC1; p=quarantine; rua=mailto:admin@example.com'
 print('DMARC Value:', dmarc_val)
 
 def aliyun_request(params):
@@ -44,7 +44,7 @@ def aliyun_request(params):
     with urllib.request.urlopen(req) as response:
         return json.loads(response.read().decode('utf-8'))
 
-records = aliyun_request({'Action': 'DescribeDomainRecords', 'DomainName': 'solit.cn', 'PageSize': 50})
+records = aliyun_request({'Action': 'DescribeDomainRecords', 'DomainName': 'example.com', 'PageSize': 50})
 existing = { (r.get('RR'), r.get('Type')): r.get('RecordId') for r in records.get('DomainRecords', {}).get('Record', []) }
 print('Existing RRs:', list(existing.keys()))
 
@@ -52,7 +52,7 @@ if ('_dmarc', 'TXT') not in existing:
     print('Adding _dmarc...')
     res = aliyun_request({
         'Action': 'AddDomainRecord',
-        'DomainName': 'solit.cn',
+        'DomainName': 'example.com',
         'RR': '_dmarc',
         'Type': 'TXT',
         'Value': dmarc_val,
@@ -66,7 +66,7 @@ if ('default._domainkey', 'TXT') not in existing:
     print('Adding default._domainkey...')
     res = aliyun_request({
         'Action': 'AddDomainRecord',
-        'DomainName': 'solit.cn',
+        'DomainName': 'example.com',
         'RR': 'default._domainkey',
         'Type': 'TXT',
         'Value': dkim_val,

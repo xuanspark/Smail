@@ -99,13 +99,13 @@ func TestResolveIdentifierFallbackToConfiguredDomainUser(t *testing.T) {
 	config.Instance = &config.Config{
 		DbType:  config.DBTypeSQLite,
 		DbDSN:   filepath.Join(t.TempDir(), "domain_fallback.db"),
-		Domain:  "solit.cn",
-		Domains: []string{"solit.cn"},
+		Domain:  "example.com",
+		Domains: []string{"example.com"},
 	}
 	if err := db.Init(""); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := NormalizeProtocolIdentifier(" Bob@Solit.cn "); err != nil || got != "bob@solit.cn" {
+	if got, err := NormalizeProtocolIdentifier(" Bob@Example.com "); err != nil || got != "bob@example.com" {
 		t.Fatalf("normalized protocol identifier = %q, err = %v", got, err)
 	}
 	for _, identifier := range []string{"bob", "bob@other.com"} {
@@ -129,11 +129,11 @@ func TestResolveIdentifierFallbackToConfiguredDomainUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	identity, err := ResolveIdentifier(" Bob@Solit.cn ")
+	identity, err := ResolveIdentifier(" Bob@Example.com ")
 	if err != nil {
 		t.Fatalf("resolve configured domain user failed: %v", err)
 	}
-	if identity.Kind != IdentifierEmail || identity.UserID != user.ID || identity.Account != "bob" || identity.LoginAddress != "bob@solit.cn" {
+	if identity.Kind != IdentifierEmail || identity.UserID != user.ID || identity.Account != "bob" || identity.LoginAddress != "bob@example.com" {
 		t.Fatalf("unexpected resolved identity: %+v", identity)
 	}
 
@@ -141,7 +141,7 @@ func TestResolveIdentifierFallbackToConfiguredDomainUser(t *testing.T) {
 	if _, err := db.Instance.Insert(&disabledUser); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveIdentifier("charlie@solit.cn"); err == nil {
+	if _, err := ResolveIdentifier("charlie@example.com"); err == nil {
 		t.Fatal("disabled domain user must not be resolved")
 	}
 

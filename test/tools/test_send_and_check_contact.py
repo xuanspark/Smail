@@ -11,7 +11,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -19,7 +19,7 @@ with sync_playwright() as p:
 
     # 登录
     print('1. 登录 xuans...')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
@@ -28,14 +28,14 @@ with sync_playwright() as p:
 
     # 打开写信页
     print('2. 前往写信页...')
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     # 填写收件人
     select_box = page.locator('.border-less-select')
     select_box.click()
     page.wait_for_timeout(300)
-    page.keyboard.type('testuser2@solit.cn')
+    page.keyboard.type('testuser2@example.com')
     page.wait_for_timeout(500)
     page.keyboard.press('Enter')
     page.wait_for_timeout(500)
@@ -54,7 +54,7 @@ with sync_playwright() as p:
 
     # 再次前往写信页，查看下拉列表
     print('4. 重新进入写信页，查看历史联系人下拉...')
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     select_box = page.locator('.border-less-select')

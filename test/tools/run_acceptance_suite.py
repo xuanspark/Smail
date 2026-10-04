@@ -11,7 +11,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -19,7 +19,7 @@ with sync_playwright() as p:
 
     # 1. 登录
     print('--- Step 1: Login ---')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
@@ -30,7 +30,7 @@ with sync_playwright() as p:
 
     # 2. 验证收件箱安全提示
     print('--- Step 2: Inbox Security Tags ---')
-    page.goto('https://mail.solit.cn/#/list?tag=0', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/list?tag=0', wait_until='networkidle')
     page.wait_for_timeout(2000)
     page.screenshot(path=os.path.join(output_dir, '02_inbox_list.png'))
 
@@ -41,7 +41,7 @@ with sync_playwright() as p:
 
     # 3. 验证发件箱状态标签与错误详情
     print('--- Step 3: Outbox Status Tags & Error Dialog ---')
-    page.goto('https://mail.solit.cn/#/list?tag=1', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/list?tag=1', wait_until='networkidle')
     page.wait_for_timeout(2000)
     page.screenshot(path=os.path.join(output_dir, '03_outbox_list.png'))
     success_tags = page.locator('.mail-status-tags .el-tag--success')
@@ -61,7 +61,7 @@ with sync_playwright() as p:
 
     # 4. 验证写信页联系人
     print('--- Step 4: Editer Page Contacts ---')
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
     page.screenshot(path=os.path.join(output_dir, '05_editer_page.png'))
 

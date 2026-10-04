@@ -11,7 +11,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -19,7 +19,7 @@ with sync_playwright() as p:
 
     page.on('response', lambda res: print('[API]', res.status, res.url) if 'api' in res.url else None)
 
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
@@ -27,7 +27,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(3000)
 
     # 查看侧边栏并点击“写邮件”或路由切换到 /editer
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
     page.screenshot(path=os.path.join(test_dir, '01_editer_page.png'))
 
@@ -38,7 +38,7 @@ with sync_playwright() as p:
     # 填写收件人
     # 收件人是一个 el-select 允许输入的
     to_input = page.locator('.border-less-select input').first
-    to_input.fill('testuser2@solit.cn')
+    to_input.fill('testuser2@example.com')
     page.keyboard.press('Enter')
     page.wait_for_timeout(500)
 

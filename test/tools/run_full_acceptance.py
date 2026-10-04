@@ -11,7 +11,7 @@ with sync_playwright() as p:
         args=[
             '--no-sandbox',
             '--ignore-certificate-errors',
-            '--host-resolver-rules=MAP mail.solit.cn 47.108.78.12, MAP solit.cn 47.108.78.12'
+            '--host-resolver-rules=MAP mail.example.com 47.108.78.12, MAP example.com 47.108.78.12'
         ]
     )
     context = browser.new_context(viewport={'width': 1440, 'height': 900}, ignore_https_errors=True)
@@ -19,7 +19,7 @@ with sync_playwright() as p:
 
     # 1. 登录 xuans
     print('1. 登录 xuans...')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('xuans')
     inputs.nth(1).fill('12345678')
@@ -28,7 +28,7 @@ with sync_playwright() as p:
 
     # 2. 检查收件箱中的信任发件人交互
     print('2. 检查收件箱信任操作...')
-    page.goto('https://mail.solit.cn/#/list?tag=0', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/list?tag=0', wait_until='networkidle')
     page.wait_for_timeout(2000)
     
     danger_tags = page.locator('.mail-status-tags .el-tag--danger')
@@ -47,13 +47,13 @@ with sync_playwright() as p:
 
     # 3. 检查发件箱标签
     print('3. 检查发件箱...')
-    page.goto('https://mail.solit.cn/#/list?tag=%7B%22type%22%3A1%2C%22status%22%3A-1%7D', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/list?tag=%7B%22type%22%3A1%2C%22status%22%3A-1%7D', wait_until='networkidle')
     page.wait_for_timeout(2000)
     page.screenshot(path=os.path.join(output_dir, '32_outbox_view.png'))
 
     # 4. 进入写信页，测试删除联系人
     print('4. 写信页测试删除联系人...')
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     wrapper = page.locator('.border-less-select .el-select__wrapper')
@@ -69,14 +69,14 @@ with sync_playwright() as p:
 
     # 5. 验证多租户隔离：登录 testuser2
     print('5. 验证多租户隔离...')
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     inputs = page.locator('.login-content input')
     inputs.nth(0).fill('testuser2')
     inputs.nth(1).fill('12345678')
     page.locator('button.login-btn').click()
     page.wait_for_timeout(2500)
 
-    page.goto('https://mail.solit.cn/#/editer', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/editer', wait_until='networkidle')
     page.wait_for_timeout(2000)
 
     wrapper = page.locator('.border-less-select .el-select__wrapper')

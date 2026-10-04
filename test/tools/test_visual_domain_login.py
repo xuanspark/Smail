@@ -18,7 +18,7 @@ with sync_playwright() as p:
     page.on('request', lambda req: print('[REQ]', req.method, req.url) if 'api' in req.url else None)
     page.on('response', lambda res: print('[RES]', res.status, res.url) if 'api' in res.url else None)
 
-    page.goto('https://mail.solit.cn/#/login', wait_until='networkidle')
+    page.goto('https://mail.example.com/#/login', wait_until='networkidle')
     time.sleep(2)
 
     acc = page.locator('.login-content input').nth(0)

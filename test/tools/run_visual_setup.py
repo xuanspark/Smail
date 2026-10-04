@@ -45,12 +45,12 @@ with sync_playwright() as p:
     page.screenshot(path=os.path.join(test_log_dir, 'step3_domain.png'))
 
     # Step 3: 设置域名
-    print('设置域名: web=mail.solit.cn, smtp=solit.cn...')
+    print('设置域名: web=mail.example.com, smtp=example.com...')
     domain_inputs = page.locator('.form input')
     print('域名页输入框数量:', domain_inputs.count())
     if domain_inputs.count() >= 2:
-        domain_inputs.nth(0).fill('mail.solit.cn')
-        domain_inputs.nth(1).fill('solit.cn')
+        domain_inputs.nth(0).fill('mail.example.com')
+        domain_inputs.nth(1).fill('example.com')
     
     time.sleep(1)
     page.screenshot(path=os.path.join(test_log_dir, 'step3_domain_filled.png'))

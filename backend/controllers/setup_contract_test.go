@@ -45,7 +45,7 @@ func TestBuildSetupSSLResponseUsesConfiguredProxyPorts(t *testing.T) {
 			TLSMode:      config.HTTPSTLSModeProxy,
 			HTTPSEnabled: false,
 		},
-		"xuans.com",
+		"example.com",
 		true,
 	)
 
@@ -55,7 +55,7 @@ func TestBuildSetupSSLResponseUsesConfiguredProxyPorts(t *testing.T) {
 	if response.TLSMode != config.HTTPSTLSModeProxy || response.HTTPSEnabled {
 		t.Fatalf("unexpected proxy settings: mode=%q enabled=%v", response.TLSMode, response.HTTPSEnabled)
 	}
-	if response.WebDomain != "xuans.com" || !response.Ready {
+	if response.WebDomain != "example.com" || !response.Ready {
 		t.Fatalf("unexpected setup response identity: domain=%q ready=%v", response.WebDomain, response.Ready)
 	}
 }

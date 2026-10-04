@@ -62,7 +62,7 @@ def wait_ready():
         result = subprocess.run([
             'curl', '--silent', '--fail', '--max-time', '2', '--noproxy', '*',
             '--cacert', str(ROOT / 'ssl/custom.crt'), '--resolve',
-            'web.solit.cn:443:127.0.0.1', 'https://web.solit.cn/api/ping',
+            'web.example.com:443:127.0.0.1', 'https://web.example.com/api/ping',
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if result.returncode == 0 and run('systemctl', 'is-active', 'smail.service') == 'active':
             return

@@ -20,7 +20,7 @@ from database_inventory import sqlite_inventory
 ROOT = Path('/opt/smail')
 DATABASE_NAME = 'smail.db'
 RUN = time.strftime('%Y%m%d-%H%M%S')
-DOMAIN = 'solit.cn'
+DOMAIN = 'example.com'
 BODY = '内部25端口中文正文验收：邮件必须真实入库，并且只属于指定收件人。'
 ATTACHMENT = '中文附件内容，内部收信验收。'.encode('utf-8')
 
@@ -43,7 +43,7 @@ def connect():
     assert code in (502, 523, 538), f'plaintext AUTH not rejected: {code}'
     # 仅本次客户端信任部署证书，仍校验主机名和证书有效期。
     context = ssl.create_default_context(cafile=str(ROOT / 'ssl/custom.crt'))
-    client._host = 'mail.solit.cn'
+    client._host = 'mail.example.com'
     client.starttls(context=context)
     client.ehlo('internal-check.invalid')
     assert client.sock.getpeername()[0] == '127.0.0.1'
@@ -54,7 +54,7 @@ def connect():
 def deliver(label, recipients, multipart=False):
     message = EmailMessage(policy=SMTP)
     message['From'] = '内部验收 <probe@internal-check.invalid>'
-    message['To'] = 'remotecheck@solit.cn'
+    message['To'] = 'remotecheck@example.com'
     message['Subject'] = f'内部25端口验收 {label} {RUN}'
     message['Message-ID'] = f'<internal-{RUN}-{label}@internal-check.invalid>'
     message['Date'] = formatdate(localtime=False, usegmt=True)
@@ -94,10 +94,10 @@ def main():
         assert set(users) == {'admin', 'remotecheck'}
         results = []
         cases = [
-            ('text', ['remotecheck@solit.cn'], False, {users['remotecheck']}),
-            ('multipart', ['remotecheck@solit.cn', 'admin@solit.cn'], True, set(users.values())),
-            ('admin_only', ['admin@solit.cn'], True, {users['admin']}),
-            ('unknown', [f'missing-{RUN}@solit.cn'], False, {users['admin']}),
+            ('text', ['remotecheck@example.com'], False, {users['remotecheck']}),
+            ('multipart', ['remotecheck@example.com', 'admin@example.com'], True, set(users.values())),
+            ('admin_only', ['admin@example.com'], True, {users['admin']}),
+            ('unknown', [f'missing-{RUN}@example.com'], False, {users['admin']}),
             ('relay', ['nobody@external-check.invalid'], False, {users['admin']}),
         ]
         for label, recipients, multipart, expected_users in cases:

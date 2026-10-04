@@ -6,7 +6,7 @@
 
 Smail 项目托管证书由程序自行签发、续期和事务保存。需要 Nginx 终止公网 TLS 时，使用仓库原生 systemd 模板 `deploy/systemd/smail-tls-sync.path`、`smail-tls-sync.service` 监听根配置提交，调用编译后的 `smail-config --root /opt/smail --export-project-tls /etc/nginx/smail/tls.pem`，再检查并平滑重载 Nginx。它们只同步项目已生成的证书，不执行 ACME 签发，也不引入 Python 或 shell 脚本运行依赖。发布包仍只有三个程序与四个运行目录。
 
-同步目的目录由 root 管理，合并证书文件权限为 0600；Nginx 的 `ssl_certificate` 和 `ssl_certificate_key` 均引用该文件。后台为 `https://web.solit.cn`，上游仍为 `https://127.0.0.1:8002`，以 `web.solit.cn` SNI 和系统 CA 校验，不关闭 `proxy_ssl_verify`，不开放内部端口。
+同步目的目录由 root 管理，合并证书文件权限为 0600；Nginx 的 `ssl_certificate` 和 `ssl_certificate_key` 均引用该文件。后台为 `https://web.example.com`，上游仍为 `https://127.0.0.1:8002`，以 `web.example.com` SNI 和系统 CA 校验，不关闭 `proxy_ssl_verify`，不开放内部端口。
 
 2026-09-20 真实换证已自动触发同步，Nginx 主进程未停止或重启。自然到期长期调度和其他站点长连接连续性未因此计为通过。下面各节保留历史拓扑、证书和故障记录。
 
@@ -27,21 +27,21 @@ Smail 项目托管证书由程序自行签发、续期和事务保存。需要 N
 | 公网 HTTP 80 | Nginx 处理域名校验与 HTTPS 跳转 |
 | 公网 HTTPS 443 | Nginx 终止 TLS，反代至 `https://127.0.0.1:8002` |
 | Smail HTTP 8001 | 保留应用 HTTP 监听，仅内网诊断，不作为业务反代上游 |
-| Smail HTTPS 8002 | 业务上游，Nginx 校验系统根链和 `mail.solit.cn` 主机名 |
+| Smail HTTPS 8002 | 业务上游，Nginx 校验系统根链和 `mail.example.com` 主机名 |
 | SMTP 25/587、465、IMAP 993、POP3 995 | Smail 直接提供邮件协议及可信 TLS |
 
 应用当前监听通配地址，已通过现有 UFW 的 IPv4/IPv6 优先规则拒绝外部连接 8001/8002，回环访问正常。不要对公网开放上游端口。未从另一台主机扫描防火墙，因此不把规则检查称为独立外网阻断验收。
 
 应用采用 `direct` TLS 模式，不能改成 `proxy` 模式后仍期待 8002 监听。Nginx 到上游继续使用 TLS，不关闭 `proxy_ssl_verify`。外部 HTTP 由 Nginx 直接跳转，避免应用的内部跳转地址泄露 8002。
 
-应用配置 `http.port=8001`、`http.httpsPort=8002`、`http.httpsEnabled=true`，配置代次由 1 更新为 2，所有分区代次及摘要同步更新。安全密钥来源显式设置为 `https://mail.solit.cn`，不继承上游端口。
+应用配置 `http.port=8001`、`http.httpsPort=8002`、`http.httpsEnabled=true`，配置代次由 1 更新为 2，所有分区代次及摘要同步更新。安全密钥来源显式设置为 `https://mail.example.com`，不继承上游端口。
 
 ## 配置与证书
 
 - 版本库模板：`deploy/nginx/nginx.conf`、`deploy/nginx/smail.conf`。模板用于本服务器，不应覆盖已有其他站点的 Nginx 主配置。
 - 实际配置：`/etc/nginx/nginx.conf`、`/etc/nginx/conf.d/smail.conf`。
 - 签发者：Let's Encrypt YR1，RSA 2048。
-- SAN：`solit.cn`、`mail.solit.cn`、`smtp.solit.cn`、`imap.solit.cn`、`pop.solit.cn`。
+- SAN：`example.com`、`mail.example.com`、`smtp.example.com`、`imap.example.com`、`pop.example.com`。
 - 有效期：2026-09-17 13:54:40 UTC 至 2026-12-16 13:54:39 UTC。
 - 叶证书 SHA256：`608fb55e3b8add3426a63f672debd86a58389a1a78d0961b9603b2e1abecae43`。
 - ACME 状态目录：`/var/lib/smail-acme-tls`，0700，仅 root 使用。

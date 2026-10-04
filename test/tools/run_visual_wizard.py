@@ -51,10 +51,10 @@ with sync_playwright() as p:
     domain_inputs = page.locator('.ctn input')
     print('域名输入框数量:', domain_inputs.count())
     if domain_inputs.count() >= 2:
-        domain_inputs.nth(0).fill('mail.solit.cn')
-        domain_inputs.nth(1).fill('solit.cn')
+        domain_inputs.nth(0).fill('mail.example.com')
+        domain_inputs.nth(1).fill('example.com')
     elif domain_inputs.count() == 1:
-        domain_inputs.first.fill('solit.cn')
+        domain_inputs.first.fill('example.com')
     
     time.sleep(1)
     page.screenshot(path=os.path.join(test_log_dir, 'step3_domain_filled.png'))

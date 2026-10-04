@@ -26,8 +26,8 @@ def aliyun_request(params):
     with urllib.request.urlopen(req) as response:
         return json.loads(response.read().decode('utf-8'))
 
-records = aliyun_request({'Action': 'DescribeDomainRecords', 'DomainName': 'solit.cn', 'PageSize': 50})
-print('Total records in solit.cn:', records.get('TotalCount'))
+records = aliyun_request({'Action': 'DescribeDomainRecords', 'DomainName': 'example.com', 'PageSize': 50})
+print('Total records in example.com:', records.get('TotalCount'))
 for r in records.get('DomainRecords', {}).get('Record', []):
     rr = r.get('RR')
     t = r.get('Type')

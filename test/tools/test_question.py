@@ -11,7 +11,7 @@ with sync_playwright() as p:
     page.on("response", lambda res: print("[RES]", res.status, res.url, res.text()) if "question" in res.url else None)
 
     # 登录
-    page.goto("https://mail.solit.cn/#/login")
+    page.goto("https://mail.example.com/#/login")
     page.wait_for_selector(".login-btn")
     inputs = page.locator(".login-content input")
     inputs.nth(0).fill("xuans")
@@ -20,7 +20,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(3000)
 
     # 直接访问设置安全路由
-    page.goto("https://mail.solit.cn/#/setting?tab=security")
+    page.goto("https://mail.example.com/#/setting?tab=security")
     page.wait_for_timeout(2000)
 
     # 查看当前页面按钮和文本
