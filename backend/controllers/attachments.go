@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cast"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -50,6 +51,7 @@ func Download(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	}
 	fileName = safeDownloadName(fileName)
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"attachment\"; filename*=UTF-8''%s", url.PathEscape(fileName)))
 	if _, err := w.Write(content); err != nil {
