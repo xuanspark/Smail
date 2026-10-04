@@ -123,7 +123,7 @@ func TestIsConfiguredMailDomain(t *testing.T) {
 		{name: "primary domain", domain: "example.com", want: true},
 		{name: "case insensitive domain", domain: "EXAMPLE.COM", want: true},
 		{name: "accepted alias", domain: "alias.example.com", want: true},
-		{name: "external domain", domain: "example.com"},
+		{name: "external domain", domain: "external.example.net"},
 		{name: "empty domain"},
 	}
 	for _, tt := range tests {

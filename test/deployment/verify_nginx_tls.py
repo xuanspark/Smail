@@ -15,20 +15,25 @@ import subprocess
 def required_domain(name):
     value = os.environ.get(name, '').strip().lower()
     if not value:
-        raise RuntimeError(f'?????????? {name}')
+        raise RuntimeError(f'缺少运行时域名参数：{name}')
     return value
 
 
-MAIL_DOMAIN = required_domain('SMAIL_MAIL_DOMAIN')
-WEB_DOMAIN = required_domain('SMAIL_WEB_DOMAIN')
-SMTP_DOMAIN = required_domain('SMAIL_SMTP_DOMAIN')
-IMAP_DOMAIN = required_domain('SMAIL_IMAP_DOMAIN')
-POP_DOMAIN = required_domain('SMAIL_POP_DOMAIN')
-HOST = WEB_DOMAIN
+TEST_HOST = 'web.example.com'
 CONTEXT = ssl.create_default_context()
 
 
-def request(port, path='/', host=HOST, tls=True):
+def load_domains():
+    return {
+        'mail': required_domain('SMAIL_MAIL_DOMAIN'),
+        'web': required_domain('SMAIL_WEB_DOMAIN'),
+        'smtp': required_domain('SMAIL_SMTP_DOMAIN'),
+        'imap': required_domain('SMAIL_IMAP_DOMAIN'),
+        'pop': required_domain('SMAIL_POP_DOMAIN'),
+    }
+
+
+def request(port, path='/', host=TEST_HOST, tls=True):
     raw = socket.create_connection(('127.0.0.1', port), timeout=10)
     stream = CONTEXT.wrap_socket(raw, server_hostname=host) if tls else raw
     try:
@@ -41,8 +46,8 @@ def request(port, path='/', host=HOST, tls=True):
         stream.close()
 
 
-def check_redirects(results):
-    expected = 'https://' + HOST + '/acceptance?x=1'
+def check_redirects(results, host=TEST_HOST):
+    expected = 'https://' + host + '/acceptance?x=1'
     failures = []
     for port in (80, 8001):
         status, headers, _ = request(port, '/acceptance?x=1', tls=False)
@@ -56,23 +61,25 @@ def check_redirects(results):
 
 
 def main():
+    domains = load_domains()
+    host = domains['web']
     results = {'time': datetime.now(timezone.utc).isoformat(), 'checks': []}
     leaf = subprocess.run(['openssl', 'x509', '-in', '/opt/smail/ssl/custom.crt', '-outform', 'DER'],
                           check=True, capture_output=True).stdout
     expected = hashlib.sha256(leaf).hexdigest()
-    for port, host in [(443, HOST), (443, MAIL_DOMAIN), (443, SMTP_DOMAIN),
-                       (8002, HOST), (465, SMTP_DOMAIN),
-                       (993, IMAP_DOMAIN), (995, POP_DOMAIN)]:
+    for port, tls_host in [(443, host), (443, domains['mail']), (443, domains['smtp']),
+                           (8002, host), (465, domains['smtp']),
+                           (993, domains['imap']), (995, domains['pop'])]:
         with socket.create_connection(('127.0.0.1', port), timeout=10) as raw:
-            with CONTEXT.wrap_socket(raw, server_hostname=host) as stream:
+            with CONTEXT.wrap_socket(raw, server_hostname=tls_host) as stream:
                 actual = hashlib.sha256(stream.getpeercert(binary_form=True)).hexdigest()
                 assert actual == expected, (port, 'certificate mismatch')
-                results['checks'].append({'port': port, 'hostname': host, 'tls': stream.version(),
+                results['checks'].append({'port': port, 'hostname': tls_host, 'tls': stream.version(),
                                           'systemTrust': True, 'sameCertificate': True})
     for port in (25, 587):
         with smtplib.SMTP(timeout=10) as client:
             assert client.connect('127.0.0.1', port)[0] == 220
-            client._host = SMTP_DOMAIN
+            client._host = domains['smtp']
             assert client.ehlo('localhost')[0] == 250
             assert not client.has_extn('auth'), 'plaintext AUTH advertised'
             assert client.has_extn('starttls')
@@ -82,13 +89,13 @@ def main():
             results['checks'].append({'port': port, 'systemTrust': True, 'starttls': True,
                                       'plaintextAuthHidden': True})
     for port in (443, 8002):
-        status, headers, body = request(port)
+        status, headers, body = request(port, host=host)
         assert status == 200 and b'<html' in body.lower(), (port, status)
         assert 'Content-Security-Policy' in headers
         results['checks'].append({'port': port, 'pageStatus': status, 'pageBytes': len(body)})
-        status, _, body = request(port, '/api/ping')
+        status, _, body = request(port, '/api/ping', host=host)
         assert status == 200
-    results['failures'] = check_redirects(results)
+    results['failures'] = check_redirects(results, host)
     assert request(80, host='untrusted.invalid', tls=False)[0] == 404
     results['checks'].append({'unknownHttpHost': 'rejected'})
     try:
@@ -100,7 +107,7 @@ def main():
         raise AssertionError('unknown SNI accepted')
     root = json.loads(Path('/opt/smail/config/config.json').read_text())
     assert root['http']['port'] == 8001 and root['http']['httpsPort'] == 8002
-    assert root['security']['webAuthnRpOrigins'] == ['https://' + WEB_DOMAIN]
+    assert root['security']['webAuthnRpOrigins'] == ['https://' + host]
     results['fingerprintSHA256'] = expected
     results['status'] = 'failed' if results['failures'] else 'passed'
     print(json.dumps(results, ensure_ascii=False, indent=2))

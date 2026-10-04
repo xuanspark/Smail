@@ -25,7 +25,7 @@ for target in recipients:
         server.login(username, os.environ['SMAIL_RELAY_PASSWORD'])
         res = server.sendmail(os.environ['SMAIL_FROM_ADDRESS'], [target], msg.as_string())
         print(f'Send to {target}: {res}')
-''' 
+'''
 sftp = ssh.open_sftp()
 with sftp.file('/tmp/test_send_all.py', 'w') as f:
     f.write(s)

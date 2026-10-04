@@ -6,7 +6,7 @@ import os
 def required(name):
     value = os.environ.get(name, '').strip()
     if not value:
-        raise RuntimeError(f'?????????? {name}')
+        raise RuntimeError(f'缺少运行时参数：{name}')
     return value
 
 
