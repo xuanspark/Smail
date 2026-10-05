@@ -168,10 +168,6 @@ func validateSMTP(smtp SMTPConfig) error {
 	return nil
 }
 
-func smtpRelayFieldsConfigured(smtp SMTPConfig) bool {
-	return smtp.RelayHost != "" || smtp.Username != "" || smtp.Password.Configured() || smtp.From != ""
-}
-
 func smtpRelayConfigured(smtp SMTPConfig) bool {
 	return smtp.RelayEnabled
 }

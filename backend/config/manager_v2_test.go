@@ -439,6 +439,7 @@ func TestConfigManagerMailSectionAppliesBothPartitionsWithoutMailFile(t *testing
 		t.Fatal(err)
 	}
 	runtime.SMTP.Relay = SMTPConfig{
+		RelayEnabled:        true,
 		RelayHost:           "smtp.example.com",
 		RelayPort:           587,
 		Username:            "relay-user",
@@ -1046,11 +1047,12 @@ func TestConfigManagerSecretClearRequiresExplicitConfirmation(t *testing.T) {
 	root := t.TempDir()
 	runtime := validRuntimeConfig()
 	runtime.SMTP.Relay = SMTPConfig{
-		RelayHost:  "smtp.example.com",
-		RelayPort:  587,
-		Security:   "starttls",
-		From:       "no-reply@example.com",
-		FromDomain: "example.com",
+		RelayEnabled: true,
+		RelayHost:    "smtp.example.com",
+		RelayPort:    587,
+		Security:     "starttls",
+		From:         "no-reply@example.com",
+		FromDomain:   "example.com",
 	}
 	writeRuntimeFixture(t, root, runtime)
 	options := ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}

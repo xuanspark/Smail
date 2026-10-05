@@ -43,7 +43,7 @@ func TestVerificationDeliveryDoesNotHidePartialRelayConfiguration(t *testing.T) 
 	projectCalled := false
 	delivery := newVerificationDeliveryWithDependencies(
 		func() (config.SMTPRuntimeSettings, error) {
-			return config.SMTPRuntimeSettings{Relay: config.SMTPConfig{RelayHost: "smtp.example.com"}}, nil
+			return config.SMTPRuntimeSettings{Relay: config.SMTPConfig{RelayEnabled: true, RelayHost: "smtp.example.com"}}, nil
 		},
 		func(config.SMTPRuntimeSettings, verification.Challenge, string) error { return expected },
 		func(verification.Challenge, string) error {

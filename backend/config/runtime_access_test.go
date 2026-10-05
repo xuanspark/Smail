@@ -258,6 +258,7 @@ func TestCurrentSMTPRuntimeSettingsReadsPartitionSnapshot(t *testing.T) {
 
 	runtime := validRuntimeConfig()
 	runtime.SMTP.Relay = SMTPConfig{
+		RelayEnabled:        true,
 		RelayHost:           "smtp.example.com",
 		RelayPort:           587,
 		Security:            "starttls",
@@ -300,6 +301,7 @@ func TestCurrentSMTPRuntimeSettingsOpensPartitionPassword(t *testing.T) {
 	}
 	runtime := validRuntimeConfig()
 	runtime.SMTP.Relay = SMTPConfig{
+		RelayEnabled:        true,
 		RelayHost:           "smtp.example.com",
 		RelayPort:           465,
 		Username:            "relay-user",
@@ -350,7 +352,7 @@ func TestCurrentSMTPRuntimeSettingsFallsBackToLegacyConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Password != "relay-password" || got.Relay.Username != "relay-user" || got.Relay.From != "no-reply@example.com" {
+	if got.Password != "relay-password" || got.Relay.RelayEnabled || got.Relay.Username != "relay-user" || got.Relay.From != "no-reply@example.com" {
 		t.Fatalf("legacy SMTP settings = %+v, password=%q", got.Relay, got.Password)
 	}
 }
