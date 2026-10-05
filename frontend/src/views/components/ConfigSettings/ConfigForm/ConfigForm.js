@@ -11,7 +11,6 @@ const mailSecurity = config => {
   const value = normalizedMailSecurity(config.listener?.security)
   return value || 'both'
 }
-export const relaySecurityForMail = config => mailSecurity(config) === 'implicit_tls' ? 'implicit_tls' : 'starttls'
 const startTLSMail = config => mailSecurity(config) === 'starttls'
 const implicitTLSMail = config => mailSecurity(config) === 'implicit_tls'
 export const relayConfigured = config => !!(
@@ -46,7 +45,7 @@ export function getRecommendedPort(config, path) {
     case 'http.publicHttpsPort':
       return 443
     case 'relay.relayPort':
-      return smtpPorts.get(relaySecurityForMail(config))
+      return smtpPorts.get(normalizedMailSecurity(config.relay?.security))
     case 'listener.port':
       return 25
     case 'listener.starttlsPort':
@@ -143,8 +142,12 @@ const mailGroups = [
   ]),
   group('relay', 'SMTP 中继连接（可选）', '', [
     field('relay.enabled', '启用 SMTP 中继', 'switch', { hint: '关闭后保留配置，但系统不会使用该中继发信。' }),
+    field('relay.security', '中继加密方式', 'select', {
+      options: options([['starttls', 'STARTTLS'], ['implicit_tls', '隐式 TLS']]),
+      hint: '独立于本机邮件监听，请按外部 SMTP 服务商要求选择。'
+    }),
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
-    port('relay.relayPort', 'SMTP 发信中继端口', { hint: '外部 SMTP 服务器端口，与本机监听无关；选择加密方式后自动填写。' }),
+    port('relay.relayPort', 'SMTP 发信中继端口', { hint: '与本机监听无关；切换中继加密方式时更新推荐端口，保留已有自定义端口。' }),
     field('relay.username', '认证用户名', 'text', { placeholder: '需要认证时填写' }),
     field('relay.password', '中继密码', 'password', { placeholder: '留空保持原值' }),
     field('relay.from', '发件邮箱', 'text', { placeholder: 'noreply@example.com' }),
@@ -305,13 +308,12 @@ export function updateFormConfig(text, section, path, value) {
       config.pop3 ||= {}
       config.pop3.port = startTLS || both ? 110 : 0
       config.pop3.tlsPort = startTLS ? 0 : 995
-      config.relay ||= {}
-      config.relay.security = relaySecurityForMail(config)
-      config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
-    if (key.startsWith('relay.') && key !== 'relay.security' && key !== 'relay.enabled' && config.relay?.enabled === true && relayConfigured(config) && ['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
-      config.relay.security = relaySecurityForMail(config)
-      if (!validPort(config.relay.relayPort)) config.relay.relayPort = smtpPorts.get(config.relay.security)
+    if (key === 'relay.security' && ['starttls', 'implicit_tls'].includes(value)) {
+      const previousPort = smtpPorts.get(normalizedMailSecurity(previousValue))
+      if (!validPort(config.relay.relayPort) || config.relay.relayPort === previousPort) {
+        config.relay.relayPort = smtpPorts.get(value)
+      }
     }
     if (key === 'http.tlsMode' && ['direct', 'proxy'].includes(value)) {
       if (!validPort(config.http.port)) {
@@ -375,8 +377,7 @@ export function validateFormConfig(section, config) {
     if (enabled && !relay.clear) {
       if (!relay.relayHost) errors['relay.relayHost'] = '请填写 SMTP 服务器'
       const relaySecurity = normalizedMailSecurity(relay.security)
-      if (!['starttls', 'implicit_tls'].includes(relaySecurity)) errors['listener.security'] = '请先选择统一加密方式'
-      if (mailSecurity(config) !== 'both' && ['starttls', 'implicit_tls'].includes(mailSecurity(config)) && relaySecurity !== mailSecurity(config)) errors['listener.security'] = 'SMTP 中继加密方式必须与邮件服务保持一致'
+      if (!['starttls', 'implicit_tls'].includes(relaySecurity)) errors['relay.security'] = '请选择中继加密方式'
       if (!validPort(relay.relayPort)) errors['relay.relayPort'] = '请填写 1～65535 的 SMTP 端口'
       if (!relay.from) errors['relay.from'] = '请填写发件邮箱'
       if (!relay.fromDomain) errors['relay.fromDomain'] = '请填写发件域名'

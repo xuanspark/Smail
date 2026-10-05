@@ -6,11 +6,11 @@ import { createRequire } from 'node:module'
 
 const root = new URL('../../frontend/src/views/components/ConfigSettings/', import.meta.url)
 const source = readFileSync(new URL('ConfigForm/ConfigForm.js', root), 'utf8')
-const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig } = compileFunction(
+const { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig, getRecommendedPort } = compileFunction(
   source
     .replaceAll('export function ', 'function ')
     .replaceAll('export const ', 'const ') +
-    '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig }'
+    '\nreturn { readFormConfig, getFieldGroups, updateFormConfig, validateFormConfig, getRecommendedPort }'
 )()
 
 test('项目 DNS 自动续期需要凭据，已设置的凭据可留空且外部托管隐藏 DNS 字段', () => {
@@ -120,7 +120,7 @@ test('邮件服务页面只管理监听和中继，邮件策略使用独立表�
   assert.equal(listener.fields[0].wide, true)
   assert.equal(listener.fields[0].options.find(option => option.value === 'both').label, '全部启用（推荐）')
   assert.equal(listener.fields[0].options.find(option => option.value === 'both').disabled, undefined)
-  assert.ok(!relay.fields.some(field => field.path.join('.') === 'relay.security'))
+  assert.deepEqual(relay.fields.find(field => field.path.join('.') === 'relay.security').options.map(option => option.value), ['starttls', 'implicit_tls'])
   assert.ok(relay.fields.some(field => field.path.join('.') === 'relay.relayPort'))
   const edited = readFormConfig(updateFormConfig(text, 'mail', ['listener', 'tlsPort'], 2465))
   assert.equal(edited.listener.tlsPort, 2465)
@@ -424,7 +424,7 @@ test('普通文本输入使用本地编辑值，父级配置刷新不会抢占�
   assert.doesNotMatch(script, /!textEditing\.value \|\| nextValue !== textValue\.value/)
 })
 
-test('统一加密方式同步切换 SMTP、IMAP、POP3 与已配置中继', () => {
+test('本机加密方式只切换本机监听，不改写已配置中继', () => {
   for (const [security, expected] of [
     ['both', { relay: 587, relaySecurity: 'starttls', smtpStartTLS: 587, smtpTLS: 465, imap: 993, pop3: 110, pop3TLS: 995 }],
     ['starttls', { relay: 587, relaySecurity: 'starttls', smtpStartTLS: 587, smtpTLS: 0, imap: 143, pop3: 110, pop3TLS: 0 }],
@@ -439,31 +439,31 @@ test('统一加密方式同步切换 SMTP、IMAP、POP3 与已配置中继', () 
     assert.deepEqual(updated.listener, { security, port: 25, starttlsPort: expected.smtpStartTLS, tlsPort: expected.smtpTLS })
     assert.equal(updated.imap.tlsPort, expected.imap)
     assert.deepEqual(updated.pop3, { port: expected.pop3, tlsPort: expected.pop3TLS })
-    assert.deepEqual(updated.relay, { ...config.relay, security: expected.relaySecurity, relayPort: expected.relay })
+    assert.deepEqual(updated.relay, config.relay)
     const fields = getFieldGroups('mail', updated).flatMap(group => group.fields)
-    assert.equal(fields.find(field => field.path.at(-1) === 'relayPort').recommendedPort, expected.relay)
+    assert.equal(fields.find(field => field.path.at(-1) === 'relayPort').recommendedPort, undefined)
     assert.equal(fields.find(field => field.path.join('.') === 'imap.tlsPort').label, security === 'starttls' ? 'IMAP 端口（STARTTLS）' : 'IMAP 端口（隐式 TLS）')
     assert.equal(fields.some(field => field.path.join('.') === 'listener.starttlsPort'), security !== 'implicit_tls')
     assert.equal(fields.some(field => field.path.join('.') === 'listener.tlsPort'), security !== 'starttls')
     assert.equal(fields.some(field => field.path.join('.') === 'pop3.port'), security !== 'implicit_tls')
     assert.equal(fields.some(field => field.path.join('.') === 'pop3.tlsPort'), security !== 'starttls')
     text = updateFormConfig(text, 'mail', ['relay', 'relayPort'], 2526)
-    assert.equal(readFormConfig(text).relay.security, expected.relaySecurity)
+    assert.equal(readFormConfig(text).relay.security, undefined)
   }
   const untouched = { listener: {}, relay: {} }
   const text = JSON.stringify(untouched)
   getFieldGroups('mail', untouched)
   assert.equal(JSON.stringify(untouched), text)
   const configured = readFormConfig(updateFormConfig(JSON.stringify({ listener: { security: 'starttls' }, relay: { enabled: true } }), 'mail', ['relay', 'relayHost'], 'smtp.example.com'))
-  assert.equal(configured.relay.security, 'starttls')
-  assert.equal(configured.relay.relayPort, 587)
+  assert.equal(configured.relay.security, undefined)
+  assert.equal(configured.relay.relayPort, undefined)
   assert.deepEqual(validateFormConfig('mail', {
     listener: { security: 'tls', port: 25, starttlsPort: 0, tlsPort: 465 },
     relay: { enabled: true, relayHost: 'smtp.example.com', relayPort: 465, security: 'tls', from: 'sender@example.com', fromDomain: 'example.com' },
     imap: { tlsPort: 993 }, pop3: { port: 0, tlsPort: 995 }
   }), {})
   const defaultsOnly = readFormConfig(updateFormConfig(JSON.stringify({ listener: {}, relay: { fromDomain: 'example.com' } }), 'mail', ['listener', 'security'], 'starttls'))
-  assert.deepEqual(defaultsOnly.relay, { fromDomain: 'example.com', security: 'starttls', relayPort: 587 })
+  assert.deepEqual(defaultsOnly.relay, { fromDomain: 'example.com' })
   assert.deepEqual(validateFormConfig('mail', defaultsOnly), {})
   assert.deepEqual(validateFormConfig('mail', { listener: {}, relay: {}, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 } }), {})
   assert.ok(validateFormConfig('mail', { listener: { security: 'unknown' }, relay: {}, imap: { tlsPort: 993 }, pop3: { port: 110, tlsPort: 995 } })['listener.security'])
@@ -488,7 +488,7 @@ test('内置 HTTPS 自动补全端口，反代禁用内置监听，已有自定�
   assert.equal(readFormConfig(updateFormConfig(custom, 'base', ['http', 'tlsMode'], 'direct')).http.httpsPort, 8443)
 })
 
-test('加密配置校验拦截监听冲突和未统一的中继加密方式', () => {
+test('加密配置校验拦截监听冲突，允许中继独立加密方式', () => {
   const listeners = {
     listener: { port: 25, starttlsPort: 587, tlsPort: 465 },
     imap: { tlsPort: 993 },
@@ -502,5 +502,32 @@ test('加密配置校验拦截监听冲突和未统一的中继加密方式', ()
   assert.ok(errors['relay.relayPort'])
   assert.deepEqual(validateFormConfig('mail', { ...unified, relay: {} }), {})
   assert.deepEqual(validateFormConfig('mail', { ...unified, relay: { enabled: true, security: 'starttls', relayPort: 2525, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } }), {})
-  assert.ok(validateFormConfig('mail', { ...unified, relay: { enabled: true, security: 'implicit_tls', relayPort: 465, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } })['listener.security'])
+  assert.deepEqual(validateFormConfig('mail', { ...unified, relay: { enabled: true, security: 'implicit_tls', relayPort: 465, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } }), {})
+})
+
+test('中继切换只更新推荐端口，自定义端口和启停配置均保留', () => {
+  let text = updateFormConfig('{}', 'mail', ['relay', 'security'], 'starttls')
+  assert.equal(readFormConfig(text).relay.relayPort, 587)
+  text = updateFormConfig(text, 'mail', ['relay', 'security'], 'implicit_tls')
+  assert.equal(readFormConfig(text).relay.relayPort, 465)
+  text = updateFormConfig(text, 'mail', ['relay', 'relayPort'], 2465)
+  text = updateFormConfig(text, 'mail', ['relay', 'security'], 'starttls')
+  assert.equal(readFormConfig(text).relay.relayPort, 2465)
+  const relay = { ...readFormConfig(text).relay, enabled: true, username: 'sender', password: 'test-only-value', relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' }
+  for (const enabled of [false, true]) {
+    const updated = readFormConfig(updateFormConfig(JSON.stringify({ relay }), 'mail', ['relay', 'enabled'], enabled))
+    assert.deepEqual(updated.relay, { ...relay, enabled })
+  }
+  for (const security of ['both', 'starttls', 'implicit_tls']) {
+    for (const relaySecurity of ['starttls', 'implicit_tls']) {
+      const config = readFormConfig(updateFormConfig(JSON.stringify({ relay: { ...relay, security: relaySecurity } }), 'mail', ['listener', 'security'], security))
+      assert.deepEqual(config.relay, { ...relay, security: relaySecurity })
+      assert.deepEqual(validateFormConfig('mail', config), {})
+      assert.equal(getRecommendedPort(config, ['relay', 'relayPort']), relaySecurity === 'starttls' ? 587 : 465)
+      config.relay.security = ''
+      const errors = validateFormConfig('mail', config)
+      assert.ok(errors['relay.security'])
+      assert.equal(errors['listener.security'], undefined)
+    }
+  }
 })

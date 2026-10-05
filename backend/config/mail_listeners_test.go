@@ -201,6 +201,34 @@ func TestMailListenerValidationRejectsUnknownSecurity(t *testing.T) {
 	}
 }
 
+func TestMailListenerAndRelaySecurityAreIndependent(t *testing.T) {
+	for _, listenerSecurity := range []string{MailSecurityBoth, MailSecuritySTARTTLS, MailSecurityImplicitTLS} {
+		for _, relaySecurity := range []string{MailSecuritySTARTTLS, MailSecurityImplicitTLS} {
+			t.Run(listenerSecurity+"_"+relaySecurity, func(t *testing.T) {
+				runtime := validRuntimeConfig()
+				runtime.SMTP.Listener.Security = listenerSecurity
+				runtime.SMTP.Relay = SMTPConfig{
+					RelayEnabled: true,
+					RelayHost:    "smtp.example.com",
+					RelayPort:    2525,
+					Security:     relaySecurity,
+					From:         "sender@example.com",
+					FromDomain:   "example.com",
+				}
+				if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err != nil {
+					t.Fatalf("independent relay validation = %v", err)
+				}
+				for _, invalidSecurity := range []string{"", "plain", "unknown"} {
+					runtime.SMTP.Relay.Security = invalidSecurity
+					if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err == nil {
+						t.Fatalf("insecure relay %q must be rejected", invalidSecurity)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestMailListenerValidationAllowsLegacyEmptyAndExplicitBothSecurity(t *testing.T) {
 	runtime := validRuntimeConfig()
 	if err := ValidateRuntimeConfig(runtime, RuntimeValidationOptions{HasSuperAdmin: true}); err != nil {

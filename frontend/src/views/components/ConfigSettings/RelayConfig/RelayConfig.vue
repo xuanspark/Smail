@@ -33,6 +33,7 @@
         <dl class="relay-summary">
           <div><dt>SMTP 服务器</dt><dd>{{ relay.relayHost || '未填写' }}</dd></div>
           <div><dt>端口</dt><dd>{{ relay.relayPort || '未填写' }}</dd></div>
+          <div><dt>中继加密方式</dt><dd>{{ relay.security === 'starttls' ? 'STARTTLS' : relay.security === 'implicit_tls' ? '隐式 TLS' : '未选择' }}</dd></div>
           <div><dt>认证账号</dt><dd>{{ relay.username || '未填写' }}</dd></div>
           <div><dt>发件邮箱</dt><dd>{{ relay.from || '未填写' }}</dd></div>
           <div><dt>密码</dt><dd>{{ passwordConfigured ? '已配置（不显示明文）' : '未配置' }}</dd></div>

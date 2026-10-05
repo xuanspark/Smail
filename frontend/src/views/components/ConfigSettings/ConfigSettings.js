@@ -3,7 +3,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/utils/axios'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { isRecentAuthenticationCancelled, requestWithRecentAuthentication } from '@/utils/recentAuthentication'
-import { readFormConfig, updateFormConfig, validateFormConfig, relayConfigured, relaySecurityForMail } from './ConfigForm/ConfigForm.js'
+import { readFormConfig, updateFormConfig, validateFormConfig } from './ConfigForm/ConfigForm.js'
 
 const sections = [
   { value: 'base', label: '基础配置' },
@@ -529,9 +529,6 @@ export function usePage(pageKey = 'base') {
           if (Object.keys(payload.relay).length === 0) {
             delete payload.relay
           }
-        }
-        if (payload.relay && payload.relay.enabled === true && relayConfigured(payload) && !payload.relay.security) {
-          payload.relay.security = relaySecurityForMail(payload)
         }
       }
       if (apiSection() === 'plugins' && payload.plugins && typeof payload.plugins === 'object') {

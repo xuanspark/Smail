@@ -84,12 +84,6 @@ func validateMailListeners(smtp SMTPSectionConfig, email EmailSectionConfig) err
 	if security != MailSecurityBoth && security != MailSecuritySTARTTLS && security != MailSecurityImplicitTLS {
 		return ErrInvalidRuntimeConfig
 	}
-	if smtpRelayEnabled(smtp.Relay) && security != MailSecurityBoth {
-		relaySecurity := NormalizeMailSecurity(smtp.Relay.Security)
-		if relaySecurity != security {
-			return ErrInvalidSMTP
-		}
-	}
 	for _, port := range []int{
 		smtp.Listener.Port, smtp.Listener.STARTTLSPort, smtp.Listener.TLSPort,
 		email.IMAP.TLSPort, email.POP3.Port, email.POP3.TLSPort,
