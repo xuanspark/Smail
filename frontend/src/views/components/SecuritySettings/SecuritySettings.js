@@ -11,6 +11,7 @@ import {
 } from '@/utils/recentAuthentication'
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { normalizeCreationOptions, serializeCredential, webAuthnSupported } from '@/utils/webauthn'
+import { downloadRecoveryCodes } from '@/utils/recoveryCodeDownload'
 
 export function usePage() {
   const globalStatus = useGlobalStatusStore()
@@ -296,6 +297,12 @@ export function usePage() {
     }
   }
 
+  const saveRecoveryCodes = () => {
+    if (!generatedCodes.value.length) return
+    downloadRecoveryCodes(generatedCodes.value)
+    notify('安全码已保存到本地文件，文件不会上传服务器', 'success')
+  }
+
   const revokeRecoveryCodes = async () => {
     if (recoveryLoading.value) return
     clearRecoveryCodes()
@@ -441,7 +448,7 @@ export function usePage() {
     registering, credentialsLoading, credentials, securityLoading, recoveryLoading,
     securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
     externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
-    saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
+    saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, saveRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
     handleExternalEmailBound,
     disableExternalEmail, formatTime,
   }

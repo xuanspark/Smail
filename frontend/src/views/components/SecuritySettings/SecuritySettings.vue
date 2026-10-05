@@ -92,7 +92,33 @@
     >
       <div class="settings-header security-key-header">
         <div><h3>安全码</h3><p class="settings-desc">安全码默认隐藏，完成安全验证后可以重新查看。</p></div>
-        <div class="section-actions"><el-button v-if="recoveryConfigured && !generatedCodes.length" @click="revealRecoveryCodes">验证后查看</el-button><el-button type="primary" @click="generateRecoveryCodes">生成新恢复码</el-button><el-button v-if="recoveryConfigured" type="danger" plain @click="revokeRecoveryCodes">撤销</el-button></div>
+        <div class="section-actions">
+          <el-button
+            v-if="recoveryConfigured && !generatedCodes.length"
+            @click="revealRecoveryCodes"
+          >
+            验证后查看
+          </el-button>
+          <el-button
+            v-if="generatedCodes.length"
+            type="primary"
+            plain
+            @click="saveRecoveryCodes"
+          >
+            保存安全码
+          </el-button>
+          <el-button type="primary" @click="generateRecoveryCodes">
+            生成新恢复码
+          </el-button>
+          <el-button
+            v-if="recoveryConfigured"
+            type="danger"
+            plain
+            @click="revokeRecoveryCodes"
+          >
+            撤销
+          </el-button>
+        </div>
       </div>
       <el-alert v-if="recoveryConfigured" title="当前已配置有效离线恢复码" type="success" :closable="false" show-icon />
       <el-alert v-else title="尚未配置安全码；已验证外部邮箱也可满足安全配置要求。" type="warning" :closable="false" show-icon />
@@ -158,7 +184,7 @@ const {
   registering, credentialsLoading, credentials, securityLoading, recoveryLoading,
   securityQuestion, questionForm, recoveryConfigured, generatedCodes, externalEmails, externalListLoading,
   externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
-  saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
+  saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, saveRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
   handleExternalEmailBound,
   disableExternalEmail, formatTime,
 } = usePage()
