@@ -102,11 +102,8 @@ func (r *PersistentRateLimiter) allowWithRelease(ctx context.Context, request Ra
 			return rollback(fmt.Errorf("initialize verification rate limit: %w", err))
 		}
 		var row models.VerificationRateLimit
-		query := session.Where("dimension_key = ?", key)
-		if r.engine.DriverName() != "sqlite3" && r.engine.DriverName() != "sqlite" {
-			query = query.ForUpdate()
-		}
-		has, err := query.Get(&row)
+		has, err := getVerificationRowForUpdate(session, &row,
+			"SELECT * FROM verification_rate_limit WHERE dimension_key = ?", key)
 		if err != nil {
 			return rollback(fmt.Errorf("load verification rate limit: %w", err))
 		}
@@ -159,11 +156,8 @@ func (r *PersistentRateLimiter) releaseCooldown(rows []models.VerificationRateLi
 	for _, row := range rows {
 		// 同一维度已有新发送时，不清理新请求的冷却，也不重置小时和每日计数。
 		var current models.VerificationRateLimit
-		query := session.ID(row.ID)
-		if r.engine.DriverName() != "sqlite3" && r.engine.DriverName() != "sqlite" {
-			query = query.ForUpdate()
-		}
-		has, err := query.Get(&current)
+		has, err := getVerificationRowForUpdate(session, &current,
+			"SELECT * FROM verification_rate_limit WHERE id = ?", row.ID)
 		if err != nil {
 			return err
 		}

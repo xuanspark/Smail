@@ -186,6 +186,7 @@ func (s *EventStore) TryAcquireCleanupLease(ctx context.Context, now time.Time) 
 		now = s.now()
 	}
 	session := s.engine.NewSession().Context(ctx)
+	defer session.Close()
 	if err := session.Begin(); err != nil {
 		return cleanupLease{}, false, fmt.Errorf("begin cleanup lease transaction: %w", err)
 	}
@@ -196,12 +197,9 @@ func (s *EventStore) TryAcquireCleanupLease(ctx context.Context, now time.Time) 
 	if err := insertCleanupState(session, now); err != nil {
 		return rollback(fmt.Errorf("initialize cleanup state: %w", err))
 	}
-	query := session.Where("state_key = ?", cleanupStateKey)
-	if s.engine.DriverName() != "sqlite3" && s.engine.DriverName() != "sqlite" {
-		query = query.ForUpdate()
-	}
 	var state models.VerificationCleanupState
-	has, err := query.Get(&state)
+	has, err := getVerificationRowForUpdate(session, &state,
+		"SELECT * FROM verification_cleanup_state WHERE state_key = ?", cleanupStateKey)
 	if err != nil {
 		return rollback(fmt.Errorf("load cleanup state: %w", err))
 	}
