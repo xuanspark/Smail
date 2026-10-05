@@ -50,16 +50,29 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue"
+import { computed, onUnmounted, ref } from "vue"
 
 import { ElMessage } from "element-plus"
 
 import { http } from "@/utils/axios"
 import { useGlobalStatusStore } from "@/stores/useGlobalStatusStore"
+import { RECOVERY_CODE_DISPLAY_MS } from "@/utils/recoveryCodeDisplay"
 
 const globalStatus = useGlobalStatusStore()
 const loading = ref(false)
 const generatedCodes = ref([])
+let recoveryCodeHideTimer = null
+
+const clearGeneratedCodes = () => {
+  generatedCodes.value = []
+  clearTimeout(recoveryCodeHideTimer)
+  recoveryCodeHideTimer = null
+}
+
+const scheduleRecoveryCodeHide = () => {
+  clearTimeout(recoveryCodeHideTimer)
+  recoveryCodeHideTimer = setTimeout(clearGeneratedCodes, RECOVERY_CODE_DISPLAY_MS)
+}
 
 const visible = computed({
   get: () => Boolean(
@@ -75,7 +88,7 @@ const visible = computed({
 })
 
 const dismiss = () => {
-  generatedCodes.value = []
+  clearGeneratedCodes()
   globalStatus.dismissRecoveryPrompt()
 }
 
@@ -90,15 +103,18 @@ const generateRecoveryCodes = async () => {
       throw new Error(response.errorMsg || "离线恢复码生成失败")
     }
     generatedCodes.value = response.data.codes
+    scheduleRecoveryCodeHide()
     globalStatus.userInfos.recoveryCodesConfigured = true
     globalStatus.userInfos.showRecoverySetupPrompt = false
-    ElMessage.success("恢复码已生成，请妥善保存；可在安全设置中验证本人密码后再次查看有效恢复码")
+    ElMessage.success("恢复码已生成，请妥善保存；60 秒后自动隐藏")
   } catch (error) {
     ElMessage.error(error?.message || "离线恢复码生成失败，请稍后重试")
   } finally {
     loading.value = false
   }
 }
+
+onUnmounted(clearGeneratedCodes)
 </script>
 
 <style scoped src="./RecoverySetupPrompt.css"></style>
