@@ -46,6 +46,8 @@ func (e *Email) BuildIMAPBytes(_ *context.Context) ([]byte, error) {
 	}
 	h.SetMessageID(messageID)
 	h.SetSubject(e.Subject)
+	h.SetMsgIDList("In-Reply-To", ThreadMessageIDs(e.InReplyTo))
+	h.SetMsgIDList("References", ThreadMessageIDs(e.ThreadReferences))
 	sender := e.Sender
 	if sender == nil {
 		sender = e.From
