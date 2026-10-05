@@ -30,7 +30,7 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 	previous := db.Instance
 	db.Instance = engine
 	t.Cleanup(func() { db.Instance = previous; _ = engine.Close() })
-	if err := engine.Sync2(&models.User{}, &models.RecoveryCode{}, &models.ExternalEmail{}); err != nil {
+	if err := engine.Sync2(&models.User{}, &models.RecoveryCode{}, &models.ExternalEmail{}, &models.AccountGroup{}, &models.AccountGroupMember{}); err != nil {
 		t.Fatal(err)
 	}
 	users := []models.User{
@@ -45,6 +45,9 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 		if _, err := engine.Insert(&users[i]); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := engine.Insert(&models.AccountGroup{ID: 1, Name: "隔离分组"}, &models.AccountGroupMember{UserID: users[2].ID, GroupID: 1}); err != nil {
+		t.Fatal(err)
 	}
 	admin := &appcontext.Context{UserID: users[1].ID, Role: access.RoleAdmin}
 	ordinary := &appcontext.Context{UserID: users[3].ID, Role: access.RoleUser}
@@ -63,7 +66,7 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 			t.Fatalf("低权限创建账号：%+v", got)
 		}
 	}
-	for page, expected := range []string{"alice", "legacy"} {
+	for page, expected := range []string{"manager", "alice", "legacy"} {
 		body, _ := json.Marshal(map[string]int{"current_page": page + 1, "page_size": 1})
 		got := call(admin, UserList, string(body))
 		if got.ErrorNo != 0 {
@@ -71,7 +74,7 @@ func TestAccountRoleScopeAndOwnProfile(t *testing.T) {
 		}
 		data := got.Data.(map[string]any)
 		items := data["list"].([]any)
-		if data["total_page"] != float64(2) || len(items) != 1 || items[0].(map[string]any)["Account"] != expected {
+		if data["total_page"] != float64(3) || len(items) != 1 || items[0].(map[string]any)["Account"] != expected {
 			t.Fatalf("分页前权限过滤错误：%+v", data)
 		}
 	}

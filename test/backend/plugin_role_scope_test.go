@@ -13,7 +13,13 @@ import (
 
 func TestPluginRolesValidateUpdateAndPending(t *testing.T) {
 	root := t.TempDir()
-	writeRuntimeFixture(t, root, validRuntimeConfig())
+	fixture := validRuntimeConfig()
+	fixture.Plugins.Plugins["spam_block"] = PluginInstance{
+		Executable: currentPluginExecutable("spam_block"),
+		Permissions: PluginPermissions{Capabilities: []string{"network"}},
+		Settings:   json.RawMessage("{\"score\":1}"),
+	}
+	writeRuntimeFixture(t, root, fixture)
 	manager, err := NewConfigManagerWithSecurity(root, ConfigLoaderOptions{Validation: RuntimeValidationOptions{HasSuperAdmin: true, Production: true}}, ConfigSecurity{Audit: &MemoryAuditWriter{}})
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +27,7 @@ func TestPluginRolesValidateUpdateAndPending(t *testing.T) {
 	ctx := context.Background()
 	admin := AuditActor{UserID: "2", Role: "admin", SessionID: "admin-session", RecentAuth: true, RecoveryCodeConfigured: true}
 	current := manager.Snapshot()
-	for _, change := range []string{"executable", "permissions", "install", "remove"} {
+	for _, change := range []string{"executable", "permissions", "install", "remove", "settings"} {
 		candidate := cloneRuntimeConfig(current)
 		plugin := candidate.Plugins.Plugins["telegram_push"]
 		switch change {
@@ -31,6 +37,8 @@ func TestPluginRolesValidateUpdateAndPending(t *testing.T) {
 			plugin.Permissions.Network[0].Host = "other.example.com"
 		case "install":
 			candidate.Plugins.Plugins["other"] = plugin
+		case "settings":
+			plugin.Settings = json.RawMessage("{\"timeout\":30}")
 		}
 		candidate.Plugins.Plugins["telegram_push"] = plugin
 		if change == "remove" {
@@ -44,10 +52,10 @@ func TestPluginRolesValidateUpdateAndPending(t *testing.T) {
 			t.Fatalf("保存允许越权 %s：%v", change, err)
 		}
 	}
-	plugins := current.Plugins
-	plugin := plugins.Plugins["telegram_push"]
+	plugins := cloneRuntimeConfig(current).Plugins
+	plugin := plugins.Plugins["spam_block"]
 	plugin.Settings = json.RawMessage(`{"displayName":"修改通知名称"}`)
-	plugins.Plugins["telegram_push"] = plugin
+	plugins.Plugins["spam_block"] = plugin
 	payload, _ := json.Marshal(plugins)
 	validation, err := manager.ValidateAuthorized(ctx, ValidateRequest{Section: SectionPlugins, ExpectedGeneration: current.Generation, Payload: payload}, admin)
 	if err != nil || !validation.Valid {

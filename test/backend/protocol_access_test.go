@@ -102,12 +102,12 @@ func TestProtocolClientHandlersIsolateEveryRole(t *testing.T) {
 				}
 			}
 			for _, protocol := range credentials.SupportedProtocols() {
-				body := fmt.Sprintf(`{"protocol":%q}`, protocol)
-				malicious := fmt.Sprintf(`{"protocol":%q,"enabled":false,"user_id":%d}`, protocol, victim.ID)
+				body := fmt.Sprintf(`{"protocol":%q,"password":"WebOnly42"}`, protocol)
+				malicious := fmt.Sprintf(`{"protocol":%q,"enabled":false,"user_id":%d,"password":"WebOnly42"}`, protocol, victim.ID)
 				if result := call(SetProtocolCredentialEnabled, http.MethodPut, malicious); result.ErrorNo == 0 {
 					t.Fatal("接口接受了未知目标用户字段")
 				}
-				mustSucceed(call(SetProtocolCredentialEnabled, http.MethodPut, fmt.Sprintf(`{"protocol":%q,"enabled":true}`, protocol)))
+				mustSucceed(call(SetProtocolCredentialEnabled, http.MethodPut, fmt.Sprintf(`{"protocol":%q,"enabled":true,"password":"WebOnly42"}`, protocol)))
 				generated := call(GenerateProtocolCredential, http.MethodPost, body)
 				mustSucceed(generated)
 				data, ok := generated.Data.(map[string]any)
@@ -139,11 +139,11 @@ func TestProtocolClientHandlersIsolateEveryRole(t *testing.T) {
 				if err != nil || strings.Contains(string(encoded), code) {
 					t.Fatal("状态查询重新返回了授权码明文")
 				}
-				mustSucceed(call(SetProtocolCredentialEnabled, http.MethodPut, fmt.Sprintf(`{"protocol":%q,"enabled":false}`, protocol)))
+				mustSucceed(call(SetProtocolCredentialEnabled, http.MethodPut, fmt.Sprintf(`{"protocol":%q,"enabled":false,"password":"WebOnly42"}`, protocol)))
 				if login(code) {
 					t.Fatal("关闭协议后实际认证入口仍放行")
 				}
-				mustSucceed(call(SetProtocolCredentialEnabled, http.MethodPut, fmt.Sprintf(`{"protocol":%q,"enabled":true}`, protocol)))
+				mustSucceed(call(SetProtocolCredentialEnabled, http.MethodPut, fmt.Sprintf(`{"protocol":%q,"enabled":true,"password":"WebOnly42"}`, protocol)))
 				if !login(code) {
 					t.Fatal("重新开启协议后有效授权码未恢复")
 				}
