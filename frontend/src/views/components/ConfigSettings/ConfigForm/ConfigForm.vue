@@ -8,11 +8,19 @@
       :data-group="group.id"
       :aria-label="group.title"
     >
-      <div class="form-group-heading">
+      <div v-if="!(section === 'mail' && group.id === 'relay')" class="form-group-heading">
         <h4>{{ group.title }}</h4>
         <span v-if="group.fields.some(field => errors[fieldKey(field)])" class="section-error">待修正</span>
       </div>
-      <div class="form-grid" :class="{ 'site-grid': section === 'base' && group.id === 'site' }">
+      <RelayConfig
+        v-if="section === 'mail' && group.id === 'relay'"
+        :config="config"
+        :fields="group.fields"
+        :errors="errors"
+        :disabled="disabled"
+        @change="(path, value) => emit('change', path, value)"
+      />
+      <div v-else class="form-grid" :class="{ 'site-grid': section === 'base' && group.id === 'site' }">
         <ConfigField
           v-for="field in group.fields"
           :key="fieldKey(field)"
@@ -31,6 +39,7 @@
 import { computed } from 'vue'
 import { fieldKey, getFieldGroups, getValue } from './ConfigForm.js'
 import ConfigField from '../ConfigField/ConfigField.vue'
+import RelayConfig from '../RelayConfig/RelayConfig.vue'
 
 const props = defineProps({
   section: { type: String, required: true },

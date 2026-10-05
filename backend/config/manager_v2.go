@@ -870,6 +870,7 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		return RuntimeConfig{}, errors.New("configuration payload is empty")
 	}
 	candidate := cloneRuntimeConfig(current)
+	clearRelay := false
 	switch section {
 	case SectionRoot:
 		var value struct {
@@ -895,7 +896,15 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		if value.SMTPSectionConfig.Relay.Password.Configured() {
 			return RuntimeConfig{}, ErrInvalidSecretChange
 		}
-		value.SMTPSectionConfig.Relay.Password = current.SMTP.Relay.Password
+		clearRelay = value.SMTPSectionConfig.Relay.Clear
+		if !value.SMTPSectionConfig.Relay.relayEnabledSet {
+			value.SMTPSectionConfig.Relay.RelayEnabled = current.SMTP.Relay.RelayEnabled
+		}
+		if clearRelay {
+			clearSMTPRelay(&value.SMTPSectionConfig.Relay)
+		} else {
+			value.SMTPSectionConfig.Relay.Password = current.SMTP.Relay.Password
+		}
 		if smtpRelayConfigured(value.SMTPSectionConfig.Relay) && value.SMTPSectionConfig.Relay.Security == "" {
 			if ResolveMailSecurity(value.SMTPSectionConfig.Listener) == MailSecurityImplicitTLS {
 				value.SMTPSectionConfig.Relay.Security = MailSecurityImplicitTLS
@@ -923,7 +932,15 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		if value.MailSectionConfig.Relay.Password.Configured() {
 			return RuntimeConfig{}, ErrInvalidSecretChange
 		}
-		value.MailSectionConfig.Relay.Password = current.SMTP.Relay.Password
+		clearRelay = value.MailSectionConfig.Relay.Clear
+		if !value.MailSectionConfig.Relay.relayEnabledSet {
+			value.MailSectionConfig.Relay.RelayEnabled = current.SMTP.Relay.RelayEnabled
+		}
+		if clearRelay {
+			clearSMTPRelay(&value.MailSectionConfig.Relay)
+		} else {
+			value.MailSectionConfig.Relay.Password = current.SMTP.Relay.Password
+		}
 		if smtpRelayConfigured(value.Relay) && value.Relay.Security == "" {
 			if ResolveMailSecurity(value.Listener) == MailSecurityImplicitTLS {
 				value.Relay.Security = MailSecurityImplicitTLS
@@ -980,8 +997,27 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 	if err := applySecretChanges(&candidate, section, changes, vault); err != nil {
 		return RuntimeConfig{}, err
 	}
+	if clearRelay {
+		clearSMTPRelay(&candidate.SMTP.Relay)
+	}
 	candidate.SetupState = candidate.Root.SetupState
 	return candidate, nil
+}
+
+func clearSMTPRelay(relay *SMTPConfig) {
+	if relay == nil {
+		return
+	}
+	relay.RelayEnabled = false
+	relay.RelayHost = ""
+	relay.RelayPort = 0
+	relay.Username = ""
+	relay.Password = StoredSecret{}
+	relay.Security = ""
+	relay.From = ""
+	relay.FromDomain = ""
+	relay.Clear = false
+	relay.relayEnabledSet = true
 }
 
 func setCandidateGeneration(candidate *RuntimeConfig, generation uint64) {

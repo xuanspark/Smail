@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type SetupState string
 
@@ -82,6 +85,7 @@ type DatabaseConfig struct {
 }
 
 type SMTPConfig struct {
+	RelayEnabled        bool         `json:"enabled"`
 	RelayHost           string       `json:"relayHost"`
 	RelayPort           int          `json:"relayPort"`
 	Username            string       `json:"username"`
@@ -91,6 +95,42 @@ type SMTPConfig struct {
 	FromDomain          string       `json:"fromDomain"`
 	VerificationEnabled bool         `json:"verificationEnabled"`
 	LoginPolicy         string       `json:"loginPolicy"`
+	Clear               bool         `json:"clear,omitempty"`
+	relayEnabledSet     bool         `json:"-"`
+}
+
+func (s *SMTPConfig) UnmarshalJSON(data []byte) error {
+	type smtpConfigAlias SMTPConfig
+	var value smtpConfigAlias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*s = SMTPConfig(value)
+	_, enabledProvided := fields["enabled"]
+	configured := smtpRelayFieldsConfigured(*s)
+	s.relayEnabledSet = enabledProvided && (s.RelayEnabled || configured)
+	if !enabledProvided {
+		s.RelayEnabled = configured
+	}
+	return nil
+}
+
+func (s SMTPConfig) MarshalJSON() ([]byte, error) {
+	type smtpConfigAlias SMTPConfig
+	data, err := json.Marshal(smtpConfigAlias(s))
+	if err != nil || s.RelayEnabled || s.relayEnabledSet {
+		return data, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	delete(fields, "enabled")
+	return json.Marshal(fields)
 }
 
 type EmailConfig struct {

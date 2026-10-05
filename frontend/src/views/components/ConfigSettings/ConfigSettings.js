@@ -555,7 +555,7 @@ export function usePage(pageKey = 'base') {
       secretChanges['database.password'] = { operation: 'replace', value: { plaintext: value } }
     }
     const relayPassword = formConfig.value?.relay?.password
-    if (relayPassword && selectedSection.value === 'mail') {
+    if (relayPassword && selectedSection.value === 'mail' && !formConfig.value?.relay?.clear) {
       secretChanges['relay.password'] = { operation: 'replace', value: { plaintext: relayPassword } }
     }
     if (selectedSection.value === 'ssl' && formConfig.value?.tls?.dnsProvider === 'alidns') {

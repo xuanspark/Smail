@@ -81,11 +81,7 @@ func smtpRelayComplete(settings config.SMTPRuntimeSettings) bool {
 }
 
 func smtpRelayRequested(settings config.SMTPRuntimeSettings) bool {
-	relay := settings.Relay
-	return strings.TrimSpace(relay.RelayHost) != "" ||
-		strings.TrimSpace(relay.Username) != "" ||
-		strings.TrimSpace(settings.Password) != "" ||
-		strings.TrimSpace(relay.From) != ""
+	return settings.Relay.RelayActive()
 }
 
 func verificationSMTPSettings(settings config.SMTPRuntimeSettings) (verification.SMTPSettings, error) {

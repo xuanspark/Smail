@@ -15,8 +15,9 @@ export const relaySecurityForMail = config => mailSecurity(config) === 'implicit
 const startTLSMail = config => mailSecurity(config) === 'starttls'
 const implicitTLSMail = config => mailSecurity(config) === 'implicit_tls'
 export const relayConfigured = config => !!(
-  config.relay?.relayHost || config.relay?.username || config.relay?.password ||
-  config.relay?.from
+  config.relay?.enabled || config.relay?.relayHost || config.relay?.relayPort ||
+  config.relay?.username || config.relay?.password || config.relay?.security ||
+  config.relay?.from || config.relay?.fromDomain
 )
 
 export function readFormConfig(text) {
@@ -141,6 +142,7 @@ const mailGroups = [
     port('pop3.tlsPort', 'POP3 端口（隐式 TLS）', { min: 1, required: true, show: config => !startTLSMail(config), hint: '默认 995，客户端建立连接时直接使用 TLS。' })
   ]),
   group('relay', 'SMTP 中继连接（可选）', '', [
+    field('relay.enabled', '启用 SMTP 中继', 'switch', { hint: '关闭后保留配置，但系统不会使用该中继发信。' }),
     field('relay.relayHost', 'SMTP 服务器', 'text', { placeholder: 'smtp.example.com' }),
     port('relay.relayPort', 'SMTP 发信中继端口', { hint: '外部 SMTP 服务器端口，与本机监听无关；选择加密方式后自动填写。' }),
     field('relay.username', '认证用户名', 'text', { placeholder: '需要认证时填写' }),
@@ -281,14 +283,16 @@ export function updateFormConfig(text, section, path, value) {
   if (!Array.isArray(path) || path.some(key => ['__proto__', 'prototype', 'constructor'].includes(key))) return text
   const key = path.join('.')
   const input = getFieldGroups(section, config).flatMap(item => item.fields).find(item => fieldKey(item) === key)
-  if (!input || input.locked) return text
+  const isRelayClear = section === 'mail' && key === 'relay.clear'
+  if ((!input && !isRelayClear) || input?.locked) return text
   const previousValue = getValue(config, path)
   let parent = config
   for (const part of path.slice(0, -1)) {
     if (!parent[part] || typeof parent[part] !== 'object') parent[part] = {}
     parent = parent[part]
   }
-  parent[path.at(-1)] = value ?? (input.type === 'number' ? null : '')
+  parent[path.at(-1)] = value ?? (input?.type === 'number' ? null : '')
+  if (key.startsWith('relay.') && key !== 'relay.clear' && config.relay) config.relay.clear = false
   if (previousValue !== value) {
     if (key === 'listener.security' && ['both', 'starttls', 'implicit_tls'].includes(value)) {
       const startTLS = value === 'starttls'
@@ -305,7 +309,7 @@ export function updateFormConfig(text, section, path, value) {
       config.relay.security = relaySecurityForMail(config)
       config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
-    if (key.startsWith('relay.') && key !== 'relay.security' && relayConfigured(config) && ['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
+    if (key.startsWith('relay.') && key !== 'relay.security' && key !== 'relay.enabled' && relayConfigured(config) && ['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
       config.relay.security = relaySecurityForMail(config)
       if (!validPort(config.relay.relayPort)) config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
@@ -365,10 +369,11 @@ export function validateFormConfig(section, config) {
   if (section === 'mail') {
     const relay = config.relay || {}
     const configured = relayConfigured(config)
+    const enabled = relay.enabled === true || (relay.enabled === undefined && configured)
     if (!['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
       errors['listener.security'] = '请选择全部启用、STARTTLS / STLS 或隐式 TLS'
     }
-    if (configured) {
+    if (enabled && !relay.clear) {
       if (!relay.relayHost) errors['relay.relayHost'] = '请填写 SMTP 服务器'
       const relaySecurity = normalizedMailSecurity(relay.security)
       if (!['starttls', 'implicit_tls'].includes(relaySecurity)) errors['listener.security'] = '请先选择统一加密方式'

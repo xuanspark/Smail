@@ -456,6 +456,7 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 			"meta":     runtime.SMTP.Meta,
 			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS, Security: config.PublicMailSecurity(runtime.SMTP.Listener)},
 			"relay": map[string]any{
+				"enabled":             runtime.SMTP.Relay.RelayEnabled,
 				"relayHost":           runtime.SMTP.Relay.RelayHost,
 				"relayPort":           runtime.SMTP.Relay.RelayPort,
 				"username":            runtime.SMTP.Relay.Username,
@@ -474,6 +475,7 @@ func publicConfigSection(runtime config.RuntimeConfig, section config.Section) (
 			"meta":     runtime.SMTP.Meta,
 			"listener": config.SMTPListenerConfig{Port: ports.SMTP, STARTTLSPort: ports.SMTPSTARTTLS, TLSPort: ports.SMTPTLS, Security: config.PublicMailSecurity(runtime.SMTP.Listener)},
 			"relay": map[string]any{
+				"enabled":             runtime.SMTP.Relay.RelayEnabled,
 				"relayHost":           runtime.SMTP.Relay.RelayHost,
 				"relayPort":           runtime.SMTP.Relay.RelayPort,
 				"username":            runtime.SMTP.Relay.Username,
