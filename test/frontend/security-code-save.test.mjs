@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { downloadRecoveryCodes } from '../../frontend/src/utils/recoveryCodeDownload.js'
+import { RECOVERY_CODE_DISPLAY_MS } from '../../frontend/src/utils/recoveryCodeDisplay.js'
+
+const securitySettingsSource = readFileSync(new URL('../../frontend/src/views/components/SecuritySettings/SecuritySettings.js', import.meta.url), 'utf8')
+const securitySettingsTemplate = readFileSync(new URL('../../frontend/src/views/components/SecuritySettings/SecuritySettings.vue', import.meta.url), 'utf8')
+
+test('security codes use a shared 60-second display timeout', () => {
+  assert.equal(RECOVERY_CODE_DISPLAY_MS, 60000)
+  assert.match(securitySettingsSource, /setTimeout\(clearRecoveryCodes, RECOVERY_CODE_DISPLAY_MS\)/)
+  assert.match(securitySettingsTemplate, /one-time-tip/)
+})
 
 function createDocumentFixture() {
   const anchors = []

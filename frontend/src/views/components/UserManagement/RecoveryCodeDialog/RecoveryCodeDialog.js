@@ -7,6 +7,7 @@ import {
   isRecentAuthenticationCancelled,
   requestWithRecentAuthentication,
 } from '@/utils/recentAuthentication'
+import { RECOVERY_CODE_DISPLAY_MS } from '@/utils/recoveryCodeDisplay'
 
 export const recoveryCodeDialogProps = {
   modelValue: {
@@ -52,7 +53,7 @@ export function useRecoveryCodeDialog(props, emit) {
 
   const scheduleHide = () => {
     clearTimeout(hideTimer)
-    hideTimer = setTimeout(clearCodes, 60000)
+    hideTimer = setTimeout(clearCodes, RECOVERY_CODE_DISPLAY_MS)
   }
 
   const isCurrentView = (version, userID) => (

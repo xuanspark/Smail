@@ -70,6 +70,7 @@ test('用户安全信息使用独立弹窗并调用固定管理接口', () => {
 	const recoverySource = read('RecoveryCodeDialog/RecoveryCodeDialog.js')
 	assert.match(recoverySource, /\/api\/v1\/user\/security\/recovery-codes\/generate/)
 	assert.match(recoverySource, /shown_once|codes/)
+	assert.match(recoverySource, /setTimeout\(clearCodes, RECOVERY_CODE_DISPLAY_MS\)/)
 	const externalSource = read('UserExternalEmailDialog/UserExternalEmailDialog.js')
 	assert.match(externalSource, /\/api\/v1\/user\/security\/external-email\/change/)
 	assert.match(externalSource, /\/api\/v1\/user\/security\/external-email\/verify/)

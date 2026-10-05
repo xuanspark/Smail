@@ -1,0 +1,1 @@
+export const RECOVERY_CODE_DISPLAY_MS = 60 * 1000

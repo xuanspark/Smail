@@ -12,6 +12,7 @@ import {
 import { useGlobalStatusStore } from '@/stores/useGlobalStatusStore'
 import { normalizeCreationOptions, serializeCredential, webAuthnSupported } from '@/utils/webauthn'
 import { downloadRecoveryCodes } from '@/utils/recoveryCodeDownload'
+import { RECOVERY_CODE_DISPLAY_MS } from '@/utils/recoveryCodeDisplay'
 
 export function usePage() {
   const globalStatus = useGlobalStatusStore()
@@ -270,7 +271,7 @@ export function usePage() {
 
   const scheduleRecoveryCodeHide = () => {
     clearTimeout(recoveryCodeHideTimer)
-    recoveryCodeHideTimer = setTimeout(clearRecoveryCodes, 60000)
+    recoveryCodeHideTimer = setTimeout(clearRecoveryCodes, RECOVERY_CODE_DISPLAY_MS)
   }
 
   const revealRecoveryCodes = async () => {
