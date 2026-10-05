@@ -902,13 +902,6 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 		} else {
 			value.SMTPSectionConfig.Relay.Password = current.SMTP.Relay.Password
 		}
-		if smtpRelayConfigured(value.SMTPSectionConfig.Relay) && value.SMTPSectionConfig.Relay.Security == "" {
-			if ResolveMailSecurity(value.SMTPSectionConfig.Listener) == MailSecurityImplicitTLS {
-				value.SMTPSectionConfig.Relay.Security = MailSecurityImplicitTLS
-			} else {
-				value.SMTPSectionConfig.Relay.Security = MailSecuritySTARTTLS
-			}
-		}
 		candidate.SMTP = value.SMTPSectionConfig
 		candidate.Email.Policy.LoginVerificationPolicy = candidate.SMTP.Relay.LoginPolicy
 	case SectionEmail:
@@ -934,13 +927,6 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 			clearSMTPRelay(&value.MailSectionConfig.Relay)
 		} else {
 			value.MailSectionConfig.Relay.Password = current.SMTP.Relay.Password
-		}
-		if smtpRelayConfigured(value.Relay) && value.Relay.Security == "" {
-			if ResolveMailSecurity(value.Listener) == MailSecurityImplicitTLS {
-				value.Relay.Security = MailSecurityImplicitTLS
-			} else {
-				value.Relay.Security = MailSecuritySTARTTLS
-			}
 		}
 		candidate.SMTP = SMTPSectionConfig{
 			Meta:     value.Meta,
