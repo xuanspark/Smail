@@ -763,7 +763,6 @@ func validLegacyDatabasePassword(value string) bool {
 
 func legacySMTPConfig(root string, vault *credential.Vault, legacy legacyMigrationConfig) (SMTPConfig, []string, error) {
 	relay := SMTPConfig{
-		RelayEnabled:        legacy.SMTPHost != "" || legacy.SMTPPort != 0 || legacy.SMTPUsername != "" || legacy.SMTPFrom != "" || legacy.SMTPPassword != "",
 		RelayHost:           legacy.SMTPHost,
 		RelayPort:           legacy.SMTPPort,
 		Username:            legacy.SMTPUsername,

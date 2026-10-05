@@ -173,11 +173,11 @@ func smtpRelayFieldsConfigured(smtp SMTPConfig) bool {
 }
 
 func smtpRelayConfigured(smtp SMTPConfig) bool {
-	return smtpRelayFieldsConfigured(smtp) || smtp.RelayEnabled
+	return smtp.RelayEnabled
 }
 
 func smtpRelayEnabled(smtp SMTPConfig) bool {
-	return smtp.RelayEnabled || (!smtp.relayEnabledSet && smtpRelayFieldsConfigured(smtp))
+	return smtp.RelayEnabled
 }
 
 func (smtp SMTPConfig) RelayActive() bool {

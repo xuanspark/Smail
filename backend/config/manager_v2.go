@@ -897,9 +897,6 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 			return RuntimeConfig{}, ErrInvalidSecretChange
 		}
 		clearRelay = value.SMTPSectionConfig.Relay.Clear
-		if !value.SMTPSectionConfig.Relay.relayEnabledSet {
-			value.SMTPSectionConfig.Relay.RelayEnabled = current.SMTP.Relay.RelayEnabled
-		}
 		if clearRelay {
 			clearSMTPRelay(&value.SMTPSectionConfig.Relay)
 		} else {
@@ -933,9 +930,6 @@ func applySectionPayload(current RuntimeConfig, section Section, payload json.Ra
 			return RuntimeConfig{}, ErrInvalidSecretChange
 		}
 		clearRelay = value.MailSectionConfig.Relay.Clear
-		if !value.MailSectionConfig.Relay.relayEnabledSet {
-			value.MailSectionConfig.Relay.RelayEnabled = current.SMTP.Relay.RelayEnabled
-		}
 		if clearRelay {
 			clearSMTPRelay(&value.MailSectionConfig.Relay)
 		} else {
@@ -1017,7 +1011,6 @@ func clearSMTPRelay(relay *SMTPConfig) {
 	relay.From = ""
 	relay.FromDomain = ""
 	relay.Clear = false
-	relay.relayEnabledSet = true
 }
 
 func setCandidateGeneration(candidate *RuntimeConfig, generation uint64) {

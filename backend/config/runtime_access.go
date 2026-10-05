@@ -288,7 +288,6 @@ func CurrentSMTPRuntimeSettings() (SMTPRuntimeSettings, error) {
 		return SMTPRuntimeSettings{}, fmt.Errorf("runtime configuration is unavailable")
 	}
 	settings.Relay = SMTPConfig{
-		RelayEnabled:        cfg.SMTPHost != "" || cfg.SMTPPort != 0 || cfg.SMTPUsername != "" || cfg.SMTPFrom != "" || cfg.SMTPPassword != "",
 		RelayHost:           cfg.SMTPHost,
 		RelayPort:           cfg.SMTPPort,
 		Username:            cfg.SMTPUsername,
