@@ -430,7 +430,7 @@ test('统一加密方式同步切换 SMTP、IMAP、POP3 与已配置中继', () 
     ['starttls', { relay: 587, relaySecurity: 'starttls', smtpStartTLS: 587, smtpTLS: 0, imap: 143, pop3: 110, pop3TLS: 0 }],
     ['implicit_tls', { relay: 465, relaySecurity: 'implicit_tls', smtpStartTLS: 0, smtpTLS: 465, imap: 993, pop3: 0, pop3TLS: 995 }]
   ]) {
-    const config = { generation: 9, listener: { port: 2525, starttlsPort: 2587, tlsPort: 2465 }, imap: { tlsPort: 2993 }, pop3: { port: 2110, tlsPort: 2995 }, relay: { relayHost: 'smtp.example.com', relayPort: 2525, from: 'sender@example.com', fromDomain: 'example.com', future: true } }
+    const config = { generation: 9, listener: { port: 2525, starttlsPort: 2587, tlsPort: 2465 }, imap: { tlsPort: 2993 }, pop3: { port: 2110, tlsPort: 2995 }, relay: { enabled: true, relayHost: 'smtp.example.com', relayPort: 2525, from: 'sender@example.com', fromDomain: 'example.com', future: true } }
     let text = JSON.stringify(config)
     getFieldGroups('mail', config)
     assert.equal(JSON.stringify(config), text)
@@ -454,12 +454,12 @@ test('统一加密方式同步切换 SMTP、IMAP、POP3 与已配置中继', () 
   const text = JSON.stringify(untouched)
   getFieldGroups('mail', untouched)
   assert.equal(JSON.stringify(untouched), text)
-  const configured = readFormConfig(updateFormConfig(JSON.stringify({ listener: { security: 'starttls' }, relay: {} }), 'mail', ['relay', 'relayHost'], 'smtp.example.com'))
+  const configured = readFormConfig(updateFormConfig(JSON.stringify({ listener: { security: 'starttls' }, relay: { enabled: true } }), 'mail', ['relay', 'relayHost'], 'smtp.example.com'))
   assert.equal(configured.relay.security, 'starttls')
   assert.equal(configured.relay.relayPort, 587)
   assert.deepEqual(validateFormConfig('mail', {
     listener: { security: 'tls', port: 25, starttlsPort: 0, tlsPort: 465 },
-    relay: { relayHost: 'smtp.example.com', relayPort: 465, security: 'tls', from: 'sender@example.com', fromDomain: 'example.com' },
+    relay: { enabled: true, relayHost: 'smtp.example.com', relayPort: 465, security: 'tls', from: 'sender@example.com', fromDomain: 'example.com' },
     imap: { tlsPort: 993 }, pop3: { port: 0, tlsPort: 995 }
   }), {})
   const defaultsOnly = readFormConfig(updateFormConfig(JSON.stringify({ listener: {}, relay: { fromDomain: 'example.com' } }), 'mail', ['listener', 'security'], 'starttls'))
@@ -498,9 +498,9 @@ test('加密配置校验拦截监听冲突和未统一的中继加密方式', ()
     assert.ok(validateFormConfig('base', { http: { port, httpsEnabled: true, httpsPort: 80 } })['http.httpsPort'])
   }
   const unified = { ...listeners, listener: { ...listeners.listener, security: 'starttls', tlsPort: 0 }, imap: { tlsPort: 143 }, pop3: { port: 110, tlsPort: 0 } }
-  const errors = validateFormConfig('mail', { ...unified, relay: { relayHost: 'smtp.example.com', security: 'starttls', relayPort: 0, from: 'sender@example.com', fromDomain: 'example.com' } })
+  const errors = validateFormConfig('mail', { ...unified, relay: { enabled: true, relayHost: 'smtp.example.com', security: 'starttls', relayPort: 0, from: 'sender@example.com', fromDomain: 'example.com' } })
   assert.ok(errors['relay.relayPort'])
   assert.deepEqual(validateFormConfig('mail', { ...unified, relay: {} }), {})
-  assert.deepEqual(validateFormConfig('mail', { ...unified, relay: { security: 'starttls', relayPort: 2525, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } }), {})
-  assert.ok(validateFormConfig('mail', { ...unified, relay: { security: 'implicit_tls', relayPort: 465, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } })['listener.security'])
+  assert.deepEqual(validateFormConfig('mail', { ...unified, relay: { enabled: true, security: 'starttls', relayPort: 2525, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } }), {})
+  assert.ok(validateFormConfig('mail', { ...unified, relay: { enabled: true, security: 'implicit_tls', relayPort: 465, relayHost: 'smtp.example.com', from: 'sender@example.com', fromDomain: 'example.com' } })['listener.security'])
 })

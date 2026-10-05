@@ -530,7 +530,7 @@ export function usePage(pageKey = 'base') {
             delete payload.relay
           }
         }
-        if (payload.relay && relayConfigured(payload) && !payload.relay.security) {
+        if (payload.relay && payload.relay.enabled === true && relayConfigured(payload) && !payload.relay.security) {
           payload.relay.security = relaySecurityForMail(payload)
         }
       }

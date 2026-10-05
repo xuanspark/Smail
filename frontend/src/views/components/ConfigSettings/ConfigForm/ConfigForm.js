@@ -309,7 +309,7 @@ export function updateFormConfig(text, section, path, value) {
       config.relay.security = relaySecurityForMail(config)
       config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
-    if (key.startsWith('relay.') && key !== 'relay.security' && key !== 'relay.enabled' && relayConfigured(config) && ['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
+    if (key.startsWith('relay.') && key !== 'relay.security' && key !== 'relay.enabled' && config.relay?.enabled === true && relayConfigured(config) && ['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
       config.relay.security = relaySecurityForMail(config)
       if (!validPort(config.relay.relayPort)) config.relay.relayPort = smtpPorts.get(config.relay.security)
     }
@@ -368,8 +368,7 @@ export function validateFormConfig(section, config) {
   }
   if (section === 'mail') {
     const relay = config.relay || {}
-    const configured = relayConfigured(config)
-    const enabled = relay.enabled === true || (relay.enabled === undefined && configured)
+    const enabled = relay.enabled === true
     if (!['both', 'starttls', 'implicit_tls'].includes(mailSecurity(config))) {
       errors['listener.security'] = '请选择全部启用、STARTTLS / STLS 或隐式 TLS'
     }
