@@ -70,7 +70,7 @@ func (s *Service) Issue(request IssueRequest, remoteIP string) (Challenge, error
 	allowed, release, limitErr := s.allow(request, remoteIP)
 	if limitErr != nil {
 		s.record(EventInput{Purpose: request.Purpose, Action: models.VerificationActionIssue, Outcome: models.VerificationOutcomeFailure, Account: request.Account, Email: request.Email, RemoteIP: remoteIP})
-		return Challenge{}, ErrServiceDown
+		return Challenge{}, fmt.Errorf("%w: %w", ErrServiceDown, limitErr)
 	}
 	if !allowed {
 		s.record(EventInput{Purpose: request.Purpose, Action: models.VerificationActionIssue, Outcome: models.VerificationOutcomeBlocked, Account: request.Account, Email: request.Email, RemoteIP: remoteIP})

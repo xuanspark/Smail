@@ -44,6 +44,33 @@ func TestServiceRequiresDelivery(t *testing.T) {
 	}
 }
 
+func TestServicePreservesRateLimitFailureWithoutSending(t *testing.T) {
+	store, err := NewStore(4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := false
+	service, err := NewService(store, func(_ Challenge, _ string) error {
+		sent = true
+		return nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetRateLimitStore(&PersistentRateLimiter{})
+	_, err = service.Issue(IssueRequest{
+		Purpose: PurposeExternalEmailBind,
+		Account: "user",
+		Email:   "user@example.com",
+	}, "192.0.2.10")
+	if !errors.Is(err, ErrServiceDown) || !errors.Is(err, ErrRateLimitStoreUnavailable) {
+		t.Fatalf("error chain lost: %v", err)
+	}
+	if sent {
+		t.Fatal("delivery ran after rate limit storage failed")
+	}
+}
+
 func TestServiceAppliesIndependentAccountEmailAndIPLimits(t *testing.T) {
 	store, err := NewStore(64)
 	if err != nil {
