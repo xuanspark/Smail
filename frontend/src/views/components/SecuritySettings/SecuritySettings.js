@@ -300,7 +300,7 @@ export function usePage() {
 
   const saveRecoveryCodes = () => {
     if (!generatedCodes.value.length) return
-    downloadRecoveryCodes(generatedCodes.value)
+    downloadRecoveryCodes(generatedCodes.value, globalStatus.userInfos.account)
     notify('安全码已保存到本地文件，文件不会上传服务器', 'success')
   }
 

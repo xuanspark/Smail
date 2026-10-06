@@ -1,4 +1,15 @@
-export function downloadRecoveryCodes(codes, documentRef = document, urlApi = URL) {
+export function buildRecoveryCodesFilename(username) {
+  const normalizedUsername = String(username || '')
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+    .replace(/^[. -]+/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/[. ]+$/g, '')
+
+  return `smail-${normalizedUsername || 'recovery-codes'}.txt`
+}
+
+export function downloadRecoveryCodes(codes, username, documentRef = document, urlApi = URL) {
   if (!Array.isArray(codes) || codes.length === 0) return false
 
   const blob = new Blob([`${codes.join('\n')}\n`], {
@@ -8,7 +19,7 @@ export function downloadRecoveryCodes(codes, documentRef = document, urlApi = UR
   const anchor = documentRef.createElement('a')
 
   anchor.href = objectUrl
-  anchor.download = 'smail-recovery-codes.txt'
+  anchor.download = buildRecoveryCodesFilename(username)
   anchor.style.display = 'none'
   documentRef.body.appendChild(anchor)
 

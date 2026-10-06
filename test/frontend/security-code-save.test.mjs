@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
-import { downloadRecoveryCodes } from '../../frontend/src/utils/recoveryCodeDownload.js'
+import { buildRecoveryCodesFilename, downloadRecoveryCodes } from '../../frontend/src/utils/recoveryCodeDownload.js'
 import { RECOVERY_CODE_DISPLAY_MS } from '../../frontend/src/utils/recoveryCodeDisplay.js'
 
 const securitySettingsSource = readFileSync(new URL('../../frontend/src/views/components/SecuritySettings/SecuritySettings.js', import.meta.url), 'utf8')
@@ -50,7 +50,7 @@ test('没有安全码时不生成下载文件', () => {
     revokeObjectURL() {},
   }
 
-  assert.equal(downloadRecoveryCodes([], fixture.documentRef, urlApi), false)
+  assert.equal(downloadRecoveryCodes([], 'xuans', fixture.documentRef, urlApi), false)
   assert.equal(created, 0)
   assert.equal(fixture.anchors.length, 0)
 })
@@ -70,14 +70,21 @@ test('安全码只在浏览器本地生成下载，不产生后端请求', async
   }
 
   assert.equal(
-    downloadRecoveryCodes(['ABCD-1234', 'EFGH-5678'], fixture.documentRef, urlApi),
+    downloadRecoveryCodes(['ABCD-1234', 'EFGH-5678'], 'xuans', fixture.documentRef, urlApi),
     true
   )
   assert.equal(fixture.anchors.length, 1)
   assert.equal(fixture.anchors[0].href, 'blob:recovery-codes')
-  assert.equal(fixture.anchors[0].download, 'smail-recovery-codes.txt')
+  assert.equal(fixture.anchors[0].download, 'smail-xuans.txt')
   assert.equal(fixture.anchors[0].clicked, true)
   assert.equal(fixture.anchors[0].removed, true)
   assert.deepEqual(revoked, ['blob:recovery-codes'])
   assert.equal(await blobs[0].text(), 'ABCD-1234\nEFGH-5678\n')
+})
+
+test('导出文件名使用用户名并清理非法路径字符', () => {
+  assert.equal(buildRecoveryCodesFilename('xuans'), 'smail-xuans.txt')
+  assert.equal(buildRecoveryCodesFilename('user@example.com'), 'smail-user@example.com.txt')
+  assert.equal(buildRecoveryCodesFilename('../xuans/secret'), 'smail-xuans-secret.txt')
+  assert.equal(buildRecoveryCodesFilename(''), 'smail-recovery-codes.txt')
 })
