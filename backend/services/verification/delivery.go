@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"mime"
 	"net"
 	"net/mail"
@@ -72,7 +73,7 @@ func (d *SMTPDelivery) Delivery() Delivery {
 		if d == nil || d.send == nil || challenge.Email == "" || code == "" {
 			return ErrInvalidChallenge
 		}
-		message := buildCodeMessage(d.settings.From, challenge.Email, code, challenge.Purpose)
+		message := buildCodeMessage(d.settings.From, challenge, code)
 		defer clearBytes(message)
 		err := d.send(d.settings, challenge.Email, message)
 		result := "accepted"
@@ -212,9 +213,80 @@ func SendSMTPMessageContext(ctx context.Context, settings SMTPSettings, recipien
 	}
 }
 
-func buildCodeMessage(from, recipient string, code string, purpose Purpose) []byte {
-	title, text := CodeMessage(purpose, code)
-	return []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", from, recipient, mime.QEncoding.Encode("UTF-8", title), text))
+func buildCodeMessage(from string, challenge Challenge, code string) []byte {
+	title, text := CodeMessage(challenge.Purpose, code)
+	boundary := "=_SmailVerification_"
+	htmlBody := CodeHTML(challenge, code)
+
+	return []byte(fmt.Sprintf(
+		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n--%s\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n--%s\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n--%s--\r\n",
+		from,
+		challenge.Email,
+		mime.QEncoding.Encode("UTF-8", title),
+		boundary,
+		boundary,
+		text,
+		boundary,
+		htmlBody,
+		boundary,
+	))
+}
+
+// CodeHTML 返回验证码邮件的 HTML 正文。
+func CodeHTML(challenge Challenge, code string) string {
+	recipientName := challenge.Account
+	if strings.TrimSpace(recipientName) == "" {
+		recipientName = challenge.Email
+	}
+	return buildCodeHTML(recipientName, code, verificationExpiryMinutes(challenge))
+}
+
+func verificationExpiryMinutes(challenge Challenge) int {
+	if challenge.ExpiresAt.After(challenge.IssuedAt) && !challenge.IssuedAt.IsZero() {
+		minutes := int((challenge.ExpiresAt.Sub(challenge.IssuedAt) + time.Minute - 1) / time.Minute)
+		if minutes > 0 {
+			return minutes
+		}
+	}
+	return int(DefaultTTL / time.Minute)
+}
+
+func buildCodeHTML(recipientName, code string, expiresInMinutes int) string {
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #4f46e5; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .code { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>邮箱验证码</h1></div>
+    <div class="content">
+      <p>%s，您好：</p>
+      <p>您的验证码是：</p>
+      <p class="code">%s</p>
+      <p>验证码将在 <strong>%d</strong> 分钟后失效。</p>
+      <p class="muted">如果不是您本人操作，请忽略此邮件。</p>
+    </div>
+    <div class="footer">本邮件由 Smail 发送，请勿直接回复。</div>
+  </div>
+</body>
+</html>`,
+		html.EscapeString(recipientName),
+		html.EscapeString(code),
+		expiresInMinutes,
+	)
 }
 
 // CodeMessage 返回验证码邮件的统一标题和正文，供中继与项目自身投递复用。

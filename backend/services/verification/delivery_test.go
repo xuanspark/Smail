@@ -3,6 +3,7 @@ package verification
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSupportedPurposes(t *testing.T) {
@@ -36,6 +37,50 @@ func TestSMTPDeliveryKeepsCodeOutOfChallenge(t *testing.T) {
 	}
 	if challenge.ID == "123456" || challenge.Account == "123456" {
 		t.Fatal("verification code leaked into challenge metadata")
+	}
+	clearBytes(message)
+}
+
+func TestSMTPDeliveryUsesReferenceHTMLTemplate(t *testing.T) {
+	settings := SMTPSettings{Host: "smtp.example.com", Port: 587, Security: SecurityStartTLS, From: "no-reply@example.com"}
+	delivery, err := NewSMTPDelivery(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var message []byte
+	delivery.send = func(_ SMTPSettings, _ string, data []byte) error {
+		message = append([]byte(nil), data...)
+		return nil
+	}
+	issuedAt := time.Date(2026, time.October, 6, 12, 0, 0, 0, time.UTC)
+	challenge := Challenge{
+		Purpose:   PurposeLogin,
+		Account:   "<xuans>",
+		Email:     "user@example.com",
+		IssuedAt:  issuedAt,
+		ExpiresAt: issuedAt.Add(7 * time.Minute),
+	}
+	if err := delivery.Delivery()(challenge, "123456"); err != nil {
+		t.Fatal(err)
+	}
+	raw := string(message)
+	for _, want := range []string{
+		"Content-Type: multipart/alternative;",
+		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Type: text/html; charset=UTF-8",
+		"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+		"<h1>邮箱验证码</h1>",
+		"<p>&lt;xuans&gt;，您好：</p>",
+		"<p class=\"code\">123456</p>",
+		"<strong>7</strong> 分钟",
+		"本邮件由 Smail 发送",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("message does not contain %q: %s", want, raw)
+		}
+	}
+	if strings.Contains(raw, "<p><xuans>") {
+		t.Fatal("recipient name was not HTML escaped")
 	}
 	clearBytes(message)
 }

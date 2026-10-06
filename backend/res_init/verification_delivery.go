@@ -152,6 +152,7 @@ func deliverVerificationWithProjectMailContext(deliveryContext context.Context, 
 		},
 		Subject: subject,
 		Text:    []byte(text),
+		HTML:    []byte(verification.CodeHTML(challenge, code)),
 		MsgID:   messageID,
 	}
 	ctx := &appcontext.Context{
