@@ -76,11 +76,31 @@
 }
 
 .relay-fields {
+  display: grid;
+  align-items: start;
   margin-top: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.relay-fields :deep(.config-field) {
+  min-width: 0;
 }
 
 .relay-alert {
   margin: 0;
+}
+
+@container config-main (max-width: 760px) {
+  .relay-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container config-main (max-width: 500px) {
+  .relay-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 900px) {
