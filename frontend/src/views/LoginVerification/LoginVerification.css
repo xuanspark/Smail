@@ -202,3 +202,23 @@
     align-items: center;
   }
 }
+
+.verification-form :deep(.el-form-item:has(.verification-input)) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__label) {
+  width: auto !important;
+  margin: 0;
+  padding: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__content) {
+  min-width: 0;
+  margin-left: 0 !important;
+}

@@ -76,3 +76,23 @@
     margin: 0;
   }
 }
+
+.external-email-verification :deep(.el-form-item) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.external-email-verification :deep(.el-form-item__label) {
+  width: auto !important;
+  margin: 0;
+  padding: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.external-email-verification :deep(.el-form-item__content) {
+  min-width: 0;
+  margin-left: 0 !important;
+}
