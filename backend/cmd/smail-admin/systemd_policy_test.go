@@ -96,6 +96,23 @@ func TestInstallerManagesProtectedEnvironmentFile(t *testing.T) {
 	}
 }
 
+func TestInstallerInstallsConfigurationTool(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	installer, err := os.ReadFile(filepath.Join(root, "deploy", "install-systemd.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(installer)
+	for _, required := range []string{
+		"out/backend/smail-config_linux_$arch",
+		"install -o root -g root -m 0700 \"$root_dir/out/backend/smail-config_linux_$arch\" \"$runtime_dir/smail-config\"",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("installer does not install smail-config: missing %q", required)
+		}
+	}
+}
+
 func TestInstallerRequiresExplicitFreshReset(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	installer, err := os.ReadFile(filepath.Join(root, "deploy", "install-systemd.sh"))
