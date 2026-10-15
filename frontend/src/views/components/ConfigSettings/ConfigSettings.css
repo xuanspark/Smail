@@ -336,8 +336,8 @@
   :global(.settings-drawer-desktop .config-workspace) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "main"
-      "submenu";
+      "submenu"
+      "main";
     gap: 12px;
   }
 
