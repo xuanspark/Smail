@@ -92,7 +92,7 @@
     >
       <div class="settings-header security-key-header">
         <div><h3>安全码</h3><p class="settings-desc">安全码默认隐藏，完成安全验证后可以重新查看。</p></div>
-        <div class="section-actions security-recovery-actions">
+        <div class="security-recovery-actions">
           <el-button
             v-if="recoveryConfigured && !generatedCodes.length"
             @click="revealRecoveryCodes"

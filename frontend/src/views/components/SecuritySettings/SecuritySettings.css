@@ -252,9 +252,10 @@
 }
 
 .security-settings-card .security-key-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  justify-content: initial;
   gap: 16px;
 }
 
@@ -265,13 +266,14 @@
 
 .security-settings-card .security-key-header > .security-recovery-actions {
   display: flex !important;
-  flex: 0 1 auto !important;
+  flex: 0 0 auto !important;
   flex-flow: row nowrap !important;
   align-items: center !important;
   align-content: center !important;
+  align-self: center;
   justify-content: flex-end !important;
   gap: 8px !important;
-  width: auto;
+  width: max-content;
   max-width: 100%;
   min-width: 0 !important;
   height: 36px;
@@ -302,6 +304,15 @@
   overflow-wrap: normal !important;
   writing-mode: horizontal-tb !important;
   vertical-align: middle;
+}
+
+.security-settings-card .security-key-header > .security-recovery-actions > :deep(.el-button) > span {
+  display: inline-block;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+  word-break: keep-all;
+  line-height: 1;
 }
 
 @media (max-width: 767px) {
