@@ -56,9 +56,18 @@
 
 .row-actions {
   display: flex;
+  align-items: center;
+  gap: 4px;
   justify-content: flex-end;
   opacity: 0.7;
   transition: opacity 0.2s;
+}
+
+.row-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
 }
 
 .modern-table :deep(tr:hover) .row-actions {
@@ -67,8 +76,19 @@
 
 .form-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   justify-content: flex-start;
   margin-top: 12px;
+}
+
+.form-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  margin: 0;
 }
 
 .add-btn {
@@ -123,14 +143,53 @@
   align-items: center;
 }
 
+.rule-line :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .add-condition-action {
   margin-top: 12px;
 }
 
 .action-row {
   display: flex;
-  gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.action-row > * {
+  min-width: 0;
+}
+
+.action-row .flex-grow {
+  flex: 1 1 240px;
+  min-width: 180px;
+}
+
+.action-row .w-48 {
+  flex: 0 1 180px;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dialog-footer :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 32px;
+  margin: 0;
 }
 
 .custom-divider {
@@ -150,5 +209,17 @@
   .settings-header,
   .table-container {
     margin-bottom: 8px;
+  }
+}
+
+@container settings-content (max-width: 560px) {
+  .action-row {
+    align-items: stretch;
+  }
+
+  .action-row .w-48,
+  .action-row .flex-grow {
+    flex-basis: 100%;
+    width: 100%;
   }
 }

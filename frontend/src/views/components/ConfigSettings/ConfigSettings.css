@@ -180,12 +180,18 @@
 }
 .action-row {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
 }
 .action-row > .el-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
   margin-left: 0;
+  margin-right: 0;
 }
 .maintenance-heading {
   display: flex;

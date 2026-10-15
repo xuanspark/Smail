@@ -16,6 +16,7 @@
   font-weight: 600;
   color: var(--pm-text-primary);
   margin: 0;
+  min-width: 0;
 }
 
 .table-container {
@@ -172,8 +173,37 @@
 }
 .group-toolbar {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.group-toolbar :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 32px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.modern-table :deep(.el-table__cell:last-child .cell) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.modern-table :deep(.el-table__cell:last-child .el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .account-group-panel {
@@ -187,6 +217,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 10px 14px;
   background: var(--el-fill-color-light);
 }
@@ -197,6 +228,7 @@
 
 .account-group-toggle {
   flex: 1;
+  min-width: 0;
   border: 0;
   padding: 4px 0;
   background: transparent;
@@ -205,6 +237,15 @@
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+}
+
+.account-group-header :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .account-group-toggle:focus-visible {
@@ -235,8 +276,12 @@
 }
 
 .membership-selector-header :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   margin: 0;
+  white-space: nowrap;
 }
 
 .membership-option {
@@ -317,8 +362,40 @@
 }
 
 .membership-manage-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   margin: 0;
+  white-space: nowrap;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dialog-footer :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 32px;
+  margin: 0;
+}
+
+@container settings-content (max-width: 760px) {
+  .settings-header {
+    align-items: center;
+  }
+
+  .group-toolbar {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 }
 
 .account-form {

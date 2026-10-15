@@ -6,7 +6,7 @@
 
 .overview-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -40,7 +40,16 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-  padding-top: 2px;
+  padding-top: 0;
+}
+
+.overview-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .action-row {
