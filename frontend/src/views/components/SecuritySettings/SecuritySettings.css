@@ -701,3 +701,27 @@
     order: 0 !important;
   }
 }
+
+@container settings-content (min-width: 360px) and (max-width: 760px) {
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    align-self: center !important;
+    justify-self: center !important;
+    justify-content: center !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: 100% !important;
+    overflow-x: visible !important;
+  }
+}
+
+@container settings-content (max-width: 359px) {
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    align-self: stretch !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+  }
+}
