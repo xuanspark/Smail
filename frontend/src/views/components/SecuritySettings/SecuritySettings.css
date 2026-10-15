@@ -113,7 +113,17 @@
       "main";
     gap: 16px;
   }
-  .security-key-header, .credential-item, .external-email-header, .external-item { display: flex; flex-direction: column; align-items: stretch; }
+  .credential-item, .external-email-header, .external-item { display: flex; flex-direction: column; align-items: stretch; }
+  .credential-actions { width: 100%; }
+  .credential-actions .el-button { flex: 1; }
+}
+@media (max-width: 767px) {
+  .security-key-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .security-key-header > .section-actions {
     width: 100%;
     min-width: 0;
@@ -121,8 +131,6 @@
     overflow-x: auto;
     padding-bottom: 2px;
   }
-  .credential-actions { width: 100%; }
-  .credential-actions .el-button { flex: 1; }
 }
 .password-verification-row {
   display: flex;

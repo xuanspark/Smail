@@ -106,6 +106,13 @@
   vertical-align: middle;
 }
 
+:global(.recovery-code-dialog .el-dialog__footer) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  box-sizing: border-box;
+}
 .recovery-dialog-actions :deep(.el-button + .el-button) {
   margin-left: 0;
 }
