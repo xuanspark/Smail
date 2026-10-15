@@ -1,5 +1,8 @@
 .telegram-settings {
-  max-width: 760px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 16px;
 }
 
@@ -21,6 +24,8 @@
 .telegram-hint {
   color: var(--el-text-color-secondary);
   line-height: 1.6;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .telegram-header a {
@@ -102,5 +107,40 @@
 @media (max-width: 768px) {
   .telegram-settings :deep(.el-form) {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container config-main (max-width: 420px) {
+  .telegram-settings {
+    padding: 10px 4px;
+  }
+
+  .telegram-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .telegram-settings :deep(.el-form) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .telegram-identity {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+
+  .telegram-buttons,
+  .telegram-actions {
+    width: 100%;
+  }
+
+  .telegram-buttons .el-button,
+  .telegram-actions .el-button {
+    flex: 1 1 auto;
   }
 }

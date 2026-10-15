@@ -1,5 +1,8 @@
 .wechat-settings {
-  max-width: 760px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 16px;
 }
 
@@ -27,6 +30,8 @@
 .wechat-label {
   color: var(--el-text-color-secondary);
   line-height: 1.6;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .wechat-header p {
@@ -90,5 +95,38 @@
 @media (max-width: 768px) {
   .wechat-settings :deep(.el-form) {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container config-main (max-width: 420px) {
+  .wechat-settings {
+    padding: 10px 4px;
+  }
+
+  .wechat-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .wechat-settings :deep(.el-form) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .wechat-identity {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+
+  .wechat-buttons {
+    width: 100%;
+  }
+
+  .wechat-buttons .el-button {
+    flex: 1 1 auto;
   }
 }

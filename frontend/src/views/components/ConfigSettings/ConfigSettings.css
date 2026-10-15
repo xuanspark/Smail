@@ -336,17 +336,19 @@
   :global(.settings-drawer-desktop .config-workspace) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "submenu"
-      "main";
-    gap: 16px;
+      "main"
+      "submenu";
+    gap: 12px;
   }
 
   :global(.settings-drawer-desktop .config-navigation) {
     position: static;
     min-width: 0;
+    width: 100%;
   }
 
   :global(.settings-drawer-desktop .config-main) {
+    width: 100%;
     min-width: 0;
   }
 
