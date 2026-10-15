@@ -69,10 +69,19 @@
   width: 100%;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
   --settings-accent: var(--pm-primary-color);
 }
 
 /* 抽屉由 Teleport 挂载，使用专属类限定，不能依赖祖先的作用域属性。 */
+:global(.settings-drawer.el-drawer) {
+  inset-block: 12px;
+  height: auto;
+  max-height: calc(100dvh - 24px);
+  border-radius: 18px 0 0 18px;
+  overflow: hidden;
+}
+
 :global(.settings-drawer > .el-drawer__header) {
   margin-bottom: 0;
   padding: 16px 20px;
@@ -113,12 +122,16 @@
 }
 
 .settings-tabs > :deep(.el-tabs__header) {
-  flex: 0 0 154px;
+  flex: 0 0 clamp(188px, 22%, 232px);
+  min-width: 0;
+  max-height: 100%;
   margin: 0 0 0 12px !important;
   padding: 6px;
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-md);
   background: var(--pm-bg-primary);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .settings-tabs > :deep(.el-tabs__header .el-tabs__nav-wrap::after),
@@ -132,11 +145,14 @@
 
 .settings-tabs > :deep(.el-tabs__header .el-tabs__nav) {
   border: 0;
+  width: 100%;
+  min-width: 0;
 }
 
 .settings-tabs > :deep(.el-tabs__header .el-tabs__item) {
   height: auto;
   min-height: 52px;
+  min-width: 0;
   justify-content: flex-start;
   margin: 2px 0;
   padding: 8px !important;
@@ -180,12 +196,16 @@
 .settings-category-copy {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .settings-category-label {
   font-size: 14px;
   font-weight: 650;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-category-hint {
@@ -193,6 +213,9 @@
   font-weight: 400;
   line-height: 1.4;
   opacity: .85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-tabs > :deep(.el-tabs__content) {
@@ -237,8 +260,15 @@
     padding: 18px 14px;
   }
 
+  :global(.settings-drawer.el-drawer) {
+    inset-block: 0;
+    max-height: none;
+    border-radius: 0;
+  }
+
   .settings-tabs > :deep(.el-tabs__header) {
     flex: none;
+    max-height: none;
     margin: 12px 0 16px !important;
     padding: 4px;
     border-radius: 14px;
@@ -256,6 +286,10 @@
 
   .settings-tabs > :deep(.el-tabs__content) {
     padding-right: 0;
+    overflow: visible;
+  }
+
+  .settings-tabs {
     overflow: visible;
   }
 }
