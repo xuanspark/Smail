@@ -94,13 +94,16 @@
 
 .recovery-dialog-actions {
   display: flex;
-  flex-flow: row nowrap;
+  flex: 0 0 auto;
+  flex-flow: row nowrap !important;
   align-items: center;
   align-content: center;
   justify-content: flex-end;
   gap: 10px;
   min-width: max-content;
+  min-height: 36px;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .recovery-dialog-actions :deep(.el-button + .el-button) {
@@ -112,8 +115,10 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   box-sizing: border-box;
+  padding: 8px 12px;
   margin-top: 0;
   margin-right: 0;
   margin-bottom: 0;
