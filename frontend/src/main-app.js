@@ -8,6 +8,7 @@ import { createRouteAssetRecovery, isReadOnlyRoute, isRouteAssetLoadError } from
 
 import './styles/element-services.css'
 import './assets/main.css'
+import './styles/action-layout.css'
 
 const isReservedResetPath = (pathname) => {
   let decoded = pathname.trim()
