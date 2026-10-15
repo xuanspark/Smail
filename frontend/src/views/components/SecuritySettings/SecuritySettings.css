@@ -315,6 +315,24 @@
   line-height: 1;
 }
 
+@container settings-content (max-width: 560px) {
+  .security-settings-card .security-key-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    align-self: stretch;
+    justify-content: flex-start !important;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0;
+  }
+}
+
 @media (max-width: 767px) {
   .security-settings-card .security-key-header {
     display: flex;
