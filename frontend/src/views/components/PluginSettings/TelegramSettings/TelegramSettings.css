@@ -1,22 +1,22 @@
 .telegram-settings {
+  display: grid;
+  gap: 16px;
   width: 100%;
   max-width: none;
   min-width: 0;
   box-sizing: border-box;
-  padding: 16px;
+  padding: 16px 16px 20px;
 }
 
 .telegram-header {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
 }
 
 .telegram-header h4 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 18px;
 }
 
@@ -28,12 +28,16 @@
   word-break: normal;
 }
 
+.telegram-header p {
+  margin: 6px 0 0;
+}
+
 .telegram-header a {
   color: var(--el-color-primary);
 }
 
 .telegram-settings .el-alert {
-  margin-bottom: 20px;
+  margin: 0;
 }
 
 .telegram-actions,
@@ -46,7 +50,8 @@
 }
 
 .telegram-actions {
-  margin-top: 20px;
+  justify-content: flex-end;
+  margin-top: 0;
 }
 
 .telegram-actions .el-button,
@@ -62,19 +67,38 @@
 .telegram-settings :deep(.el-form-item) {
   min-width: 0;
   margin-bottom: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.telegram-settings :deep(.el-form-item__label) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .telegram-identity {
-  padding: 16px;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 14px;
+  margin: 0;
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
+  background: var(--el-fill-color-blank);
 }
 
 .telegram-identity strong {
-  flex: 1;
-  min-width: 100px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telegram-hint {
+  margin: -4px 0 0;
 }
 
 .telegram-binding {
@@ -112,14 +136,13 @@
 
 @container config-main (max-width: 420px) {
   .telegram-settings {
-    padding: 10px 4px;
+    gap: 12px;
+    padding: 10px 4px 14px;
   }
 
   .telegram-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 14px;
+    align-items: start;
+    gap: 8px 10px;
   }
 
   .telegram-settings :deep(.el-form) {
@@ -128,10 +151,23 @@
   }
 
   .telegram-identity {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
     padding: 12px;
-    margin-bottom: 14px;
+    gap: 8px 10px;
+  }
+
+  .telegram-identity .telegram-hint,
+  .telegram-identity strong {
+    grid-column: 1;
+  }
+
+  .telegram-identity .telegram-hint {
+    grid-row: 1;
+  }
+
+  .telegram-identity strong {
+    grid-row: 2;
   }
 
   .telegram-buttons,
@@ -139,8 +175,13 @@
     width: 100%;
   }
 
+  .telegram-identity .telegram-buttons {
+    grid-column: 1 / -1;
+  }
+
   .telegram-buttons .el-button,
   .telegram-actions .el-button {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
   }
 }

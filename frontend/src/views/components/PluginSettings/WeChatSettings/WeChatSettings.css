@@ -1,9 +1,11 @@
 .wechat-settings {
+  display: grid;
+  gap: 16px;
   width: 100%;
   max-width: none;
   min-width: 0;
   box-sizing: border-box;
-  padding: 16px;
+  padding: 16px 16px 20px;
 }
 
 .wechat-header,
@@ -16,12 +18,13 @@
 }
 
 .wechat-header {
-  justify-content: space-between;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
 }
 
 .wechat-header h4 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 18px;
 }
 
@@ -35,24 +38,28 @@
 }
 
 .wechat-header p {
-  margin: 0;
+  margin: 6px 0 0;
 }
 
 .wechat-settings .el-alert {
-  margin-bottom: 16px;
+  margin: 0;
 }
 
 .wechat-identity {
-  padding: 16px;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 14px;
+  margin: 0;
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
+  background: var(--el-fill-color-blank);
 }
 
 .wechat-identity strong {
-  flex: 1;
-  min-width: 100px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wechat-buttons .el-button {
@@ -67,6 +74,26 @@
 
 .wechat-settings :deep(.el-form-item) {
   margin-bottom: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.wechat-settings :deep(.el-form-item__label) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wechat-hint {
+  margin: -4px 0 0;
+}
+
+.wechat-settings > .wechat-buttons {
+  justify-content: flex-end;
+  margin-top: 0;
 }
 
 .wechat-binding {
@@ -100,14 +127,13 @@
 
 @container config-main (max-width: 420px) {
   .wechat-settings {
-    padding: 10px 4px;
+    gap: 12px;
+    padding: 10px 4px 14px;
   }
 
   .wechat-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 14px;
+    align-items: start;
+    gap: 8px 10px;
   }
 
   .wechat-settings :deep(.el-form) {
@@ -116,17 +142,35 @@
   }
 
   .wechat-identity {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
     padding: 12px;
-    margin-bottom: 14px;
+    gap: 8px 10px;
+  }
+
+  .wechat-identity .wechat-label,
+  .wechat-identity strong {
+    grid-column: 1;
+  }
+
+  .wechat-identity .wechat-label {
+    grid-row: 1;
+  }
+
+  .wechat-identity strong {
+    grid-row: 2;
   }
 
   .wechat-buttons {
     width: 100%;
   }
 
+  .wechat-identity .wechat-buttons {
+    grid-column: 1 / -1;
+  }
+
   .wechat-buttons .el-button {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
