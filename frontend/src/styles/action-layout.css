@@ -25,7 +25,7 @@
   .log-page-actions,
   .group-toolbar,
   .credential-actions,
-  .config-pagination,
+  .config-pagination
 ) {
   display: flex;
   align-items: center;
@@ -57,7 +57,7 @@
   .verification-actions,
   .log-page-actions,
   .group-toolbar,
-  .config-pagination,
+  .config-pagination
 ) > .el-button,
 :where(
   .action-row,
@@ -85,7 +85,7 @@
   .log-page-actions,
   .group-toolbar,
   .credential-actions,
-  .config-pagination,
+  .config-pagination
 ) .el-button {
   display: inline-flex;
   align-items: center;
@@ -123,7 +123,7 @@
     .log-page-actions,
     .group-toolbar,
     .credential-actions,
-    .config-pagination,
+    .config-pagination
     ) {
     flex-direction: row;
     flex-wrap: nowrap !important;
@@ -155,7 +155,7 @@
     .log-page-actions,
     .group-toolbar,
     .credential-actions,
-    .config-pagination,
+    .config-pagination
     ) > .el-button,
   :where(
     .action-row,
@@ -183,7 +183,7 @@
     .log-page-actions,
     .group-toolbar,
     .credential-actions,
-    .config-pagination,
+    .config-pagination
     ) .el-button {
     flex: 0 0 auto;
     white-space: nowrap;
