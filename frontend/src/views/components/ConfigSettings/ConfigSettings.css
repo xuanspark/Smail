@@ -333,7 +333,7 @@
   }
 }
 @container settings-content (max-width: 560px) {
-  :global(.settings-drawer-desktop) .config-workspace {
+  :global(.settings-drawer-desktop .config-workspace) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "submenu"
@@ -341,12 +341,12 @@
     gap: 16px;
   }
 
-  :global(.settings-drawer-desktop) .config-navigation {
+  :global(.settings-drawer-desktop .config-navigation) {
     position: static;
     min-width: 0;
   }
 
-  :global(.settings-drawer-desktop) .config-main {
+  :global(.settings-drawer-desktop .config-main) {
     min-width: 0;
   }
 

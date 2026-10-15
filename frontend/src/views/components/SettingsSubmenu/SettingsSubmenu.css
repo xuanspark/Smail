@@ -248,29 +248,29 @@
 }
 
 @container settings-content (max-width: 560px) {
-  :global(.settings-drawer-desktop) .settings-submenu {
+  :global(.settings-drawer-desktop .settings-submenu) {
     padding: 10px;
   }
 
-  :global(.settings-drawer-desktop) .settings-submenu-heading {
+  :global(.settings-drawer-desktop .settings-submenu-heading) {
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
     padding: 0 2px 8px;
   }
 
-  :global(.settings-drawer-desktop) .settings-submenu-list {
+  :global(.settings-drawer-desktop .settings-submenu-list) {
     display: grid;
     gap: 3px;
     padding: 0;
   }
 
-  :global(.settings-drawer-desktop) .settings-submenu-entry {
+  :global(.settings-drawer-desktop .settings-submenu-entry) {
     min-width: 0;
     width: 100%;
   }
 
-  :global(.settings-drawer-desktop) .settings-submenu-item {
+  :global(.settings-drawer-desktop .settings-submenu-item) {
     width: 100%;
     min-width: 0;
     white-space: nowrap;
@@ -278,11 +278,11 @@
     text-overflow: ellipsis;
   }
 
-  :global(.settings-drawer-desktop) .settings-tertiary-list {
+  :global(.settings-drawer-desktop .settings-tertiary-list) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  :global(.settings-drawer-desktop) .settings-tertiary-item {
+  :global(.settings-drawer-desktop .settings-tertiary-item) {
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
