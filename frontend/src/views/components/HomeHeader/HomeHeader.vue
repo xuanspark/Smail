@@ -22,7 +22,7 @@
     v-model="globalStatus.settingsDrawerVisible"
     :size="isMobile ? '100%' : '50%'"
     :title="lang.settings"
-    class="settings-drawer"
+    :class="['settings-drawer', isMobile ? 'settings-drawer-mobile' : 'settings-drawer-desktop']"
     :with-header="true"
     direction="rtl"
     :before-close="closeSettings"

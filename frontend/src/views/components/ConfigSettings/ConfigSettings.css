@@ -103,6 +103,7 @@
   grid-template-areas: "main submenu";
   align-items: start;
   gap: 16px;
+  min-width: 0;
 }
 .config-main {
   grid-area: main;
@@ -332,6 +333,23 @@
   }
 }
 @container settings-content (max-width: 560px) {
+  :global(.settings-drawer-desktop) .config-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "submenu"
+      "main";
+    gap: 16px;
+  }
+
+  :global(.settings-drawer-desktop) .config-navigation {
+    position: static;
+    min-width: 0;
+  }
+
+  :global(.settings-drawer-desktop) .config-main {
+    min-width: 0;
+  }
+
   .settings-header {
     align-items: flex-start;
     flex-direction: column;
@@ -370,7 +388,9 @@
   }
 
   .config-navigation > :deep(.settings-submenu-item) {
-    white-space: normal;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .config-navigation > :deep(.has-children) {
