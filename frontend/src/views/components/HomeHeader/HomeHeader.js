@@ -35,11 +35,15 @@ export function usePage() {
   const userInfos = globalStatus.userInfos;
   
   const isMobile = ref(window.innerWidth <= 768);
-  
+  const isWideSettingsViewport = ref(window.innerWidth >= 1280);
+
   const handleResize = () => {
     isMobile.value = window.innerWidth <= 768;
+    isWideSettingsViewport.value = window.innerWidth >= 1280;
   };
-  
+
+  const useVerticalSettingsTabs = computed(() => !isMobile.value && isWideSettingsViewport.value);
+
   onMounted(() => {
     window.addEventListener('resize', handleResize);
   });
@@ -104,6 +108,7 @@ export function usePage() {
     globalStatus,
     userInfos,
     isMobile,
+    useVerticalSettingsTabs,
     handleResize,
     settingsMenu,
     activeSettings,

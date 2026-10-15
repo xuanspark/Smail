@@ -232,6 +232,70 @@
   overflow: auto;
   container: settings-content / inline-size;
 }
+.settings-tabs.settings-tabs-top {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-tabs.settings-tabs-top > :deep(.el-tabs__header) {
+  flex: none;
+  width: 100%;
+  max-height: none;
+  margin: 0 0 12px !important;
+  padding: 4px;
+  border-radius: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+}
+
+.settings-tabs.settings-tabs-top > :deep(.el-tabs__header .el-tabs__nav-wrap) {
+  overflow: visible;
+}
+
+.settings-tabs.settings-tabs-top > :deep(.el-tabs__header .el-tabs__nav) {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+}
+
+.settings-tabs.settings-tabs-top > :deep(.el-tabs__header .el-tabs__item) {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content;
+  min-height: 44px;
+  margin: 0 2px;
+  padding: 8px 12px !important;
+  border-radius: 8px;
+}
+
+.settings-tabs.settings-tabs-top .settings-category {
+  width: max-content;
+  min-width: max-content;
+}
+
+.settings-tabs.settings-tabs-top .settings-category-copy {
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+}
+
+.settings-tabs.settings-tabs-top .settings-category-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.settings-tabs.settings-tabs-top .settings-category-hint {
+  display: none;
+}
+
+.settings-tabs.settings-tabs-top > :deep(.el-tabs__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-right: 0;
+}
 
 @media (prefers-color-scheme: dark) {
   .settings-tabs {

@@ -38,8 +38,8 @@
     </template>
     <el-tabs
       v-model="globalStatus.settingsActiveTab"
-      :tab-position="isMobile ? 'top' : 'right'"
-      class="settings-tabs"
+      :tab-position="useVerticalSettingsTabs ? 'right' : 'top'"
+      :class="['settings-tabs', useVerticalSettingsTabs ? 'settings-tabs-vertical' : 'settings-tabs-top']"
       :before-leave="beforeSettingsLeave"
     >
       <el-tab-pane
@@ -80,6 +80,7 @@ import {
 const {
   globalStatus,
   isMobile,
+  useVerticalSettingsTabs,
   lang,
   settingsMenu,
   activeSettings,
