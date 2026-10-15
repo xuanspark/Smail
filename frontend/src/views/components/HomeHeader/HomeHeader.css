@@ -75,10 +75,11 @@
 
 /* 抽屉由 Teleport 挂载，使用专属类限定，不能依赖祖先的作用域属性。 */
 :global(.settings-drawer.el-drawer) {
+  right: 16px;
   inset-block: 12px;
   height: auto;
   max-height: calc(100dvh - 24px);
-  border-radius: 18px 0 0 18px;
+  border-radius: 18px;
   overflow: hidden;
 }
 
@@ -261,6 +262,7 @@
   }
 
   :global(.settings-drawer.el-drawer) {
+    right: 0;
     inset-block: 0;
     max-height: none;
     border-radius: 0;
