@@ -250,3 +250,68 @@
   min-width: 0;
   margin-left: 0 !important;
 }
+
+.security-settings-card .security-key-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.security-settings-card .security-key-header > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.security-settings-card .security-key-header > .security-recovery-actions {
+  display: flex !important;
+  flex: 0 1 auto !important;
+  flex-flow: row nowrap !important;
+  align-items: center !important;
+  align-content: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  width: auto;
+  max-width: 100%;
+  min-width: 0 !important;
+  height: 36px;
+  min-height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0 2px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.security-settings-card .security-key-header > .security-recovery-actions > :deep(.el-button) {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: max-content;
+  min-width: max-content;
+  height: 36px !important;
+  max-height: 36px;
+  box-sizing: border-box;
+  margin: 0 !important;
+  padding: 0 14px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  writing-mode: horizontal-tb !important;
+  vertical-align: middle;
+}
+
+@media (max-width: 767px) {
+  .security-settings-card .security-key-header {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+}
