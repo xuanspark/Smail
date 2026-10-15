@@ -141,6 +141,8 @@ test('配置管理只在真实移动端将内部导航移到内容顶部', () =>
   const containerRule = config.slice(containerStart, desktopStart)
   assert.match(header, /:size="isMobile \? '100%' : '50%'"/)
   assert.match(read('HomeHeader/HomeHeader.css'), /\.settings-drawer\.el-drawer[\s\S]*right: 0[\s\S]*inset-block: 0[\s\S]*border-radius: 0;/)
+  assert.match(read('HomeHeader/HomeHeader.css'), /\.settings-category[\s\S]*flex-wrap: nowrap;/)
+  assert.match(read('HomeHeader/HomeHeader.css'), /\.settings-category-copy[\s\S]*flex: 1 1 auto;[\s\S]*overflow: hidden;/)
   assert.match(read('HomeHeader/HomeHeader.css'), /@media \(max-width: 768px\)[\s\S]*\.settings-drawer\.el-drawer[\s\S]*right: 0;/)
   assert.match(config, /grid-template-areas: "main submenu"/)
   assert.match(config, /@media \(min-width: 769px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\)/)

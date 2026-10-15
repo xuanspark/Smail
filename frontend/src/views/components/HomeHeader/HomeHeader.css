@@ -154,6 +154,8 @@
   height: auto;
   min-height: 52px;
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   justify-content: flex-start;
   margin: 2px 0;
   padding: 8px !important;
@@ -187,6 +189,8 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  width: 100%;
+  flex-wrap: nowrap;
 }
 
 .settings-category-icon {
@@ -196,8 +200,10 @@
 
 .settings-category-copy {
   display: grid;
+  flex: 1 1 auto;
   gap: 2px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .settings-category-label {
