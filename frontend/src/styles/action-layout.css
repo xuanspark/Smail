@@ -23,77 +23,25 @@
   .public-recovery-actions,
   .verification-actions,
   .log-page-actions,
+  .log-filter-actions,
   .group-toolbar,
   .credential-actions,
-  .config-pagination
+  .config-pagination,
+  .node-actions,
+  .sf-toolbar,
+  .sf-actions,
+  .notification-actions,
+  .notification-credential-actions,
+  .notification-heading-actions,
+  .notification-row-actions,
+  .section-actions,
+  .action-buttons,
+  .recovery-prompt-actions,
+  .recovery-footer,
+  .actions,
+  .setup-actions
 ) {
-  display: flex;
-  align-items: center;
   min-width: 0;
-}
-
-:where(
-  .action-row,
-  .overview-actions,
-  .form-actions,
-  .row-actions,
-  .dialog-footer,
-  .recovery-dialog-actions,
-  .external-dialog-actions,
-  .relay-item-actions,
-  .relay-editor-actions,
-  .totp-actions,
-  .telegram-actions,
-  .telegram-buttons,
-  .telegram-callback-actions,
-  .wechat-buttons,
-  .spam-actions,
-  .header-actions,
-  .selection-actions,
-  .composer-actions,
-  .mail-detail-state-actions,
-  .admin-recovery-actions,
-  .public-recovery-actions,
-  .verification-actions,
-  .log-page-actions,
-  .group-toolbar,
-  .config-pagination
-) > .el-button,
-:where(
-  .action-row,
-  .overview-actions,
-  .form-actions,
-  .row-actions,
-  .dialog-footer,
-  .recovery-dialog-actions,
-  .external-dialog-actions,
-  .relay-item-actions,
-  .relay-editor-actions,
-  .totp-actions,
-  .telegram-actions,
-  .telegram-buttons,
-  .telegram-callback-actions,
-  .wechat-buttons,
-  .spam-actions,
-  .header-actions,
-  .selection-actions,
-  .composer-actions,
-  .mail-detail-state-actions,
-  .admin-recovery-actions,
-  .public-recovery-actions,
-  .verification-actions,
-  .log-page-actions,
-  .group-toolbar,
-  .credential-actions,
-  .config-pagination
-) .el-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 0;
-  margin-bottom: 0;
-  margin-left: 0 !important;
-  vertical-align: middle;
 }
 
 @media (min-width: 769px) {
@@ -121,12 +69,31 @@
     .public-recovery-actions,
     .verification-actions,
     .log-page-actions,
+    .log-filter-actions,
     .group-toolbar,
     .credential-actions,
-    .config-pagination
-    ) {
+    .config-pagination,
+    .node-actions,
+    .sf-toolbar,
+    .sf-actions,
+    .notification-actions,
+    .notification-credential-actions,
+    .notification-heading-actions,
+    .notification-row-actions,
+    .section-actions,
+    .action-buttons,
+    .recovery-prompt-actions,
+    .recovery-footer,
+    .actions,
+    .setup-actions
+  ) {
+    display: flex;
     flex-direction: row;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: center;
+    column-gap: 8px;
+    row-gap: 8px;
   }
 
   :where(
@@ -153,10 +120,24 @@
     .public-recovery-actions,
     .verification-actions,
     .log-page-actions,
+    .log-filter-actions,
     .group-toolbar,
     .credential-actions,
-    .config-pagination
-    ) > .el-button,
+    .config-pagination,
+    .node-actions,
+    .sf-toolbar,
+    .sf-actions,
+    .notification-actions,
+    .notification-credential-actions,
+    .notification-heading-actions,
+    .notification-row-actions,
+    .section-actions,
+    .action-buttons,
+    .recovery-prompt-actions,
+    .recovery-footer,
+    .actions,
+    .setup-actions
+  ) > .el-button,
   :where(
     .action-row,
     .overview-actions,
@@ -181,11 +162,125 @@
     .public-recovery-actions,
     .verification-actions,
     .log-page-actions,
+    .log-filter-actions,
     .group-toolbar,
     .credential-actions,
-    .config-pagination
-    ) .el-button {
+    .config-pagination,
+    .node-actions,
+    .sf-toolbar,
+    .sf-actions,
+    .notification-actions,
+    .notification-credential-actions,
+    .notification-heading-actions,
+    .notification-row-actions,
+    .section-actions,
+    .action-buttons,
+    .recovery-prompt-actions,
+    .recovery-footer,
+    .actions,
+    .setup-actions
+  ) > button,
+  :where(
+    .action-row,
+    .overview-actions,
+    .form-actions,
+    .row-actions,
+    .dialog-footer,
+    .recovery-dialog-actions,
+    .external-dialog-actions,
+    .relay-item-actions,
+    .relay-editor-actions,
+    .totp-actions,
+    .telegram-actions,
+    .telegram-buttons,
+    .telegram-callback-actions,
+    .wechat-buttons,
+    .spam-actions,
+    .header-actions,
+    .selection-actions,
+    .composer-actions,
+    .mail-detail-state-actions,
+    .admin-recovery-actions,
+    .public-recovery-actions,
+    .verification-actions,
+    .log-page-actions,
+    .log-filter-actions,
+    .group-toolbar,
+    .credential-actions,
+    .config-pagination,
+    .node-actions,
+    .sf-toolbar,
+    .sf-actions,
+    .notification-actions,
+    .notification-credential-actions,
+    .notification-heading-actions,
+    .notification-row-actions,
+    .section-actions,
+    .action-buttons,
+    .recovery-prompt-actions,
+    .recovery-footer,
+    .actions,
+    .setup-actions
+  ) .el-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: 0 0 auto;
+    box-sizing: border-box;
+    margin-top: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+    margin-left: 0 !important;
+    line-height: 1.25;
+    vertical-align: middle;
     white-space: nowrap;
+  }
+
+  :where(
+    .action-row,
+    .overview-actions,
+    .form-actions,
+    .row-actions,
+    .dialog-footer,
+    .recovery-dialog-actions,
+    .external-dialog-actions,
+    .relay-item-actions,
+    .relay-editor-actions,
+    .totp-actions,
+    .telegram-actions,
+    .telegram-buttons,
+    .telegram-callback-actions,
+    .wechat-buttons,
+    .spam-actions,
+    .header-actions,
+    .selection-actions,
+    .composer-actions,
+    .mail-detail-state-actions,
+    .admin-recovery-actions,
+    .public-recovery-actions,
+    .verification-actions,
+    .log-page-actions,
+    .log-filter-actions,
+    .group-toolbar,
+    .credential-actions,
+    .config-pagination,
+    .node-actions,
+    .sf-toolbar,
+    .sf-actions,
+    .notification-actions,
+    .notification-credential-actions,
+    .notification-heading-actions,
+    .notification-row-actions,
+    .section-actions,
+    .action-buttons,
+    .recovery-prompt-actions,
+    .recovery-footer,
+    .actions,
+    .setup-actions
+  ) .el-button-group {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    vertical-align: middle;
   }
 }
