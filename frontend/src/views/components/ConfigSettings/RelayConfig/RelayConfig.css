@@ -16,6 +16,23 @@
   gap: 16px;
 }
 
+.relay-item-actions,
+.relay-editor-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.relay-item-actions :deep(.el-button),
+.relay-editor-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
 .relay-list-heading h5,
 .relay-editor-heading h5 {
   margin: 0;

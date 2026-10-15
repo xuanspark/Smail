@@ -95,6 +95,7 @@
 
 .field-list-row {
   display: grid;
+  align-items: center;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
@@ -113,6 +114,17 @@
 .field-add {
   justify-self: start;
   margin-left: 0;
+}
+
+.field-list-row :deep(.el-button),
+.field-add,
+.field-port-guide :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
 }
 
 .field-port-guide {

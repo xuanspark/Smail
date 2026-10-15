@@ -119,8 +119,11 @@
 }
 
 .security-edit-item {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   padding: 12px;
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
@@ -128,6 +131,8 @@
 }
 
 .security-edit-item > div {
+  flex: 1 1 180px;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -145,8 +150,10 @@
 }
 
 .security-edit-item :deep(.el-button) {
-  width: 100%;
+  flex: 0 0 auto;
+  min-height: 32px;
   margin: 0;
+  white-space: nowrap;
 }
 
 .status-switch {
@@ -175,7 +182,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   flex: 0 1 auto;
   min-width: 0;
@@ -374,17 +381,20 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .dialog-footer :deep(.el-button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-width: 88px;
   min-height: 32px;
   margin: 0;
+  white-space: nowrap;
 }
 
 @container settings-content (max-width: 760px) {

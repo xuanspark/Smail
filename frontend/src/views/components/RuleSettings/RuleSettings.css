@@ -77,9 +77,10 @@
 .form-actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px;
   justify-content: flex-start;
+  min-width: 0;
   margin-top: 12px;
 }
 
@@ -87,8 +88,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-height: 32px;
   margin: 0;
+  white-space: nowrap;
 }
 
 .add-btn {
@@ -179,17 +182,20 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .dialog-footer :deep(.el-button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-width: 88px;
   min-height: 32px;
   margin: 0;
+  white-space: nowrap;
 }
 
 .custom-divider {
