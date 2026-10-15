@@ -344,3 +344,42 @@
     justify-content: flex-start !important;
   }
 }
+
+/* 非移动端保持标题、说明和安全码操作按钮同一行对齐。 */
+@media (min-width: 768px) {
+  .security-settings-card .security-key-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    align-self: center;
+    justify-self: end;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+  }
+}
+
+/* 移动端按钮区域独占一行，避免标题和按钮互相挤压。 */
+@media (max-width: 767px) {
+  .security-settings-card .security-key-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    align-self: stretch;
+    justify-content: flex-start !important;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0;
+  }
+}
