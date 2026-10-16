@@ -191,9 +191,26 @@ if [ -S /run/smail/admin-control.sock ]; then
   chown --no-dereference smail:smail /run/smail/admin-control.sock
 fi
 install -d -o root -g root -m 0755 /run/systemd/ask-password
-install -o root -g root -m 0755 "$backend_smail" "$runtime_dir/smail"
-install -o root -g root -m 0700 "$backend_smail_admin" "$runtime_dir/smail-admin"
-install -o root -g root -m 0700 "$backend_smail_config" "$runtime_dir/smail-config"
+if [ "$backend_smail" != "$runtime_dir/smail" ]; then
+  install -o root -g root -m 0755 "$backend_smail" "$runtime_dir/smail"
+else
+  chown root:root "$runtime_dir/smail"
+  chmod 0755 "$runtime_dir/smail"
+fi
+
+if [ "$backend_smail_admin" != "$runtime_dir/smail-admin" ]; then
+  install -o root -g root -m 0700 "$backend_smail_admin" "$runtime_dir/smail-admin"
+else
+  chown root:root "$runtime_dir/smail-admin"
+  chmod 0700 "$runtime_dir/smail-admin"
+fi
+
+if [ "$backend_smail_config" != "$runtime_dir/smail-config" ]; then
+  install -o root -g root -m 0700 "$backend_smail_config" "$runtime_dir/smail-config"
+else
+  chown root:root "$runtime_dir/smail-config"
+  chmod 0700 "$runtime_dir/smail-config"
+fi
 sed -e "s|WorkingDirectory=/opt/smail|WorkingDirectory=$runtime_dir|g" \
     -e "s|ExecStart=/opt/smail/smail|ExecStart=$runtime_dir/smail|g" \
     -e "s|/opt/smail/config|$runtime_dir/config|g" \
