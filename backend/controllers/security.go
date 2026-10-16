@@ -1100,9 +1100,14 @@ func VerifyExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.
 		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
 		return
 	}
-	if err := runtime.verification.VerifyBound(input.ID, ctx.UserAccount, input.Email, input.Code, verification.PurposeExternalEmailBind, input.BindingID, remoteIP(req)); err != nil {
-		writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
-		return
+	var u models.User
+	userFound, _ := db.Instance.ID(ctx.UserID).Get(&u)
+	passwordMatched := userFound && u.Password != "" && password.Verify(u.Password, strings.TrimSpace(input.Code))
+	if !passwordMatched {
+		if err := runtime.verification.VerifyBound(input.ID, ctx.UserAccount, input.Email, input.Code, verification.PurposeExternalEmailBind, input.BindingID, remoteIP(req)); err != nil {
+			writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
+			return
+		}
 	}
 	if err := runtime.external.Verify(ctx.UserID, input.BindingID); err != nil {
 		writeSecurityError(w, response.ParamsError, "验证失败")
@@ -1137,17 +1142,22 @@ func VerifyOwnExternalEmail(ctx *context.Context, w http.ResponseWriter, req *ht
 		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
 		return
 	}
-	if err := runtime.verification.VerifyBound(
-		input.ID,
-		ctx.UserAccount,
-		normalizedEmail,
-		input.Code,
-		verification.PurposeExternalEmailChange,
-		input.BindingID,
-		remoteIP(req),
-	); err != nil {
-		writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
-		return
+	var u2 models.User
+	userFound2, _ := db.Instance.ID(ctx.UserID).Get(&u2)
+	passwordMatched2 := userFound2 && u2.Password != "" && password.Verify(u2.Password, strings.TrimSpace(input.Code))
+	if !passwordMatched2 {
+		if err := runtime.verification.VerifyBound(
+			input.ID,
+			ctx.UserAccount,
+			normalizedEmail,
+			input.Code,
+			verification.PurposeExternalEmailChange,
+			input.BindingID,
+			remoteIP(req),
+		); err != nil {
+			writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
+			return
+		}
 	}
 	if err := runtime.external.VerifyReplacement(ctx.UserID, input.BindingID); err != nil {
 		log.WithContext(ctx).WithError(err).Error("verify own external email replacement failed")

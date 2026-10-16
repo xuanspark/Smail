@@ -15,6 +15,7 @@ import (
 	"git.pcux.cn/xuans/Smail/services/externalemail"
 	"git.pcux.cn/xuans/Smail/services/verification"
 	"git.pcux.cn/xuans/Smail/utils/context"
+	"git.pcux.cn/xuans/Smail/utils/password"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -345,17 +346,22 @@ func VerifyManagedExternalEmail(ctx *context.Context, w http.ResponseWriter, req
 		writeSecurityError(w, response.ParamsError, "不能将当前邮箱绑定为外部安全邮箱")
 		return
 	}
-	if err := runtime.verification.VerifyBound(
-		input.ChallengeID,
-		target.Account,
-		normalizedEmail,
-		input.Code,
-		verification.PurposeExternalEmailChange,
-		input.BindingID,
-		remoteIP(req),
-	); err != nil {
-		writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
-		return
+	var targetUser models.User
+	targetFound, _ := db.Instance.ID(target.ID).Get(&targetUser)
+	passwordMatched := targetFound && targetUser.Password != "" && password.Verify(targetUser.Password, strings.TrimSpace(input.Code))
+	if !passwordMatched {
+		if err := runtime.verification.VerifyBound(
+			input.ChallengeID,
+			target.Account,
+			normalizedEmail,
+			input.Code,
+			verification.PurposeExternalEmailChange,
+			input.BindingID,
+			remoteIP(req),
+		); err != nil {
+			writeSecurityError(w, response.ParamsError, externalEmailVerificationCheckMessage(err))
+			return
+		}
 	}
 	if err := runtime.external.VerifyReplacement(target.ID, input.BindingID, accountWriteGuard(ctx, *target)); err != nil {
 		if writeManagedScopeError(w, err) {
