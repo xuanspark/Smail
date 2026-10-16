@@ -297,7 +297,7 @@ echo "=== 正在等待并监控初始化流程 (按 Ctrl+C 可提前退出监控
 echo "提示：请在浏览器打开初始化页面完成系统初始化配置..."
 
 # 使用 journalctl 持续监听 smail 服务日志
-journalctl -u smail -f -n 20 --no-pager | while IFS= read -r line; do
+journalctl -u smail -f -n 0 --no-pager | while IFS= read -r line; do
   printf '%s\n' "$line"
   case "$line" in
     *"Setup End!"*)
