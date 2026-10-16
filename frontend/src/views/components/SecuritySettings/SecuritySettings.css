@@ -849,3 +849,89 @@
     padding: 0 !important;
   }
 }
+
+/* 桌面端最终规则：标题说明保持块级，安全码按钮组始终单行等高。 */
+@media (min-width: 768px) {
+  .security-settings-card .security-key-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    grid-template-rows: auto !important;
+    grid-template-areas: "title actions" !important;
+    align-items: center !important;
+    column-gap: 16px !important;
+    row-gap: 0 !important;
+  }
+
+  .security-settings-card .security-key-header > :first-child {
+    display: block !important;
+    grid-area: title !important;
+    min-width: 0 !important;
+  }
+
+  .security-settings-card .security-key-header > :first-child > h3 {
+    margin: 0 0 8px !important;
+    line-height: 1.4 !important;
+    white-space: nowrap !important;
+  }
+
+  .security-settings-card .security-key-header > :first-child > .settings-desc {
+    margin: 0 !important;
+    line-height: 1.5 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions {
+    display: flex !important;
+    grid-area: actions !important;
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    align-content: center !important;
+    justify-content: flex-end !important;
+    align-self: center !important;
+    gap: 8px !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions > :deep(.el-button) {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    min-width: max-content !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 14px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    writing-mode: horizontal-tb !important;
+    vertical-align: middle !important;
+  }
+
+  .security-settings-card .security-key-header > .security-recovery-actions > :deep(.el-button > span) {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
+  }
+}

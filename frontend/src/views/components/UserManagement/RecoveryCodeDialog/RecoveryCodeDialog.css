@@ -204,3 +204,46 @@
     justify-content: flex-start !important;
   }
 }
+
+/* 弹窗底部操作按钮统一为单行、等高、垂直居中。 */
+.recovery-code-dialog .recovery-dialog-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  align-content: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  min-height: 36px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap !important;
+}
+
+.recovery-code-dialog .recovery-dialog-actions > :deep(.el-button) {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 14px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  writing-mode: horizontal-tb !important;
+  vertical-align: middle !important;
+}
+
+.recovery-code-dialog .recovery-dialog-actions > :deep(.el-button > span) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+  white-space: nowrap !important;
+  line-height: 1 !important;
+}
