@@ -253,9 +253,9 @@ echo "提示：请在浏览器打开初始化页面完成系统初始化配置..
 journalctl -u smail -f -n 20 --no-pager | while IFS= read -r line; do
   printf '%s\n' "$line"
   case "$line" in
-    *"Setup End!"*|*"初始化完成"*|*"Setup Completed"*|*"Setup finished"*)
+    *"Setup End!"*)
       printf '\n%s\n' "=========================================================="
-      printf '%s\n' " 检测到 Smail 初始化已顺利完成！监控自动退出。"
+      printf '%s\n' " 检测到 Smail 初始化已顺利完成 (Setup End!)！监控自动退出。"
       printf '%s\n' "=========================================================="
       break
       ;;
