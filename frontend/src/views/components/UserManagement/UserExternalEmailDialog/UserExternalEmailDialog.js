@@ -50,7 +50,7 @@ export function externalEmailEndpoints(selfManaged) {
 }
 
 export function useUserExternalEmailDialog(props, emit) {
-  const form = reactive({ email: '', type: 'primary', code: '' })
+  const form = reactive({ email: '', type: 'backup', code: '' })
   const challenge = reactive({ id: '', bindingId: 0, maskedEmail: '', expiresAt: '' })
   const currentEmail = ref('')
   const step = ref('details')
@@ -102,7 +102,7 @@ export function useUserExternalEmailDialog(props, emit) {
   }
 
   const reset = () => {
-    Object.assign(form, { email: '', type: 'primary', code: '' })
+    Object.assign(form, { email: '', type: 'backup', code: '' })
     Object.assign(challenge, { id: '', bindingId: 0, maskedEmail: '', expiresAt: '' })
     currentEmail.value = ''
     step.value = 'details'

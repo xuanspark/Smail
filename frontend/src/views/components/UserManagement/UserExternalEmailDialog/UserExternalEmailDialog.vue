@@ -39,8 +39,8 @@
       </el-form-item>
       <el-form-item label="邮箱用途" required>
         <el-select v-model="form.type" aria-label="邮箱用途" :disabled="sending">
-          <el-option label="主要邮箱" value="primary" />
           <el-option label="备用邮箱" value="backup" />
+          <el-option label="主要邮箱" value="primary" />
         </el-select>
       </el-form-item>
     </el-form>
