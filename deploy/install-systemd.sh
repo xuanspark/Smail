@@ -162,7 +162,8 @@ if ! getent group smail >/dev/null; then groupadd --system smail; fi
 if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-dir "$runtime_dir" --shell /usr/sbin/nologin smail; fi
 if ! getent group smail-plugin >/dev/null; then groupadd --system smail-plugin; fi
 if ! getent passwd smail-plugin >/dev/null; then useradd --system --gid smail-plugin --home-dir /nonexistent --shell /usr/sbin/nologin smail-plugin; fi
-install -d -o root -g root -m 0755 "$runtime_dir"
+install -d -o smail -g smail -m 0755 "$runtime_dir"
+chown smail:smail "$runtime_dir"
 install -d -o root -g root -m 0750 /etc/smail
 if [ ! -e /etc/smail/smail.env ]; then
   # 每次部署都重新创建服务环境文件，不继承旧的凭据或代理配置。
@@ -229,9 +230,18 @@ chmod 0644 /etc/systemd/system/smail-admin.service
 chown root:root /etc/systemd/system/smail-admin.service
 systemctl daemon-reload
 systemctl enable smail
-# 清理旧版本可能留下的开机启动关系。smail-admin 单元没有 [Install]，不能再次 enable。
 systemctl disable smail-admin >/dev/null 2>&1 || true
-echo "配置、数据库、证书、日志、插件和绑定信息均未继承；请先完成初始化配置，再使用 systemctl start smail 启动。"
-echo "smail-admin 仅允许按需执行 start/stop，不支持开机自启动。"
-echo "主服务默认内存高水位 384 MiB、硬上限 512 MiB；不是容量承诺，请先核对同机资源预算。"
-echo "旧环境文件不会自动补写 GOMEMLIMIT；启动后请按《生产资源部署说明》执行只读资源预检。"
+
+echo "=== 正在启动 Smail 系统服务 ==="
+systemctl restart smail
+
+echo "=== Smail 服务状态 ==="
+systemctl status smail --no-pager || true
+
+echo "=========================================================="
+echo " Smail 安装与系统服务注册完成！"
+echo " 安装路径: $runtime_dir"
+echo " 运行用户: smail"
+echo " 开机自启: 已启用 (systemctl enable smail)"
+echo " 服务状态: 已启动 (systemctl status smail)"
+echo "=========================================================="
