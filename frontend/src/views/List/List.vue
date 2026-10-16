@@ -163,6 +163,7 @@ const {
   selectionChange,
   rowStyle,
   formatShortDate,
+  formatSender,
   totalPage,
   currentPage,
   pageChange,
