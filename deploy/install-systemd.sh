@@ -39,6 +39,10 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 root_dir="$(realpath -e -- "${root_argument:-$(dirname "$0")/..}")"
+is_packaged=false
+if [ -f "$root_dir/smail" ] && [ -f "$root_dir/smail-admin" ] && [ -f "$root_dir/smail-config" ]; then
+  is_packaged=true
+fi
 runtime_dir=/opt/smail
 fresh_confirmation="确认全新部署 Smail"
 printf '这是不可逆的 Smail 专属数据清理操作。请输入“%s”继续： ' "$fresh_confirmation"
@@ -53,8 +57,18 @@ case "$(uname -m)" in
 esac
 
 # 安装前先检查所有输入和运行状态，不能覆盖仍在运行的程序。
-for file in "$root_dir/out/backend/smail_linux_$arch" "$root_dir/out/backend/smail-admin_linux_$arch" \
-  "$root_dir/out/backend/smail-config_linux_$arch" \
+if [ "$is_packaged" = true ]; then
+  backend_smail="$root_dir/smail"
+  backend_smail_admin="$root_dir/smail-admin"
+  backend_smail_config="$root_dir/smail-config"
+else
+  backend_smail="$root_dir/out/backend/smail_linux_$arch"
+  backend_smail_admin="$root_dir/out/backend/smail-admin_linux_$arch"
+  backend_smail_config="$root_dir/out/backend/smail-config_linux_$arch"
+fi
+
+for file in "$backend_smail" "$backend_smail_admin" \
+  "$backend_smail_config" \
   "$root_dir/deploy/systemd/smail.service" "$root_dir/deploy/systemd/smail-admin.service"; do
   if [ ! -f "$file" ] || [ -L "$file" ] || [ ! -s "$file" ]; then
     echo "安装输入不存在或不是普通文件：$file" >&2
@@ -169,9 +183,9 @@ if [ -S /run/smail/admin-control.sock ]; then
   chown --no-dereference smail:smail /run/smail/admin-control.sock
 fi
 install -d -o root -g root -m 0755 /run/systemd/ask-password
-install -o root -g root -m 0755 "$root_dir/out/backend/smail_linux_$arch" "$runtime_dir/smail"
-install -o root -g root -m 0700 "$root_dir/out/backend/smail-admin_linux_$arch" "$runtime_dir/smail-admin"
-install -o root -g root -m 0700 "$root_dir/out/backend/smail-config_linux_$arch" "$runtime_dir/smail-config"
+install -o root -g root -m 0755 "$backend_smail" "$runtime_dir/smail"
+install -o root -g root -m 0700 "$backend_smail_admin" "$runtime_dir/smail-admin"
+install -o root -g root -m 0700 "$backend_smail_config" "$runtime_dir/smail-config"
 install -o root -g root -m 0644 "$root_dir/deploy/systemd/smail.service" /etc/systemd/system/smail.service
 install -o root -g root -m 0644 "$root_dir/deploy/systemd/smail-admin.service" /etc/systemd/system/smail-admin.service
 systemctl daemon-reload
