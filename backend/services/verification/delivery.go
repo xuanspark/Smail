@@ -264,7 +264,7 @@ func buildCodeHTML(recipientName, code string, expiresInMinutes int) string {
     .header { background: #4f46e5; color: #ffffff; padding: 28px 32px; }
     .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
     .content { padding: 32px; font-size: 15px; line-height: 1.7; }
-    .code { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center; }
+    .code { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 4px; text-align: center; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
     .muted { color: #71717a; font-size: 13px; }
     .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
   </style>
