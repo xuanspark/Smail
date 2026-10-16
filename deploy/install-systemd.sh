@@ -230,6 +230,53 @@ systemctl daemon-reload
 systemctl enable smail
 systemctl disable smail-admin >/dev/null 2>&1 || true
 
+open_firewall_ports() {
+  local ports="80 443 25 465 587 110 995 143 993"
+  echo "=== 正在检查并自动开放网络防火墙端口 ==="
+  local opened=false
+
+  # 1. 检查 ufw (Ubuntu / Debian 常用)
+  if command -v ufw >/dev/null 2>&1; then
+    if ufw status 2>/dev/null | grep -q "Status: active"; then
+      echo "检测到 ufw 防火墙处于开启状态，自动添加放行规则..."
+      for p in $ports; do
+        ufw allow "${p}/tcp" >/dev/null 2>&1 || true
+      done
+      opened=true
+      echo "ufw 端口放行完成 (80, 443, 25, 465, 587, 110, 995, 143, 993)。"
+    else
+      echo "检测到 ufw 未激活，跳过 ufw 规则添加。"
+    fi
+  fi
+
+  # 2. 检查 firewalld (CentOS / RHEL / Rocky / Fedora 常用)
+  if command -v firewall-cmd >/dev/null 2>&1; then
+    if systemctl is-active --quiet firewalld; then
+      echo "检测到 firewalld 处于运行状态，自动添加放行规则..."
+      for p in $ports; do
+        firewall-cmd --permanent --add-port="${p}/tcp" >/dev/null 2>&1 || true
+      done
+      firewall-cmd --reload >/dev/null 2>&1 || true
+      opened=true
+      echo "firewalld 端口放行并重载完成 (80, 443, 25, 465, 587, 110, 995, 143, 993)。"
+    else
+      echo "检测到 firewalld 未运行，跳过 firewalld 规则添加。"
+    fi
+  fi
+
+  # 3. 检查 iptables (若前两者未激活或不存在，但 iptables 命令存在)
+  if [ "$opened" = false ] && command -v iptables >/dev/null 2>&1; then
+    for p in $ports; do
+      if ! iptables -C INPUT -p tcp --dport "$p" -j ACCEPT >/dev/null 2>&1; then
+        iptables -I INPUT -p tcp --dport "$p" -j ACCEPT >/dev/null 2>&1 || true
+      fi
+    done
+    echo "iptables INPUT 规则已更新放行 (80, 443, 25, 465, 587, 110, 995, 143, 993)。"
+  fi
+}
+
+open_firewall_ports
+
 echo "=== 正在启动 Smail 系统服务 ==="
 systemctl restart smail
 
