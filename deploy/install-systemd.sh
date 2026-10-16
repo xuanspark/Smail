@@ -43,7 +43,7 @@ is_packaged=false
 if [ -f "$root_dir/smail" ] && [ -f "$root_dir/smail-admin" ] && [ -f "$root_dir/smail-config" ]; then
   is_packaged=true
 fi
-runtime_dir=/opt/smail
+runtime_dir="${root_dir}"
 fresh_confirmation="确认全新部署 Smail"
 printf '这是不可逆的 Smail 专属数据清理操作。请输入“%s”继续： ' "$fresh_confirmation"
 if ! IFS= read -r confirmation || [ "$confirmation" != "$fresh_confirmation" ]; then
@@ -87,7 +87,7 @@ for process in /proc/[0-9]*/exe; do
       exit 1 ;;
   esac
 done
-if [ -L /opt ] || [ -L "$runtime_dir" ] || { [ -e "$runtime_dir" ] && [ ! -d "$runtime_dir" ]; }; then
+if [ -L "$runtime_dir" ] || { [ -e "$runtime_dir" ] && [ ! -d "$runtime_dir" ]; }; then
   echo "部署路径不能是链接或普通文件。" >&2
   exit 1
 fi
@@ -135,7 +135,15 @@ if [ "$fresh" = true ]; then
   fi
 
   if [ -d "$runtime_dir" ]; then
-    find "$runtime_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+    if [ "$is_packaged" = true ]; then
+      for directory in config data ssl log; do
+        if [ -d "$runtime_dir/$directory" ]; then
+          find "$runtime_dir/$directory" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+        fi
+      done
+    else
+      find "$runtime_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+    fi
   fi
   if [ -d /etc/smail ]; then
     find /etc/smail -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
@@ -159,7 +167,7 @@ install -d -o root -g root -m 0750 /etc/smail
 if [ ! -e /etc/smail/smail.env ]; then
   # 每次部署都重新创建服务环境文件，不继承旧的凭据或代理配置。
   umask 0077
-  printf '%s\n' 'SMAIL_ROOT=/opt/smail' 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
+  printf '%s\n' "SMAIL_ROOT=$runtime_dir" 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
 fi
 if ! grep -q '^SMAIL_PLUGIN_UID=' /etc/smail/smail.env; then
   printf 'SMAIL_PLUGIN_UID=%s\n' "$(id -u smail-plugin)" >> /etc/smail/smail.env
@@ -186,8 +194,22 @@ install -d -o root -g root -m 0755 /run/systemd/ask-password
 install -o root -g root -m 0755 "$backend_smail" "$runtime_dir/smail"
 install -o root -g root -m 0700 "$backend_smail_admin" "$runtime_dir/smail-admin"
 install -o root -g root -m 0700 "$backend_smail_config" "$runtime_dir/smail-config"
-install -o root -g root -m 0644 "$root_dir/deploy/systemd/smail.service" /etc/systemd/system/smail.service
-install -o root -g root -m 0644 "$root_dir/deploy/systemd/smail-admin.service" /etc/systemd/system/smail-admin.service
+sed -e "s|WorkingDirectory=/opt/smail|WorkingDirectory=$runtime_dir|g" \
+    -e "s|ExecStart=/opt/smail/smail|ExecStart=$runtime_dir/smail|g" \
+    -e "s|/opt/smail/config|$runtime_dir/config|g" \
+    -e "s|/opt/smail/data|$runtime_dir/data|g" \
+    -e "s|/opt/smail/ssl|$runtime_dir/ssl|g" \
+    -e "s|/opt/smail/log|$runtime_dir/log|g" \
+    -e "s|/opt/smail/plugins|$runtime_dir/plugins|g" \
+    "$root_dir/deploy/systemd/smail.service" > /etc/systemd/system/smail.service
+chmod 0644 /etc/systemd/system/smail.service
+chown root:root /etc/systemd/system/smail.service
+
+sed -e "s|WorkingDirectory=/opt/smail|WorkingDirectory=$runtime_dir|g" \
+    -e "s|ExecStart=/opt/smail/smail-admin|ExecStart=$runtime_dir/smail-admin|g" \
+    "$root_dir/deploy/systemd/smail-admin.service" > /etc/systemd/system/smail-admin.service
+chmod 0644 /etc/systemd/system/smail-admin.service
+chown root:root /etc/systemd/system/smail-admin.service
 systemctl daemon-reload
 systemctl enable smail
 # 清理旧版本可能留下的开机启动关系。smail-admin 单元没有 [Install]，不能再次 enable。
