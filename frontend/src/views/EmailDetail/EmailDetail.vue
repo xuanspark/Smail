@@ -43,12 +43,12 @@
       <div class="mail-meta-card">
         <div class="meta-left">
           <div class="avatar-placeholder">
-            {{ getInitial(detailData.from_name || detailData.from_address) }}
+            {{ getInitial(formatSenderName(detailData.from_name, detailData.from_address)) }}
           </div>
           <div class="meta-info">
             <div class="sender-line">
-              <span class="sender-name">{{ detailData.from_name !== '' ? detailData.from_name : detailData.from_address }}</span>
-              <span class="sender-email" v-if="detailData.from_name !== ''">&lt;{{ detailData.from_address }}&gt;</span>
+              <span class="sender-name">{{ formatSenderName(detailData.from_name, detailData.from_address) }}</span>
+              <span class="sender-email" v-if="hasSenderName(detailData.from_name)">&lt;{{ detailData.from_address }}&gt;</span>
             </div>
             <div class="receivers-line">
               <span class="meta-label">{{ lang.to }}:</span>
@@ -117,6 +117,8 @@ const {
   ccs,
   showBCC,
   bccs,
+  formatSenderName,
+  hasSenderName,
   formatDetailDate
 } = usePage()
 </script>

@@ -106,10 +106,25 @@ export function usePage() {
     return router.push({name: 'editer', query: {reply: String(id)}})
   }
   
+  const cleanSenderText = (text) => {
+    if (!text) return String();
+    return String(text).replace(/[\u200B-\u200D\u2060-\u206F\uFEFF]/g, String()).trim();
+  };
+
   const getInitial = (name) => {
-    if (!name) return '?';
-    return name.charAt(0).toUpperCase();
-  }
+    const cleaned = cleanSenderText(name);
+    if (!cleaned) return '?';
+    return cleaned.charAt(0).toUpperCase();
+  };
+
+  const formatSenderName = (fromName, fromAddress) => {
+    const cleaned = cleanSenderText(fromName);
+    return cleaned || fromAddress || String();
+  };
+
+  const hasSenderName = (fromName) => {
+    return cleanSenderText(fromName).length > 0;
+  };
   
   const formatDetailDate = (dateStr) => {
     if (!dateStr) return "";
@@ -183,6 +198,9 @@ export function usePage() {
     backToList,
     handleReply,
     getInitial,
+    cleanSenderText,
+    formatSenderName,
+    hasSenderName,
     formatDetailDate,
     handleDelete
   }
