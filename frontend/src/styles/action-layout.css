@@ -283,4 +283,26 @@
     flex: 0 0 auto;
     vertical-align: middle;
   }
+
+  :where(.security-recovery-actions, .recovery-dialog-actions) {
+    display: flex !important;
+    flex: 0 0 auto;
+    flex-flow: row nowrap !important;
+    align-items: center !important;
+    align-content: center !important;
+    white-space: nowrap;
+  }
+
+  :where(.security-recovery-actions, .recovery-dialog-actions) > .el-button,
+  :where(.security-recovery-actions, .recovery-dialog-actions) > button,
+  :where(.security-recovery-actions, .recovery-dialog-actions) .el-button {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    writing-mode: horizontal-tb !important;
+  }
 }
