@@ -160,8 +160,6 @@ fi
 
 if ! getent group smail >/dev/null; then groupadd --system smail; fi
 if ! getent passwd smail >/dev/null; then useradd --system --gid smail --home-dir "$runtime_dir" --shell /usr/sbin/nologin smail; fi
-if ! getent group smail-plugin >/dev/null; then groupadd --system smail-plugin; fi
-if ! getent passwd smail-plugin >/dev/null; then useradd --system --gid smail-plugin --home-dir /nonexistent --shell /usr/sbin/nologin smail-plugin; fi
 install -d -o smail -g smail -m 0755 "$runtime_dir"
 chown smail:smail "$runtime_dir"
 install -d -o root -g root -m 0750 /etc/smail
@@ -171,10 +169,10 @@ if [ ! -e /etc/smail/smail.env ]; then
   printf '%s\n' "SMAIL_ROOT=$runtime_dir" 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
 fi
 if ! grep -q '^SMAIL_PLUGIN_UID=' /etc/smail/smail.env; then
-  printf 'SMAIL_PLUGIN_UID=%s\n' "$(id -u smail-plugin)" >> /etc/smail/smail.env
+  printf 'SMAIL_PLUGIN_UID=%s\n' "$(id -u smail)" >> /etc/smail/smail.env
 fi
 if ! grep -q '^SMAIL_PLUGIN_GID=' /etc/smail/smail.env; then
-  printf 'SMAIL_PLUGIN_GID=%s\n' "$(id -g smail-plugin)" >> /etc/smail/smail.env
+  printf 'SMAIL_PLUGIN_GID=%s\n' "$(id -g smail)" >> /etc/smail/smail.env
 fi
 chown root:root /etc/smail/smail.env
 chmod 0600 /etc/smail/smail.env
