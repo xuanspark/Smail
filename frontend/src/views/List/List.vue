@@ -67,7 +67,7 @@
             <div class="mail-row-content" :class="{'is-unread': !scope.row.is_read}">
               <div class="mail-main-info">
                 <div class="mail-sender">
-                  {{ scope.row.sender.Name !== '' ? scope.row.sender.Name : scope.row.sender.EmailAddress }}
+                  {{ formatSender(scope.row.sender) }}
                 </div>
                 
                 <!-- 高辨识度安全与发送状态标签 -->

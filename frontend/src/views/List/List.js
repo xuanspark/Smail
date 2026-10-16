@@ -173,15 +173,39 @@ export function usePage() {
     router.push("/detail/" + row.id)
   }
   
-  const formatShortDate = (dateStr) => {
-    if (!dateStr) return "";
-    const d = new Date(dateStr);
-    const now = new Date();
-    if (d.toDateString() === now.toDateString()) {
-      return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  const cleanSenderText = (text) => {
+    if (!text) return String();
+    return String(text).replace(/[\u200B-\u200D\u2060-\u206F\uFEFF]/g, String()).trim();
+  };
+
+  const formatSender = (sender) => {
+    if (!sender) return String();
+    const cleanName = cleanSenderText(sender.Name);
+    if (cleanName) {
+      return cleanName;
     }
-    return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
-  }
+    return sender.EmailAddress || String();
+  };
+
+  const formatShortDate = (dateStr) => {
+    if (!dateStr) return String();
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    const timeStr = hours + ':' + minutes;
+    if (d.toDateString() === now.toDateString()) {
+      return timeStr;
+    }
+    const month = pad(d.getMonth() + 1);
+    const date = pad(d.getDate());
+    if (d.getFullYear() === now.getFullYear()) {
+      return month + '-' + date + ' ' + timeStr;
+    }
+    return d.getFullYear() + '-' + month + '-' + date + ' ' + timeStr;
+  };
   
   const selectionChange = (rows) => {
     selectedRows.value = rows
@@ -340,6 +364,7 @@ export function usePage() {
     updateGroupList,
     rowClick,
     formatShortDate,
+    formatSender,
     selectionChange,
     selectAll,
     invertSelection,
