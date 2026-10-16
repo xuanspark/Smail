@@ -243,3 +243,21 @@ echo " 运行用户: smail"
 echo " 开机自启: 已启用 (systemctl enable smail)"
 echo " 服务状态: 已启动 (systemctl status smail)"
 echo "=========================================================="
+
+# 实时追踪服务日志，直到检测到初始化完成（出现“Setup End!”或“初始化完成”）后自动退出
+echo ""
+echo "=== 正在等待并监控初始化流程 (按 Ctrl+C 可提前退出监控) ==="
+echo "提示：请在浏览器打开初始化页面完成系统初始化配置..."
+
+# 使用 journalctl 持续监听 smail 服务日志
+journalctl -u smail -f -n 20 --no-pager | while IFS= read -r line; do
+  printf '%s\n' "$line"
+  case "$line" in
+    *"Setup End!"*|*"初始化完成"*|*"Setup Completed"*|*"Setup finished"*)
+      printf '\n%s\n' "=========================================================="
+      printf '%s\n' " 检测到 Smail 初始化已顺利完成！监控自动退出。"
+      printf '%s\n' "=========================================================="
+      break
+      ;;
+  esac
+done
