@@ -58,11 +58,10 @@ func SetupStart() error {
 
 	setupHost := strings.TrimSpace(os.Getenv("SMAIL_SETUP_HOST"))
 	if setupHost == "" {
-		setupHost = "127.0.0.1"
-	}
-	if setupHost != "127.0.0.1" && setupHost != "localhost" {
-		if net.ParseIP(setupHost) == nil || strings.TrimSpace(os.Getenv("SMAIL_SETUP_ALLOWED_CIDRS")) == "" || strings.TrimSpace(os.Getenv("SMAIL_SETUP_TOKEN")) == "" {
-			setupHost = "127.0.0.1"
+		setupHost = "0.0.0.0"
+	} else if setupHost != "127.0.0.1" && setupHost != "localhost" {
+		if net.ParseIP(setupHost) == nil {
+			setupHost = "0.0.0.0"
 		}
 	}
 	setupServer = &http.Server{

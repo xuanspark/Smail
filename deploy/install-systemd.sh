@@ -166,7 +166,7 @@ install -d -o root -g root -m 0750 /etc/smail
 if [ ! -e /etc/smail/smail.env ]; then
   # 每次部署都重新创建服务环境文件，不继承旧的凭据或代理配置。
   umask 0077
-  printf '%s\n' "SMAIL_ROOT=$runtime_dir" 'GOMEMLIMIT=256MiB' > /etc/smail/smail.env
+  printf '%s\n' "SMAIL_ROOT=$runtime_dir" 'GOMEMLIMIT=256MiB' 'SMAIL_SETUP_HOST=0.0.0.0' 'SMAIL_SETUP_ALLOWED_CIDRS=0.0.0.0/0,::/0' > /etc/smail/smail.env
 fi
 if ! grep -q '^SMAIL_PLUGIN_UID=' /etc/smail/smail.env; then
   printf 'SMAIL_PLUGIN_UID=%s\n' "$(id -u smail)" >> /etc/smail/smail.env
