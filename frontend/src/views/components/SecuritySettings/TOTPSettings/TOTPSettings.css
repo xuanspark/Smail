@@ -70,25 +70,42 @@
   max-width: 360px;
 }
 
-.totp-enrollment :deep(.el-form-item),
-.totp-disable :deep(.el-form-item) {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+@media (min-width: 761px) {
+  .totp-enrollment :deep(.el-form-item),
+  .totp-disable :deep(.el-form-item) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+
+  .totp-enrollment :deep(.el-form-item__label),
+  .totp-disable :deep(.el-form-item__label) {
+    width: auto !important;
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .totp-enrollment :deep(.el-form-item__content),
+  .totp-disable :deep(.el-form-item__content) {
+    min-width: 0;
+    margin-left: 0 !important;
+  }
 }
 
-.totp-enrollment :deep(.el-form-item__label),
-.totp-disable :deep(.el-form-item__label) {
-  width: auto !important;
-  margin: 0;
-  padding: 0;
-  line-height: 1.4;
-  white-space: nowrap;
-}
+@media (max-width: 760px) {
+  .totp-enrollment :deep(.el-form-item),
+  .totp-disable :deep(.el-form-item) {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
 
-.totp-enrollment :deep(.el-form-item__content),
-.totp-disable :deep(.el-form-item__content) {
-  min-width: 0;
-  margin-left: 0 !important;
+  .totp-enrollment :deep(.el-form-item__label),
+  .totp-disable :deep(.el-form-item__label) {
+    margin-bottom: 6px !important;
+    line-height: 1.4;
+  }
 }

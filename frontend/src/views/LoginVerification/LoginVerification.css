@@ -203,22 +203,37 @@
   }
 }
 
-.verification-form :deep(.el-form-item:has(.verification-input)) {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+@media (min-width: 761px) {
+  .verification-form :deep(.el-form-item:has(.verification-input)) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+
+  .verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__label) {
+    width: auto !important;
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__content) {
+    min-width: 0;
+    margin-left: 0 !important;
+  }
 }
 
-.verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__label) {
-  width: auto !important;
-  margin: 0;
-  padding: 0;
-  line-height: 1.4;
-  white-space: nowrap;
-}
+@media (max-width: 760px) {
+  .verification-form :deep(.el-form-item:has(.verification-input)) {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
 
-.verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__content) {
-  min-width: 0;
-  margin-left: 0 !important;
+  .verification-form :deep(.el-form-item:has(.verification-input) .el-form-item__label) {
+    margin-bottom: 6px !important;
+    line-height: 1.4;
+  }
 }

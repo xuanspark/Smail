@@ -231,24 +231,39 @@
   }
 }
 
-.security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"])) {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+@media (min-width: 761px) {
+  .security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"])) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+  }
+
+  .security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"]) .el-form-item__label) {
+    width: auto !important;
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"]) .el-form-item__content) {
+    min-width: 0;
+    margin-left: 0 !important;
+  }
 }
 
-.security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"]) .el-form-item__label) {
-  width: auto !important;
-  margin: 0;
-  padding: 0;
-  line-height: 1.4;
-  white-space: nowrap;
-}
+@media (max-width: 760px) {
+  .security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"])) {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
 
-.security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"]) .el-form-item__content) {
-  min-width: 0;
-  margin-left: 0 !important;
+  .security-settings-card .settings-form :deep(.el-form-item:has(input[autocomplete="one-time-code"]) .el-form-item__label) {
+    margin-bottom: 6px !important;
+    line-height: 1.4;
+  }
 }
 
 .security-settings-card .security-key-header {
