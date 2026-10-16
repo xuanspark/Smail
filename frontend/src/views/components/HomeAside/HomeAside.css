@@ -182,7 +182,7 @@
   width: 100%;
   font-family: inherit;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
   padding: 12px 14px;
   font-size: 14px;
   font-weight: 500;
@@ -192,6 +192,23 @@
   border: 1px solid var(--pm-border-color);
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.settings-btn-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-version-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pm-text-muted, #8c8c8c);
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  line-height: 1.2;
 }
 
 .settings-btn .el-icon {

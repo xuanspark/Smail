@@ -53,8 +53,11 @@
         </el-tooltip>
       </div>
       <button type="button" class="settings-btn" @click="openSettings">
-        <el-icon><Setting /></el-icon>
-        <span class="settings-label">{{ lang.settings }}</span>
+        <div class="settings-btn-main">
+          <el-icon><Setting /></el-icon>
+          <span class="settings-label">{{ lang.settings }}</span>
+        </div>
+        <span class="app-version-badge">V2.10.0</span>
       </button>
     </div>
   </div>
