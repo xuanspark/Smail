@@ -275,7 +275,7 @@ func buildCodeHTML(recipientName, code string, expiresInMinutes int) string {
     <div class="content">
       <p>%s，您好：</p>
       <p>您的验证码是：</p>
-      <p class="code">%s</p>
+      <p class="code" style="margin: 16px 0; font-size: 24px; font-weight: 700; letter-spacing: 2px; text-align: center; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; font-family: Consolas, Monaco, monospace;">%s</p>
       <p>验证码将在 <strong>%d</strong> 分钟后失效。</p>
       <p class="muted">如果不是您本人操作，请忽略此邮件。</p>
     </div>
