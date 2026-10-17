@@ -50,6 +50,8 @@ type fakeSetupDB struct {
 	tableCount    int
 	tableCountErr error
 	tableQueries  []string
+	tableNames    []string
+	tableNamesErr error
 	closed        bool
 }
 
@@ -73,6 +75,14 @@ func (database *fakeSetupDB) TableCountContext(_ context.Context, query string) 
 	}
 	database.tableQueries = append(database.tableQueries, query)
 	return database.tableCount, nil
+}
+
+func (database *fakeSetupDB) TableNamesContext(_ context.Context, query string) ([]string, error) {
+	if database.tableNamesErr != nil {
+		return nil, database.tableNamesErr
+	}
+	database.tableQueries = append(database.tableQueries, query)
+	return database.tableNames, nil
 }
 
 func (database *fakeSetupDB) Close() error {
@@ -293,29 +303,31 @@ func TestEnsureMySQLDatabaseSkipsCreationWhenDatabaseExists(t *testing.T) {
 	}
 }
 
-func TestEnsureMySQLDatabaseRejectsExistingNonEmptyDatabase(t *testing.T) {
-	target := &fakeSetupDB{tableCount: 1}
+func TestEnsureMySQLDatabaseClearsExistingNonEmptyDatabase(t *testing.T) {
+	target := &fakeSetupDB{tableNames: []string{"user", "mail"}}
 	withMySQLSetupOpener(t, func(string) (setupDatabase, error) {
 		return target, nil
 	})
 
-	if err := ensureMySQLDatabase(testMySQLDSN(t, "secret")); err == nil {
-		t.Fatal("non-empty MySQL database was accepted for a fresh deployment")
-	} else if message := DatabaseSetupErrorMessage(err); message == "" {
-		t.Fatal("fresh deployment error message was empty")
+	if err := ensureMySQLDatabase(testMySQLDSN(t, "secret")); err != nil {
+		t.Fatalf("expected non-empty MySQL database to be cleared successfully, got: %v", err)
+	}
+	if len(target.execQueries) == 0 {
+		t.Fatal("expected DROP TABLE queries to be executed on MySQL database")
 	}
 }
 
-func TestEnsurePostgresDatabaseRejectsExistingNonEmptyDatabase(t *testing.T) {
-	target := &fakeSetupDB{tableCount: 1}
+func TestEnsurePostgresDatabaseClearsExistingNonEmptyDatabase(t *testing.T) {
+	target := &fakeSetupDB{tableCount: 2}
 	withPostgresSetupOpener(t, func(string) (setupDatabase, error) {
 		return target, nil
 	})
 
-	if err := ensurePostgresDatabase("postgres://smail:secret@127.0.0.1:5432/smail?sslmode=disable"); err == nil {
-		t.Fatal("non-empty PostgreSQL database was accepted for a fresh deployment")
-	} else if message := DatabaseSetupErrorMessage(err); message == "" {
-		t.Fatal("fresh deployment error message was empty")
+	if err := ensurePostgresDatabase("postgres://smail:secret@127.0.0.1:5432/smail?sslmode=disable"); err != nil {
+		t.Fatalf("expected non-empty PostgreSQL database to be cleared successfully, got: %v", err)
+	}
+	if len(target.execQueries) == 0 {
+		t.Fatal("expected DROP SCHEMA queries to be executed on PostgreSQL database")
 	}
 }
 
@@ -399,12 +411,26 @@ func testMySQLDSN(t *testing.T, password string) string {
 }
 
 func TestPrepareSQLiteDatabaseCreatesParentDirectory(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "nested", "config", "smail.db")
+	tempDir := t.TempDir()
+	databasePath := filepath.Join(tempDir, "nested", "config", "smail.db")
 	if err := prepareSQLiteDatabase(databasePath); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Dir(databasePath)); err != nil {
 		t.Fatalf("SQLite parent directory was not prepared: %v", err)
+	}
+
+	// 测试全新部署自动清空已存在的数据文件和 wal/shm 临时文件
+	_ = os.WriteFile(databasePath, []byte("legacy data"), 0644)
+	_ = os.WriteFile(databasePath+"-wal", []byte("wal data"), 0644)
+	_ = os.WriteFile(databasePath+"-shm", []byte("shm data"), 0644)
+	if err := prepareSQLiteDatabase(databasePath); err != nil {
+		t.Fatal(err)
+	}
+	for _, ext := range []string{"", "-wal", "-shm"} {
+		if _, err := os.Stat(databasePath + ext); !os.IsNotExist(err) {
+			t.Fatalf("expected SQLite file %s to be removed, but still exists", databasePath+ext)
+		}
 	}
 }
 

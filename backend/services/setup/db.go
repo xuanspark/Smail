@@ -434,10 +434,16 @@ func prepareSQLiteDatabase(dsn string) error {
 		return nil
 	}
 	directory := filepath.Dir(path)
-	if directory == "." || directory == "" {
-		return nil
+	if directory != "." && directory != "" {
+		if err := os.MkdirAll(directory, 0750); err != nil {
+			return err
+		}
 	}
-	return os.MkdirAll(directory, 0750)
+	// 全新部署自动清空 SQLite 历史数据库文件及临时文件
+	for _, ext := range []string{"", "-wal", "-shm"} {
+		_ = os.Remove(path + ext)
+	}
+	return nil
 }
 
 func buildMySQLDSN(settings DatabaseSettings, previousDSN string) (string, error) {
@@ -582,6 +588,26 @@ func (database *sqlSetupDatabase) TableCountContext(ctx stdcontext.Context, quer
 	return count, nil
 }
 
+func (database *sqlSetupDatabase) TableNamesContext(ctx stdcontext.Context, query string) ([]string, error) {
+	rows, err := database.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
 var openMySQLSetupDatabase = func(dsn string) (setupDatabase, error) {
 	database, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -616,7 +642,7 @@ func ensurePostgresDatabase(dsn string) error {
 	}
 	defer func() { _ = target.Close() }()
 	if err = target.PingContext(requestContext); err == nil {
-		return requireEmptyExternalDatabase(target, requestContext, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')")
+		return clearPostgresDatabase(target, requestContext)
 	} else {
 		var postgresErr *pq.Error
 		if !stderrors.As(err, &postgresErr) || string(postgresErr.Code) != "3D000" {
@@ -652,16 +678,45 @@ type setupDatabase interface {
 	PingContext(stdcontext.Context) error
 	ExecContext(stdcontext.Context, string, ...any) (sql.Result, error)
 	TableCountContext(stdcontext.Context, string) (int, error)
+	TableNamesContext(stdcontext.Context, string) ([]string, error)
 	Close() error
 }
 
-func requireEmptyExternalDatabase(database setupDatabase, ctx stdcontext.Context, query string) error {
-	count, err := database.TableCountContext(ctx, query)
+func clearPostgresDatabase(database setupDatabase, ctx stdcontext.Context) error {
+	count, err := database.TableCountContext(ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')")
 	if err != nil {
-		return databaseError("检查外部数据库是否为空失败", err)
+		return databaseError("检查 PostgreSQL 数据库表失败", err)
 	}
-	if count > 0 {
-		return databaseError("全新部署要求外部数据库为空，请使用新数据库或先清理 Smail 专属数据库", nil)
+	if count == 0 {
+		return nil
+	}
+	if _, err := database.ExecContext(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"); err != nil {
+		return databaseError("清空 PostgreSQL 数据库失败", err)
+	}
+	return nil
+}
+
+func clearMySQLDatabase(database setupDatabase, ctx stdcontext.Context) error {
+	tableNames, err := database.TableNamesContext(ctx, "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")
+	if err != nil {
+		return databaseError("检查 MySQL 数据库表失败", err)
+	}
+	if len(tableNames) == 0 {
+		return nil
+	}
+	if _, err := database.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 0;"); err != nil {
+		return databaseError("清空 MySQL 数据库表失败", err)
+	}
+	defer func() {
+		_, _ = database.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1;")
+	}()
+	for _, tableName := range tableNames {
+		if !validMySQLIdentifier(tableName) {
+			continue
+		}
+		if _, err := database.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS `%s` CASCADE;", tableName)); err != nil {
+			return databaseError("清空 MySQL 数据库表失败", err)
+		}
 	}
 	return nil
 }
@@ -684,7 +739,7 @@ func ensureMySQLDatabase(dsn string) error {
 	}
 	defer func() { _ = target.Close() }()
 	if err = target.PingContext(requestContext); err == nil {
-		return requireEmptyExternalDatabase(target, requestContext, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()")
+		return clearMySQLDatabase(target, requestContext)
 	} else {
 		var mysqlErr *mysql.MySQLError
 		if !errors.As(err, &mysqlErr) || mysqlErr.Number != 1049 {
