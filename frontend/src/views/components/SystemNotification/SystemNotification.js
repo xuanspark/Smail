@@ -267,7 +267,7 @@ export function usePage(props = {}) {
     manager, loading, submitting, error, status, accounts, page, total, form,
     secret, secretAccount, secretVisible, seconds, canManage, stateText, dirty,
     canReveal, verifyVisible, verifyPassword, openVerify, verifyAndReveal, clearVerification,
-    loadAccounts, selectAccount: openManage, openManage, closeManage, revealAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave,
+    loadAccounts, selectAccount, openManage, closeManage, revealAccount, refresh, save, rotate, clearSecret, copySecret, beforeLeave,
     manageVisible
   }
 }

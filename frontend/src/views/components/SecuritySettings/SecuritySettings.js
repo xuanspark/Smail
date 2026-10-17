@@ -337,7 +337,7 @@ export function usePage() {
     notify('外部安全邮箱绑定成功', 'success')
   }
 
-    const rebindExternalEmail = (item) => {
+    const rebindExternalEmail = () => {
     openExternalEmailDialog()
   }
 
