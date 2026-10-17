@@ -219,10 +219,11 @@ func buildCodeMessage(from string, challenge Challenge, code string) []byte {
 	htmlBody := CodeHTML(challenge, code)
 
 	return []byte(fmt.Sprintf(
-		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n--%s\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n--%s\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n--%s--\r\n",
+		"From: %s\r\nTo: %s\r\nSubject: %s\r\nList-Unsubscribe: <mailto:unsubscribe@%s>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n--%s\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n--%s\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n--%s--\r\n",
 		from,
 		challenge.Email,
 		mime.QEncoding.Encode("UTF-8", title),
+		strings.TrimSpace(strings.Split(from, "@")[len(strings.Split(from, "@"))-1]),
 		boundary,
 		boundary,
 		text,

@@ -678,6 +678,15 @@ func (e *Email) ForwardBuildBytes(ctx *context.Context, sender *models.User, for
 		h.Set("In-Reply-To", fmt.Sprintf("<%s>", e.MsgID))
 	}
 
+	unsubDomain := cfg.Domain
+	if len(cfg.Domains) > 0 && cfg.Domains[0] != "" {
+		unsubDomain = cfg.Domains[0]
+	}
+	if unsubDomain != "" {
+		h.Set("List-Unsubscribe", fmt.Sprintf("<mailto:unsubscribe@%s>", unsubDomain))
+		h.Set("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+	}
+
 	// Create a new mail writer
 	mw, err := mail.CreateWriter(&b, h)
 	if err != nil {
@@ -880,6 +889,15 @@ func (e *Email) BuildBytes(ctx *context.Context, dkim bool) ([]byte, error) {
 			})
 		}
 		h.SetAddressList("Cc", cc)
+	}
+
+	unsubDomain := cfg.Domain
+	if len(cfg.Domains) > 0 && cfg.Domains[0] != "" {
+		unsubDomain = cfg.Domains[0]
+	}
+	if unsubDomain != "" {
+		h.Set("List-Unsubscribe", fmt.Sprintf("<mailto:unsubscribe@%s>", unsubDomain))
+		h.Set("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
 	}
 
 	// Create a new mail writer
