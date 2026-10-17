@@ -130,7 +130,7 @@ for legacy_backup in /var/backups/smail-deploy-*; do
 done
 if [ "$fresh" = true ]; then
   if [ -d "$runtime_dir" ] && [ -n "$(find "$runtime_dir" -mindepth 1 -maxdepth 1 -type l -print -quit)" ]; then
-    echo "全新部署已停止：/opt/smail 顶层存在符号链接，拒绝清理。" >&2
+    echo "全新部署已停止：$runtime_dir 顶层存在符号链接，拒绝清理。" >&2
     exit 1
   fi
 
