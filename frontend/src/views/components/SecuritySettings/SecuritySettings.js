@@ -337,7 +337,28 @@ export function usePage() {
     notify('外部安全邮箱绑定成功', 'success')
   }
 
-  const disableExternalEmail = async item => {
+    const rebindExternalEmail = (item) => {
+    openExternalEmailDialog()
+  }
+
+  const deleteExternalEmail = async item => {
+    try {
+      await ElMessageBox.confirm(`确定彻底删除/解绑安全邮箱 ${item.email} 吗？解绑后将移除该邮箱记录。`, '删除外部邮箱', {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消'
+      })
+      const res = await http.post('/api/v1/security/external-email/delete', { id: item.id })
+      if (res.errorNo !== 0) throw new Error(res.errorMsg || '删除外部邮箱失败')
+      await loadSecurityData()
+      await globalStatus.refresh()
+      notify('外部安全邮箱已删除', 'success')
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') notify(error?.message || '删除外部邮箱失败')
+    }
+  }
+
+const disableExternalEmail = async item => {
     try {
       await ElMessageBox.confirm(`确定停用 ${item.email} 吗？停用后不能用于登录验证和恢复。`, '停用外部邮箱', { type: 'warning' })
       const res = await http.post('/api/v1/security/external-email/disable', { id: item.id })
@@ -451,6 +472,6 @@ export function usePage() {
     externalDialogVisible, ruleForm, rules, submit, registerCredential, renameCredential, revokeCredential,
     saveSecurityQuestion, generateRecoveryCodes, revealRecoveryCodes, saveRecoveryCodes, revokeRecoveryCodes, openExternalEmailDialog,
     handleExternalEmailBound,
-    disableExternalEmail, formatTime,
+    rebindExternalEmail, deleteExternalEmail, disableExternalEmail, formatTime,
   }
 }

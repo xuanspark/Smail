@@ -139,6 +139,11 @@ export async function packageRelease(selectedTargets = targets, { workspace = ro
       const legacyArchive = path.join(releaseRoot, legacyArchiveName)
       try { await copyFile(archive, legacyArchive) } catch (e) {}
     }
+    // 同步复制到 out 根目录，满足直接从 out 目录引用的部署习惯
+    try {
+      await copyFile(archive, path.join(outputRoot, archiveName))
+      await copyFile(archive, path.join(outputRoot, legacyArchiveName))
+    } catch (e) {}
     await rename(stagedReceipt, receipt)
     await rename(staging, directory)
     releases.push({ target, directory, archive, receipt })

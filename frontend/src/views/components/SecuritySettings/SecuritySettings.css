@@ -1402,3 +1402,18 @@
     overflow: visible !important;
   }
 }
+.external-item-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.external-item-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  white-space: nowrap;
+}

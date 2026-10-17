@@ -4,7 +4,7 @@ import lang from '../../../i18n/i18n';
 
 import {http} from "@/utils/axios";
 
-import {ElNotification} from "element-plus";
+import {ElNotification, ElMessageBox} from "element-plus";
 
 import {Plus} from "@element-plus/icons-vue";
 
@@ -283,7 +283,41 @@ export function usePage() {
   
   reflushList()
 
-  return {
+    const canDeleteUser = user => {
+    return canEditUser(user) && !isSameUser(user, globalStatus.userInfos)
+  }
+
+  const handleDeleteUser = async user => {
+    if (!canDeleteUser(user)) {
+      ElNotification({ type: 'error', message: '无法删除该用户' })
+      return
+    }
+    try {
+      await ElMessageBox.confirm(
+        `确定彻底删除用户 "${user.Account}" 吗？此操作将永久清理该用户的所有关联配置、安全密钥与绑定数据，且不可逆！`,
+        '删除用户警告',
+        {
+          type: 'warning',
+          confirmButtonText: '确定删除',
+          cancelButtonText: '取消',
+          confirmButtonClass: 'el-button--danger'
+        }
+      )
+      const res = await http.post('/api/v1/user/delete', { id: user.ID, account: user.Account })
+      if (res.errorNo !== 0) {
+        throw new Error(res.errorMsg || '删除用户失败')
+      }
+      ElNotification({ type: 'success', message: `用户 ${user.Account} 已删除` })
+      await reflushList()
+      await globalStatus.refresh()
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') {
+        ElNotification({ type: 'error', message: error?.message || '删除用户失败' })
+      }
+    }
+  }
+
+return {
     reactive,
     ref,
     lang,
@@ -320,6 +354,8 @@ export function usePage() {
     handleEdit,
     canEditUser,
     createUser,
+    canDeleteUser,
+    handleDeleteUser,
     submit,
     roleMeta,
     recoveryCodeMeta,
@@ -331,4 +367,4 @@ export function usePage() {
 export {
   Plus,
   roleMeta
-}
+} 

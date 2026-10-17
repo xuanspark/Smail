@@ -84,7 +84,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" align="right" :width="canManageMembership ? 126 : 68">
+        <el-table-column label="操作" align="right" :width="canManageMembership ? 186 : 126">
           <template #default="scope">
             <el-button
               size="small"
@@ -96,6 +96,17 @@
               class="action-btn"
             >
               编辑
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              text
+              bg
+              @click="handleDeleteUser(scope.row)"
+              :disabled="!canDeleteUser(scope.row)"
+              class="action-btn"
+            >
+              删除
             </el-button>
             <el-button v-if="canManageMembership" size="small" text :disabled="groupSaving" @click="editMembership(scope.row)">分组</el-button>
           </template>

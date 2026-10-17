@@ -136,7 +136,11 @@
       <div v-if="externalEmails.length" v-loading="externalListLoading" class="external-list">
         <div v-for="item in externalEmails" :key="item.id" class="external-item">
           <div><strong>{{ item.email }}</strong><span>{{ item.type === 'primary' ? '主要邮箱' : '备用邮箱' }}</span><el-tag size="small" :type="item.status === 'verified' ? 'success' : 'warning'">{{ item.status === 'verified' ? '已验证' : item.status === 'pending' ? '待验证' : '已停用' }}</el-tag></div>
-          <el-button v-if="item.status !== 'disabled'" type="danger" plain size="small" @click="disableExternalEmail(item)">停用</el-button>
+          <div class="external-item-actions">
+            <el-button v-if="item.status === 'disabled'" type="primary" plain size="small" @click="rebindExternalEmail(item)">启用</el-button>
+            <el-button v-else type="warning" plain size="small" @click="disableExternalEmail(item)">停用</el-button>
+            <el-button type="danger" plain size="small" @click="deleteExternalEmail(item)">删除</el-button>
+          </div>
         </div>
       </div>
       <el-empty v-else v-loading="externalListLoading" description="暂无外部安全邮箱" />
