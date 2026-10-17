@@ -10,6 +10,25 @@ import { packagePlan, packageRelease } from '../../deploy/package.mjs'
 
 const execute = promisify(execFile)
 
+async function listArchiveEntries(archivePath) {
+  const isZip = archivePath.endsWith('.zip')
+  if (isZip && process.platform !== 'win32') {
+    const { stdout } = await execute('unzip', ['-Z1', archivePath], { windowsHide: true })
+    return stdout.trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  }
+  const { stdout } = await execute('tar', ['-tf', archivePath], { windowsHide: true })
+  return stdout.trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+}
+
+async function extractArchive(archivePath, destination) {
+  const isZip = archivePath.endsWith('.zip')
+  if (isZip && process.platform !== 'win32') {
+    await execute('unzip', ['-q', archivePath, '-d', destination], { windowsHide: true })
+    return
+  }
+  await execute('tar', ['-xf', archivePath, '-C', destination], { windowsHide: true })
+}
+
 async function fixture(selectedTargets) {
   const directory = path.join(root, 'test-log', 'package-tests')
   await mkdir(directory, { recursive: true })
@@ -30,13 +49,13 @@ test('六个平台发布包只包含三个程序和四个空目录，解压后�
     const extension = release.target.startsWith('windows_') ? '.exe' : ''
     const programs = ['smail', 'smail-admin', 'smail-config'].map(name => name + extension)
     const directories = ['config', 'data', 'log', 'ssl']
-    const { stdout } = await execute('tar', ['-tf', release.archive], { windowsHide: true })
-    assert.deepEqual(stdout.trim().split(/\r?\n/).sort(), [
+    const entries = await listArchiveEntries(release.archive)
+    assert.deepEqual(entries.sort(), [
       'smail/', ...programs.map(name => `smail/${name}`), ...directories.map(name => `smail/${name}/`)
     ].sort())
     const extracted = path.join(workspace, 'extracted', release.target)
     await mkdir(extracted, { recursive: true })
-    await execute('tar', ['-xf', release.archive, '-C', extracted], { windowsHide: true })
+    await extractArchive(release.archive, extracted)
     const receipt = JSON.parse(await readFile(release.receipt, 'utf8'))
     assert.equal(receipt.files.length, 3)
     assert.equal(receipt.archive.name, path.basename(release.archive))
@@ -70,7 +89,8 @@ test('重复打包保留旧数据但不会将其带入新发布包', async () =>
   await writeFile(database, 'private fixture')
   await writeFile(path.join(previous.directory, 'smail', 'release.json'), 'old metadata')
   await packageRelease([target], { workspace })
-  const { stdout } = await execute('tar', ['-tf', previous.archive], { windowsHide: true })
+  const entries = await listArchiveEntries(previous.archive)
+  const stdout = entries.join('\n')
   assert.doesNotMatch(stdout, /private\.db|release\.json/)
   const historyRoot = path.join(workspace, 'out', 'build-history')
   const history = await readdir(historyRoot)
