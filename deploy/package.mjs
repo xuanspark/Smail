@@ -9,6 +9,17 @@ import { buildPlan, root, targets } from './build-plugins.mjs'
 const execute = promisify(execFile)
 const runtimeDirectories = ['config', 'data', 'ssl', 'log']
 
+export async function resolveAppVersion(workspace = root) {
+  if (process.env.SMAIL_VERSION) return process.env.SMAIL_VERSION
+  try {
+    const vueFile = path.join(workspace, 'frontend', 'src', 'views', 'components', 'HomeAside', 'HomeAside.vue')
+    const content = await readFile(vueFile, 'utf8')
+    const match = content.match(/class="app-version-badge">\s*(V\d+\.\d+\.\d+)\s*<\/span>/)
+    if (match) return match[1]
+  } catch (e) {}
+  return 'dev'
+}
+
 export function packagePlan(target, workspace = root) {
   buildPlan({ target })
   const [goos, goarch] = target.split('_')
@@ -107,20 +118,27 @@ export async function packageRelease(selectedTargets = targets, { workspace = ro
       await chmod(destination, 0o755)
       files.push({ name, ...await digestFile(destination) })
     }
-    const archiveName = `${name}.${target.startsWith('windows_') ? 'zip' : 'tar.gz'}`
+    const version = await resolveAppVersion(workspace)
+    const baseExt = target.startsWith('windows_') ? 'zip' : 'tar.gz'
+    const archiveName = version && version !== 'dev' ? `Smail_${version}_${target}.${baseExt}` : `${name}.${baseExt}`
+    const legacyArchiveName = `${name}.${baseExt}`
     const stagedArchive = path.join(staging, archiveName)
     await createArchive(target, staging, stagedArchive)
     const archive = path.join(releaseRoot, archiveName)
     const receipt = path.join(receiptRoot, `${name}.json`)
     const stagedReceipt = path.join(staging, `${name}.json`)
     await writeFile(stagedReceipt, JSON.stringify({
-      version: process.env.SMAIL_VERSION || 'dev', gitHash: process.env.GIT_HASH || '',
+      version: version || process.env.SMAIL_VERSION || 'dev', gitHash: process.env.GIT_HASH || '',
       protocolVersion: 1, target, plugins: buildPlan({ target }).map(item => item.id), files,
       archive: { name: archiveName, ...await digestFile(stagedArchive) },
       createdAt: new Date().toISOString()
     }, null, 2) + '\n')
     await preservePrevious(outputRoot, [directory, archive, receipt])
     await rename(stagedArchive, archive)
+    if (archiveName !== legacyArchiveName) {
+      const legacyArchive = path.join(releaseRoot, legacyArchiveName)
+      try { await copyFile(archive, legacyArchive) } catch (e) {}
+    }
     await rename(stagedReceipt, receipt)
     await rename(staging, directory)
     releases.push({ target, directory, archive, receipt })
