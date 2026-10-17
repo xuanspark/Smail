@@ -45,6 +45,7 @@ func DefaultMigrations() []Migration {
 		DefineCustom(28, "expand_recovery_code_ciphertext", "expand_recovery_code_ciphertext_v1", applyRecoveryCodeCiphertextSchema),
 		DefineCustom(29, "expand_email_thread", "expand_email_thread_v1", applyEmailThreadSchema),
 		DefineCustom(30, "expand_outbound_submission", "expand_outbound_submission_v1", applyOutboundSubmissionSchema),
+		DefineCustom(31, "expand_notification_sender_name", "expand_notification_sender_name_v1", applyNotificationSenderNameSchema),
 	}
 }
 

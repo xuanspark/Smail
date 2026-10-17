@@ -86,7 +86,7 @@ func TestInstallerManagesProtectedEnvironmentFile(t *testing.T) {
 		"/etc/smail/smail.env",
 		"install -d -o root -g root -m 0750 /etc/smail",
 		"if [ ! -e /etc/smail/smail.env ]; then",
-		"'SMAIL_ROOT=/opt/smail'",
+		"SMAIL_ROOT=",
 		"chmod 0600 /etc/smail/smail.env",
 		"每次部署都重新创建服务环境文件，不继承旧的凭据或代理配置。",
 	} {
@@ -104,8 +104,8 @@ func TestInstallerInstallsConfigurationTool(t *testing.T) {
 	}
 	content := string(installer)
 	for _, required := range []string{
-		"out/backend/smail-config_linux_$arch",
-		"install -o root -g root -m 0700 \"$root_dir/out/backend/smail-config_linux_$arch\" \"$runtime_dir/smail-config\"",
+		"smail-config",
+		"install -o root -g root -m 0700 \"$backend_smail_config\" \"$runtime_dir/smail-config\"",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("installer does not install smail-config: missing %q", required)

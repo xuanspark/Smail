@@ -65,3 +65,10 @@ func (s *ProtocolSession) ReserveNotification(recipients int) error {
 	}
 	return s.notification.Reserve(db.Instance, recipients, time.Now())
 }
+
+func (s *ProtocolSession) NotificationSenderName() string {
+	if !s.IsNotification() {
+		return ""
+	}
+	return s.notification.SenderName()
+}

@@ -19,10 +19,13 @@ func (s *Session) authorizedSubmission(email *parsemail.Email) bool {
 	if !s.isNotification() {
 		return authorizedSubmissionEmail(email, s.From, s.Ctx)
 	}
-	sender := validation.NotificationAddress(config.CurrentMailDomains().Primary)
-	return sender != "" && email != nil && email.From != nil && email.Sender != nil &&
-		strings.EqualFold(s.From, sender) && strings.EqualFold(email.From.EmailAddress, sender) &&
-		strings.EqualFold(email.Sender.EmailAddress, sender) && strings.EqualFold(email.EnvelopeFrom, sender)
+	primaryDomain := config.CurrentMailDomains().Primary
+	if !validation.IsAuthorizedNotificationSender(s.From, primaryDomain) || email == nil || email.From == nil || email.Sender == nil {
+		return false
+	}
+	return validation.IsAuthorizedNotificationSender(email.From.EmailAddress, primaryDomain) &&
+		validation.IsAuthorizedNotificationSender(email.Sender.EmailAddress, primaryDomain) &&
+		validation.IsAuthorizedNotificationSender(email.EnvelopeFrom, primaryDomain)
 }
 
 // 插件处理后再校验最终内容，不能通过邮件头额外添加信封中没有的收件人。
@@ -59,8 +62,15 @@ func (s *Session) prepareNotification(email *parsemail.Email, rawBytes int) erro
 		}
 		return localPersistenceSMTPError()
 	}
-	// 系统通知不能冒充账号恢复邮件，也不能请求向任意地址回执。
-	email.From.Name, email.Sender.Name = "系统通知", "系统通知"
+	// 自定义发信名称：客户端From已指定名称 > 后台授权配置的SenderName > 默认"系统通知"
+	senderName := "系统通知"
+	if s.authorization != nil && strings.TrimSpace(s.authorization.NotificationSenderName()) != "" {
+		senderName = strings.TrimSpace(s.authorization.NotificationSenderName())
+	}
+	if email.From != nil && strings.TrimSpace(email.From.Name) != "" && email.From.Name != email.From.EmailAddress {
+		senderName = strings.TrimSpace(email.From.Name)
+	}
+	email.From.Name, email.Sender.Name = senderName, senderName
 	email.ReplyTo, email.ReadReceipt = nil, nil
 	return nil
 }

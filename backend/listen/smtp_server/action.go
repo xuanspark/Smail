@@ -95,7 +95,7 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	if err := s.checkAuthorization(); err != nil {
 		return err
 	}
-	if s.isNotification() && !strings.EqualFold(from, validation.NotificationAddress(config.CurrentMailDomains().Primary)) {
+	if s.isNotification() && !validation.IsAuthorizedNotificationSender(from, config.CurrentMailDomains().Primary) {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "Notification sender is not authorized"}
 	}
 	log.WithContext(s.Ctx).Debug("SMTP MAIL accepted")

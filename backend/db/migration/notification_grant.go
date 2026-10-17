@@ -28,3 +28,7 @@ func notificationGrantStatements() map[Dialect][]string {
 		DialectPostgres: {statement},
 	}
 }
+
+func applyNotificationSenderNameSchema(ctx context.Context, exec executor, dialect Dialect) error {
+	return ensureColumn(ctx, exec, dialect, "notification_grant", "sender_name", "VARCHAR(64) NULL")
+}

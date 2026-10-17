@@ -172,7 +172,7 @@ func TestAdminPluginRestartScope(t *testing.T) {
 
 func TestManagementEndpointCatalog(t *testing.T) {
 	endpoints := ManagementEndpoints()
-	if len(endpoints) != 47 {
+	if len(endpoints) != 49 {
 		t.Fatalf("unexpected endpoint count: %d", len(endpoints))
 	}
 	seen := map[string]struct{}{}

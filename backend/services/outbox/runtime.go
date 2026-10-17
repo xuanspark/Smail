@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -185,9 +184,10 @@ func authorizedQueuedSender(submission Submission, message *parsemail.Email, use
 	}
 	domains := config.CurrentMailDomains()
 	if submission.Authorization.Kind == "notification" {
-		sender := validation.NotificationAddress(domains.Primary)
-		return sender != "" && strings.EqualFold(submission.EnvelopeFrom, sender) &&
-			strings.EqualFold(message.From.EmailAddress, sender) && strings.EqualFold(message.Sender.EmailAddress, sender)
+		primaryDomain := domains.Primary
+		return primaryDomain != "" && validation.IsAuthorizedNotificationSender(submission.EnvelopeFrom, primaryDomain) &&
+			validation.IsAuthorizedNotificationSender(message.From.EmailAddress, primaryDomain) &&
+			validation.IsAuthorizedNotificationSender(message.Sender.EmailAddress, primaryDomain)
 	}
 	allowAlias := user.EffectiveRole() == access.RoleSuperAdmin
 	return validation.IsAuthorizedSender(message.From.EmailAddress, user.Account, allowAlias, domains.Accepted) &&

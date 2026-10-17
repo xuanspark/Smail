@@ -15,6 +15,7 @@ type NotificationGrant struct {
 	MinuteCount     int    `xorm:"minute_count" json:"-"`
 	DayKey          string `xorm:"day_key" json:"-"`
 	DayCount        int    `xorm:"day_count" json:"-"`
+	SenderName      string `xorm:"sender_name varchar(64) null" json:"sender_name"`
 }
 
 func (NotificationGrant) TableName() string { return "notification_grant" }

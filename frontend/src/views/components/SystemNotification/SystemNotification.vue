@@ -117,6 +117,14 @@
           <el-form-item label="允许该账号通过 SMTP 发送系统通知">
             <el-switch v-model="form.enabled" active-text="开启" inactive-text="关闭" />
           </el-form-item>
+          <el-form-item label="自定义发件名称（可选）">
+            <el-input
+              v-model="form.sender_name"
+              maxlength="30"
+              placeholder="留空默认显示“系统通知”"
+              clearable
+            />
+          </el-form-item>
           <div class="notification-limits">
             <el-form-item label="每分钟收件人限额">
               <el-input-number v-model="form.minute_limit" :min="1" :max="100" :precision="0" />
@@ -152,7 +160,7 @@
           <el-descriptions-item label="SMTP 用户名"><code>{{ status.username }}</code></el-descriptions-item>
           <el-descriptions-item label="SMTP 密码">独立发信凭据</el-descriptions-item>
           <el-descriptions-item label="发件邮箱"><code>{{ status.sender }}</code></el-descriptions-item>
-          <el-descriptions-item label="发件名称">{{ status.sender_name }}（服务端固定）</el-descriptions-item>
+          <el-descriptions-item label="发件名称">{{ status.sender_name }}（未自定义时默认“系统通知”）</el-descriptions-item>
         </el-descriptions>
         <p class="notification-hint">必须启用加密和证书校验。服务器名需正确解析且由证书覆盖；此处显示配置，不代表公网连通性已验收。</p>
         </div>

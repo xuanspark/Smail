@@ -15,7 +15,7 @@ export function usePage(props = {}) {
   const page = ref(1)
   const total = ref(0)
   const selectedID = ref(Number(props.userId || globalStatus.userInfos?.id || 0))
-  const form = reactive({ enabled: false, minute_limit: 10, day_limit: 100 })
+  const form = reactive({ enabled: false, minute_limit: 10, day_limit: 100, sender_name: '' })
   const secret = ref('')
   const secretAccount = ref('')
   const secretVisible = ref(false)
@@ -38,7 +38,10 @@ export function usePage(props = {}) {
     return status.value.configured ? '已开启，可发信' : '已开启，待生成凭据'
   })
   const dirty = computed(() => status.value && (
-    form.enabled !== status.value.enabled || form.minute_limit !== status.value.minute_limit || form.day_limit !== status.value.day_limit
+    form.enabled !== status.value.enabled ||
+    form.minute_limit !== status.value.minute_limit ||
+    form.day_limit !== status.value.day_limit ||
+    (form.sender_name || '') !== (status.value.custom_sender_name || '')
   ))
 
   const dataOf = result => {

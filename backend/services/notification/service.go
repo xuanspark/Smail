@@ -56,7 +56,7 @@ func Configured(item models.NotificationGrant, user models.User) bool {
 }
 
 // SetAuthorization 使用版本条件避免覆盖其他管理员的修改；关闭时永久清除旧凭据。
-func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabled bool, minuteLimit, dayLimit int, guards ...accountgroup.WriteGuard) error {
+func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabled bool, minuteLimit, dayLimit int, senderName string, guards ...accountgroup.WriteGuard) error {
 	if minuteLimit < 1 || minuteLimit > 100 || dayLimit < minuteLimit || dayLimit > 10000 {
 		return ErrLimits
 	}
@@ -93,6 +93,11 @@ func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabl
 		item.CodeHash = ""
 		item.CodeCiphertext = ""
 	}
+	senderName = strings.TrimSpace(senderName)
+	if len(senderName) > 64 {
+		senderName = senderName[:64]
+	}
+	item.SenderName = senderName
 	item.MinuteLimit, item.DayLimit = minuteLimit, dayLimit
 	item.CodeVersion++
 	if expected == 0 {
@@ -102,7 +107,7 @@ func SetAuthorization(engine *xorm.Engine, user models.User, expected int, enabl
 		return tx.Commit()
 	}
 	affected, err := tx.ID(user.ID).Where("code_version = ?", expected).
-		Cols("enabled", "code_hash", "code_ciphertext", "code_version", "minute_limit", "day_limit").Update(&item)
+		Cols("enabled", "code_hash", "code_ciphertext", "code_version", "minute_limit", "day_limit", "sender_name").Update(&item)
 	if err != nil {
 		return err
 	}
@@ -214,6 +219,14 @@ type Grant struct {
 	hash            string
 	sessionVersion  int
 	securityVersion int
+	senderName      string
+}
+
+func (g *Grant) SenderName() string {
+	if g == nil {
+		return ""
+	}
+	return g.senderName
 }
 
 func (g *Grant) QueueBinding() (string, int, int, string) {
@@ -234,7 +247,7 @@ func Authenticate(engine *xorm.Engine, user models.User, plain string) (*Grant, 
 	if subtle.ConstantTimeCompare([]byte(item.CodeHash), []byte(digest(plain))) != 1 {
 		return nil, ErrDenied
 	}
-	return &Grant{engine, user.ID, item.CodeVersion, item.CodeHash, item.SessionVersion, item.SecurityVersion}, nil
+	return &Grant{engine, user.ID, item.CodeVersion, item.CodeHash, item.SessionVersion, item.SecurityVersion, item.SenderName}, nil
 }
 
 func (g *Grant) Valid(engine *xorm.Engine) bool {

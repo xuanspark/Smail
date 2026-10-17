@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"git.pcux.cn/xuans/Smail/config"
@@ -21,11 +22,12 @@ import (
 )
 
 type notificationRequest struct {
-	UserID      int   `json:"user_id"`
-	Version     int   `json:"version"`
-	Enabled     *bool `json:"enabled"`
-	MinuteLimit int   `json:"minute_limit"`
-	DayLimit    int   `json:"day_limit"`
+	UserID      int    `json:"user_id"`
+	Version     int    `json:"version"`
+	Enabled     *bool  `json:"enabled"`
+	MinuteLimit int    `json:"minute_limit"`
+	DayLimit    int    `json:"day_limit"`
+	SenderName  string `json:"sender_name"`
 }
 
 func loadNotificationUser(ctx *context.Context, w http.ResponseWriter, userID int, write bool) (*models.User, bool) {
@@ -110,7 +112,14 @@ func GetNotificationStatus(ctx *context.Context, w http.ResponseWriter, req *htt
 		"minute_used": minuteUsed, "day_used": dayUsed,
 		"host": "smtp." + domain, "tls_port": ports.SMTPTLS, "starttls_port": ports.SMTPSTARTTLS,
 		"username": notification.UsernamePrefix + user.Account + "@" + domain,
-		"sender":   validation.NotificationAddress(domain), "sender_name": "系统通知",
+		"sender":   validation.NotificationAddress(domain),
+		"sender_name": func() string {
+			if strings.TrimSpace(item.SenderName) != "" {
+				return strings.TrimSpace(item.SenderName)
+			}
+			return "系统通知"
+		}(),
+		"custom_sender_name": item.SenderName,
 		"max_recipients": notification.MaxRecipients, "max_message_bytes": notification.MaxMessageBytes,
 	}).FPrint(w)
 }
@@ -175,8 +184,8 @@ func SetNotificationAuthorization(ctx *context.Context, w http.ResponseWriter, r
 	if !ok {
 		return
 	}
-	err := notification.SetAuthorization(db.Instance, *user, input.Version, *input.Enabled, input.MinuteLimit, input.DayLimit, accountWriteGuard(ctx, *user))
-	recordNotificationManagement(ctx, user.ID, "设置系统通知授权", err, map[string]any{"enabled": *input.Enabled, "minute_limit": input.MinuteLimit, "day_limit": input.DayLimit})
+	err := notification.SetAuthorization(db.Instance, *user, input.Version, *input.Enabled, input.MinuteLimit, input.DayLimit, input.SenderName, accountWriteGuard(ctx, *user))
+	recordNotificationManagement(ctx, user.ID, "设置系统通知授权", err, map[string]any{"enabled": *input.Enabled, "minute_limit": input.MinuteLimit, "day_limit": input.DayLimit, "sender_name": input.SenderName})
 	if err != nil {
 		writeNotificationError(w, err)
 		return
