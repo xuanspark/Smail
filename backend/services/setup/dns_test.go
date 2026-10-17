@@ -94,18 +94,30 @@ func TestBuildDNSItemsCreatesExpectedRecordShape(t *testing.T) {
 	}
 }
 
-func TestBuildDNSItemsDoesNotReuseMailIPForUnresolvedWebDomain(t *testing.T) {
+func TestBuildDNSItemsReusesMailIPForUnresolvedWebDomain(t *testing.T) {
 	cfg := &config.Config{
 		Domain:    "example.net",
 		WebDomain: "panel.example.net",
 	}
 	items := buildDNSItemsWithWebIPv4(cfg, "example.net", "v=DKIM1; k=rsa; p=test", "198.51.100.30", "", "", nil)
 
-	if items[0].Host != "panel" || items[0].Value != "" || items[0].UnavailableReason != unresolvedWebIPv4 {
-		t.Fatalf("unresolved web A record = %#v", items[0])
+	if items[0].Host != "panel" || items[0].Value != "198.51.100.30" || items[0].UnavailableReason != "" {
+		t.Fatalf("unresolved web A record should fall back to mail public ip: %#v", items[0])
 	}
 	if items[1].Host != "smtp" || items[1].Value != "198.51.100.30" {
 		t.Fatalf("mail A record = %#v", items[1])
+	}
+}
+
+func TestBuildDNSItemsWithoutAnyIPMarksUnresolvedWebDomain(t *testing.T) {
+	cfg := &config.Config{
+		Domain:    "example.net",
+		WebDomain: "panel.example.net",
+	}
+	items := buildDNSItemsWithWebIPv4(cfg, "example.net", "v=DKIM1; k=rsa; p=test", "", "", "", nil)
+
+	if items[0].Host != "panel" || items[0].Value != "" || items[0].UnavailableReason != unresolvedWebIPv4 {
+		t.Fatalf("unresolved web A record without public ip = %#v", items[0])
 	}
 }
 

@@ -121,6 +121,14 @@ func buildDNSItemsWithWebIPv4(configData *config.Config, domain, dkimPublicKey, 
 				Tips:  ipTips,
 			})
 		}
+	} else if address != "" {
+		items = append(items, &DNSItem{
+			Type:  "A",
+			Host:  webHost,
+			Value: address,
+			TTL:   dnsRecordTTL,
+			Tips:  "Web 域名尚未解析，已推荐使用邮件服务器公网 IPv4",
+		})
 	} else {
 		items = append(items, &DNSItem{
 			Type:              "A",

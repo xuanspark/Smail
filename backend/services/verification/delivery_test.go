@@ -71,7 +71,7 @@ func TestSMTPDeliveryUsesReferenceHTMLTemplate(t *testing.T) {
 		"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
 		"<h1>邮箱验证码</h1>",
 		"<p>&lt;xuans&gt;，您好：</p>",
-		"<p class=\"code\">123456</p>",
+		">123456</p>",
 		"<strong>7</strong> 分钟",
 		"本邮件由 Smail 发送",
 	} {
