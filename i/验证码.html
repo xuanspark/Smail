@@ -1,0 +1,195 @@
+1.[{{site_name}}] 邮箱验证码
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #4f46e5; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 600; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>邮箱验证码</h1></div>
+    <div class="content">
+<p>{{recipient_name}}，您好：</p>
+<p>您的验证码是：</p>
+<p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center;">{{verification_code}}</p>
+<p>验证码将在 <strong>{{expires_in_minutes}}</strong> 分钟后失效。</p>
+<p>如果不是您本人操作，请忽略此邮件。</p></div>
+    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
+  </div>
+</body>
+</html>
+
+2.[{{site_name}}] 密码重置请求
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #7c3aed; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: #7c3aed; color: #ffffff; text-decoration: none; font-weight: 600; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>密码重置</h1></div>
+    <div class="content">
+<p>{{recipient_name}}，您好：</p>
+<p>我们收到了您的密码重置请求，请点击下方按钮设置新密码。</p>
+<p><a class="button" href="{{reset_url}}">重置密码</a></p>
+<p>此链接将在 <strong>{{expires_in_minutes}}</strong> 分钟后失效。</p>
+<p class="muted">如果按钮无法点击，请复制以下链接到浏览器中打开：<br>{{reset_url}}</p>
+<p>如果不是您本人操作，请忽略此邮件。</p></div>
+    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
+  </div>
+</body>
+</html>
+
+3.[{{site_name}}] 通知邮箱验证码
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #0ea5e9; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: #0ea5e9; color: #ffffff; text-decoration: none; font-weight: 600; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>通知邮箱验证</h1></div>
+    <div class="content">
+<p>{{recipient_name}}，您好：</p>
+<p>您正在添加额外的通知邮箱，请输入以下验证码完成验证。</p>
+<p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center;">{{verification_code}}</p>
+<p>验证码将在 <strong>{{expires_in_minutes}}</strong> 分钟后失效。</p>
+<p>如果不是您本人操作，请忽略此邮件。</p></div>
+    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
+  </div>
+</body>
+</html>
+
+4.[{{site_name}}] 账户已被禁用
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #b91c1c; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: #b91c1c; color: #ffffff; text-decoration: none; font-weight: 600; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>账户已被禁用</h1></div>
+    <div class="content">
+<p>{{recipient_name}}，您好：</p>
+<p>您的账户在统计周期内多次触发平台内容审核/风控规则，系统已自动禁用该账户。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>禁用时间</td><td>{{triggered_at}}</td></tr>
+  <tr><td>所属分组</td><td>{{group_name}}</td></tr>
+  <tr><td>命中类别 / 分数</td><td>{{moderation_category}} / {{moderation_score}}</td></tr>
+  <tr><td>累计触发次数</td><td>{{violation_count}} / {{ban_threshold}}</td></tr>
+</table>
+<p>如需申诉或恢复账号，请联系平台管理员处理。</p></div>
+    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
+  </div>
+</body>
+</html>
+
+5.[运维告警][{{severity}}] {{rule_name}}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #ea580c; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: #ea580c; color: #ffffff; text-decoration: none; font-weight: 600; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>运维告警</h1></div>
+    <div class="content">
+<p><strong>规则</strong>：{{rule_name}}</p>
+<p><strong>严重级别</strong>：{{severity}}</p>
+<p><strong>状态</strong>：{{alert_status}}</p>
+<p><strong>指标</strong>：{{metric_type}} {{operator}} {{metric_value}}（阈值 {{threshold_value}}）</p>
+<p><strong>触发时间</strong>：{{triggered_at}}</p>
+<p><strong>说明</strong>：{{alert_description}}</p></div>
+    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
+  </div>
+</body>
+</html>
+
+6.[{{site_name}}] 账户风控提醒
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #ef4444; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .button { display: inline-block; margin-top: 12px; padding: 11px 18px; border-radius: 8px; background: #ef4444; color: #ffffff; text-decoration: none; font-weight: 600; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>账户风控提醒</h1></div>
+    <div class="content">
+<p>{{recipient_name}}，您好：</p>
+<p>您的 API 请求触发了平台内容审核/风控策略。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>触发时间</td><td>{{triggered_at}}</td></tr>
+  <tr><td>所属分组</td><td>{{group_name}}</td></tr>
+  <tr><td>命中类别 / 分数</td><td>{{moderation_category}} / {{moderation_score}}</td></tr>
+  <tr><td>累计触发次数</td><td>{{violation_count}} / {{ban_threshold}}</td></tr>
+</table>
+<p>请检查请求内容，避免后续服务受到影响。</p></div>
+    <div class="footer">This email was sent by {{site_name}}. Please do not reply directly.</div>
+  </div>
+</body>
+</html>
