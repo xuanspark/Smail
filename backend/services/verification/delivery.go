@@ -238,7 +238,7 @@ func CodeHTML(challenge Challenge, code string) string {
 	if strings.TrimSpace(recipientName) == "" {
 		recipientName = challenge.Email
 	}
-	return buildCodeHTML(recipientName, code, verificationExpiryMinutes(challenge))
+	return buildCodeHTML(challenge.Purpose, recipientName, code, verificationExpiryMinutes(challenge))
 }
 
 func verificationExpiryMinutes(challenge Challenge) int {
@@ -251,7 +251,26 @@ func verificationExpiryMinutes(challenge Challenge) int {
 	return int(DefaultTTL / time.Minute)
 }
 
-func buildCodeHTML(recipientName, code string, expiresInMinutes int) string {
+func buildCodeHTML(purpose Purpose, recipientName, code string, expiresInMinutes int) string {
+	headerColor := "#4f46e5"
+	headerTitle := "邮箱验证码"
+	actionPrompt := "您的验证码是："
+
+	switch purpose {
+	case PurposeExternalEmailBind, PurposeExternalEmailChange:
+		headerColor = "#0ea5e9"
+		headerTitle = "通知邮箱验证"
+		actionPrompt = "您正在添加额外的通知邮箱，请输入以下验证码完成验证。"
+	case PurposePasswordRecover, PurposePasswordChange:
+		headerColor = "#7c3aed"
+		headerTitle = "密码重置"
+		actionPrompt = "我们收到了您的密码重置请求，请输入以下验证码完成重置。"
+	default:
+		headerColor = "#4f46e5"
+		headerTitle = "邮箱验证码"
+		actionPrompt = "您的验证码是："
+	}
+
 	return fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -261,31 +280,200 @@ func buildCodeHTML(recipientName, code string, expiresInMinutes int) string {
   <style>
     body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
     .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
-    .header { background: #4f46e5; color: #ffffff; padding: 28px 32px; }
+    .header { background: %s; color: #ffffff; padding: 28px 32px; }
     .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
     .content { padding: 32px; font-size: 15px; line-height: 1.7; }
-    .code { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 4px; text-align: center; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+    .code { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center; white-space: nowrap !important; word-break: keep-all !important; overflow-wrap: normal !important; font-family: -apple-system, BlinkMacSystemFont, Consolas, Monaco, monospace; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+    @media only screen and (max-width: 480px) {
+      body { padding: 12px !important; }
+      .container { width: 100%% !important; border-radius: 8px !important; }
+      .header { padding: 20px 20px !important; }
+      .content { padding: 24px 16px !important; }
+      .code {
+        font-size: 24px !important;
+        letter-spacing: 4px !important;
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+        overflow-wrap: normal !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>%s</h1></div>
+    <div class="content">
+      <p>%s，您好：</p>
+      <p>%s</p>
+      <p class="code" style="margin: 20px 0; font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; font-family: Consolas, Monaco, monospace;">%s</p>
+      <p>验证码将在 <strong>%d</strong> 分钟后失效。</p>
+      <p class="muted">如果不是您本人操作，请忽略此邮件。</p>
+    </div>
+    <div class="footer">本邮件由 Smail 发送，请勿直接回复。This email was sent by Smail. Please do not reply directly.</div>
+  </div>
+</body>
+</html>`,
+		headerColor,
+		headerTitle,
+		html.EscapeString(recipientName),
+		actionPrompt,
+		html.EscapeString(code),
+		expiresInMinutes,
+	)
+}
+
+// AccountDisabledHTML 生成账户已被禁用通知邮件正文。
+func AccountDisabledHTML(recipientName, triggeredAt, groupName, moderationCategory, moderationScore, violationCount, banThreshold, siteName string) string {
+	if siteName == "" {
+		siteName = "Smail"
+	}
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #b91c1c; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+    table { width: 100%%; border-collapse: collapse; margin: 16px 0; }
+    td { padding: 8px 12px; border: 1px solid #e4e4e7; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>账户已被禁用</h1></div>
+    <div class="content">
+      <p>%s，您好：</p>
+      <p>您的账户在统计周期内多次触发平台内容审核/风控规则，系统已自动禁用该账户。</p>
+      <table>
+        <tr><td>禁用时间</td><td>%s</td></tr>
+        <tr><td>所属分组</td><td>%s</td></tr>
+        <tr><td>命中类别 / 分数</td><td>%s / %s</td></tr>
+        <tr><td>累计触发次数</td><td>%s / %s</td></tr>
+      </table>
+      <p>如需申诉或恢复账号，请联系平台管理员处理。</p>
+    </div>
+    <div class="footer">This email was sent by %s. Please do not reply directly.</div>
+  </div>
+</body>
+</html>`,
+		html.EscapeString(recipientName),
+		html.EscapeString(triggeredAt),
+		html.EscapeString(groupName),
+		html.EscapeString(moderationCategory),
+		html.EscapeString(moderationScore),
+		html.EscapeString(violationCount),
+		html.EscapeString(banThreshold),
+		html.EscapeString(siteName),
+	)
+}
+
+// AlertHTML 生成运维告警通知邮件正文。
+func AlertHTML(ruleName, severity, alertStatus, metricType, operator, metricValue, thresholdValue, triggeredAt, alertDescription, siteName string) string {
+	if siteName == "" {
+		siteName = "Smail"
+	}
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #ea580c; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
     .muted { color: #71717a; font-size: 13px; }
     .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header"><h1>邮箱验证码</h1></div>
+    <div class="header"><h1>运维告警</h1></div>
+    <div class="content">
+      <p><strong>规则</strong>：%s</p>
+      <p><strong>严重级别</strong>：%s</p>
+      <p><strong>状态</strong>：%s</p>
+      <p><strong>指标</strong>：%s %s %s（阈值 %s）</p>
+      <p><strong>触发时间</strong>：%s</p>
+      <p><strong>说明</strong>：%s</p>
+    </div>
+    <div class="footer">This email was sent by %s. Please do not reply directly.</div>
+  </div>
+</body>
+</html>`,
+		html.EscapeString(ruleName),
+		html.EscapeString(severity),
+		html.EscapeString(alertStatus),
+		html.EscapeString(metricType),
+		html.EscapeString(operator),
+		html.EscapeString(metricValue),
+		html.EscapeString(thresholdValue),
+		html.EscapeString(triggeredAt),
+		html.EscapeString(alertDescription),
+		html.EscapeString(siteName),
+	)
+}
+
+// RiskWarningHTML 生成账户风控提醒通知邮件正文。
+func RiskWarningHTML(recipientName, triggeredAt, groupName, moderationCategory, moderationScore, violationCount, banThreshold, siteName string) string {
+	if siteName == "" {
+		siteName = "Smail"
+	}
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 24px; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18181b; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10); }
+    .header { background: #ef4444; color: #ffffff; padding: 28px 32px; }
+    .header h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+    .content { padding: 32px; font-size: 15px; line-height: 1.7; }
+    .muted { color: #71717a; font-size: 13px; }
+    .footer { padding: 18px 32px; background: #fafafa; color: #a1a1aa; font-size: 12px; }
+    table { width: 100%%; border-collapse: collapse; margin: 16px 0; }
+    td { padding: 8px 12px; border: 1px solid #e4e4e7; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>账户风控提醒</h1></div>
     <div class="content">
       <p>%s，您好：</p>
-      <p>您的验证码是：</p>
-      <p class="code" style="margin: 16px 0; font-size: 24px; font-weight: 700; letter-spacing: 2px; text-align: center; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; font-family: Consolas, Monaco, monospace;">%s</p>
-      <p>验证码将在 <strong>%d</strong> 分钟后失效。</p>
-      <p class="muted">如果不是您本人操作，请忽略此邮件。</p>
+      <p>您的 API 请求触发了平台内容审核/风控策略。</p>
+      <table>
+        <tr><td>触发时间</td><td>%s</td></tr>
+        <tr><td>所属分组</td><td>%s</td></tr>
+        <tr><td>命中类别 / 分数</td><td>%s / %s</td></tr>
+        <tr><td>累计触发次数</td><td>%s / %s</td></tr>
+      </table>
+      <p>请检查请求内容，避免后续服务受到影响。</p>
     </div>
-    <div class="footer">本邮件由 Smail 发送，请勿直接回复。</div>
+    <div class="footer">This email was sent by %s. Please do not reply directly.</div>
   </div>
 </body>
 </html>`,
 		html.EscapeString(recipientName),
-		html.EscapeString(code),
-		expiresInMinutes,
+		html.EscapeString(triggeredAt),
+		html.EscapeString(groupName),
+		html.EscapeString(moderationCategory),
+		html.EscapeString(moderationScore),
+		html.EscapeString(violationCount),
+		html.EscapeString(banThreshold),
+		html.EscapeString(siteName),
 	)
 }
 
