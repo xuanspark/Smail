@@ -1168,6 +1168,39 @@ func VerifyOwnExternalEmail(ctx *context.Context, w http.ResponseWriter, req *ht
 	response.NewSuccessResponse(map[string]any{"verified": true}).FPrint(w)
 }
 
+func DeleteExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	runtime := currentSecurityRuntime()
+	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil {
+		writeSecurityError(w, response.NeedLogin, "请先登录")
+		return
+	}
+	var input externalEmailRequest
+	if err := decodeJSONRequest(w, req, &input); err != nil || input.ID <= 0 {
+		writeSecurityError(w, response.ParamsError, "请求无效")
+		return
+	}
+	if err := runtime.external.Delete(ctx.UserID, input.ID); err != nil {
+		writeSecurityError(w, response.ParamsError, "外部邮箱删除失败")
+		return
+	}
+	if runtime.verification != nil && runtime.verification.Store != nil {
+		runtime.verification.Store.InvalidateResource(input.ID, verification.PurposeExternalEmailBind)
+		runtime.verification.Store.InvalidateResource(input.ID, verification.PurposeExternalEmailChange)
+		runtime.verification.Store.InvalidateAccount(ctx.UserAccount)
+	}
+	if runtime.recovery != nil {
+		runtime.recovery.InvalidateUser(ctx.UserID)
+	}
+	loginVerificationState.Lock()
+	for id, item := range loginVerificationState.items {
+		if item.UserID == ctx.UserID {
+			delete(loginVerificationState.items, id)
+		}
+	}
+	loginVerificationState.Unlock()
+	response.NewSuccessResponse(map[string]any{"deleted": true}).FPrint(w)
+}
+
 func DisableExternalEmail(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
 	runtime := currentSecurityRuntime()
 	if ctx == nil || ctx.UserID <= 0 || runtime.external == nil {

@@ -411,6 +411,20 @@ func (r *Repository) AbandonPending(userID, id int) error {
 	return nil
 }
 
+func (r *Repository) Delete(userID, id int) error {
+	if r == nil || r.engine == nil || userID <= 0 || id <= 0 {
+		return ErrInvalidBinding
+	}
+	affected, err := r.engine.Where("id = ? AND user_id = ?", id, userID).Delete(&models.ExternalEmail{})
+	if err != nil {
+		return fmt.Errorf("delete external email binding: %w", err)
+	}
+	if affected == 0 {
+		return ErrBindingOwnership
+	}
+	return nil
+}
+
 func (r *Repository) Disable(userID, id int) error {
 	if r == nil || r.engine == nil || userID <= 0 || id <= 0 {
 		return ErrInvalidBinding

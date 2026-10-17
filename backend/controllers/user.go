@@ -603,3 +603,139 @@ func writeUserAuthorizationError(w http.ResponseWriter, err error, recoveryMessa
 	}
 	writeSecurityError(w, response.NoAccessPrivileges, "无权执行该用户管理操作")
 }
+
+type userDeleteRequest struct {
+	Id      int    `json:"id"`
+	Account string `json:"account"`
+}
+
+func DeleteUser(ctx *context.Context, w http.ResponseWriter, req *http.Request) {
+	var reqData userDeleteRequest
+	if err := decodeUserRequest(w, req, &reqData); err != nil {
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
+		return
+	}
+	if reqData.Id == 0 && reqData.Account == "" {
+		response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
+		return
+	}
+
+	var user models.User
+	var found bool
+	var err error
+	if reqData.Id != 0 {
+		found, err = db.Instance.Where("id=?", reqData.Id).Get(&user)
+	} else {
+		account, validationErr := validation.NormalizeAccount(reqData.Account)
+		if validationErr != nil {
+			response.NewErrorResponse(response.ParamsError, "参数错误", "").FPrint(w)
+			return
+		}
+		found, err = db.Instance.Where("account=?", account).Get(&user)
+	}
+	if err != nil {
+		log.WithContext(ctx).Errorf("SQL Error: %+v", err)
+		response.NewErrorResponse(response.ServerError, "查询用户失败", "").FPrint(w)
+		return
+	}
+	if !found || user.ID == 0 {
+		response.NewErrorResponse(response.ParamsError, "用户不存在", "").FPrint(w)
+		return
+	}
+
+	if ctx != nil && ctx.UserID == user.ID {
+		response.NewErrorResponse(response.ParamsError, "不能删除当前登录的账号", "").FPrint(w)
+		return
+	}
+
+	targetRole := user.EffectiveRole()
+	if !requireAccountScope(ctx, w, user.ID) {
+		return
+	}
+	if err := authorizeCapability(ctx, access.CapabilityUserManage, targetRole, false); err != nil {
+		response.NewErrorResponse(response.NoAccessPrivileges, "无权删除该用户", "").FPrint(w)
+		return
+	}
+
+	if targetRole == access.RoleSuperAdmin {
+		var superAdminCount int64
+		superAdminCount, err = db.Instance.Where("role = ? OR is_admin = 1", string(access.RoleSuperAdmin)).Count(&models.User{})
+		if err != nil {
+			log.WithContext(ctx).WithError(err).Error("count super admin failed")
+			response.NewErrorResponse(response.ServerError, "检查超级管理员数量失败", "").FPrint(w)
+			return
+		}
+		if superAdminCount <= 1 {
+			response.NewErrorResponse(response.ParamsError, "系统必须保留至少一个超级管理员，无法删除", "").FPrint(w)
+			return
+		}
+	}
+
+	writeGuard := accountWriteGuard(ctx, user)
+	tx := db.Instance.NewSession()
+	if tx == nil {
+		response.NewErrorResponse(response.ServerError, "删除用户失败", "").FPrint(w)
+		return
+	}
+	defer tx.Close()
+	if err := tx.Begin(); err != nil {
+		log.WithContext(ctx).WithError(err).Error("begin user delete transaction failed")
+		response.NewErrorResponse(response.ServerError, "删除用户失败", "").FPrint(w)
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if err := accountgroup.CheckWrite(tx, writeGuard); err != nil {
+		_ = tx.Rollback()
+		writeAccountGroupError(w, err)
+		return
+	}
+
+	credentialService := credentialRuntime()
+	if credentialService != nil {
+		_ = credentialService.RevokeAllWithSession(tx, user.ID)
+	}
+
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.AccountGroupMember{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.ExternalEmail{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.RecoveryCode{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.WebAuthnCredential{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.ClientCredential{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.ProtocolCredential{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.NotificationGrant{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.UserEmail{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.UserContact{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.Rule{})
+	_, _ = tx.Where("user_id = ?", user.ID).Delete(&models.Group{})
+
+	deleteCond := tx.ID(user.ID)
+	accountgroup.ApplyScope(deleteCond, ctx.UserID, ctx.EffectiveRole())
+	num, err := deleteCond.Delete(&models.User{})
+	if err != nil {
+		_ = tx.Rollback()
+		log.WithContext(ctx).WithError(err).Error("delete user failed")
+		response.NewErrorResponse(response.ServerError, "删除用户失败", "").FPrint(w)
+		return
+	}
+	if num == 0 {
+		_ = tx.Rollback()
+		response.NewErrorResponse(response.ServerError, "用户删除未生效", "").FPrint(w)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		log.WithContext(ctx).WithError(err).Error("commit user delete failed")
+		response.NewErrorResponse(response.ServerError, "删除用户失败", "").FPrint(w)
+		return
+	}
+	committed = true
+
+	InvalidateSecurityRuntimeUser(user.ID, user.Account)
+	response.NewSuccessResponse(map[string]any{"deleted": true, "id": user.ID, "account": user.Account}).FPrint(w)
+}
