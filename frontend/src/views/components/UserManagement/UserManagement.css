@@ -22,7 +22,8 @@
 .table-container {
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin-bottom: 16px;
 }
 
@@ -447,3 +448,4 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+

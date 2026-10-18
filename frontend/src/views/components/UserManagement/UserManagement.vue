@@ -84,7 +84,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" align="right" :width="canManageMembership ? 186 : 126">
+        <el-table-column label="操作" align="right" :width="canManageMembership ? 186 : 126" fixed="right">
           <template #default="scope">
             <el-button
               size="small"
@@ -435,3 +435,4 @@ const {
 </script>
 
 <style scoped src="./UserManagement.css"></style>
+
