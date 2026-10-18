@@ -40,7 +40,8 @@ func Write(w http.ResponseWriter, authorized bool) {
 	data := struct {
 		Authorized bool
 		CSS        template.CSS
-	}{authorized, template.CSS(pageCSS)} // 仅信任编译时内嵌样式，禁止传入请求内容。
+	// #nosec G203 -- pageCSS 为编译时内嵌常量，不受用户输入控制，不存在 XSS 风险
+	}{authorized, template.CSS(pageCSS)}
 	if err := resultTemplate.Execute(&body, data); err != nil {
 		http.Error(w, "页面暂时无法显示，请返回 Smail 查看绑定状态。", http.StatusInternalServerError)
 		return

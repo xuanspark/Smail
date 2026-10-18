@@ -171,7 +171,9 @@ func forwardToLocalUser(ctx *context.Context, email *parsemail.Email, account, f
 	}
 	session := db.Instance.NewSession()
 	blocked, filterErr := models.BlacklistedRecipientIDs(session, []int{user.ID}, email.SenderFilterAddresses()...)
-	session.Close()
+	if closeErr := session.Close(); closeErr != nil && filterErr == nil {
+		filterErr = closeErr
+	}
 	if filterErr != nil {
 		return filterErr
 	}

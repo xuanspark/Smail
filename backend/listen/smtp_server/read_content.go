@@ -365,7 +365,9 @@ func saveEmail(ctx *context.Context, size int, email *parsemail.Email, sendUserI
 		}
 		session := db.Instance.NewSession()
 		blocked, filterErr := models.BlacklistedRecipientIDs(session, userIDs, email.SenderFilterAddresses()...)
-		session.Close()
+		if closeErr := session.Close(); closeErr != nil && filterErr == nil {
+			filterErr = closeErr
+		}
 		if filterErr != nil {
 			return nil, nil, filterErr
 		}

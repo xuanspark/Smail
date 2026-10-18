@@ -382,7 +382,9 @@ func randomCodeFromReader(length int, reader io.Reader) (string, error) {
 					continue
 				}
 				digit := int(value) % len(digits)
+				// #nosec G602 -- digit 取值由 int(value)%len(digits) 限定在 0-9 范围，且 counts 和 digits 长度均固定为 10，不存在切片越界
 				code[written] = digits[digit]
+				// #nosec G602 -- digit 取值限定在 0-9 范围，counts 长度为 10，不存在切片越界
 				counts[digit]++
 				written++
 				if written == length {

@@ -16,6 +16,7 @@ import (
 
 const (
 	PluginEgressSocket           = "/egress.socket"
+	// #nosec G101 -- 这是 HTTP 请求头名称常量，并非硬编码密码凭证
 	egressTokenHeader            = "X-Smail-Egress-Token"
 	egressTargetHeader           = "X-Smail-Egress-Target"
 	maxEgressRequestBytes  int64 = 32 << 20

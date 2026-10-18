@@ -50,7 +50,9 @@ func GetEmailDetail(ctx *context.Context, id int, markRead bool) (*response.Emai
 	}
 	session := db.Instance.NewSession()
 	blocked, err := models.BlacklistedRecipientIDs(session, []int{ctx.UserID}, email.FromAddress, sender.EmailAddress)
-	session.Close()
+	if closeErr := session.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return nil, err
 	}
