@@ -184,13 +184,13 @@ IMAP端口： 993(SSL)
 
 
 
-## Releases & CI/CD Workflows
+## 自动化构建发布与 CI/CD 工作流
 
-The project maintains automated build & release workflows across both repositories:
+本项目在两个代码仓库中均维护了全自动化的构建与发布工作流：
 - **GitHub**: [https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
 - **PCUX Git**: [https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
 
-Automated multi-platform release packages (containing full frontend & embedded assets):
+支持全自动化多平台构建与发布包生成（自包含完整的前端与静态内嵌资源）：
 - **Linux**: Smail_linux_amd64.tar.gz / Smail_linux_arm64.tar.gz
 - **Windows**: Smail_windows_amd64.zip / Smail_windows_arm64.zip
 - **macOS**: Smail_darwin_amd64.tar.gz / Smail_darwin_arm64.tar.gz
