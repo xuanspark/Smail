@@ -85,7 +85,7 @@ jobs:
           file: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
           tag: ${{ github.ref }}
           file_glob: true
-          release_name: Smail ${{ env.VERSION }} 企业级安全邮件系统
+          release_name: ${{ env.VERSION }}
           body: |
             ### Smail ${{ env.VERSION }} 发布说明 (Release Notes)
 
