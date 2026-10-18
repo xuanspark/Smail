@@ -108,6 +108,19 @@ func assertResetUserUnchanged(t *testing.T, engine *xorm.Engine, original models
 	assertResetCredentialState(t, engine, original.ID, false)
 }
 
+func testIntegrationControlSocketDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if len(dir)+len("/control.sock") >= 90 {
+		shortDir, err := os.MkdirTemp("/tmp", "smail-*")
+		if err == nil {
+			t.Cleanup(func() { _ = os.RemoveAll(shortDir) })
+			return shortDir
+		}
+	}
+	return dir
+}
+
 func TestUnixResetCommitsPasswordAndRevokesAllProtocolCodes(t *testing.T) {
 	engine, users := resetIntegrationDatabase(t)
 	service, err := credentials.NewService(engine)
@@ -122,7 +135,7 @@ func TestUnixResetCommitsPasswordAndRevokesAllProtocolCodes(t *testing.T) {
 			t.Fatalf("重置前协议 %s 的客户端码不可用：%v", protocol, err)
 		}
 	}
-	path := filepath.Join(t.TempDir(), "control.sock")
+	path := filepath.Join(testIntegrationControlSocketDir(t), "control.sock")
 	// 隔离夹具仅信任测试进程的 UID；不改变生产入口只信任 root 的配置。
 	server, err := ListenUnix(path, []uint32{uint32(os.Geteuid())})
 	if err != nil {

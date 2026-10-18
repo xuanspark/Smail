@@ -10,11 +10,29 @@ import (
 	"time"
 )
 
+func testControlSocketDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if len(dir)+len("/control.sock") >= 90 {
+		shortDir, err := os.MkdirTemp("/tmp", "smail-*")
+		if err == nil {
+			t.Cleanup(func() { _ = os.RemoveAll(shortDir) })
+			return shortDir
+		}
+	}
+	return dir
+}
+
+func testControlSocketPath(t *testing.T) string {
+	t.Helper()
+	return testControlSocketDir(t) + "/control.sock"
+}
+
 func TestUnixResetRoundTrip(t *testing.T) {
 	if DefaultControlPath == "" {
 		t.Skip("unsupported platform")
 	}
-	path := t.TempDir() + "/control.sock"
+	path := testControlSocketPath(t)
 	server, err := ListenUnix(path, []uint32{uint32(os.Getuid())})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +71,7 @@ func TestUnixResetRoundTrip(t *testing.T) {
 }
 
 func TestUnixListenDoesNotReplaceActiveSocket(t *testing.T) {
-	path := t.TempDir() + "/control.sock"
+	path := testControlSocketPath(t)
 	server, err := ListenUnix(path, []uint32{uint32(os.Getuid())})
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +86,7 @@ func TestUnixListenDoesNotReplaceActiveSocket(t *testing.T) {
 }
 
 func TestUnixEmptyAllowedUIDsRejectConnection(t *testing.T) {
-	path := t.TempDir() + "/control.sock"
+	path := testControlSocketPath(t)
 	server, err := ListenUnix(path, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +116,7 @@ func TestUnixEmptyAllowedUIDsRejectConnection(t *testing.T) {
 }
 
 func TestUnixListenRejectsWritableControlDirectory(t *testing.T) {
-	parent := t.TempDir() + "/control"
+	parent := testControlSocketDir(t) + "/control"
 	if err := os.Mkdir(parent, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +129,7 @@ func TestUnixListenRejectsWritableControlDirectory(t *testing.T) {
 }
 
 func TestUnixControlSocketUsesRestrictedPermissions(t *testing.T) {
-	parent := t.TempDir() + "/control"
+	parent := testControlSocketDir(t) + "/control"
 	path := parent + "/control.sock"
 	server, err := ListenUnix(path, []uint32{uint32(os.Getuid())})
 	if err != nil {
@@ -136,7 +154,7 @@ func TestUnixControlSocketUsesRestrictedPermissions(t *testing.T) {
 }
 
 func TestUnixServerStopsWhenContextIsCancelled(t *testing.T) {
-	path := t.TempDir() + "/control.sock"
+	path := testControlSocketPath(t)
 	server, err := ListenUnix(path, []uint32{uint32(os.Getuid())})
 	if err != nil {
 		t.Fatal(err)
