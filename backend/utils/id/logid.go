@@ -7,32 +7,38 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
-var ip_instance string
+var (
+	ipInstance string
+	ipOnce     sync.Once
+	ipMu       sync.RWMutex
+)
 
 func getLocalIP() string {
-	if ip_instance != "" {
-		return ip_instance
-	}
-
-	ip := "127.0.0.1"
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		ip_instance = ip
-		return ip
-	}
-	for _, a := range addrs {
-		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				ip = ipnet.IP.String()
-				break
+	ipOnce.Do(func() {
+		ip := "127.0.0.1"
+		addrs, err := net.InterfaceAddrs()
+		if err == nil {
+			for _, a := range addrs {
+				if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					if ipnet.IP.To4() != nil {
+						ip = ipnet.IP.String()
+						break
+					}
+				}
 			}
 		}
-	}
-	ip_instance = ip
-	return ip
+		ipMu.Lock()
+		ipInstance = ip
+		ipMu.Unlock()
+	})
+
+	ipMu.RLock()
+	defer ipMu.RUnlock()
+	return ipInstance
 }
 
 func GenLogID() string {
