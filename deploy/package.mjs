@@ -9,6 +9,34 @@ import { buildPlan, root, targets } from './build-plugins.mjs'
 const execute = promisify(execFile)
 const runtimeDirectories = ['config', 'data', 'ssl', 'log']
 
+async function copyDeployFiles(stagingSmailDir, target, workspace) {
+  if (!target.startsWith('linux_')) return
+  const deployDir = path.join(stagingSmailDir, 'deploy')
+  const systemdDir = path.join(deployDir, 'systemd')
+  await mkdir(deployDir, { recursive: true, mode: 0o755 })
+  await mkdir(systemdDir, { recursive: true, mode: 0o755 })
+  const srcDeploy = path.join(workspace, 'deploy')
+  const deployFiles = ['install-systemd.sh', 'update-systemd.sh']
+  for (const f of deployFiles) {
+    const src = path.join(srcDeploy, f)
+    const dst = path.join(deployDir, f)
+    try {
+      await copyFile(src, dst)
+      await chmod(dst, 0o755)
+    } catch (e) {}
+  }
+  const srcSystemd = path.join(srcDeploy, 'systemd')
+  const systemdFiles = ['smail.service', 'smail-admin.service', 'smail-tls-sync.service', 'smail-tls-sync.path']
+  for (const f of systemdFiles) {
+    const src = path.join(srcSystemd, f)
+    const dst = path.join(systemdDir, f)
+    try {
+      await copyFile(src, dst)
+      await chmod(dst, 0o755)
+    } catch (e) {}
+  }
+}
+
 export async function resolveAppVersion(workspace = root) {
   if (process.env.SMAIL_VERSION) return process.env.SMAIL_VERSION
   try {
@@ -118,6 +146,7 @@ export async function packageRelease(selectedTargets = targets, { workspace = ro
       await chmod(destination, 0o755)
       files.push({ name, ...await digestFile(destination) })
     }
+    await copyDeployFiles(runtime, target, workspace)
     const version = await resolveAppVersion(workspace)
     const baseExt = target.startsWith('windows_') ? 'zip' : 'tar.gz'
     const archiveName = version && version !== 'dev' ? `Smail_${version}_${target}.${baseExt}` : `${name}.${baseExt}`
