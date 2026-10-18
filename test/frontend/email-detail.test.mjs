@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { compileFunction } from 'node:vm'
-import { reactive, ref, watch } from './vue.mjs'
+import { computed, reactive, ref, watch } from './vue.mjs'
 
 const source = readFileSync(new URL('../../frontend/src/views/EmailDetail/EmailDetail.js', import.meta.url), 'utf8')
 const createPage = compileFunction(
   source.replace(/^import .*$/gm, '').replace('export function usePage', 'function usePage').replace(/export \{[^}]+\}/g, '') + '\nreturn usePage()',
-  ['ref', 'watch', 'onBeforeUnmount', 'useRoute', 'useRouter', 'useGroupStore', 'http', 'ElMessage', 'ElMessageBox', 'lang', 'Document', 'Back', 'Delete', 'Download']
+  ['computed', 'ref', 'watch', 'onBeforeUnmount', 'useRoute', 'useRouter', 'useGroupStore', 'http', 'ElMessage', 'ElMessageBox', 'lang', 'Document', 'Back', 'Delete', 'Download', 'Operation']
 )
 const settle = () => new Promise(resolve => setImmediate(resolve))
 const email = id => ({errorNo: 0, data: {id, subject: `mail-${id}`, to: '[{"EmailAddress":"test@example.com"}]', cc: '[]', attachments: []}})
@@ -17,9 +17,9 @@ function fixture(post, id = '15') {
   const requests = []
   const navigations = []
   let unmount
-  const page = createPage(ref, watch, callback => { unmount = callback }, () => route,
+  const page = createPage(computed, ref, watch, callback => { unmount = callback }, () => route,
     () => ({push: target => navigations.push(target)}), () => ({tag: ''}),
-    {post: async (...args) => { requests.push(args); return post(...args) }}, {}, {}, {}, {}, {}, {}, {})
+    {post: async (...args) => { requests.push(args); return post(...args) }}, {success: () => {}, error: () => {}, warning: () => {}, info: () => {}}, {}, {}, {}, {}, {}, {})
   return {page, route, requests, navigations, unmount: () => unmount()}
 }
 
@@ -141,4 +141,66 @@ test('离开详情后未完成请求不再写入状态', async () => {
   finish(email(15))
   await settle()
   assert.equal(page.detailData.value.id, undefined)
+})
+
+test('一键翻译与查看原文切换，支持缓存翻译结果', async () => {
+  let translateCalls = 0
+  const postHandler = async (url, data) => {
+    if (url === '/api/v1/email/detail') {
+      return {
+        errorNo: 0,
+        data: {
+          id: 15,
+          subject: 'Hello World',
+          text: 'This is an English email.',
+          type: 0,
+          to: '[]',
+          cc: '[]',
+          attachments: []
+        }
+      }
+    }
+    if (url === '/api/v1/email/translate') {
+      translateCalls++
+      return {
+        errorNo: 0,
+        data: {
+          id: 15,
+          subject_translated: '你好世界',
+          content_translated: '这是一封英文邮件。',
+          detected_lang: 'en'
+        }
+      }
+    }
+    return { errorNo: 500, errorMsg: '未知请求' }
+  }
+
+  const { page } = fixture(postHandler, '15')
+  await settle()
+
+  assert.equal(page.displaySubject.value, 'Hello World')
+  assert.equal(page.displayContent.value, 'This is an English email.')
+  assert.equal(page.isTranslated.value, false)
+
+  // 第一次触发翻译
+  await page.toggleTranslate()
+  assert.equal(translateCalls, 1)
+  assert.equal(page.isTranslated.value, true)
+  assert.equal(page.displaySubject.value, '你好世界')
+  assert.equal(page.displayContent.value, '这是一封英文邮件。')
+  assert.equal(page.detectedLang.value, 'en')
+
+  // 点击查看原文
+  await page.toggleTranslate()
+  assert.equal(translateCalls, 1)
+  assert.equal(page.isTranslated.value, false)
+  assert.equal(page.displaySubject.value, 'Hello World')
+  assert.equal(page.displayContent.value, 'This is an English email.')
+
+  // 再次切换到译文（应命中本地缓存，不重复发请求）
+  await page.toggleTranslate()
+  assert.equal(translateCalls, 1)
+  assert.equal(page.isTranslated.value, true)
+  assert.equal(page.displaySubject.value, '你好世界')
+  assert.equal(page.displayContent.value, '这是一封英文邮件。')
 })

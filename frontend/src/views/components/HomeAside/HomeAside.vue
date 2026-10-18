@@ -57,7 +57,7 @@
           <el-icon><Setting /></el-icon>
           <span class="settings-label">{{ lang.settings }}</span>
         </div>
-        <span class="app-version-badge">V2.13.1</span>
+        <span class="app-version-badge">V2.14.0</span>
       </button>
     </div>
   </div>

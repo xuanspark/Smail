@@ -6,6 +6,16 @@
       </el-button>
       <div v-if="!loading && !loadError" class="action-buttons">
         <el-button
+          :type="isTranslated ? 'warning' : 'default'"
+          :loading="translating"
+          plain
+          @click="toggleTranslate"
+          class="translate-btn"
+        >
+          <el-icon><Operation /></el-icon>
+          <span>{{ isTranslated ? '查看原文' : '一键翻译' }}</span>
+        </el-button>
+        <el-button
           v-if="detailData.type === 0"
           type="primary"
           @click="handleReply"
@@ -38,7 +48,14 @@
         :closable="false"
         show-icon
       />
-      <h1 class="mail-subject">{{ detailData.subject }}</h1>
+
+      <div v-if="isTranslated" class="translation-banner">
+        <el-icon class="banner-icon"><Operation /></el-icon>
+        <span>已自动翻译为中文（源语言：{{ detectedLang || '自动识别' }}）</span>
+        <el-button link type="primary" @click="toggleTranslate" class="toggle-back-link">查看原文</el-button>
+      </div>
+
+      <h1 class="mail-subject">{{ displaySubject }}</h1>
       
       <div class="mail-meta-card">
         <div class="meta-left">
@@ -78,10 +95,10 @@
       <el-divider class="custom-divider"/>
 
       <div class="mail-body">
-        <div class="body-text" v-if="detailData.html === ''">
-          {{ detailData.text }}
+        <div class="body-text" v-if="displayIsText">
+          {{ displayContent }}
         </div>
-        <div class="body-html" v-else v-html="detailData.html"></div>
+        <div class="body-html" v-else v-html="displayContent"></div>
       </div>
 
       <div v-if="detailData.attachments && detailData.attachments.length > 0" class="attachments-section">
@@ -100,7 +117,7 @@
 </template>
 
 <script setup>
-import { usePage, Back, Delete, Document, Download } from './EmailDetail.js'
+import { usePage, Back, Delete, Document, Download, Operation } from './EmailDetail.js'
 
 const {
   handleReply,
@@ -119,7 +136,14 @@ const {
   bccs,
   formatSenderName,
   hasSenderName,
-  formatDetailDate
+  formatDetailDate,
+  isTranslated,
+  translating,
+  detectedLang,
+  displaySubject,
+  displayContent,
+  displayIsText,
+  toggleTranslate
 } = usePage()
 </script>
 

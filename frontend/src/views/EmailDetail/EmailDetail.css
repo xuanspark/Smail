@@ -256,3 +256,33 @@
     font-size: 16px;
   }
 }
+
+
+.translate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.translation-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--el-color-primary-light-9, #ecf5ff);
+  color: var(--el-color-primary, #409eff);
+  border: 1px solid var(--el-color-primary-light-7, #d9ecff);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.banner-icon {
+  font-size: 16px;
+}
+
+.toggle-back-link {
+  margin-left: auto;
+  font-size: 13px;
+  cursor: pointer;
+}

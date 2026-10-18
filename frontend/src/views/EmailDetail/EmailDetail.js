@@ -1,8 +1,8 @@
-import {onBeforeUnmount, ref, watch} from 'vue'
+import {computed, onBeforeUnmount, ref, watch} from 'vue'
 
 import {useRoute, useRouter} from 'vue-router'
 
-import {Document, Back, Delete, Download} from '@element-plus/icons-vue';
+import {Document, Back, Delete, Download, Operation} from '@element-plus/icons-vue';
 
 import {ElMessage, ElMessageBox} from 'element-plus';
 
@@ -37,6 +37,12 @@ export function usePage() {
   const loadError = ref('')
   let requestSequence = 0
 
+  // 翻译相关状态
+  const isTranslated = ref(false)
+  const translating = ref(false)
+  const translationCache = ref(null)
+  const detectedLang = ref('')
+
   const parseAddresses = (value) => {
     try {
       const addresses = JSON.parse(value || '[]')
@@ -57,6 +63,12 @@ export function usePage() {
     loadError.value = ''
     loading.value = true
 
+    // 重置翻译状态
+    isTranslated.value = false
+    translating.value = false
+    translationCache.value = null
+    detectedLang.value = ''
+
     const rawId = String(route.params.id || '')
     const id = Number(rawId)
     if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
@@ -67,7 +79,6 @@ export function usePage() {
 
     try {
       const res = await http.post('/api/v1/email/detail', {id})
-      // 切换邮件或离开页面后，旧请求不得覆盖当前状态。
       if (sequence !== requestSequence) return
       if (res?.errorNo !== 0) {
         loadError.value = res?.errorMsg || '读取邮件失败，请重试'
@@ -82,7 +93,6 @@ export function usePage() {
       tos.value = parseAddresses(data.to)
       ccs.value = parseAddresses(data.cc)
       showCC.value = ccs.value.length > 0
-      // 仅在本人的发件副本展示密送；后端仍负责所有权校验和收件副本脱敏。
       bccs.value = data.type === 1 ? parseAddresses(data.bcc) : []
       showBCC.value = bccs.value.length > 0
     } catch {
@@ -97,6 +107,66 @@ export function usePage() {
   watch(() => route.params.id, loadDetail, {immediate: true})
   onBeforeUnmount(() => {
     requestSequence++
+  })
+
+  const toggleTranslate = async () => {
+    if (loading.value || loadError.value) return
+    if (isTranslated.value) {
+      isTranslated.value = false
+      return
+    }
+
+    if (translationCache.value) {
+      isTranslated.value = true
+      return
+    }
+
+    const emailId = Number(detailData.value?.id)
+    if (!Number.isSafeInteger(emailId) || emailId <= 0) return
+
+    translating.value = true
+    try {
+      const res = await http.post('/api/v1/email/translate', {
+        id: emailId,
+        target_lang: 'zh-CN'
+      })
+      if (res?.errorNo === 0 && res.data) {
+        translationCache.value = res.data
+        detectedLang.value = res.data.detected_lang || 'auto'
+        isTranslated.value = true
+        ElMessage.success('翻译完成')
+      } else {
+        ElMessage.error(res?.errorMsg || '翻译失败，请稍后重试')
+      }
+    } catch (err) {
+      ElMessage.error('翻译服务连接失败，请稍后重试')
+    } finally {
+      translating.value = false
+    }
+  }
+
+  const displaySubject = computed(() => {
+    if (isTranslated.value && translationCache.value?.subject_translated) {
+      return translationCache.value.subject_translated
+    }
+    return detailData.value?.subject || ''
+  })
+
+  const displayContent = computed(() => {
+    if (isTranslated.value && translationCache.value?.content_translated) {
+      return translationCache.value.content_translated
+    }
+    if (detailData.value?.html) {
+      return detailData.value.html
+    }
+    return detailData.value?.text || ''
+  })
+
+  const displayIsText = computed(() => {
+    if (isTranslated.value) {
+      return true
+    }
+    return !detailData.value?.html
   })
 
   const backToList = () => router.push({name: 'list'})
@@ -178,6 +248,7 @@ export function usePage() {
     Back,
     Delete,
     Download,
+    Operation,
     ElMessage,
     ElMessageBox,
     lang,
@@ -202,7 +273,14 @@ export function usePage() {
     formatSenderName,
     hasSenderName,
     formatDetailDate,
-    handleDelete
+    handleDelete,
+    isTranslated,
+    translating,
+    detectedLang,
+    displaySubject,
+    displayContent,
+    displayIsText,
+    toggleTranslate
   }
 }
 
@@ -210,5 +288,6 @@ export {
   Back,
   Delete,
   Document,
-  Download
+  Download,
+  Operation
 }
