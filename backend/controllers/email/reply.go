@@ -24,7 +24,9 @@ func applyReplyThread(ctx *context.Context, input sendRequest, message *parsemai
 	if input.DraftID > 0 {
 		session := db.Instance.NewSession()
 		draft, err := loadOwnedDraft(session, ctx.UserID, input.DraftID, input.DraftVersion)
-		session.Close()
+		if closeErr := session.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
 		if err != nil {
 			return err
 		}
