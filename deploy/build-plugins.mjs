@@ -61,7 +61,7 @@ export async function buildPlugins(args) {
   }
   for (const item of plan) {
     await mkdir(path.dirname(item.output), { recursive: true })
-    await run('go', ['build', '-ldflags', '-s -w', '-o', item.output, item.source], path.join(root, item.directory), {
+    await run('go', ['build', '-mod=mod', '-ldflags', '-s -w', '-o', item.output, item.source], path.join(root, item.directory), {
       ...process.env, CGO_ENABLED: '0', GOOS: item.goos, GOARCH: item.goarch
     })
     console.log(`插件已编译：${path.relative(root, item.output)}`)
