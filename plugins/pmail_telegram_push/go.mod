@@ -1,6 +1,6 @@
 module github.com/ydzydzydz/pmail_telegram_push
 
-go 1.25.1
+go 1.26.0
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
@@ -8,10 +8,11 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/phuslu/log v1.0.120
-	golang.org/x/net v0.57.0
 	modernc.org/sqlite v1.46.1
 	xorm.io/xorm v1.3.11
 )
+
+require golang.org/x/net v0.60.0 // indirect
 
 require (
 	filippo.io/edwards25519 v1.1.1 // indirect
@@ -30,10 +31,10 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
