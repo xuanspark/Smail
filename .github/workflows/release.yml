@@ -85,6 +85,9 @@ jobs:
           file: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
           tag: ${{ github.ref }}
           file_glob: true
+          overwrite: true
+          draft: false
+          prerelease: false
           release_name: ${{ env.VERSION }}
           body: |
             ### Smail ${{ env.VERSION }} 发布说明 (Release Notes)
