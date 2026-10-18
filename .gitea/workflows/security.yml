@@ -1,0 +1,60 @@
+name: Security Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Reject committed cloud credentials and private keys
+        run: python3 test/tools/check_tracked_secrets.py
+      - name: Verify isolated acceptance and secret scanner regressions
+        run: |
+          python3 -m unittest discover -s test/deployment -p 'test_runtime_*.py'
+          python3 -m unittest discover -s test/deployment -p 'test_tracked_secrets.py'
+      - name: Setup Go environment
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.9'
+          cache-dependency-path: backend/go.sum
+      - name: Setup Node.js for test runner
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Prepare frontend and Go embedded assets
+        run: |
+          npm install --global yarn@1.22.22
+          cd frontend
+          yarn install --frozen-lockfile
+          yarn test
+          yarn build
+      - name: Verify Go dependencies
+        run: cd backend && go mod verify
+      - name: Run Go tests
+        run: node test/run.mjs backend
+      - name: Run Go static analysis
+        run: cd backend && go vet ./...
+      - name: Run Go race tests
+        run: node test/run.mjs backend -race ./...
+      - name: Run Go security analysis
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
+          cd backend && gosec ./...
+      - name: Scan Go vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          cd backend && govulncheck ./...
+      - name: Verify frontend dependencies and lint
+        run: |
+          cd frontend
+          yarn audit --groups dependencies
+          yarn eslint . --ext .vue,.js,.jsx,.cjs,.mjs --ignore-path .gitignore
