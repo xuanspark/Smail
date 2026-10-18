@@ -50,14 +50,24 @@ test('六个平台发布包只包含三个程序和四个空目录，解压后�
     const programs = ['smail', 'smail-admin', 'smail-config'].map(name => name + extension)
     const directories = ['config', 'data', 'log', 'ssl']
     const entries = await listArchiveEntries(release.archive)
+    const deployEntries = [
+      'smail/deploy/',
+      'smail/deploy/install-systemd.sh',
+      'smail/deploy/update-systemd.sh',
+      'smail/deploy/systemd/',
+      'smail/deploy/systemd/smail.service',
+      'smail/deploy/systemd/smail-admin.service',
+      'smail/deploy/systemd/smail-tls-sync.service',
+      'smail/deploy/systemd/smail-tls-sync.path'
+    ]
     assert.deepEqual(entries.sort(), [
-      'smail/', ...programs.map(name => `smail/${name}`), ...directories.map(name => `smail/${name}/`)
+      'smail/', ...programs.map(name => 'smail/' + name), ...directories.map(name => 'smail/' + name + '/'), ...deployEntries
     ].sort())
     const extracted = path.join(workspace, 'extracted', release.target)
     await mkdir(extracted, { recursive: true })
     await extractArchive(release.archive, extracted)
     const receipt = JSON.parse(await readFile(release.receipt, 'utf8'))
-    assert.equal(receipt.files.length, 3)
+    assert.equal(receipt.files.length, 9)
     assert.equal(receipt.archive.name, path.basename(release.archive))
     const archiveBytes = await readFile(release.archive)
     assert.equal(receipt.archive.bytes, archiveBytes.length)

@@ -9,13 +9,12 @@ import { buildPlan, root, targets } from './build-plugins.mjs'
 const execute = promisify(execFile)
 const runtimeDirectories = ['config', 'data', 'ssl', 'log']
 
-async function copyDeployFiles(stagingSmailDir, target, workspace) {
-  if (!target.startsWith('linux_')) return
+async function copyDeployFiles(stagingSmailDir, target, workspace, files) {
   const deployDir = path.join(stagingSmailDir, 'deploy')
   const systemdDir = path.join(deployDir, 'systemd')
   await mkdir(deployDir, { recursive: true, mode: 0o755 })
   await mkdir(systemdDir, { recursive: true, mode: 0o755 })
-  const srcDeploy = path.join(workspace, 'deploy')
+  const srcDeploy = path.join(root, 'deploy')
   const deployFiles = ['install-systemd.sh', 'update-systemd.sh']
   for (const f of deployFiles) {
     const src = path.join(srcDeploy, f)
@@ -23,6 +22,7 @@ async function copyDeployFiles(stagingSmailDir, target, workspace) {
     try {
       await copyFile(src, dst)
       await chmod(dst, 0o755)
+      if (files) files.push({ name: ['deploy', f].join('/'), ...await digestFile(dst) })
     } catch (e) {}
   }
   const srcSystemd = path.join(srcDeploy, 'systemd')
@@ -33,6 +33,7 @@ async function copyDeployFiles(stagingSmailDir, target, workspace) {
     try {
       await copyFile(src, dst)
       await chmod(dst, 0o755)
+      if (files) files.push({ name: ['deploy', 'systemd', f].join('/'), ...await digestFile(dst) })
     } catch (e) {}
   }
 }
@@ -146,7 +147,7 @@ export async function packageRelease(selectedTargets = targets, { workspace = ro
       await chmod(destination, 0o755)
       files.push({ name, ...await digestFile(destination) })
     }
-    await copyDeployFiles(runtime, target, workspace)
+    await copyDeployFiles(runtime, target, workspace, files)
     const version = await resolveAppVersion(workspace)
     const baseExt = target.startsWith('windows_') ? 'zip' : 'tar.gz'
     const archiveName = version && version !== 'dev' ? `Smail_${version}_${target}.${baseExt}` : `${name}.${baseExt}`
