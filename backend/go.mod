@@ -1,8 +1,8 @@
 module git.pcux.cn/xuans/Smail
 
-go 1.25.0
+go 1.26.0
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -24,11 +24,11 @@ require (
 	github.com/mileusna/spf v0.9.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cast v1.7.1
-	golang.org/x/crypto v0.55.0
-	golang.org/x/net v0.57.0
-	golang.org/x/sys v0.47.0
-	golang.org/x/term v0.45.0
-	golang.org/x/text v0.41.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.60.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
+	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.46.1
 	xorm.io/builder v0.3.13
 	xorm.io/xorm v1.3.9
@@ -65,9 +65,9 @@ require (
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/tools v0.48.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
