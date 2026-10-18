@@ -164,3 +164,14 @@ IMAP端口： 993(SSL)
 [go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
 
 
+
+## Releases & CI/CD Workflows
+
+The project maintains automated build & release workflows across both repositories:
+- **GitHub**: [https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
+- **PCUX Git**: [https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
+
+Automated multi-platform release packages (containing full frontend & embedded assets):
+- **Linux**: Smail_linux_amd64.tar.gz / Smail_linux_arm64.tar.gz
+- **Windows**: Smail_windows_amd64.zip / Smail_windows_arm64.zip
+- **macOS**: Smail_darwin_amd64.tar.gz / Smail_darwin_arm64.tar.gz

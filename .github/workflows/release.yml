@@ -73,12 +73,12 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.PACKAGENAME }}
-          path: out/release/${{ env.ARCHIVENAME }}
+          path: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: out/release/${{ env.ARCHIVENAME }}
+          file: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
           tag: ${{ github.ref }}
           file_glob: true
 

@@ -1,0 +1,128 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  release:
+    types: [ released,prereleased ]
+
+
+jobs:
+  build:
+    needs: security
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        goos: [ windows,  linux, darwin ]
+        goarch: [ amd64, arm64 ]
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 0
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+    steps:
+      - name: Get version
+        id: get_version
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+          echo "${GITHUB_REF}"
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install Dependencies
+        run: npm install --global yarn@1.22.22
+      - name: Setup Go environment
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.9'
+          cache-dependency-path: backend/go.sum
+      - name: Gen output name
+        run: |
+          archive_extension="tar.gz"
+          if [ "${{ matrix.goos }}" = "windows" ]; then archive_extension="zip"; fi
+          echo "PACKAGENAME=Smail_${{ matrix.goos }}_${{ matrix.goarch }}" >> ${GITHUB_ENV}
+          echo "ARCHIVENAME=Smail_${{ matrix.goos }}_${{ matrix.goarch }}.$archive_extension" >> ${GITHUB_ENV}
+      - name: FE Build
+        run: cd frontend && yarn install --frozen-lockfile && yarn build
+      - name: BE Build
+        run: |
+          mkdir -p out/backend
+          cd plugins/pmail_telegram_push
+          npm ci
+          npm run type-check
+          cd ../..
+          node deploy/build-plugins.mjs --target=${{ matrix.goos }}_${{ matrix.goarch }}
+          node deploy/bundle-plugins.mjs ${{ matrix.goos }}_${{ matrix.goarch }}
+          extension=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then extension=".exe"; fi
+          platform="${{ matrix.goos }}"
+          if [ "$platform" = "darwin" ]; then platform="mac"; fi
+          suffix="${platform}_${{ matrix.goarch }}${extension}"
+          cd backend
+          BUILD_FLAGS="-s -w -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.Version=${{ env.VERSION }}' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GoVersion=$(go env GOVERSION)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.GitHash=$(git show -s --format=%H)' -X 'git.pcux.cn/xuans/Smail/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+          go build -tags bundled -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail_$suffix ./cmd/smail
+          go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail-admin_$suffix ./cmd/smail-admin
+          go build -trimpath -ldflags "$BUILD_FLAGS" -o ../out/backend/smail-config_$suffix ./cmd/smail-config
+      - name: Package release
+        run: |
+          SMAIL_VERSION="${{ env.VERSION }}" GIT_HASH="$(git show -s --format=%H)" node deploy/package.mjs ${{ matrix.goos }}_${{ matrix.goarch }}
+      - name: Upload files to Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.PACKAGENAME }}
+          path: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
+          tag: ${{ github.ref }}
+          file_glob: true
+
+  security:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Go environment
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.9'
+          cache-dependency-path: backend/go.sum
+      - name: Setup Node.js for test runner
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Prepare frontend and Go embedded assets
+        run: |
+          npm install --global yarn@1.22.22
+          cd frontend
+          yarn install --frozen-lockfile
+          yarn test
+          yarn build
+      - name: Verify Go dependencies
+        run: cd backend && go mod verify
+      - name: Run Go tests
+        run: node test/run.mjs backend
+      - name: Run Go static analysis
+        run: cd backend && go vet ./...
+      - name: Run Go race tests
+        run: node test/run.mjs backend -race ./...
+      - name: Run Go security analysis
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.10
+          cd backend && gosec ./...
+      - name: Scan Go vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          cd backend && govulncheck ./...
+      - name: Verify frontend dependencies and lint
+        run: |
+          cd frontend
+          yarn audit --groups dependencies
+          yarn eslint . --ext .vue,.js,.jsx,.cjs,.mjs --ignore-path .gitignore

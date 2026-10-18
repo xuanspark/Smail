@@ -284,3 +284,16 @@ curl --fail --silent --show-error \
 ### PMail 原版无法登录的结论
 
 PMail 原版不能作为当前 Smail 的第三方协议登录测试客户端。它的旧登录流程会截断包含 `@` 的登录名，没有 Smail 的协议开关和授权码模型，并且按网页登录密码校验；Smail 则要求“完整邮箱地址 + 对应协议授权码”。因此，把 Smail 的授权码填入 PMail 原版后登录失败属于兼容性限制，不应通过接受短账号名或网页登录密码来规避。
+
+## 发布包与持续集成
+
+项目同时在以下代码仓库维护并提供自动化编译发布工作流：
+- **GitHub**: [https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
+- **PCUX Git**: [https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
+
+每次发布（Release）时，工作流将自动并行编译并打包以下全平台架构部署包：
+- **Linux**: Smail_linux_amd64.tar.gz / Smail_linux_arm64.tar.gz
+- **Windows**: Smail_windows_amd64.zip / Smail_windows_arm64.zip
+- **macOS**: Smail_darwin_amd64.tar.gz / Smail_darwin_arm64.tar.gz
+
+部署包中内置了最新完整编译的前端资源与插件，解压即可运行。
