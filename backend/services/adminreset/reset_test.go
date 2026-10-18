@@ -2,6 +2,7 @@ package adminreset
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -152,10 +153,24 @@ func TestResetSuperAdminRejectsMissingTarget(t *testing.T) {
 	}
 }
 
+func testResetControlSocketDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if len(dir)+len("/control.sock") >= 90 {
+		shortDir, err := os.MkdirTemp("/tmp", "smail-*")
+		if err == nil {
+			t.Cleanup(func() { _ = os.RemoveAll(shortDir) })
+			return shortDir
+		}
+	}
+	return dir
+}
+
 func TestControlServerInterfaceCompiles(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := ListenControl(filepath.Join(t.TempDir(), "control.sock"), []uint32{0}); err == nil {
+	socketPath := filepath.Join(testResetControlSocketDir(t), "control.sock")
+	if _, err := ListenControl(socketPath, []uint32{0}); err == nil {
 		// 具体平台实现由各自适配器测试覆盖。
 	}
 	_ = ctx
