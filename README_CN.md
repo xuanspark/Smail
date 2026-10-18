@@ -43,40 +43,61 @@ Smail是一个追求极简部署流程、极致资源占用的个人域名邮箱
 - 完整实现标准的 POP3 (110/995)、SMTP (25/465/587) 与 IMAP (143/993) 协议。
 - 完美兼容各类主流客户端（Foxmail、Outlook、Thunderbird、Apple Mail 及各类手机自带邮件 App）。
 
-# 如何部署
+# 如何部署与运维
 
-## 0、检查IP、域名
+## 0. 准备工作：检查服务器 IP 与域名信誉
+自建邮件服务器需确保 IP 干净且 25 端口开放（发信服务器互联必需）：
+1. 访问 [Spamhaus IP 检查](https://check.spamhaus.org/) 确认服务器 IP 和域名没有历史被拉黑记录。
+2. 确保云服务器提供商已解封入站与出站 **TCP 25** 端口（若 25 端口被封锁，可在安装后启用 Smail 内置的外部 SMTP 智能中继功能）。
 
-先去[spamhaus](https://check.spamhaus.org/)检查你的域名和服务器IP是否有屏蔽记录
+## 1. 下载发布包
+前往 [Releases 发布页面](https://git.pcux.cn/xuans/Smail/releases) 或 [GitHub Releases](https://github.com/xuanspark/Smail.git) 下载对应系统的最新打包文件（例如 Smail_linux_amd64_V2.10.x.tar.gz）。
 
-## 1、下载文件
+## 2. 生产环境自动化部署（Linux Systemd 推荐）
 
-* [点击这里](https://git.pcux.cn/xuans/Smail/releases)下载一个与你匹配的程序文件。
-* 或者使用Docker运行 `docker pull ghcr.io/jinnrry/pmail:latest`
+Smail 配备了一键式自动化生产环境管理脚本，支持解压即装、防火墙自动配置、权限隔离与系统服务纳管。
 
-## 2、运行
+### 全新部署（一键安装与开机自启）
+1. 将下载的压缩包上传至目标目录并解压（安装路径将自动以解压所在目录为准，例如 /smail）：
+   ```bash
+   mkdir -p /smail && tar -zxvf Smail_linux_amd64_V2.10.x.tar.gz -C /smail
+   cd /smail/deploy
+   sudo ./install-systemd.sh
+   ```
+2. 脚本将自动执行以下完整流程：
+   - 创建无特权的专属 smail 系统运行用户并收紧运行目录权限；
+   - 自动检测并开放防火墙端口（80, 443, 25, 465, 587, 110, 995, 143, 993）；
+   - 注册系统服务 smail.service 并设置开机自启动；
+   - 启动服务并实时监控输出初始化向导链接与初始日志，直到初始化就绪。
 
-`./smail -p 80`
+### 平滑版本更新（无需重配与清空数据）
+后续发布新版本时，无需重复配置域名和清空数据库，直接使用更新脚本即可平滑升级：
+```bash
+# 在新版解压包的 deploy 目录下执行更新：
+cd /path/to/new_smail/deploy
+sudo ./update-systemd.sh
+```
+- 脚本会自动检测现有环境的实际安装路径（如 /smail），将最新的程序二进制文件安全同步至安装路径；
+- 完整保留已配置的数据库、域名记录、证书与历史数据，重启服务后即可顺畅运行新版本。
 
-> `-p 指定引导设置界面的http端口，默认为80端口，注意该参数仅影响引导设置阶段，设置完成后如果需要修改端口请修改配置文件`
+## 3. 手动前台运行模式（开发 / 调试）
+若需要在前台临时启动测试，可直接执行二进制：
+```bash
+./smail -p 80
+```
+> 说明：-p 参数指定初始化向导界面的 HTTP 端口（默认为 80 端口，若申请 Let's Encrypt 证书必须开放并使用 80 端口）。
 
-> [!IMPORTANT]
-> 如果引导设置阶段使用非80端口，将无法自动设置SSL证书
+## 4. 浏览器向导初始化
+在浏览器中打开 http://<服务器公网IP> 或绑定的域名：
+1. **数据库配置**：选择 SQLite（嵌入式单文件）、MySQL 8.x 或 PostgreSQL 14+，一键初始化数据库；
+2. **域名与管理员**：设置主邮件域名（如 example.com）、Web 管理域名（如 mail.example.com）及超级管理员账号密码；
+3. **SSL 证书**：可选择 ACME 自动申请或手动导入证书；
+4. 初始化完成后系统自动就绪，即可登录后台开始使用。
 
-或者
-
-`docker run -p 25:25 -p 80:80 -p 443:443 -p 110:110 -p 465:465 -p 587:587 -p 995:995 -p 993:993 -v $(pwd)/config:/work/config ghcr.io/jinnrry/pmail:latest`
-
-> [!IMPORTANT]
-> 如果你服务器开启了防火墙，你需要打开25、80、110、443、465、587、995、993端口
-
-## 3、配置
-
-浏览器打开 `http://127.0.0.1` 或者是用你服务器公网IP访问，然后按提示配置
-
-## 4、邮箱得分测试
-
-建议找一下邮箱测试服务(比如[https://www.mail-tester.com/](https://www.mail-tester.com/))进行邮件得分检测，避免自己某些步骤漏配，导致发件进对方垃圾箱。
+## 5. 邮件送达率信誉检测（10/10 评分）
+配置 DNS 的 SPF、DKIM 和 DMARC 记录后，建议通过权威邮件评分工具测试邮件送达得分：
+- [Mail-Tester 评分测试](https://www.mail-tester.com/)
+- 根据评分报告提示补充 PTR 反向解析、DKIM 密钥或 SPF 声明，确保信誉满分直达收件箱。
 
 # 配置文件说明
 
