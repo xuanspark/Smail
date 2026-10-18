@@ -85,6 +85,36 @@ jobs:
           file: out/release/*${{ matrix.goos }}_${{ matrix.goarch }}*
           tag: ${{ github.ref }}
           file_glob: true
+          release_name: Smail ${{ env.VERSION }} 企业级安全邮件系统
+          body: |
+            ### Smail ${{ env.VERSION }} 发布说明 (Release Notes)
+
+            本版本为 Smail 正式发布版本，基于 PMail 进行二次架构改造与企业级安全重构，主要更新内容如下：
+
+            #### 🚀 核心新增功能
+            - **邮件免配置智能翻译**：邮件详情页新增一键免配置翻译功能，支持在原文与中英文翻译之间无缝切换。
+            - **第三方发信与系统通知优化**：支持第三方发信自定义发件人名称，简化发信地址；规范 List-Unsubscribe、DKIM、SPF 以及 DMARC 认证兼容性。
+            - **外部邮箱与账号生命周期管理**：支持外部邮箱的配置、编辑、启用/解绑与安全删除；支持超管及管理员安全移除用户账号。
+            - **中继控制与动态开关**：新增 SMTP 中继动态控制开关，支持中继服务器多列紧凑布局与单项管理，不影响已配置中继。
+
+            #### 🛡️ 安全合规与加固
+            - **依赖漏洞与静态分析修复**：
+              - 升级 Go 运行时环境至 1.26.9，解决 GO-2026-6617 (golang.org/x/net) 安全漏洞。
+              - 修复 gosec 静态安全扫描问题（包含 G101、G104、G203、G602 规则）。
+              - 消除 getLocalIP 并发读写竞争（Data Race），引入 sync.Once 与 sync.RWMutex 保护。
+              - 升级前端依赖并修复 source-map-js 等高危依赖安全告警。
+            - **插件安全隔离与跨平台编译**：
+              - 重构插件独立沙箱进程机制，支持 Linux、Windows 与 Darwin 全平台内置插件安全编译与自动加载。
+              - 适配 Go 只读模块检验模式，保证多平台 CI 矩阵构建一致性与稳定性。
+
+            #### 📦 部署与运维改进
+            - **一键自动化安装与平滑更新**：
+              - 优化全新部署脚本 install-systemd.sh，自动以解压目录为安装根目录，支持防火墙端口自动放行、smail 用户创建及实时初始化监控。
+              - 新增平滑更新脚本 update-systemd.sh，支持一键更新系统服务与插件二进制，保留全部现有配置与数据库。
+            - **全平台自动化发布产物**：
+              - Linux: Smail_linux_amd64.tar.gz / Smail_linux_arm64.tar.gz
+              - Windows: Smail_windows_amd64.zip / Smail_windows_arm64.zip
+              - macOS: Smail_darwin_amd64.tar.gz / Smail_darwin_arm64.tar.gz
 
   security:
     permissions:
