@@ -26,7 +26,7 @@ func TestPublishExternalTLSValidatesBeforeReplacingBundle(t *testing.T) {
 	candidate := validRuntimeConfig()
 	candidate.Root.Domains = DomainConfig{Primary: "example.com", Web: "web.example.com", Accepted: []string{"example.com"}}
 	candidate.Root.HTTP = HTTPConfig{Port: 15184, TLSMode: HTTPSTLSModeProxy, TrustedProxyCIDRs: []string{"127.0.0.1/32"}}
-	candidate.SSL.TLS = SSLConfig{Management: SSLManagementWebServer, Mode: ManagedSSLModeUpload, CustomDirectory: "ssl"}
+	candidate.SSL.TLS = SSLConfig{Management: SSLManagementWebServer, Mode: ManagedSSLModeUpload, DefaultDirectory: "config/ssl", CustomDirectory: "ssl"}
 	writeRuntimeFixture(t, root, candidate)
 	key, certificate := testManagedCertificate(t, "example.com", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 2048, "*.example.com")
 	write := func(name string, data []byte) {

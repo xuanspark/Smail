@@ -101,9 +101,22 @@ func TestInheritedAbstractSocketRemainsReachableAcrossListenerCopy(t *testing.T)
 	}
 }
 
+func testPluginEgressSocketDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if len(dir)+len("/egress.socket") >= 90 {
+		shortDir, err := os.MkdirTemp("/tmp", "smail-egress-*")
+		if err == nil {
+			t.Cleanup(func() { _ = os.RemoveAll(shortDir) })
+			return shortDir
+		}
+	}
+	return dir
+}
+
 func TestPluginEgressSocketLifecycle(t *testing.T) {
 	spec := &pluginLaunchSpec{
-		runtimeDir: t.TempDir(),
+		runtimeDir: testPluginEgressSocketDir(t),
 		procAttr: &os.ProcAttr{Env: []string{
 			"SMAIL_PLUGIN_ID=wechat_push",
 			"SMAIL_PLUGIN_RPC_TOKEN=" + strings.Repeat("b", 64),
