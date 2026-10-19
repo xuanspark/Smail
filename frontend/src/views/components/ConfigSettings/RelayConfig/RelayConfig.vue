@@ -1,61 +1,67 @@
 <template>
   <div class="relay-config">
-    <div class="relay-list-heading">
-      <div>
-        <h5>已配置的 SMTP 中继</h5>
-        <p>中继配置独立于本机邮件服务；关闭开关只停止使用，不会删除已填写的信息。</p>
+    <!-- 顶部标题与控制开关 -->
+    <div class="relay-header-card">
+      <div class="relay-title-group">
+        <div class="relay-main-title">
+          <h5>SMTP 发信中继</h5>
+          <el-tag :type="relay.enabled ? 'success' : 'info'" effect="light" class="relay-status-tag">
+            {{ relay.enabled ? '中继服务：已启用' : '中继服务：已停用' }}
+          </el-tag>
+        </div>
+        <p class="relay-desc">
+          配置独立于本机邮件服务；关闭中继开关只停止使用，绝不删除已填写的中继信息。
+        </p>
       </div>
-      <el-button v-if="hasConfigured && !editing" type="primary" plain :disabled="disabled" @click="editing = true">
-        编辑中继
-      </el-button>
+
+      <div class="relay-switch-control">
+        <span class="control-label">中继控制开关</span>
+        <el-switch
+          :model-value="!!relay.enabled"
+          :disabled="disabled"
+          active-text="启用"
+          inactive-text="关闭"
+          inline-prompt
+          @change="val => emit('change', ['relay', 'enabled'], val)"
+        />
+      </div>
     </div>
 
+    <!-- 清除标记提醒 -->
     <el-alert
       v-if="relay.clear"
-      title="已标记清除，保存后将删除服务器、端口、账号、密码、发件邮箱和发件域名。"
+      title="中继配置已标记清除，保存生效后将删除服务器、端口、账号、密码及发信配置。"
       type="warning"
       :closable="false"
       show-icon
       class="relay-alert"
     />
 
-    <div v-if="hasConfigured && !editing" class="relay-list" role="list" aria-label="SMTP 中继列表">
-      <article class="relay-item" role="listitem">
-        <div class="relay-item-heading">
-          <div>
-            <strong>默认 SMTP 中继</strong>
-            <span class="relay-subtitle">单个默认发信中继配置</span>
-          </div>
-          <el-tag :type="relay.enabled ? 'success' : 'info'" effect="plain">
-            {{ relay.enabled ? '已启用' : '已关闭' }}
-          </el-tag>
+    <!-- 中继编辑表单区域：平铺展示，不再折叠收起 -->
+    <div class="relay-editor-box">
+      <div class="editor-header">
+        <div class="editor-title-wrap">
+          <h6>编辑 SMTP 中继配置</h6>
+          <span class="editor-tip">表单字段已按响应式一行两列/三列进行紧凑排列；密码留空保持原值。</span>
         </div>
-        <dl class="relay-summary">
-          <div><dt>SMTP 服务器</dt><dd>{{ relay.relayHost || '未填写' }}</dd></div>
-          <div><dt>端口</dt><dd>{{ relay.relayPort || '未填写' }}</dd></div>
-          <div><dt>中继加密方式</dt><dd>{{ relay.security === 'starttls' ? 'STARTTLS' : relay.security === 'implicit_tls' ? '隐式 TLS' : '未选择' }}</dd></div>
-          <div><dt>认证账号</dt><dd>{{ relay.username || '未填写' }}</dd></div>
-          <div><dt>发件邮箱</dt><dd>{{ relay.from || '未填写' }}</dd></div>
-          <div><dt>密码</dt><dd>{{ passwordConfigured ? '已配置（不显示明文）' : '未配置' }}</dd></div>
-          <div><dt>发件域名</dt><dd>{{ relay.fromDomain || '未填写' }}</dd></div>
-        </dl>
-        <div class="relay-item-actions">
-          <el-button type="primary" plain :disabled="disabled" @click="editing = true">编辑</el-button>
-          <el-button type="danger" plain :disabled="disabled" @click="clearRelay">清除中继</el-button>
+        <div class="editor-btns">
+          <el-button
+            v-if="hasConfigured"
+            type="danger"
+            plain
+            size="small"
+            :disabled="disabled"
+            @click="clearRelay"
+          >
+            清除中继
+          </el-button>
         </div>
-      </article>
-    </div>
-
-    <el-empty v-else-if="!editing" description="暂无已配置的 SMTP 中继" />
-
-    <div v-if="editing" class="relay-editor">
-      <div class="relay-editor-heading">
-        <h5>{{ hasConfigured ? '编辑 SMTP 中继' : '添加 SMTP 中继' }}</h5>
-        <span>密码留空表示保持原值，清除操作需要单独点击“清除中继”。</span>
       </div>
-      <div class="form-grid relay-fields">
+
+      <!-- 紧凑表单排版：一行两列/三列 -->
+      <div class="relay-grid-form">
         <ConfigField
-          v-for="field in fields"
+          v-for="field in formFields"
           :key="fieldKey(field)"
           :field="field"
           :value="getValue(config, field.path)"
@@ -64,16 +70,12 @@
           @change="(path, value) => emit('change', path, value)"
         />
       </div>
-      <div class="relay-editor-actions">
-        <el-button v-if="hasConfigured" :disabled="disabled" @click="editing = false">取消编辑</el-button>
-        <el-button v-if="hasConfigured" type="danger" plain :disabled="disabled" @click="clearRelay">清除中继</el-button>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import ConfigField from '../ConfigField/ConfigField.vue'
 import { fieldKey, getValue, relayConfigured } from '../ConfigForm/ConfigForm.js'
@@ -85,10 +87,14 @@ const props = defineProps({
   disabled: Boolean
 })
 const emit = defineEmits(['change'])
+
 const relay = computed(() => props.config.relay || {})
 const hasConfigured = computed(() => relayConfigured(props.config))
-const passwordConfigured = computed(() => !!props.config.relayPasswordStatus?.configured)
-const editing = ref(!hasConfigured.value)
+
+// 过滤掉已在顶部独立展示的中继开关，其余表单字段在下方平铺展示
+const formFields = computed(() => {
+  return (props.fields || []).filter(f => fieldKey(f) !== 'relay.enabled')
+})
 
 const clearRelay = async () => {
   try {
@@ -98,7 +104,6 @@ const clearRelay = async () => {
       { type: 'warning', confirmButtonText: '确认清除', cancelButtonText: '取消' }
     )
     emit('change', ['relay', 'clear'], true)
-    editing.value = false
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') throw error
   }

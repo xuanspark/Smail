@@ -22,7 +22,7 @@
 .table-container {
   border: 1px solid var(--pm-border-color);
   border-radius: var(--pm-radius-sm);
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   margin-bottom: 16px;
 }

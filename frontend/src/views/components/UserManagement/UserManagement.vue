@@ -33,10 +33,10 @@
         <el-alert v-if="group.error" :title="group.error" type="error" :closable="false" />
     <div class="table-container">
       <el-table :data="group.rows" class="modern-table" style="width: 100%" empty-text="本组暂无成员">
-        <el-table-column label="ID" prop="ID" width="44" />
-        <el-table-column :label="lang.account" prop="Account" width="88" show-overflow-tooltip />
-        <el-table-column :label="lang.user_name" prop="Name" width="76" show-overflow-tooltip />
-        <el-table-column label="权限级别" width="100">
+        <el-table-column label="ID" prop="ID" min-width="40" align="center" />
+        <el-table-column :label="lang.account" prop="Account" min-width="80" show-overflow-tooltip />
+        <el-table-column :label="lang.user_name" prop="Name" min-width="70" show-overflow-tooltip />
+        <el-table-column label="权限级别" min-width="84" align="center">
           <template #default="scope">
             <el-tag
               :type="roleMeta(scope.row.Role).type"
@@ -48,7 +48,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="安全码" width="72">
+        <el-table-column label="安全码" min-width="64" align="center">
           <template #default="scope">
             <el-tag
               :type="recoveryCodeMeta(scope.row.RecoveryCodeConfigured).type"
@@ -60,7 +60,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="外部邮箱" width="76">
+        <el-table-column label="外部邮箱" min-width="70" align="center">
           <template #default="scope">
             <el-tag
               :type="externalEmailMeta(scope.row.ExternalEmailConfigured).type"
@@ -72,7 +72,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="账号状态" width="72">
+        <el-table-column label="账号状态" min-width="68" align="center">
           <template #default="scope">
             <el-tag
               :type="accountStatusMeta(scope.row.Disabled).type"
@@ -84,7 +84,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" align="right" :width="canManageMembership ? 186 : 126" fixed="right">
+        <el-table-column label="操作" align="center" :min-width="canManageMembership ? 130 : 96">
           <template #default="scope">
             <el-button
               size="small"

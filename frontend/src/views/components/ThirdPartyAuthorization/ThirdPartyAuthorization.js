@@ -1,7 +1,6 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-
 import { ElMessageBox, ElNotification } from 'element-plus'
-
+import { Plus, Refresh } from '@element-plus/icons-vue'
 import { http } from '@/utils/axios'
 
 export function usePage() {
@@ -9,6 +8,16 @@ export function usePage() {
   const clientList = ref([])
   const selectedClientId = ref(null)
   const currentDomain = ref('')
+
+  // 分页控制
+  const currentPage = ref(1)
+  const pageSize = ref(10)
+
+  const pagedClients = computed(() => {
+    const list = clientList.value || []
+    const start = (currentPage.value - 1) * pageSize.value
+    return list.slice(start, start + pageSize.value)
+  })
 
   // 解密后的各客户端授权码明文 { [clientId]: 'xxxx-yyyy-...' }
   const revealedCodes = reactive({})
@@ -31,16 +40,11 @@ export function usePage() {
   const verifyActionLabel = computed(() => ({
     reveal: '查看明文',
     regenerate: '重新生成',
-    revoke: '撤销授权码',
+    revoke: '撤销删除',
   }[verifyAction.value]))
   const verifyDescription = computed(() => verificationClient.value
-    ? `请验证本人登录密码，以${verifyActionLabel.value}：${verificationClient.value.client_name}`
+    ? `请验证本人登录密码，以${verifyActionLabel.value}客户端：${verificationClient.value.client_name}`
     : '查看客户端授权码前，请验证本人登录密码。')
-
-  const currentClient = computed(() => {
-    if (!selectedClientId.value || !Array.isArray(clientList.value)) return null
-    return clientList.value.find(c => c.id === selectedClientId.value) || null
-  })
 
   const notify = (message, type = 'error') => {
     ElNotification({
@@ -135,8 +139,8 @@ export function usePage() {
     }
   }
 
-  const handleClientSelect = (val) => {
-    selectedClientId.value = val
+  const handlePageChange = (page) => {
+    currentPage.value = page
   }
 
   const openCreateDialog = () => {
@@ -266,7 +270,7 @@ export function usePage() {
     verifyDialogVisible.value = true
   }
 
-  const openVerifyDialog = () => openActionVerification('reveal')
+  const openVerifyDialog = (client) => openActionVerification('reveal', client)
 
   const closeVerifyDialog = () => {
     verifyDialogVisible.value = false
@@ -344,8 +348,11 @@ export function usePage() {
   return {
     loading,
     clientList,
+    pagedClients,
+    currentPage,
+    pageSize,
+    handlePageChange,
     selectedClientId,
-    currentClient,
     currentDomain,
     revealedCodes,
     codesRevealed,
@@ -359,7 +366,7 @@ export function usePage() {
     verifyLoading,
     verifyActionLabel,
     verifyDescription,
-    handleClientSelect,
+    loadClientCredentials,
     openCreateDialog,
     closeCreateDialog,
     submitCreateClient,

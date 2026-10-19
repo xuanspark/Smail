@@ -1,262 +1,249 @@
 <template>
   <div class="third-party-authorization" v-loading="loading">
-    <section class="authorization-section">
-      <!-- 客户端与专属授权码管理卡片 -->
-      <div class="panel-card client-control-card">
-        <div class="card-header-bar">
-          <div class="header-left">
-            <span class="main-title">客户端专属授权码</span>
-            <span class="sub-title">为手机、Foxmail、Outlook 等设备创建独立授权码，随时查看或撤销</span>
-          </div>
-
-          <div class="header-actions">
-            <el-button
-              type="primary"
-              size="default"
-              class="btn-primary-action"
-              @click="openCreateDialog"
-            >
-              + 新增客户端
-            </el-button>
-          </div>
+    <div class="settings-card">
+      <div class="settings-header">
+        <h3>已配置客户端</h3>
+        <div class="group-toolbar">
+          <el-button type="primary" :disabled="loading || createLoading" @click="openCreateDialog">
+            <el-icon><Plus /></el-icon> 新增客户端
+          </el-button>
+          <el-button :loading="loading" @click="loadClientCredentials">
+            <el-icon><Refresh /></el-icon> 刷新列表
+          </el-button>
         </div>
+      </div>
 
-        <div class="card-content-area">
-          <div class="client-op-row">
-            <div class="op-left-group">
-              <span class="item-label">选择客户端：</span>
-              <el-select
-                v-model="selectedClientId"
-                placeholder="请选择客户端设备"
-                size="default"
-                class="client-select-input"
-                @change="handleClientSelect"
-              >
-                <el-option
-                  v-for="item in clientList"
-                  :key="item.id"
-                  :label="item.client_name"
-                  :value="item.id"
-                >
-                  <div class="client-option-item">
-                    <span class="opt-name">{{ item.client_name }}</span>
-                    <el-tag size="small" type="success" effect="light">已就绪</el-tag>
-                  </div>
-                </el-option>
-              </el-select>
-            </div>
+      <!-- 已配置客户端列表表格 -->
+      <section class="account-group-panel client-list-panel">
+        <header class="account-group-header">
+          <h4>客户端授权管理</h4>
+          <span class="client-count-tag" v-if="clientList && clientList.length > 0">
+            共 {{ clientList.length }} 个设备
+          </span>
+        </header>
 
-            <div class="op-right-group" v-if="currentClient">
-              <el-button
-                type="warning"
-                plain
-                size="default"
-                @click="regenerateClientCode(currentClient)"
-              >
-                重新生成
-              </el-button>
-              <el-button
-                type="danger"
-                plain
-                size="default"
-                @click="revokeClientCode(currentClient)"
-              >
-                撤销删除
-              </el-button>
-            </div>
-          </div>
-
-          <!-- 授权码展示横条 -->
-          <div class="code-banner" v-if="currentClient">
-            <div class="banner-left">
-              <span class="banner-label">当前专属授权码：</span>
-              <div class="banner-code-box">
-                <template v-if="codesRevealed && revealedCodes[currentClient.id]">
-                  <code class="revealed-code">{{ revealedCodes[currentClient.id] }}</code>
+        <div class="table-container">
+          <el-table
+            :data="pagedClients"
+            class="modern-table"
+            style="width: 100%"
+            empty-text="暂无已配置的客户端设备，点击上方「新增客户端」创建"
+          >
+            <el-table-column label="ID" prop="id" min-width="40" align="center" />
+            <el-table-column label="客户端名称" prop="client_name" min-width="90" show-overflow-tooltip>
+              <template #default="scope">
+                <span class="client-name-text">{{ scope.row.client_name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" min-width="60" align="center">
+              <template #default>
+                <el-tag size="small" type="success" effect="light" class="status-tag">已就绪</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="创建时间" min-width="90" align="center">
+              <template #default="scope">
+                <span class="time-col">{{ formatTime(scope.row.created_at) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近活跃" min-width="90" align="center">
+              <template #default="scope">
+                <span class="time-col">{{ formatTime(scope.row.last_used_at) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" min-width="160" align="right">
+              <template #default="scope">
+                <div class="table-op-cell">
+                  <template v-if="codesRevealed && revealedCodes[scope.row.id]">
+                    <code class="mini-revealed-code">{{ revealedCodes[scope.row.id] }}</code>
+                    <el-button
+                      type="primary"
+                      size="small"
+                      class="action-btn"
+                      @click="copyCode(revealedCodes[scope.row.id])"
+                    >
+                      复制
+                    </el-button>
+                  </template>
                   <el-button
-                    type="primary"
-                    size="default"
-                    class="btn-copy-code"
-                    @click="copyCode(revealedCodes[currentClient.id])"
-                  >
-                    一键复制
-                  </el-button>
-                  <el-tag
-                    size="default"
-                    type="warning"
-                    effect="plain"
-                    class="countdown-tag"
-                  >
-                    {{ revealCountdown }}s 后自动隐藏
-                  </el-tag>
-                </template>
-                <template v-else-if="codesRevealed && !revealedCodes[currentClient.id]">
-                  <span class="text-hint">未保留加密密文，可点击右上方重新生成</span>
-                </template>
-                <template v-else>
-                  <span class="masked-code">••••••••••••••••••••</span>
-                  <el-button
+                    v-else
                     type="primary"
                     plain
-                    size="default"
-                    class="btn-verify-reveal"
-                    @click="openVerifyDialog"
+                    size="small"
+                    class="action-btn"
+                    @click="openVerifyDialog(scope.row)"
                   >
                     安全验证查看明文
                   </el-button>
-                </template>
-              </div>
-            </div>
-
-            <div class="banner-right">
-              <span class="meta-tag">创建时间：{{ formatTime(currentClient.created_at) }}</span>
-              <span class="meta-tag" v-if="currentClient.last_used_at">
-                最近活跃：{{ formatTime(currentClient.last_used_at) }}
-              </span>
-            </div>
-          </div>
-
-          <!-- 空状态引导 -->
-          <div class="empty-client-placeholder" v-else>
-            <div class="placeholder-text">暂无可用客户端，请点击右上方「+ 新增客户端」为您的设备配置专属授权码</div>
-            <el-button
-              type="primary"
-              size="default"
-              class="btn-primary-action"
-              @click="openCreateDialog"
-            >
-              + 立即新增客户端
-            </el-button>
-          </div>
+                  <el-button
+                    type="warning"
+                    plain
+                    size="small"
+                    class="action-btn"
+                    @click="regenerateClientCode(scope.row)"
+                  >
+                    重置
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    plain
+                    size="small"
+                    class="action-btn"
+                    @click="revokeClientCode(scope.row)"
+                  >
+                    撤销删除
+                  </el-button>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-      </div>
+
+        <!-- 倒计时提示栏（当有授权码明文在展示时呈现） -->
+        <div class="reveal-alert-bar" v-if="codesRevealed">
+          <el-tag type="warning" effect="plain" class="reveal-countdown-badge">
+            授权码正在安全展示，{{ revealCountdown }} 秒后自动隐藏
+          </el-tag>
+        </div>
+
+        <!-- 分页控件 -->
+        <div class="pagination-wrapper" v-if="clientList && clientList.length > pageSize">
+          <el-pagination
+            background
+            layout="prev, pager, next"
+            :total="clientList.length"
+            :page-size="pageSize"
+            :current-page="currentPage"
+            @current-change="handlePageChange"
+          />
+        </div>
+      </section>
 
       <!-- 通用客户端配置参数卡片 -->
-      <div class="panel-card proto-guide-card">
-        <div class="card-header-bar">
-          <div class="header-left">
-            <span class="main-title">通用客户端配置参数</span>
-            <span class="sub-title">请使用完整邮箱地址登录，密码统一使用上方专属授权码</span>
+      <section class="proto-guide-section">
+        <div class="account-group-panel proto-panel">
+          <header class="account-group-header">
+            <h4>通用客户端配置参数</h4>
+            <span class="proto-desc-hint">请使用完整邮箱地址登录，密码统一使用上方专属授权码</span>
+          </header>
+
+          <div class="proto-grid-body">
+            <!-- IMAP 收信 -->
+            <div class="proto-card">
+              <div class="proto-header">
+                <div class="proto-name-badge">
+                  <div class="proto-title">
+                    <span class="proto-name">IMAP</span>
+                    <span class="proto-service">收信服务</span>
+                  </div>
+                  <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
+                </div>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  class="btn-card-copy"
+                  :disabled="!currentDomain"
+                  @click="copyText(`imap.${currentDomain}:993`, 'IMAP 参数')"
+                >
+                  复制
+                </el-button>
+              </div>
+
+              <div class="proto-fields">
+                <div class="field-item">
+                  <span class="field-k">服务器</span>
+                  <span class="field-v font-mono">{{ currentDomain ? `imap.${currentDomain}` : '未配置邮件域名' }}</span>
+                </div>
+                <div class="field-item">
+                  <span class="field-k">端口</span>
+                  <span class="field-v font-mono highlight">993</span>
+                </div>
+                <div class="field-item">
+                  <span class="field-k">加密</span>
+                  <span class="field-v">SSL / TLS</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- POP3 收信 -->
+            <div class="proto-card">
+              <div class="proto-header">
+                <div class="proto-name-badge">
+                  <div class="proto-title">
+                    <span class="proto-name">POP3</span>
+                    <span class="proto-service">收信服务</span>
+                  </div>
+                  <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
+                </div>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  class="btn-card-copy"
+                  :disabled="!currentDomain"
+                  @click="copyText(`pop.${currentDomain}:995`, 'POP3 参数')"
+                >
+                  复制
+                </el-button>
+              </div>
+
+              <div class="proto-fields">
+                <div class="field-item">
+                  <span class="field-k">服务器</span>
+                  <span class="field-v font-mono">{{ currentDomain ? `pop.${currentDomain}` : '未配置邮件域名' }}</span>
+                </div>
+                <div class="field-item">
+                  <span class="field-k">端口</span>
+                  <span class="field-v font-mono highlight">995</span>
+                </div>
+                <div class="field-item">
+                  <span class="field-k">加密</span>
+                  <span class="field-v">SSL / TLS</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- SMTP 发信 -->
+            <div class="proto-card">
+              <div class="proto-header">
+                <div class="proto-name-badge">
+                  <div class="proto-title">
+                    <span class="proto-name">SMTP</span>
+                    <span class="proto-service">发信服务</span>
+                  </div>
+                  <el-tag size="small" type="primary" effect="light">SSL / STARTTLS</el-tag>
+                </div>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  class="btn-card-copy"
+                  :disabled="!currentDomain"
+                  @click="copyText(`smtp.${currentDomain}:465`, 'SMTP 参数')"
+                >
+                  复制
+                </el-button>
+              </div>
+
+              <div class="proto-fields">
+                <div class="field-item">
+                  <span class="field-k">服务器</span>
+                  <span class="field-v font-mono">{{ currentDomain ? `smtp.${currentDomain}` : '未配置邮件域名' }}</span>
+                </div>
+                <div class="field-item">
+                  <span class="field-k">端口</span>
+                  <span class="field-v font-mono highlight">465 (SSL) / 587</span>
+                </div>
+                <div class="field-item">
+                  <span class="field-k">加密</span>
+                  <span class="field-v">SSL / STARTTLS</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
-        <div class="proto-grid">
-          <!-- IMAP 收信 -->
-          <div class="proto-card">
-            <div class="proto-header">
-              <div class="proto-name-badge">
-                <div class="proto-title">
-                  <span class="proto-name">IMAP</span>
-                  <span class="proto-service">收信服务</span>
-                </div>
-                <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
-              </div>
-              <el-button
-                type="primary"
-                link
-                size="small"
-                class="btn-card-copy"
-                :disabled="!currentDomain"
-                @click="copyText(`imap.${currentDomain}:993`, 'IMAP 参数')"
-              >
-                复制
-              </el-button>
-            </div>
-
-            <div class="proto-fields">
-              <div class="field-item">
-                <span class="field-k">服务器</span>
-                <span class="field-v font-mono">{{ currentDomain ? `imap.${currentDomain}` : '未配置邮件域名' }}</span>
-              </div>
-              <div class="field-item">
-                <span class="field-k">端口</span>
-                <span class="field-v font-mono highlight">993</span>
-              </div>
-              <div class="field-item">
-                <span class="field-k">加密</span>
-                <span class="field-v">SSL / TLS</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- POP3 收信 -->
-          <div class="proto-card">
-            <div class="proto-header">
-              <div class="proto-name-badge">
-                <div class="proto-title">
-                  <span class="proto-name">POP3</span>
-                  <span class="proto-service">收信服务</span>
-                </div>
-                <el-tag size="small" type="primary" effect="light">SSL / TLS</el-tag>
-              </div>
-              <el-button
-                type="primary"
-                link
-                size="small"
-                class="btn-card-copy"
-                :disabled="!currentDomain"
-                @click="copyText(`pop.${currentDomain}:995`, 'POP3 参数')"
-              >
-                复制
-              </el-button>
-            </div>
-
-            <div class="proto-fields">
-              <div class="field-item">
-                <span class="field-k">服务器</span>
-                <span class="field-v font-mono">{{ currentDomain ? `pop.${currentDomain}` : '未配置邮件域名' }}</span>
-              </div>
-              <div class="field-item">
-                <span class="field-k">端口</span>
-                <span class="field-v font-mono highlight">995</span>
-              </div>
-              <div class="field-item">
-                <span class="field-k">加密</span>
-                <span class="field-v">SSL / TLS</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- SMTP 发信 -->
-          <div class="proto-card">
-            <div class="proto-header">
-              <div class="proto-name-badge">
-                <div class="proto-title">
-                  <span class="proto-name">SMTP</span>
-                  <span class="proto-service">发信服务</span>
-                </div>
-                <el-tag size="small" type="primary" effect="light">SSL / STARTTLS</el-tag>
-              </div>
-              <el-button
-                type="primary"
-                link
-                size="small"
-                class="btn-card-copy"
-                :disabled="!currentDomain"
-                @click="copyText(`smtp.${currentDomain}:465`, 'SMTP 参数')"
-              >
-                复制
-              </el-button>
-            </div>
-
-            <div class="proto-fields">
-              <div class="field-item">
-                <span class="field-k">服务器</span>
-                <span class="field-v font-mono">{{ currentDomain ? `smtp.${currentDomain}` : '未配置邮件域名' }}</span>
-              </div>
-              <div class="field-item">
-                <span class="field-k">端口</span>
-                <span class="field-v font-mono highlight">465 (SSL) / 587</span>
-              </div>
-              <div class="field-item">
-                <span class="field-k">加密</span>
-                <span class="field-v">SSL / STARTTLS</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <!-- 新增客户端弹窗 -->
     <el-dialog
@@ -365,12 +352,15 @@
 
 <script setup>
 import { usePage } from './ThirdPartyAuthorization.js'
+import { Plus, Refresh } from '@element-plus/icons-vue'
 
 const {
   loading,
   clientList,
-  selectedClientId,
-  currentClient,
+  pagedClients,
+  currentPage,
+  pageSize,
+  handlePageChange,
   currentDomain,
   revealedCodes,
   codesRevealed,
@@ -384,7 +374,7 @@ const {
   verifyLoading,
   verifyActionLabel,
   verifyDescription,
-  handleClientSelect,
+  loadClientCredentials,
   openCreateDialog,
   closeCreateDialog,
   submitCreateClient,
