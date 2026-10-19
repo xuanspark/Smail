@@ -1,0 +1,7 @@
+@import '../LogSettings.css';
+
+.log-subpage-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}

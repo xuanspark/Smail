@@ -131,6 +131,13 @@ export function useLogs() {
     aborter?.abort()
   })
 
+
+  function selectSection(section) {
+    if (['operation', 'mail', 'runtime'].includes(section)) {
+      category.value = section
+    }
+  }
+
   return {
     category, categories, loading, error, items, lines, offset,
     canFilterActor,
@@ -138,6 +145,6 @@ export function useLogs() {
     hasMore, actorId, dateRange, detail, details, isRuntime,
     runtimeDetail, runtimeRows, runtimeSummary, visibleCount, pageRange,
     currentCategory, resultType, runtimeRowClass, timeParts,
-    formatTime, resultLabel, actionLabel, displayActor, displayObject, displayOutcome, search, recent, next, previous
+    formatTime, resultLabel, actionLabel, displayActor, displayObject, displayOutcome, search, recent, next, previous, selectSection
   }
 }

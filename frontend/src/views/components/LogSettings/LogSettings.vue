@@ -182,8 +182,13 @@ const {
   hasMore, actorId, dateRange, detail, details, isRuntime,
   runtimeDetail, runtimeRows, runtimeSummary, pageRange,
   currentCategory, resultType, runtimeRowClass, timeParts,
-  formatTime, resultLabel, actionLabel, displayActor, displayObject, displayOutcome, search, recent, next, previous
+  formatTime, resultLabel, actionLabel, displayActor, displayObject, displayOutcome, search, recent, next, previous, selectSection
 } = useLogs()
+defineExpose({
+  selectSection,
+  category
+})
+
 </script>
 
 <style scoped src="./LogSettings.css"></style>
