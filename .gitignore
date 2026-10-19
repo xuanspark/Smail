@@ -120,6 +120,7 @@ Desktop.ini
 !/docs/HTTPS反向代理部署说明.md
 !/docs/Nginx反代与证书部署说明.md
 !/docs/后端接口说明文档.md
+!/docs/插件开发说明.md
 !/docs/插件构建与配置.md
 !/docs/文件目录整理说明.md
 !/docs/生产资源部署说明.md

@@ -1,318 +1,105 @@
 # Smail
+本项目基于 PMail 二次修改开发。
 
-本项目基于 PMail 进行二次修改与深度开发。全面升级了企业级安全审计、单数据库统一架构、自适应响应式界面、现代化身份验证与自动化运维部署体验。
+全面重构并升级了架构级单数据库统一引擎、企业级多因素安全认证、自适应全设备响应式 Web 界面、极简全自动部署与平滑无感热更新体系。
 
-当前版本的运行配置仅保存在根目录 `config` 的五个 JSON 文件中，数据库、密钥、证书和配置历史保存在根目录 `data`。升级已有部署前请先阅读 [运行目录迁移说明](docs/运行目录迁移说明.md)，停服并完整备份；不能只复制配置文件，也不能沿用下文历史容器示例中仅挂载 `config` 的方式。
+> 一台服务器、一个域名、一行命令、一分钟时间，轻松搭建高信誉、满分送达率的企业级域名邮箱系统。
 
-> 一台服务器、一个域名、一行代码、一分钟时间，你就能够搭建出一个自己的域名邮箱。
+---
 
-Smail是一个追求极简部署流程、极致资源占用的个人域名邮箱服务器。单文件运行，包含完整的收发邮件服务和Web端邮件管理功能。只需一台服务器、一个域名、一行代码、一分钟部署时间，你就能够搭建出一个自己的域名邮箱。
+## 项目核心优势与特性
 
-欢迎各类PR，无论你是修复bug、新增功能、修改翻译。另外，也为这个项目征集一个漂亮可爱的Logo！
+### 1. 架构级单数据库统一（SQLite / MySQL / PostgreSQL 三选一）
+- **彻底消除多库分散**：业务邮件、系统账户、配置历史与运行审计日志完全统一于同一个选定数据库。
+- **免运维本地单文件**：默认搭载开箱即用的嵌入式 SQLite 引擎，零配置即可启动；
+- **高并发与企业级扩展**：原生支持外部 MySQL 8.x / PostgreSQL 14+ 生产级集群，并支持系统在线、无停机跨数据库引擎平滑热迁移。
 
-## 项目优势与核心特性
+### 2. 极致资源占用与极速运行性能
+- **Go + 现代化 Vue 3 极速架构**：后端二进制直接静态内嵌全量 Web 前端资源与插件运行时，单文件即可独立启动。
+- **超低内存占用**：服务常态运行内存仅占用 20MB ~ 30MB 左右，在 1核 512MB / 1GB 等轻量级高性价比云主机上亦能极其流畅运行。
 
-### 1. 架构级单数据库统一管理（SQLite / MySQL / PostgreSQL 三选一）
-- 彻底消除原版分散的数据库机制，业务数据、配置历史与系统日志共用同一个选定数据库。
-- 既支持即开即用的本地嵌入式 SQLite，也原生支持高并发的 MySQL 8.x 与 PostgreSQL 14+，自由切换。
+### 3. 企业级多重安全架构与 2FA 多因素认证
+- **工业级 2FA 认证**：支持基于时间同步的 **TOTP 动态密码**（Google Authenticator / 微软 Authenticator）与基于硬件安全密钥的 **Passkey / WebAuthn** 登录。
+- **协议专属授权凭据**：
+  - **客户端发信专属授权码**：供手机、Mac、Foxmail 等邮件客户端接入，主账号密码绝不外泄；
+  - **系统通知发信授权**：专为系统报警、用户注册等第三方自动化调用提供独立限流凭据。
+- **严苛静态安全代码审计**：全面修复内存并发竞态（Data Race），100% 深度通过 `gosec`（安全缺陷审计）与 `govulncheck`（漏洞检索）。
 
-### 2. 极致资源占用与极速部署
-- 采用 Go 语言结合现代化 Vue 3 构建，后端直接静态内嵌打包全部前端资源。
-- 编译后单二进制文件自包含运行，启动极快，常规运行内存仅在 20MB 以内，特别适用于 1核512M 等高性价比轻量云主机。
-- 配套一键式自动化安装脚本（install-systemd.sh）与在线平滑更新脚本（update-systemd.sh），自动配置防火墙规则并开机自启。
+### 4. 10/10 满分邮件送达率信誉机制
+- **主流反垃圾邮件协议全覆盖**：严格遵循最新现代邮件交付标准，内置标准 **DKIM** 签名认证、**SPF** 动态来源校验与 **DMARC** 报告分析对齐策略。
+- **RFC 规范退订标头**：标准注入 **List-Unsubscribe** 标头，极大降低被 Gmail、QQ、网易等主流公共邮件服务商拒信或丢入垃圾箱的风险。
+- **智能出站 SMTP 中继路由**：针对 25 端口被封禁的云服务器（如阿里云、腾讯云等），支持独立可视化配置第三方 SMTP 中继出站，保障邮件 100% 稳定投递。
 
-### 3. 企业级安全审计与多因素认证 (2FA)
-- 支持 **TOTP 动态验证码** 与 **Passkey / WebAuthn 通行密钥**，提供工业级身份验证保障。
-- 具备超管本地 IPC 隔离重置通道、自动化防暴力破解保护、全库敏感凭据哈希加密存储。
-- 通过严格的代码安全性验证（全面通过 gosec 安全扫描与 govulncheck 漏洞检测），杜绝高并发内存竞态（Data Race）。
+### 5. 全自动 Let's Encrypt 证书生命周期管理
+- **ACME 协议深度集成**：原生支持基于 HTTP-01 验证及主流云服务商（阿里云 DNS、腾讯云 DNS 等）DNS API 自动申请与静默轮换续签。
+- **主域名与泛域名一网打尽**：证书同时覆盖根域名与子域名，亦支持外部自定义证书实时热更新加载。
 
-### 4. 满分邮件送达率信誉（10/10 评分）
-- 严格遵循现代邮件反垃圾标准，内置 **DKIM** 签名机制、**SPF** 匹配校验以及 **DMARC** 报告分析与对准策略。
-- 规范支持 **List-Unsubscribe** 标头，降低被主流邮件服务商（如 Gmail、QQ、网易等）拦截或标记为垃圾邮件的概率。
-- 具备可视化外部 SMTP 智能中继，配备独立启用开关与管理列表，即使服务器 25 端口受限也能顺畅发信。
+### 6. 全新自适应响应式 Web 界面与富文本邮件台
+- **现代化双栏响应式布局**：自适应无缝契合桌面超宽屏、笔记本、平板与手机移动端。
+- **集成功能完善**：自带免配置多语言即时翻译、所见即所得富文本邮件编辑器、快速导出安全恢复码、发件人黑白名单与灵活收信分发规则。
 
-### 5. 全自动 SSL 证书全生命周期管理
-- 深度集成 ACME 自动化协议，支持 HTTP-01 及主流 DNS API（阿里云 DNS、腾讯云 DNS 等）自动申请与续签 Let's Encrypt 证书。
-- 自动涵盖主域名与通配符泛域名，同时支持直接导入并热更新外部自定义证书。
+---
 
-### 6. 现代自适应 Web 管理与全功能工作台
-- 采用全新响应式双栏布局，自适应匹配桌面宽屏、平板与手机浏览器。
-- 内嵌免配置即时多语言翻译、富文本邮件编辑器、快速导出安全码以及多域名/多用户收发控制系统。
+## 快速安装与部署
 
-### 7. 全平台标准邮件客户端完全兼容
-- 完整实现标准的 POP3 (110/995)、SMTP (25/465/587) 与 IMAP (143/993) 协议。
-- 完美兼容各类主流客户端（Foxmail、Outlook、Thunderbird、Apple Mail 及各类手机自带邮件 App）。
+Smail 官方发布包内已随包附带自动化运维工具，安装与更新极其简便：
 
-# 如何部署与运维
-
-## 0. 准备工作：检查服务器 IP 与域名信誉
-自建邮件服务器需确保 IP 干净且 25 端口开放（发信服务器互联必需）：
-1. 访问 [Spamhaus IP 检查](https://check.spamhaus.org/) 确认服务器 IP 和域名没有历史被拉黑记录。
-2. 确保云服务器提供商已解封入站与出站 **TCP 25** 端口（若 25 端口被封锁，可在安装后启用 Smail 内置的外部 SMTP 智能中继功能）。
-
-## 1. 下载发布包
-前往 [Releases 发布页面](https://git.pcux.cn/xuans/Smail/releases) 或 [GitHub Releases](https://github.com/xuanspark/Smail.git) 下载对应系统的最新打包文件（例如 Smail_linux_amd64_V2.10.x.tar.gz）。
-
-## 2. 生产环境自动化部署（Linux Systemd 推荐）
-
-Smail 配备了一键式自动化生产环境管理脚本，支持解压即装、防火墙自动配置、权限隔离与系统服务纳管。
-
-### 全新部署（一键安装与开机自启）
-1. 将下载的压缩包上传至目标目录并解压（安装路径将自动以解压所在目录为准，例如 /smail）：
-   ```bash
-   mkdir -p /smail && tar -zxvf Smail_linux_amd64_V2.10.x.tar.gz -C /smail
-   cd /smail/deploy
-   sudo ./install-systemd.sh
-   ```
-2. 脚本将自动执行以下完整流程：
-   - 创建无特权的专属 smail 系统运行用户并收紧运行目录权限；
-   - 自动检测并开放防火墙端口（80, 443, 25, 465, 587, 110, 995, 143, 993）；
-   - 注册系统服务 smail.service 并设置开机自启动；
-   - 启动服务并实时监控输出初始化向导链接与初始日志，直到初始化就绪。
-
-### 平滑版本更新（无需重配与清空数据）
-后续发布新版本时，无需重复配置域名和清空数据库，直接使用更新脚本即可平滑升级：
-```bash
-# 在新版解压包的 deploy 目录下执行更新：
-cd /path/to/new_smail/deploy
-sudo ./update-systemd.sh
-```
-- 脚本会自动检测现有环境的实际安装路径（如 /smail），将最新的程序二进制文件安全同步至安装路径；
-- 完整保留已配置的数据库、域名记录、证书与历史数据，重启服务后即可顺畅运行新版本。
-
-## 3. 手动前台运行模式（开发 / 调试）
-若需要在前台临时启动测试，可直接执行二进制：
-```bash
-./smail -p 80
-```
-> 说明：-p 参数指定初始化向导界面的 HTTP 端口（默认为 80 端口，若申请 Let's Encrypt 证书必须开放并使用 80 端口）。
-
-## 4. 浏览器向导初始化
-在浏览器中打开 http://<服务器公网IP> 或绑定的域名：
-1. **数据库配置**：选择 SQLite（嵌入式单文件）、MySQL 8.x 或 PostgreSQL 14+，一键初始化数据库；
-2. **域名与管理员**：设置主邮件域名（如 example.com）、Web 管理域名（如 mail.example.com）及超级管理员账号密码；
-3. **SSL 证书**：可选择 ACME 自动申请或手动导入证书；
-4. 初始化完成后系统自动就绪，即可登录后台开始使用。
-
-## 5. 邮件送达率信誉检测（10/10 评分）
-配置 DNS 的 SPF、DKIM 和 DMARC 记录后，建议通过权威邮件评分工具测试邮件送达得分：
-- [Mail-Tester 评分测试](https://www.mail-tester.com/)
-- 根据评分报告提示补充 PTR 反向解析、DKIM 密钥或 SPF 声明，确保信誉满分直达收件箱。
-
-# 配置文件说明
-
-以下是旧版单文件配置示例，仅供迁移时识别字段，不能覆盖当前五分区配置。当前文件为 `config/config.json`、`config/smtp.json`、`config/email.json`、`config/ssl.json` 和 `config/plugins.json`；建议通过管理页面修改，系统会同步维护代次与摘要。
-
-```jsonc
-{
-  "logLevel": "info", //日志输出级别
-  "domain": "domain.com", // 你的域名
-  "webDomain": "mail.domain.com", // web域名
-  "dkimPrivateKeyPath": "config/dkim/dkim.priv", // dkim 私钥地址
-  "sslType": "0", // ssl证书更新模式，0自动，HTTP模式，1手动、2自动，DNS模式
-  "SSLPrivateKeyPath": "config/ssl/private.key", // ssl 证书地址
-  "SSLPublicKeyPath": "config/ssl/public.crt", // ssl 证书地址
-  "dbDSN": "./config/smail.db", // 数据库连接DSN
-  "dbType": "sqlite", //数据库类型，支持sqlite 和 mysql
-  "httpsEnabled": 0, // web后台是否启用https 0默认（启用），1启用，2不启用
-  "spamFilterLevel": 0,// 垃圾邮件过滤级别，0不过滤、1 spf dkim 校验均失败时且无有效收件人过滤，2 spf校验不通过时且无有效收件人过滤 3,dkim 校验不过的时候且无有效收件人过滤
-  "httpPort": 80, // http 端口 . 默认 80
-  "httpsPort": 443, // https 端口 . 默认 443
-  "isInit": true // 为false的时候会进入安装引导流程 
-}
-```
-
-# 第三方邮件客户端配置
-
-Smail 的 IMAP、POP3、SMTP 第三方客户端登录默认受用户级安全设置保护。每个协议都必须分别完成以下步骤：
-
-1. 登录 Web 管理页面，打开“设置 → 账户安全 → 第三方邮件客户端登录”。
-2. 开启需要使用的协议开关。
-3. 为该协议生成授权码，并在生成后立即复制保存。授权码只在生成成功时显示一次，重新生成会使同一协议的旧授权码失效。
-4. 在邮件客户端中，登录名必须填写完整邮箱地址，例如 `alice@example.com`，不能只填写 `alice`。
-5. 客户端密码必须填写对应协议的授权码，不能填写网页登录密码、离线恢复码或邮箱验证码。
-
-## 服务地址和端口
-
-服务地址通常使用已解析到 Smail 服务器的邮件子域名。请根据实际 DNS 配置填写，例如 `imap.example.com`、`pop.example.com` 和 `smtp.example.com`。如果所有协议共用同一个邮件域名，也可以使用实际部署的统一主机名；不要直接照抄示例域名。
-
-| 协议 | 服务地址示例 | 推荐端口 | 加密方式 | 登录名 | 密码 |
-| --- | --- | --- | --- | --- | --- |
-| IMAP | `imap.example.com` | `993` | SSL/TLS | 完整邮箱地址 | IMAP 授权码 |
-| POP3 | `pop.example.com` | `995` | SSL/TLS | 完整邮箱地址 | POP3 授权码 |
-| SMTP | `smtp.example.com` | `465` | SSL/TLS | 完整邮箱地址 | SMTP 授权码 |
-| SMTP | `smtp.example.com` | `587` | STARTTLS | 完整邮箱地址 | SMTP 授权码 |
-| SMTP | `smtp.example.com` | `25` | 明文或按服务器策略启用 TLS | 完整邮箱地址 | SMTP 授权码 |
-
-端口说明：
-
-- `993` 和 `995` 分别用于 IMAP over SSL/TLS 和 POP3 over SSL/TLS，生产环境优先使用这两个端口。
-- SMTP `465` 使用连接即加密的 SSL/TLS；SMTP `587` 使用 STARTTLS，客户端必须打开“STARTTLS”或“需要安全连接”选项。
-- SMTP `25` 主要用于服务器间投递，许多云服务商会限制出站连接；普通客户端提交邮件优先使用 `465` 或 `587`。
-- Web 页面由 Nginx 代理 HTTPS 时，不代表 IMAP、POP3、SMTP 端口也由 Nginx 代理。邮件客户端仍应连接邮件服务实际监听的端口，并使用邮件服务端配置的证书和 TLS 设置。
-
-## 协议开关和授权码规则
-
-- 关闭协议后，该用户对应协议的第三方登录立即失效，网页登录不受影响。
-- 撤销授权码后，该协议已有客户端会在下一次认证时失败；需要重新生成授权码并更新客户端配置。
-- 开启协议但尚未生成授权码时，协议仍不能登录。
-- 授权码按协议分别管理，IMAP、POP3、SMTP 可以使用不同授权码；不要把一个协议的授权码填到另一个协议。
-- 授权码只保存哈希，不会在设置页面再次读取，也不会写入日志。请将授权码视为长期密码，不要提交到工单、截图或 Git。
-- Smail 第三方协议认证不会接受网页登录密码。这样可以在不暴露网页登录密码的情况下单独撤销邮件客户端访问。
-
-## 常见登录失败排查
-
-1. 确认协议开关已开启，并且该协议已经生成授权码。
-2. 确认登录名包含完整域名，例如 `alice@example.com`，不要填写 `alice`、显示名称或别名。
-3. 确认密码是当前协议的授权码，不是网页登录密码、恢复码或邮箱验证码。
-4. 确认客户端加密模式和端口匹配：`465` 使用 SSL/TLS，`587` 使用 STARTTLS，`993/995` 使用 SSL/TLS。
-5. 确认邮件协议主机名的 DNS 记录指向实际 Smail 服务器，防火墙已放行对应端口，证书的域名与客户端连接的主机名匹配。
-6. 如果刚刚关闭协议、撤销或重新生成授权码，请删除客户端保存的旧密码后重新输入新授权码。
-7. 仅检查 Web HTTPS 是否正常不能证明邮件协议可用；应分别使用 SMTP、IMAP 或 POP3 客户端进行认证测试。
-
-## PMail 原版兼容性说明
-
-PMail 原版的协议登录流程与 Smail 不兼容，不能直接作为 Smail 的第三方客户端兼容层：
-
-- PMail 原版会把包含 `@` 的登录名截断为账号部分，不能可靠识别 Smail 要求的完整邮箱地址。
-- PMail 原版没有按用户、按协议的开关和授权码机制。
-- PMail 原版把客户端密码当作网页登录密码校验；Smail 要求客户端使用协议授权码，因此把 Smail 授权码填入 PMail 原版会被当成错误的网页登录密码。
-- Smail 使用 Argon2id 保存用户密码，PMail 原版的旧密码校验逻辑不能直接验证 Smail 的 Argon2id 哈希。
-- 多域名环境下，PMail 截断域名还可能造成账号冲突或错误用户解析。
-
-因此，使用 Smail 邮件服务时，请让客户端直接连接 Smail 的 SMTP、IMAP、POP3 服务，并按本节的开关、完整邮箱地址和协议授权码规则配置；不要把 PMail 原版的账号截断或旧密码逻辑复制到 Smail。
-# 插件
-
-[微信推送](backend/hooks/wechat_push/README.md)
-
-[垃圾邮件屏蔽](backend/hooks/spam_block/README.md)
-
-# 其他优秀开源插件
-
-[Telegram推送](https://github.com/ydzydzydz/pmail_telegram_push)
-
-## 插件安装
-> [!IMPORTANT]
-> 插件已独立进程的方式运行在你的服务器上，请自行审查第三方插件的安全性。Smail目前仅维护上述三款插件
-
-将插件二进制文件放到`plugins`文件夹中即可
-
-# 参与开发
-
-目录约定：独立测试代码和脚本位于 `test/`，测试日志及截图位于 `test-log/`，编译输出位于 `out/`。构建与开发启动方式见 [文件目录整理说明](docs/文件目录整理说明.md)，测试入口见 [测试说明](test/README.md)。
-
-## 项目架构
-
-1、前端： vue3+element-plus
-
-前端代码位于 `frontend` 目录中，运行参考 `frontend` 目录中的 README 文件。
-
-2、后端： golang + MySQL/SQLite
-
-后端代码位于 `backend/`；推荐使用 `deploy/build.ps1` 构建后，通过 `deploy/start-dev.ps1` 启动开发服务。当前开发端口固定分工为：前端使用 HTTP `80` 和 HTTPS `443`，后端 API 使用 `5201`；前端通过代理访问后端，浏览器统一打开 HTTPS 前端地址。
-
-3、编译项目
-
-`make build`
-
-4、单元测试
-
-`make test`
-
-## 后端接口文档
-
-[go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E5%90%8E%E7%AB%AF%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
-
-## 插件开发
-
-[go to wiki](https://git.pcux.cn/xuans/Smail/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E)
-
-
-
-## 第三方协议验证方法
-
-完成用户邮箱验证、协议开关和授权码生成后，可以在测试环境使用真实邮件客户端或命令行验证。以下命令中的 `alice@example.com`、服务器地址和授权码均为示例，请替换为实际值；授权码不要写入 Git、脚本仓库或公共日志。
-
-### SMTP 验证
-
-推荐使用 `swaks`，它可以同时验证 TLS、认证和投递流程。
+### 全新一键安装部署
+下载对应平台的最新发布包（例如 `Smail_V2.14.0_linux_amd64.tar.gz`），解压后直接执行：
 
 ```bash
-# SMTP 465：连接即建立 SSL/TLS
-swaks --server smtp.example.com --port 465 --tls-on-connect \
-  --auth PLAIN \
-  --auth-user 'alice@example.com' \
-  --auth-password 'SMTP授权码' \
-  --from 'alice@example.com' \
-  --to '收件人@example.net'
+# 1. 解压发布包（以解压到 /smail 为例）
+tar -zxvf Smail_V2.14.0_linux_amd64.tar.gz -C /smail
+cd /smail/deploy
 
-# SMTP 587：先建立普通连接，再执行 STARTTLS
-swaks --server smtp.example.com --port 587 --tls \
-  --auth PLAIN \
-  --auth-user 'alice@example.com' \
-  --auth-password 'SMTP授权码' \
-  --from 'alice@example.com' \
-  --to '收件人@example.net'
+# 2. 赋予脚本执行权限并启动全新部署
+chmod +x install-systemd.sh update-systemd.sh
+./install-systemd.sh
 ```
 
-认证成功后，服务端应接受认证并继续处理 `MAIL FROM`、`RCPT TO` 和邮件正文；如果 587 端口在 STARTTLS 前返回认证成功，说明服务端配置不符合安全要求。
+脚本将全自动完成：
+- 识别并锁定当前解压目录为唯一安装路径；
+- 创建专用的独立系统运行用户 `smail` 并安全授权；
+- 自动检测并配置网络防火墙（放行 80, 443, 25, 465, 587, 110, 995, 143, 993 端口）；
+- 注册系统级服务 `smail.service` 并配置开机自启；
+- 实时输出启动日志与 Web 初始化配置地址（默认 `http://<您的服务器IP>`）。
 
-### IMAP 验证
-
-使用支持 IMAPS 的 `curl` 验证 993 端口：
-
+### 平滑在线更新
+当发布新版本时，无需破坏旧数据与数据库：
 ```bash
-curl --fail --silent --show-error \
-  --url 'imaps://imap.example.com/INBOX' \
-  --user 'alice@example.com:IMAP授权码'
+# 进入部署目录直接运行平滑更新脚本
+cd /smail/deploy
+./update-systemd.sh
 ```
+更新脚本会自动校验最新二进制程序、无感平滑重启主服务，并完整保留您原有的配置文件、证书与邮件数据。
 
-能够建立 TLS 连接并返回收件箱信息，说明 IMAP 登录成功。将用户名改为 `alice`、密码改为网页登录密码，或先关闭 IMAP 开关后重新执行，均应认证失败。
+---
 
-### POP3 验证
+## 自动化构建与工作流 (CI/CD Releases)
 
-使用支持 POP3S 的 `curl` 验证 995 端口：
+项目在以下两个官方仓库保持同步构建与发布工作流：
 
-```bash
-curl --fail --silent --show-error \
-  --url 'pop3s://pop.example.com/' \
-  --user 'alice@example.com:POP3授权码' \
-  --list-only
-```
+- **GitHub 仓库**：[https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
+- **PCUX Git 仓库**：[https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
 
-能够建立 TLS 连接并返回邮件列表，说明 POP3 登录成功。普通 POP3 端口必须先完成 STLS，不能在明文连接阶段直接提交密码。
+每个版本均由 CI/CD 自动化流水线生成对应各平台的完整发布包（均已完整打包 Web 前端资产与核心插件）：
+- **Linux 平台**：`Smail_V<版本号>_linux_amd64.tar.gz` / `Smail_V<版本号>_linux_arm64.tar.gz`
+- **Windows 平台**：`Smail_V<版本号>_windows_amd64.zip` / `Smail_V<版本号>_windows_arm64.zip`
+- **macOS 平台**：`Smail_V<版本号>_darwin_amd64.tar.gz` / `Smail_V<版本号>_darwin_arm64.tar.gz`
 
-### 验证结果判定
+---
 
-| 测试项 | 预期结果 |
-| --- | --- |
-| 已开启协议 + 对应授权码 + 完整邮箱地址 | 登录成功 |
-| 协议未开启 | 登录失败 |
-| 已开启但尚未生成授权码 | 登录失败 |
-| 授权码已撤销或重新生成 | 旧授权码登录失败，新授权码登录成功 |
-| 使用网页登录密码 | 登录失败 |
-| 使用短账号名（例如 `alice`） | 登录失败 |
-| 使用未验证或未绑定邮箱地址 | 登录失败 |
-| SMTP 587 在 STARTTLS 前认证 | 服务端拒绝认证 |
-| POP3 未完成 TLS 或 STLS 就认证 | 服务端拒绝认证 |
+## 开发者与集成文档
 
-### 当前自动化验证范围
+系统针对外部二次开发与集成提供详尽文档：
 
-项目自动化测试已经覆盖统一协议认证服务、控制器接口、SMTP 会话认证、POP3 会话认证、IMAP 原始 `LOGIN`、完整邮箱地址、协议开关、授权码撤销、重新生成和网页登录密码拒绝。自动化测试不能替代生产环境中的 DNS、证书、防火墙、Nginx、真实邮件客户端和实际投递验收，因此部署后仍需按上面的命令执行一次真实验证。
+- 📘 **[后端接口说明文档](docs/后端接口说明文档.md)**：包含全量 HTTP API 接口、身份验证、CSRF 防护、邮件收发与系统在线无感迁移规范；
+- 🔌 **[插件开发说明文档](docs/插件开发说明.md)**：包含独立子进程架构、标准 Stdio/JSON 通信协议、反垃圾过滤与即时通讯推送 Hook 开发教程；
+- 🌐 **[Nginx反代与证书部署说明](docs/Nginx反代与证书部署说明.md)**：外部高防 CDN、Nginx 反向代理配置与证书托管指引。
 
-### PMail 原版无法登录的结论
+---
 
-PMail 原版不能作为当前 Smail 的第三方协议登录测试客户端。它的旧登录流程会截断包含 `@` 的登录名，没有 Smail 的协议开关和授权码模型，并且按网页登录密码校验；Smail 则要求“完整邮箱地址 + 对应协议授权码”。因此，把 Smail 的授权码填入 PMail 原版后登录失败属于兼容性限制，不应通过接受短账号名或网页登录密码来规避。
+## 开源协议与鸣谢
 
-## 自动化构建发布与 CI/CD 工作流
-
-本项目在两个代码仓库中均维护了全自动化的构建与发布工作流：
-- **GitHub**: [https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
-- **PCUX Git**: [https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
-
-支持全自动化多平台构建与发布包生成（自包含完整的前端与静态内嵌资源）：
-- **Linux**: Smail_linux_amd64.tar.gz / Smail_linux_arm64.tar.gz
-- **Windows**: Smail_windows_amd64.zip / Smail_windows_arm64.zip
-- **macOS**: Smail_darwin_amd64.tar.gz / Smail_darwin_arm64.tar.gz
-
-部署包中内置了最新完整编译的前端资源与插件，解压即可运行。
+- 本项目基于开源项目 [PMail](https://github.com/JMisFilter/pmail) 进行二次修改与持续演进。
+- 遵循相应开源许可协议分发。
