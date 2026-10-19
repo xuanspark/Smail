@@ -1,99 +1,105 @@
 # Smail
-This project is forked and developed based on PMail.
+本项目基于 PMail 二次修改开发。
 
-Comprehensively refactored and upgraded with a unified single-database architecture, enterprise-grade multi-factor authentication (2FA), a responsive modern Web UI across all devices, automated one-click deployment, and zero-downtime hot updates.
+全面重构并升级了架构级单数据库统一引擎、企业级多因素安全认证、自适应全设备响应式 Web 界面、极简全自动部署与平滑无感热更新体系。
 
-> One server, one domain, one command, and one minute — deploy a high-reputation, 10/10 deliverability enterprise-grade mail server with ease.
-
----
-
-## Core Advantages & Features
-
-### 1. Unified Single-Database Architecture (SQLite / MySQL / PostgreSQL)
-- **Zero Database Fragmentation**: Business emails, user accounts, configuration histories, and system audit logs reside in a single chosen database.
-- **Embedded Local SQLite by Default**: Ready to run out of the box with zero external dependencies.
-- **Enterprise High-Concurrency Support**: Full native support for external MySQL 8.x and PostgreSQL 14+, featuring seamless zero-downtime database migration.
-
-### 2. Extremely Low Resource Usage & High Performance
-- **Go + Modern Vue 3 Architecture**: Backend binaries directly embed all frontend web assets and plugin runtimes.
-- **Ultra-Lightweight Footprint**: Typically runs on just 20MB - 30MB of RAM, making it exceptionally smooth on budget-friendly cloud instances (1 core, 512MB / 1GB RAM).
-
-### 3. Enterprise-Grade Security & Multi-Factor Authentication (2FA)
-- **Industrial-Grade 2FA**: Supports time-based **TOTP** (Google / Microsoft Authenticator) and hardware passkeys (**WebAuthn / Passkey**).
-- **Dedicated Protocol Credentials**:
-  - **Client-Specific Credentials**: Secure credentials for third-party email clients (Outlook, Foxmail, iOS/Android Mail) without exposing master passwords.
-  - **System Notification Credentials**: Independent rate-limited credentials designed for system notifications and webhook dispatching.
-- **Rigorous Static Security Audits**: 100% passed `gosec` vulnerability scanning and concurrency data-race sanitization.
-
-### 4. 10/10 Email Deliverability Reputation
-- **Modern Anti-Spam Standards**: Built-in **DKIM** signing, strict **SPF** alignment verification, and **DMARC** policy enforcement.
-- **List-Unsubscribe Headers**: Strictly compliant with RFC standards, minimizing spam flagging by Gmail, Outlook, QQ, and NetEase.
-- **Smart Outbound SMTP Relay**: Dedicated relay management to ensure smooth delivery even on VPS providers with port 25 restricted.
-
-### 5. Automated SSL Certificate Lifecycle Management
-- **ACME Protocol Integration**: Automated issuance and silent auto-renewal via HTTP-01 and major DNS APIs (Aliyun DNS, Tencent Cloud DNS, etc.).
-- **Apex & Wildcard Coverage**: Covers both root domains and subdomains automatically, while also supporting custom certificate hot reloading.
-
-### 6. Modern Adaptive Responsive Web Interface
-- **Dual-Pane Responsive Layout**: Perfectly tailored for desktop ultrawide monitors, laptops, tablets, and mobile devices.
-- **Full-Featured Mailbox**: Includes configuration-free instant multi-language translation, rich text WYSIWYG editor, sender blacklists, and flexible routing rules.
+> 一台服务器、一个域名、一行命令、一分钟时间，轻松搭建高信誉、满分送达率的企业级域名邮箱系统。
 
 ---
 
-## Quick Installation & Deployment
+## 项目核心优势与特性
 
-### One-Click Installation
-Download the latest release package for your platform (e.g., `Smail_V2.14.0_linux_amd64.tar.gz`) and run:
+### 1. 架构级单数据库统一（SQLite / MySQL / PostgreSQL 三选一）
+- **彻底消除多库分散**：业务邮件、系统账户、配置历史与运行审计日志完全统一于同一个选定数据库。
+- **免运维本地单文件**：默认搭载开箱即用的嵌入式 SQLite 引擎，零配置即可启动；
+- **高并发与企业级扩展**：原生支持外部 MySQL 8.x / PostgreSQL 14+ 生产级集群，并支持系统在线、无停机跨数据库引擎平滑热迁移。
+
+### 2. 极致资源占用与极速运行性能
+- **Go + 现代化 Vue 3 极速架构**：后端二进制直接静态内嵌全量 Web 前端资源与插件运行时，单文件即可独立启动。
+- **超低内存占用**：服务常态运行内存仅占用 20MB ~ 30MB 左右，在 1核 512MB / 1GB 等轻量级高性价比云主机上亦能极其流畅运行。
+
+### 3. 企业级多重安全架构与 2FA 多因素认证
+- **工业级 2FA 认证**：支持基于时间同步的 **TOTP 动态密码**（Google Authenticator / 微软 Authenticator）与基于硬件安全密钥的 **Passkey / WebAuthn** 登录。
+- **协议专属授权凭据**：
+  - **客户端发信专属授权码**：供手机、Mac、Foxmail 等邮件客户端接入，主账号密码绝不外泄；
+  - **系统通知发信授权**：专为系统报警、用户注册等第三方自动化调用提供独立限流凭据。
+- **严苛静态安全代码审计**：全面修复内存并发竞态（Data Race），100% 深度通过 `gosec`（安全缺陷审计）与 `govulncheck`（漏洞检索）。
+
+### 4. 10/10 满分邮件送达率信誉机制
+- **主流反垃圾邮件协议全覆盖**：严格遵循最新现代邮件交付标准，内置标准 **DKIM** 签名认证、**SPF** 动态来源校验与 **DMARC** 报告分析对齐策略。
+- **RFC 规范退订标头**：标准注入 **List-Unsubscribe** 标头，极大降低被 Gmail、QQ、网易等主流公共邮件服务商拒信或丢入垃圾箱的风险。
+- **智能出站 SMTP 中继路由**：针对 25 端口被封禁的云服务器（如阿里云、腾讯云等），支持独立可视化配置第三方 SMTP 中继出站，保障邮件 100% 稳定投递。
+
+### 5. 全自动 Let's Encrypt 证书生命周期管理
+- **ACME 协议深度集成**：原生支持基于 HTTP-01 验证及主流云服务商（阿里云 DNS、腾讯云 DNS 等）DNS API 自动申请与静默轮换续签。
+- **主域名与泛域名一网打尽**：证书同时覆盖根域名与子域名，亦支持外部自定义证书实时热更新加载。
+
+### 6. 全新自适应响应式 Web 界面与富文本邮件台
+- **现代化双栏响应式布局**：自适应无缝契合桌面超宽屏、笔记本、平板与手机移动端。
+- **集成功能完善**：自带免配置多语言即时翻译、所见即所得富文本邮件编辑器、快速导出安全恢复码、发件人黑白名单与灵活收信分发规则。
+
+---
+
+## 快速安装与部署
+
+Smail 官方发布包内已随包附带自动化运维工具，安装与更新极其简便：
+
+### 全新一键安装部署
+下载对应平台的最新发布包（例如 `Smail_V2.14.0_linux_amd64.tar.gz`），解压后直接执行：
 
 ```bash
-# 1. Extract package (e.g. to /smail)
+# 1. 解压发布包（以解压到 /smail 为例）
 tar -zxvf Smail_V2.14.0_linux_amd64.tar.gz -C /smail
 cd /smail/deploy
 
-# 2. Grant execution permissions and start installation
+# 2. 赋予脚本执行权限并启动全新部署
 chmod +x install-systemd.sh update-systemd.sh
 ./install-systemd.sh
 ```
 
-The script automatically:
-- Locks the unpacked directory as the dedicated installation path;
-- Creates a dedicated system user `smail` with sandboxed permissions;
-- Automatically configures the firewall (ports 80, 443, 25, 465, 587, 110, 995, 143, 993);
-- Registers the `smail.service` systemd service and enables startup on boot;
-- Outputs startup status and the web initialization URL (`http://<Server-IP>`).
+脚本将全自动完成：
+- 识别并锁定当前解压目录为唯一安装路径；
+- 创建专用的独立系统运行用户 `smail` 并安全授权；
+- 自动检测并配置网络防火墙（放行 80, 443, 25, 465, 587, 110, 995, 143, 993 端口）；
+- 注册系统级服务 `smail.service` 并配置开机自启；
+- 实时输出启动日志与 Web 初始化配置地址（默认 `http://<您的服务器IP>`）。
 
-### Smooth Online Updates
-To update to a new release without losing configuration or database records:
+### 平滑在线更新
+当发布新版本时，无需破坏旧数据与数据库：
 ```bash
+# 进入部署目录直接运行平滑更新脚本
 cd /smail/deploy
 ./update-systemd.sh
 ```
+更新脚本会自动校验最新二进制程序、无感平滑重启主服务，并完整保留您原有的配置文件、证书与邮件数据。
 
 ---
 
-## Releases & CI/CD Workflows
+## 自动化构建与工作流 (CI/CD Releases)
 
-Automated builds and releases are maintained across both repositories:
+项目在以下两个官方仓库保持同步构建与发布工作流：
 
-- **GitHub Repository**: [https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
-- **PCUX Git Repository**: [https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
+- **GitHub 仓库**：[https://github.com/xuanspark/Smail.git](https://github.com/xuanspark/Smail.git)
+- **PCUX Git 仓库**：[https://git.pcux.cn/xuans/Smail.git](https://git.pcux.cn/xuans/Smail.git)
 
-Official multi-platform releases generated by CI/CD workflows:
-- **Linux**: `Smail_V<version>_linux_amd64.tar.gz` / `Smail_V<version>_linux_arm64.tar.gz`
-- **Windows**: `Smail_V<version>_windows_amd64.zip` / `Smail_V<version>_windows_arm64.zip`
-- **macOS**: `Smail_V<version>_darwin_amd64.tar.gz` / `Smail_V<version>_darwin_arm64.tar.gz`
-
----
-
-## Developer & Integration Guides
-
-- 📘 **[Backend API Documentation](docs/后端接口说明文档.md)**: Specifications for HTTP REST APIs, authentication, CSRF security, and database migrations.
-- 🔌 **[Plugin Development Guide](docs/插件开发说明.md)**: Architecture details, IPC standard JSON protocol, anti-spam filters, and notification hook tutorials.
-- 🌐 **[Nginx Reverse Proxy & SSL Deployment](docs/Nginx反代与证书部署说明.md)**: Reverse proxy and SSL management guide.
+每个版本均由 CI/CD 自动化流水线生成对应各平台的完整发布包（均已完整打包 Web 前端资产与核心插件）：
+- **Linux 平台**：`Smail_V<版本号>_linux_amd64.tar.gz` / `Smail_V<版本号>_linux_arm64.tar.gz`
+- **Windows 平台**：`Smail_V<版本号>_windows_amd64.zip` / `Smail_V<版本号>_windows_arm64.zip`
+- **macOS 平台**：`Smail_V<版本号>_darwin_amd64.tar.gz` / `Smail_V<版本号>_darwin_arm64.tar.gz`
 
 ---
 
-## License & Acknowledgements
+## 开发者与集成文档
 
-- Forked and developed based on [PMail](https://github.com/JMisFilter/pmail).
-- Distributed under open source licenses.
+系统针对外部二次开发与集成提供详尽文档：
+
+- 📘 **[后端接口说明文档](docs/后端接口说明文档.md)**：包含全量 HTTP API 接口、身份验证、CSRF 防护、邮件收发与系统在线无感迁移规范；
+- 🔌 **[插件开发说明文档](docs/插件开发说明.md)**：包含独立子进程架构、标准 Stdio/JSON 通信协议、反垃圾过滤与即时通讯推送 Hook 开发教程；
+- 🌐 **[Nginx反代与证书部署说明](docs/Nginx反代与证书部署说明.md)**：外部高防 CDN、Nginx 反向代理配置与证书托管指引。
+
+---
+
+## 开源协议与鸣谢
+
+- 本项目基于开源项目 [PMail](https://github.com/JMisFilter/pmail) 进行二次修改与持续演进。
+- 遵循相应开源许可协议分发。
